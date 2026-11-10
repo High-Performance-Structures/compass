@@ -1,8 +1,8 @@
 "use client"
 
-import { Fragment, useState, useTransition, type FormEvent } from "react"
+import { useState, useTransition, type FormEvent } from "react"
 import { useRouter } from "next/navigation"
-import { IconAlertTriangle, IconArrowBackUp, IconCircleCheck, IconDeviceFloppy, IconEye, IconRefresh, IconTrash } from "@tabler/icons-react"
+import { IconAlertTriangle, IconArrowBackUp, IconCircleCheck, IconEye, IconRefresh, IconTrash } from "@tabler/icons-react"
 
 import {
   deleteProjectOwnerPayApplicationDraft,
@@ -11,19 +11,16 @@ import {
   updateProjectOwnerPayApplicationBudget,
   setProjectOwnerPayApplicationDeposit,
   setProjectOwnerPayApplicationOwnerDetail,
-  setProjectOwnerPayApplicationPercentComplete,
-  updateProjectOwnerPayApplicationLine,
   type ProjectOwnerPayApplicationDraft,
-  type ProjectOwnerPayApplicationLine,
 } from "@/app/actions/project-financial-workflows"
-import type { PayApplicationShopTicketState } from "@/lib/financials/pay-application-shop-tickets"
+import { overBilledLines, type LineChangeOrder } from "@/lib/financials/pay-application-line-checks"
+import type { PayRequestWorkArea } from "@/lib/financials/pay-request-work-areas"
+import { PayRequestWorkAreas } from "@/components/financials/pay-request-work-areas"
 import {
-  lineChangeOrderKey,
-  lineChangeOrderLabel,
-  overBilledAmount,
-  overBilledLines,
-  type LineChangeOrder,
-} from "@/lib/financials/pay-application-line-checks"
+  PayApplicationBillingGrid,
+  fieldNumber,
+  type ShopTicketProvenance,
+} from "@/components/projects/pay-application-billing-grid"
 import { ContextualHelpBeacon } from "@/components/help/contextual-help-beacon"
 import { PayApplicationBillingControls, payApplicationStatusLabel } from "@/components/projects/pay-application-billing-controls"
 import {
@@ -39,8 +36,8 @@ import {
 } from "@/components/ui/alert-dialog"
 import { Badge } from "@/components/ui/badge"
 import { useDeveloperMode } from "@/components/developer-mode-provider"
+import { formatDollars } from "@/lib/format"
 import { Button } from "@/components/ui/button"
-import { Checkbox } from "@/components/ui/checkbox"
 import { Input } from "@/components/ui/input"
 import {
   Select,
@@ -49,301 +46,11 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
-import { formatCents } from "@/lib/format"
 import {
   PAY_APPLICATION_OWNER_DETAILS,
   PAY_APPLICATION_OWNER_DETAIL_LABELS,
   isPayApplicationOwnerDetail,
 } from "@/lib/financials/pay-application-detail"
-
-function money(value: number): string {
-  return new Intl.NumberFormat("en-US", {
-    style: "currency",
-    currency: "USD",
-    maximumFractionDigits: 2,
-  }).format(value)
-}
-
-function fieldNumber(formData: FormData, name: string): number | null {
-  const raw = String(formData.get(name) ?? "").replaceAll(/[$,\s]/g, "")
-  if (!raw) return 0
-  // Accounting-style credits such as (3,230.00) read as negative amounts.
-  const credit = /^\((.*)\)$/.exec(raw)
-  const value = credit ? -Number(credit[1]) : Number(raw)
-  return Number.isFinite(value) ? value : null
-}
-
-type ShopTicketProvenance = PayApplicationShopTicketState["lineProvenance"][number]
-
-const LINE_GRID =
-  "lg:grid-cols-[minmax(14rem,1.6fr)_repeat(8,minmax(6.5rem,.7fr))_auto]"
-
-function percentOf(part: number, whole: number): number {
-  return whole > 0 ? Math.round((part / whole) * 1_000) / 10 : 0
-}
-
-function PayApplicationLineEditor({
-  projectId,
-  applicationId,
-  line,
-  editable,
-  onMessage,
-  shopTickets,
-  changeOrders,
-}: {
-  readonly projectId: string
-  readonly applicationId: string
-  readonly line: ProjectOwnerPayApplicationLine
-  readonly editable: boolean
-  readonly onMessage: (message: string) => void
-  readonly shopTickets: ShopTicketProvenance | undefined
-  readonly changeOrders: readonly LineChangeOrder[]
-}): React.ReactElement {
-  const overBilled = overBilledAmount(line)
-  const router = useRouter()
-  const [isPending, startTransition] = useTransition()
-  const [ownerVisible, setOwnerVisible] = useState(line.ownerVisible)
-  // A failed save keeps the typed values and shows why on this row, so the
-  // error is not lost in the page-level message far above a long G703.
-  const [error, setError] = useState<string | null>(null)
-  const impliedRetainage =
-    line.totalCompletedStored > 0
-      ? (line.retainageHeld / line.totalCompletedStored) * 100
-      : 0
-
-  function save(event: FormEvent<HTMLFormElement>): void {
-    event.preventDefault()
-    const formData = new FormData(event.currentTarget)
-    const percent = fieldNumber(formData, "percentComplete")
-    const percentChanged =
-      percent !== null && Math.abs(percent - percentOf(line.totalCompletedStored, line.adjustedEstimate)) > 0.05
-    setError(null)
-    startTransition(async () => {
-      const result = await updateProjectOwnerPayApplicationLine(
-        projectId,
-        applicationId,
-        line.id,
-        {
-          currentWorkCompleted: fieldNumber(formData, "currentWorkCompleted"),
-          storedMaterials: fieldNumber(formData, "storedMaterials"),
-          retainagePercent: fieldNumber(formData, "retainagePercent"),
-          ownerVisible,
-        }
-      )
-      if (!result.success) {
-        setError(result.error)
-        onMessage(`${line.costCode} was not saved: ${result.error}`)
-        return
-      }
-      if (!percentChanged) {
-        onMessage(`${line.costCode} saved.`)
-        router.refresh()
-        return
-      }
-      const billed = await setProjectOwnerPayApplicationPercentComplete(projectId, applicationId, {
-        scope: "line",
-        key: line.id,
-        percentComplete: percent,
-      })
-      if (!billed.success) setError(billed.error)
-      onMessage(billed.success ? `${line.costCode} billed to ${percent}% complete.` : billed.error)
-      router.refresh()
-    })
-  }
-
-  return (
-    <form
-      onSubmit={save}
-      className={`grid gap-2 border-b px-3 py-3 text-sm ${LINE_GRID} lg:items-center`}
-    >
-      <div className="min-w-0">
-        <p className="font-medium">{line.costCode} · {line.description}</p>
-        <p className="text-xs text-muted-foreground">
-          {line.assemblyName ?? `${line.divisionCode} · ${line.divisionName}`}
-        </p>
-        {shopTickets && (
-          <p className="text-xs text-muted-foreground">
-            includes {formatCents(shopTickets.amountCents)} from {shopTickets.ticketNumbers.join(", ")}
-          </p>
-        )}
-        {changeOrders.map((change) => (
-          <p key={`${change.number}:${change.title}`} className="text-xs text-muted-foreground">
-            {lineChangeOrderLabel(change, money)}
-          </p>
-        ))}
-      </div>
-      <span className="text-right">{money(line.adjustedEstimate)}</span>
-      <span className="text-right">{money(line.previousWorkCompleted)}</span>
-      <Input
-        key={line.currentWorkCompleted}
-        name="currentWorkCompleted"
-        inputMode="decimal"
-        defaultValue={line.currentWorkCompleted || ""}
-        disabled={!editable}
-        aria-invalid={error ? true : undefined}
-        aria-describedby={error ? `${line.id}-error` : undefined}
-        aria-label={`Current work for ${line.costCode}`}
-      />
-      <Input
-        name="storedMaterials"
-        inputMode="decimal"
-        defaultValue={line.storedMaterials || ""}
-        disabled={!editable}
-        aria-label={`Stored materials for ${line.costCode}`}
-      />
-      <Input
-        name="retainagePercent"
-        inputMode="decimal"
-        defaultValue={impliedRetainage || ""}
-        disabled={!editable}
-        aria-label={`Retainage percent for ${line.costCode}`}
-      />
-      <Input
-        key={line.totalCompletedStored}
-        name="percentComplete"
-        inputMode="decimal"
-        defaultValue={percentOf(line.totalCompletedStored, line.adjustedEstimate) || ""}
-        disabled={!editable}
-        aria-label={`Percent complete to date for ${line.costCode}`}
-      />
-      <span className="text-right">{money(line.totalCompletedStored)}</span>
-      <span className="text-right">{money(line.balanceToFinish)}</span>
-      <div className="flex items-center justify-end gap-2">
-        <label className="flex items-center gap-1 text-xs text-muted-foreground">
-          <Checkbox
-            checked={ownerVisible}
-            onCheckedChange={(checked) => setOwnerVisible(checked === true)}
-            disabled={!editable}
-          />
-          Owner
-        </label>
-        {editable && (
-          <Button type="submit" size="icon" variant="outline" disabled={isPending}>
-            <IconDeviceFloppy className="size-4" />
-            <span className="sr-only">Save {line.costCode}</span>
-          </Button>
-        )}
-      </div>
-      {overBilled > 0 && (
-        <p className="flex items-center gap-1 text-sm text-destructive lg:col-span-full">
-          <IconAlertTriangle className="size-4" />
-          Billed {money(overBilled)} more than its scheduled value of {money(line.adjustedEstimate)}.
-        </p>
-      )}
-      {error && (
-        <p id={`${line.id}-error`} role="alert" className="text-sm text-destructive lg:col-span-full">
-          {error}
-        </p>
-      )}
-    </form>
-  )
-}
-
-const GROUP_BY_OPTIONS = ["division", "assembly", "cost_code"] as const
-
-type GroupBy = (typeof GROUP_BY_OPTIONS)[number]
-
-const GROUP_BY_LABELS: Readonly<Record<GroupBy, string>> = {
-  division: "Division",
-  assembly: "Assembly",
-  cost_code: "Cost code",
-}
-
-type LineGroup = {
-  readonly scope: GroupBy
-  /** Division code, assembly key ("" = outside any assembly), or cost code. */
-  readonly key: string
-  readonly label: string
-  readonly lines: readonly ProjectOwnerPayApplicationLine[]
-}
-
-function lineGroups(lines: readonly ProjectOwnerPayApplicationLine[], groupBy: GroupBy): readonly LineGroup[] {
-  const groups = new Map<string, { label: string; sort: number; lines: ProjectOwnerPayApplicationLine[] }>()
-  lines.forEach((line, index) => {
-    const key =
-      groupBy === "division" ? line.divisionCode : groupBy === "assembly" ? line.assemblyKey ?? "" : line.costCode
-    const label =
-      groupBy === "division"
-        ? `${line.divisionCode} · ${line.divisionName}`
-        : groupBy === "assembly"
-          ? line.assemblyName ?? "Other work"
-          : `${line.costCode} · ${line.description}`
-    const sort = groupBy === "assembly" ? (line.assemblyKey ? line.assemblySort : 1_000_000) : index
-    const group = groups.get(key) ?? { label, sort, lines: [] }
-    group.lines.push(line)
-    groups.set(key, group)
-  })
-  return [...groups.entries()]
-    .sort(([, left], [, right]) => left.sort - right.sort)
-    .map(([key, group]) => ({ scope: groupBy, key, label: group.label, lines: group.lines }))
-}
-
-/** Group row: bill every line in a division, assembly or cost code to one percent complete. */
-function PayApplicationGroupRow({
-  projectId,
-  applicationId,
-  group,
-  editable,
-  onMessage,
-}: {
-  readonly projectId: string
-  readonly applicationId: string
-  readonly group: LineGroup
-  readonly editable: boolean
-  readonly onMessage: (message: string) => void
-}): React.ReactElement {
-  const router = useRouter()
-  const [isPending, startTransition] = useTransition()
-  const scheduled = group.lines.reduce((sum, line) => sum + line.adjustedEstimate, 0)
-  const completed = group.lines.reduce((sum, line) => sum + line.totalCompletedStored, 0)
-  const current = percentOf(completed, scheduled)
-  const noun = GROUP_BY_LABELS[group.scope].toLowerCase()
-
-  function bill(event: FormEvent<HTMLFormElement>): void {
-    event.preventDefault()
-    const percent = fieldNumber(new FormData(event.currentTarget), "groupPercent")
-    if (percent === null) {
-      onMessage(`Enter the ${noun}'s percent complete as a number.`)
-      return
-    }
-    startTransition(async () => {
-      const result = await setProjectOwnerPayApplicationPercentComplete(projectId, applicationId, {
-        scope: group.scope,
-        key: group.key,
-        percentComplete: percent,
-      })
-      onMessage(result.success ? `${group.label} billed to ${percent}% complete.` : result.error)
-      router.refresh()
-    })
-  }
-
-  return (
-    <div className="flex flex-wrap items-center justify-between gap-3 border-b bg-muted/20 px-3 py-2 text-sm">
-      <div>
-        <p className="font-semibold">{group.label}</p>
-        <p className="text-xs text-muted-foreground">
-          {money(completed)} of {money(scheduled)} · {current}% complete to date
-        </p>
-      </div>
-      {editable && (
-        <form onSubmit={bill} className="flex items-center gap-2">
-          <Input
-            key={current}
-            name="groupPercent"
-            inputMode="decimal"
-            defaultValue={current || ""}
-            className="w-24 text-right"
-            aria-label={`Percent complete to date for ${group.label}`}
-          />
-          <span className="text-xs text-muted-foreground">%</span>
-          <Button type="submit" variant="outline" size="sm" disabled={isPending}>
-            Bill {noun}
-          </Button>
-        </form>
-      )}
-    </div>
-  )
-}
 
 /** What the client sees on this pay application. */
 function PayApplicationClientDetail({
@@ -431,7 +138,7 @@ function PayApplicationDeposit({
         <div className="space-y-1 text-sm">
           <h3 className="font-semibold">Less deposit applied</h3>
           <p className="text-xs text-muted-foreground">
-            Earned this draw before the deposit {money(beforeDeposit)} · deposit available {money(application.depositAvailable)} ·{" "}
+            Earned this draw before the deposit {formatDollars(beforeDeposit)} · deposit available {formatDollars(application.depositAvailable)} ·{" "}
             {application.depositAppliedMode === "auto" ? "applied automatically" : "set by hand"}
           </p>
         </div>
@@ -455,7 +162,7 @@ function PayApplicationDeposit({
             )}
           </form>
         ) : (
-          <p className="text-lg font-semibold tabular-nums">{money(application.depositApplied)}</p>
+          <p className="text-lg font-semibold tabular-nums">{formatDollars(application.depositApplied)}</p>
         )}
       </div>
     </section>
@@ -468,6 +175,8 @@ export function ProjectOwnerPayApplicationEditor({
   shopTicketProvenance,
   lineChangeOrders = {},
   sageSynced = false,
+  initialWorkArea,
+  workAreas,
 }: {
   readonly projectId: string
   readonly application: ProjectOwnerPayApplicationDraft
@@ -477,14 +186,15 @@ export function ProjectOwnerPayApplicationEditor({
   readonly lineChangeOrders?: Readonly<Record<string, readonly LineChangeOrder[]>>
   /** Billed amounts are synced from Sage, so they are read only here. */
   readonly sageSynced?: boolean
+  /** The "Work on" area from `?work=`. */
+  readonly initialWorkArea: PayRequestWorkArea
+  /** The page's other work areas, rendered on the server; Billing is the grid here. */
+  readonly workAreas: Readonly<Record<Exclude<PayRequestWorkArea, "billing">, React.ReactNode>>
 }): React.ReactElement {
-  const provenanceByLine = new Map(shopTicketProvenance.map((entry) => [entry.lineId, entry]))
   const { developerModeEnabled } = useDeveloperMode()
   const router = useRouter()
   const [isPending, startTransition] = useTransition()
   const [message, setMessage] = useState<string | null>(null)
-  const hasAssemblies = application.lines.some((line) => line.assemblyKey !== null)
-  const [groupBy, setGroupBy] = useState<GroupBy>(hasAssemblies ? "assembly" : "division")
   const editable = application.status === "draft"
   const overBilled = overBilledLines(application.lines)
   const overBilledWarning =
@@ -661,7 +371,7 @@ export function ProjectOwnerPayApplicationEditor({
           ].map(([label, value]) => (
             <div key={String(label)} className="px-4 py-3">
               <p className="text-xs text-muted-foreground">{label}</p>
-              <p className="mt-1 text-lg font-semibold">{money(Number(value))}</p>
+              <p className="mt-1 text-lg font-semibold">{formatDollars(Number(value))}</p>
             </div>
           ))}
         </div>
@@ -676,60 +386,23 @@ export function ProjectOwnerPayApplicationEditor({
         />
       )}
 
-      <section className="clarity-panel overflow-x-auto">
-        <div className="flex flex-wrap items-center gap-2 border-b px-3 py-2 text-sm">
-          <span className="text-muted-foreground">Bill by</span>
-          {GROUP_BY_OPTIONS.map((option) => (
-            <Button
-              key={option}
-              type="button"
-              size="sm"
-              variant={groupBy === option ? "default" : "outline"}
-              disabled={option === "assembly" && !hasAssemblies}
-              onClick={() => setGroupBy(option)}
-            >
-              {GROUP_BY_LABELS[option]}
-            </Button>
-          ))}
-        </div>
-        <div className="min-w-[1180px]">
-          <div className={`grid gap-2 border-b bg-muted/35 px-3 py-2 text-xs font-medium uppercase text-muted-foreground grid-cols-[minmax(14rem,1.6fr)_repeat(8,minmax(6.5rem,.7fr))_auto]`}>
-            <span>Cost code</span>
-            <span className="text-right">Adjusted</span>
-            <span className="text-right">Previous</span>
-            <span>Current work</span>
-            <span>Stored</span>
-            <span>Retainage %</span>
-            <span>% to date</span>
-            <span className="text-right">Total</span>
-            <span className="text-right">Balance</span>
-            <span className="text-right">Visibility</span>
-          </div>
-          {lineGroups(application.lines, groupBy).map((group) => (
-            <Fragment key={`${group.scope}:${group.key}`}>
-              <PayApplicationGroupRow
-                projectId={projectId}
-                applicationId={application.id}
-                group={group}
-                editable={amountsEditable}
-                onMessage={setMessage}
-              />
-              {group.lines.map((line) => (
-                <PayApplicationLineEditor
-                  key={line.id}
-                  projectId={projectId}
-                  applicationId={application.id}
-                  line={line}
-                  editable={amountsEditable}
-                  onMessage={setMessage}
-                  shopTickets={provenanceByLine.get(line.id)}
-                  changeOrders={lineChangeOrders[lineChangeOrderKey(line.costCode, line.assemblyKey)] ?? []}
-                />
-              ))}
-            </Fragment>
-          ))}
-        </div>
-      </section>
+      <PayRequestWorkAreas
+        initialArea={initialWorkArea}
+        areas={{
+          billing: (
+            <PayApplicationBillingGrid
+              projectId={projectId}
+              applicationId={application.id}
+              lines={application.lines}
+              editable={amountsEditable}
+              shopTicketProvenance={shopTicketProvenance}
+              lineChangeOrders={lineChangeOrders}
+              onMessage={setMessage}
+            />
+          ),
+          ...workAreas,
+        }}
+      />
     </div>
   )
 }

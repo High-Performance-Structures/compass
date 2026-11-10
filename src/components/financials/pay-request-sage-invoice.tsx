@@ -6,6 +6,7 @@ import { IconAlertTriangle, IconRefresh, IconSend } from "@tabler/icons-react"
 import { toast } from "sonner"
 
 import { sendPayRequestToSage, type PayRequestSageInvoiceState } from "@/app/actions/sage-ar-invoices"
+import { PayRequestFold } from "@/components/financials/pay-request-fold"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { useVisibleInterval } from "@/hooks/use-visible-interval"
@@ -63,29 +64,33 @@ export function PayRequestSageInvoice({
     })
   }
 
+  const badge = status ? (
+    <Badge variant={attention ? "destructive" : status === "succeeded" ? "secondary" : "outline"} className="gap-1">
+      {sending ? <IconRefresh className="size-3.5 animate-spin" aria-hidden /> : null}
+      {attention ? <IconAlertTriangle className="size-3.5" aria-hidden /> : null}
+      {LABELS[status]}
+    </Badge>
+  ) : (
+    <Badge variant="outline">{billed ? "Not sent" : "Preview"}</Badge>
+  )
+
   return (
-    <section aria-labelledby={`pay-request-sage-invoice-${applicationId}`} className="mt-6 space-y-3 border-y p-4 print:hidden">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <div className="flex flex-wrap items-center gap-2">
-          <h2 id={`pay-request-sage-invoice-${applicationId}`} className="text-sm font-semibold">Sage AR invoice {invoice.number}</h2>
-          {status ? (
-            <Badge variant={attention ? "destructive" : status === "succeeded" ? "secondary" : "outline"} className="gap-1">
-              {sending ? <IconRefresh className="size-3.5 animate-spin" aria-hidden /> : null}
-              {attention ? <IconAlertTriangle className="size-3.5" aria-hidden /> : null}
-              {LABELS[status]}
-            </Badge>
-          ) : (
-            <Badge variant="outline">{billed ? "Not sent" : "Preview"}</Badge>
-          )}
-          {state.sageJobNumber ? <span className="text-xs text-muted-foreground">Sage job #{state.sageJobNumber}</span> : null}
-        </div>
-        {state.canSend ? (
+    <PayRequestFold
+      id={`pay-request-sage-invoice-${applicationId}`}
+      title={`Sage AR invoice ${invoice.number}`}
+      badge={badge}
+      summary={`${formatCents(invoice.netDueCents)} due${state.sageJobNumber ? ` · Sage job #${state.sageJobNumber}` : ""}`}
+      // Opens by itself when Sage refused it, or a billed draw is still waiting to be sent.
+      defaultOpen={attention || (billed && state.canSend && !status)}
+    >
+      {state.canSend ? (
+        <div>
           <Button type="button" size="sm" variant={attention ? "default" : "outline"} disabled={pending} onClick={send}>
             {pending ? <IconRefresh className="size-4 animate-spin" aria-hidden /> : <IconSend className="size-4" aria-hidden />}
             {attention ? "Retry" : "Send to Sage"}
           </Button>
-        ) : null}
-      </div>
+        </div>
+      ) : null}
       {attention && state.export?.errorMessage ? <p className="text-sm text-destructive">{state.export.errorMessage}</p> : null}
       {invoice.blockers.length > 0 && !attention && status !== "succeeded" ? (
         <ul className="list-disc space-y-1 pl-5 text-sm text-destructive">
@@ -158,6 +163,6 @@ export function PayRequestSageInvoice({
               ? "A billed pay request goes to Sage as an AR invoice (Settings › Workflows › Sage AR invoices)."
               : "This is what goes to Sage when the pay request is approved for billing."}
       </p>
-    </section>
+    </PayRequestFold>
   )
 }

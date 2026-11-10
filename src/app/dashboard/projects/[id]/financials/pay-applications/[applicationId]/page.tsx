@@ -21,13 +21,19 @@ import { getPayRequestSageInvoiceState } from "@/app/actions/sage-ar-invoices"
 import { PayRequestSageInvoice } from "@/components/financials/pay-request-sage-invoice"
 import { getPayRequestSageBillingCheck } from "@/app/actions/sage-billing-check"
 import { SageBillingCheckSection } from "@/components/financials/sage-billing-check"
+import { PayRequestFold } from "@/components/financials/pay-request-fold"
+import { PayRequestWorkAreaEmpty } from "@/components/financials/pay-request-work-areas"
+import { parsePayRequestWorkArea } from "@/lib/financials/pay-request-work-areas"
 
 export default async function ProjectPayApplicationPage({
   params,
+  searchParams,
 }: {
   readonly params: Promise<{ id: string; applicationId: string }>
+  readonly searchParams: Promise<{ readonly work?: string | string[] }>
 }): Promise<React.ReactElement> {
   const { id: rawProjectId, applicationId } = await params
+  const workArea = parsePayRequestWorkArea((await searchParams).work)
   const id = decodeProjectRouteId(rawProjectId)
   const application = await getProjectOwnerPayApplicationDraft(id, applicationId)
   if (!application) notFound()
@@ -50,6 +56,46 @@ export default async function ProjectPayApplicationPage({
   const sageSynced = application.billingSource === "sage"
   // Payments are recorded once the draw is billed; viewers without financials access don't see the panel.
   const showPayments = receivables.success && application.status === "billed"
+  // The Sage area: each part is one line until opened. The two Sage components
+  // hide themselves when they don't apply, so the same checks decide here
+  // whether the area is empty.
+  const showSageSection = sageState !== null && (sageState.origin === "sage" || sageState.link !== null)
+  const showSageInvoice = sageInvoice?.success === true && !sageSynced && !(sageInvoice.data.notApplicable && !sageInvoice.data.export)
+  const sageArea = [
+    showSageSection && sageState ? (
+      <PayRequestSageSection
+        key="sage"
+        projectId={id}
+        applicationId={applicationId}
+        applicationNumber={application.applicationNumber}
+        state={sageState}
+        panel={sagePanel}
+      />
+    ) : null,
+    sageBillingCheck?.success ? (
+      <SageBillingCheckSection key="check" projectId={id} applicationId={applicationId} view={sageBillingCheck.data} />
+    ) : null,
+    showSageInvoice && sageInvoice?.success ? (
+      <PayRequestSageInvoice key="invoice" projectId={id} applicationId={applicationId} state={sageInvoice.data} />
+    ) : null,
+    sagePreview?.success && !sageSynced ? (
+      <PayRequestFold
+        key="preview"
+        id={`sage-export-preview-${applicationId}`}
+        title="Sage export preview"
+        summary={
+          sagePreview.data.unmappedCount > 0 || (sagePreview.data.reconciliation.available && sagePreview.data.reconciliation.mismatchCount > 0)
+            ? "What would go to Sage (has items to check)"
+            : "What would go to Sage, and where Compass and Sage disagree"
+        }
+      >
+        <PrintPreviewButton
+          link={{ projectId: id, document: "sage-export-preview", params: { applicationId }, number: `Sage export ${application.applicationNumber}` }}
+        />
+        <SageExportPreviewDocument preview={sagePreview.data} />
+      </PayRequestFold>
+    ) : null,
+  ]
 
   return (
     <div className="min-h-0 flex-1 overflow-y-auto p-4 md:p-6">
@@ -64,45 +110,31 @@ export default async function ProjectPayApplicationPage({
         shopTicketProvenance={shopTickets?.lineProvenance ?? []}
         lineChangeOrders={lineChangeOrders}
         sageSynced={sageSynced}
+        initialWorkArea={workArea}
+        workAreas={{
+          sage: sageArea.some((part) => part !== null) ? (
+            sageArea
+          ) : (
+            <PayRequestWorkAreaEmpty>Nothing from Sage for this pay request.</PayRequestWorkAreaEmpty>
+          ),
+          payments:
+            showPayments && receivables.success ? (
+              <ReceivedPaymentsPanel projectId={id} data={receivables.data} applicationId={applicationId} />
+            ) : (
+              <PayRequestWorkAreaEmpty>
+                {application.status === "billed" ? "Payments aren't available to you." : "Payments are recorded once this draw is billed."}
+              </PayRequestWorkAreaEmpty>
+            ),
+          "shop-tickets":
+            shopTickets && !sageSynced ? (
+              <PayApplicationShopTickets projectId={id} applicationId={applicationId} data={shopTickets} />
+            ) : (
+              <PayRequestWorkAreaEmpty>
+                {sageSynced ? "Shop tickets are billed in Sage for this pay request." : "Shop tickets aren't available to you."}
+              </PayRequestWorkAreaEmpty>
+            ),
+        }}
       />
-      {sageState ? (
-        <PayRequestSageSection
-          projectId={id}
-          applicationId={applicationId}
-          applicationNumber={application.applicationNumber}
-          state={sageState}
-          panel={sagePanel}
-        />
-      ) : null}
-      {sageBillingCheck?.success ? <SageBillingCheckSection projectId={id} applicationId={applicationId} view={sageBillingCheck.data} /> : null}
-      {sageInvoice?.success && !sageSynced ? (
-        <PayRequestSageInvoice projectId={id} applicationId={applicationId} state={sageInvoice.data} />
-      ) : null}
-      {showPayments && receivables.success ? (
-        <div className="mt-6">
-          <ReceivedPaymentsPanel projectId={id} data={receivables.data} applicationId={applicationId} />
-        </div>
-      ) : null}
-      {sagePreview?.success && !sageSynced ? (
-        <details className="mt-6 rounded-lg border p-4">
-          <summary className="cursor-pointer text-base font-semibold">
-            Sage export preview
-            <span className="ml-2 text-sm font-normal text-muted-foreground">
-              What would go to Sage, and where Compass and Sage disagree
-              {sagePreview.data.unmappedCount > 0 || (sagePreview.data.reconciliation.available && sagePreview.data.reconciliation.mismatchCount > 0)
-                ? " (has items to check)"
-                : ""}
-            </span>
-          </summary>
-          <div className="mt-4 space-y-4">
-            <PrintPreviewButton
-              link={{ projectId: id, document: "sage-export-preview", params: { applicationId }, number: `Sage export ${application.applicationNumber}` }}
-            />
-            <SageExportPreviewDocument preview={sagePreview.data} />
-          </div>
-        </details>
-      ) : null}
-      {shopTickets && !sageSynced ? <PayApplicationShopTickets projectId={id} applicationId={applicationId} data={shopTickets} /> : null}
     </div>
   )
 }

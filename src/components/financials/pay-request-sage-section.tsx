@@ -9,6 +9,7 @@ import {
   setPayRequestShopTicketEnteredInSage,
   type SagePayRequestPanel,
 } from "@/app/actions/sage-pay-requests"
+import { PayRequestFold } from "@/components/financials/pay-request-fold"
 import { SagePayRequestSyncButton } from "@/components/financials/sage-pay-request-sync"
 import {
   AlertDialog,
@@ -24,6 +25,7 @@ import {
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
 import type { PayRequestSageState } from "@/lib/financials/sage-pay-request-state"
+import { sageReconciliationNeedsAttention } from "@/lib/financials/pay-request-work-areas"
 import { formatCents, formatDate, formatDateTime } from "@/lib/format"
 import { cn } from "@/lib/utils"
 
@@ -122,10 +124,26 @@ export function PayRequestSageSection({
 
   const link = state.link
   const reconciliation = state.reconciliation
+  // Opens by itself when Compass and Sage disagree; otherwise a single line.
+  const needsAttention = sageReconciliationNeedsAttention(reconciliation)
+  const ticketsToEnter = state.origin === "sage" ? state.unbilledShopTickets.length : 0
+  const summary = [
+    link
+      ? `${state.billingSource === "sage" ? "Synced from" : "Linked to"} Sage's application ${link.sageApplicationNumber}`
+      : "Not linked to a Sage progress billing",
+    reconciliation ? (needsAttention ? "differs from Sage" : "matches Sage") : null,
+    ticketsToEnter > 0 ? `${ticketsToEnter} shop ticket${ticketsToEnter === 1 ? "" : "s"} to enter in Sage` : null,
+  ]
+    .filter((part) => part !== null)
+    .join(" · ")
   return (
-    <section aria-labelledby="pay-request-sage" className="clarity-panel mt-6 space-y-4 px-4 py-3">
+    <PayRequestFold
+      id="pay-request-sage"
+      title="Sage"
+      summary={summary}
+      defaultOpen={needsAttention}
+    >
       <div className="space-y-1">
-        <h2 id="pay-request-sage" className="font-semibold">Sage</h2>
         {link ? (
           <p className="text-sm text-muted-foreground">
             {state.billingSource === "sage" ? "Billed amounts are synced from" : "Linked to"} Sage&apos;s application {link.sageApplicationNumber}
@@ -230,6 +248,6 @@ export function PayRequestSageSection({
           </ul>
         </div>
       ) : null}
-    </section>
+    </PayRequestFold>
   )
 }

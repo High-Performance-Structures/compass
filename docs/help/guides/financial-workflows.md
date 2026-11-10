@@ -12,7 +12,7 @@
   "permissions": ["help:read", "finance:read"],
   "routes": ["/dashboard/financials", "/dashboard/projects/[id]/estimate", "/dashboard/projects/[id]/budget", "/dashboard/projects/[id]/financials", "/dashboard/settings"],
   "owner": "Accounting operations",
-  "lastReviewed": "2026-11-08"
+  "lastReviewed": "2026-11-10"
 }
 ---
 
@@ -197,7 +197,9 @@ Use **Invoices** on Project Financials for material sales and one-off work, such
 
 Pay applications appear with the job's other financial records in the **Project Financial Queue** on its **Financials** page. The queue is a sheet that opens on **All**: use the buttons above it to show one kind of record (**Pay applications**, **Vendor bills**, **Deposits**, **Payments** and so on), click a column header to sort, and search numbers, titles, companies and statuses. Click a pay application to open its G702 / G703.
 
-Bill a draft pay application by dollars or by percent complete. **Bill by** groups the lines by **Division**, **Assembly** or **Cost code**. Each group has a percent box: type its percent complete to date and choose **Bill division**, **Bill assembly** or **Bill cost code**, and every line in it is billed to that percent of its scheduled value, less previous work and stored materials. To bill a single line, type its **% to date** or its current work in dollars and save the line. Compass refuses a percent lower than what is already billed.
+The pay application's status, **Client sees**, **Print Preview**, billing buttons and totals stay at the top, with **Less deposit applied** when the job has a deposit. Below them, **Work on** shows one area at a time: **Billing** (the G703, the default), **Sage** (the Sage link and comparison, **Enter in Sage**, the Sage AR invoice and the Sage export preview, each one line until you open it), **Payments** (payments received, once the draw is billed) and **Shop tickets**. The chosen area is kept in the page link, so a shared link opens the same area.
+
+Bill a draft pay application by dollars or by percent complete. **Bill by** groups the lines by **Division**, **Assembly** or **Cost code**. Groups start folded to one line with their billed amount, scheduled value and percent complete; click a group's name to open its lines, or use **Expand all** and **Collapse all**. A group with a line billed past its scheduled value, or a line that didn't save, opens by itself. The column headings stay in view while you scroll the grid. Each group has a percent box, open or folded: type its percent complete to date and choose **Bill division**, **Bill assembly** or **Bill cost code**, and every line in it is billed to that percent of its scheduled value, less previous work and stored materials. To bill a single line, open its group, type its **% to date** or its current work in dollars and save the line. Compass refuses a percent lower than what is already billed.
 
 Pay application lines follow the accepted estimate's assemblies: a cost code used by several assemblies has one line per assembly, and each executed change order is its own group. Lines in a cost code that no assembly claims show as **Other work**. Sage still receives one G703 line per cost code. If the estimate's assemblies change after a draft is made, choose **Update assemblies** on the draft; work already entered carries over.
 
@@ -209,7 +211,7 @@ When a change order is executed, draft pay applications move to the new contract
 
 ### Sage export preview
 
-Before a pay application is billed, office staff with finance access can open **Sage export preview** at the bottom of its G702 / G703 page. It shows what would go to Sage, without sending anything: the Sage job, application number, billing date and period, billing cycle, the description (for example "November 2026 Pay Request") and the suggested invoice number. Below that is one line per cost code with its Sage cost code (CSI codes by the Sage name's prefix, builder fees by name), scheduled value, change orders, variances, previous and current work, stored materials, and whether the line is new to Sage (**Append as new line**). Codes with no Sage cost code are flagged **Unmapped**.
+Before a pay application is billed, office staff with finance access can open **Sage export preview** under **Work on** › **Sage** on its G702 / G703 page. It shows what would go to Sage, without sending anything: the Sage job, application number, billing date and period, billing cycle, the description (for example "November 2026 Pay Request") and the suggested invoice number. Below that is one line per cost code with its Sage cost code (CSI codes by the Sage name's prefix, builder fees by name), scheduled value, change orders, variances, previous and current work, stored materials, and whether the line is new to Sage (**Append as new line**). Codes with no Sage cost code are flagged **Unmapped**.
 
 The preview compares each cost code with Sage's latest progress billing for the job (read with **Sync from Sage** on the Budget page) and shows every difference in contract and previous completed, plus the contract and completed totals. It also lists the executed change orders and variances Sage needs first, with their Sage names (variances start with "V-"), cost codes, amounts and periods. Use **Print Preview** to print it. Posting in Sage stays manual.
 
