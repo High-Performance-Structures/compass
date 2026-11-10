@@ -102,6 +102,11 @@ describe("daily log: Selections installed", () => {
     const db = drizzleOverSqlite(sqlite)
     const setup = await dailyLogFollowUpSetup(db, "org-1", "p1")
     expect(setup.installableSelections?.map((selection) => selection.id)).toEqual(["faucet"])
+    // Field Mode phones show the status beside each one.
+    expect(["approved", "ordered"]).toContain(setup.installableSelections?.[0]?.status)
+    // A log queued on a phone keeps the same filtering.
+    const queued = await checkDailyLogFollowUps(db, "org-1", "p1", "2026-11-09", { ...EMPTY_DAILY_LOG_FOLLOW_UPS, installedSelectionIds: ["faucet", "tile"] }, true)
+    expect(queued.ok && queued.followUps.installedSelectionIds).toEqual(["faucet"])
 
     const checked = await checkDailyLogFollowUps(db, "org-1", "p1", "2026-11-09", { ...EMPTY_DAILY_LOG_FOLLOW_UPS, installedSelectionIds: ["faucet", "tile", "elsewhere"] })
     if (!checked.ok) throw new Error(checked.error)

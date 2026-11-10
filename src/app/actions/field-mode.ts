@@ -343,6 +343,7 @@ export async function getFieldProjectPacket(
             openTodos: dailyLogWorkspace.followUps.openTodos.map((todo) => ({ ...todo })),
             clientContacts: dailyLogWorkspace.followUps.clientContacts.map((contact) => ({ ...contact })),
             assignees: dailyLogWorkspace.followUps.assignees.map((person) => ({ ...person })),
+            installableSelections: (dailyLogWorkspace.followUps.installableSelections ?? []).map((selection) => ({ ...selection })),
           }
         : null,
     },

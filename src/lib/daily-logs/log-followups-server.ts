@@ -57,7 +57,7 @@ type DailyLogAssigneeOption = {
 export type DailyLogFollowUpSetup = {
   readonly rules: DailyLogFollowUpRules
   readonly openTodos: readonly DailyLogOpenTodo[]
-  /** Not sent to Field Mode phones; Full Compass logs show the checklist. */
+  /** The "Selections installed" checklist, on Full Compass logs and Field Mode phones. */
   readonly installableSelections?: readonly DailyLogInstallableSelection[]
   readonly clientContacts: readonly DailyLogClientContactOption[]
   readonly assignees: readonly DailyLogAssigneeOption[]
@@ -570,7 +570,12 @@ export async function loadTodoWorkedLogCounts(db: Db, projectId: string): Promis
 /** Approved or ordered selections on the job, which a log can mark installed. */
 async function loadInstallableSelections(db: Db, projectId: string): Promise<readonly DailyLogInstallableSelection[]> {
   return db
-    .select({ id: projectFinishSelections.id, name: projectFinishSelections.name, roomName: projectFinishSelections.roomName })
+    .select({
+      id: projectFinishSelections.id,
+      name: projectFinishSelections.name,
+      roomName: projectFinishSelections.roomName,
+      status: projectFinishSelections.status,
+    })
     .from(projectFinishSelections)
     .where(and(eq(projectFinishSelections.projectId, projectId), inArray(projectFinishSelections.status, ["approved", "ordered"])))
     .orderBy(asc(projectFinishSelections.roomName), asc(projectFinishSelections.name))

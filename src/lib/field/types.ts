@@ -117,6 +117,10 @@ const fieldDailyLogFollowUpSetupSchema = z.object({
   ),
   clientContacts: z.array(z.object({ id: z.string(), name: z.string(), role: z.string().nullable() })),
   assignees: z.array(z.object({ name: z.string(), kind: z.enum(DAILY_LOG_TODO_TYPES) })),
+  /** Approved or ordered finish selections a log can mark installed; missing in older packets. */
+  installableSelections: z
+    .array(z.object({ id: z.string(), name: z.string(), roomName: z.string(), status: z.string() }))
+    .default([]),
 })
 
 /** Cost codes and required fields, saved with the project for offline logs. */

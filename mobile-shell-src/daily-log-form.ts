@@ -25,6 +25,7 @@ import {
   clientContactsHtml,
   emptyFollowUpDraft,
   followUpDraftSchema,
+  installedSelectionsHtml,
   lineTodosHtml,
   todoChecklistHtml,
 } from "./daily-log-followups"
@@ -238,6 +239,7 @@ export function logFieldsHtml(input: {
     <label class="field"><span>Date${requiredTag(true)}</span><input id="log-logDate" name="logDate" type="date" value="${escape(draft.logDate)}"${invalidAttrs(errors, "logDate", escape)} />${errorText(errors, "logDate", escape)}</label>
     ${setup ? blockedTodosHtml(setup, draft.followUps, escape) : ""}
     ${setup ? todoChecklistHtml(setup, draft.followUps, form?.costCodes ?? [], escape) : ""}
+    ${setup ? installedSelectionsHtml(setup, draft.followUps, escape) : ""}
     ${workLinesHtml(draft, form, requirements.requireCostCodeTime, errors, escape)}
     <label class="field"><span>What did we complete?${requiredTag(true)}</span><textarea id="log-workCompleted" name="workCompleted" placeholder="Describe today's work"${invalidAttrs(errors, "workCompleted", escape)}>${escape(draft.workCompleted)}</textarea>${errorText(errors, "workCompleted", escape)}</label>
     ${DAILY_LOG_OPTIONAL_FIELDS.map((field) => {

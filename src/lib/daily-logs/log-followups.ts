@@ -165,7 +165,13 @@ type DailyLogClientContactDraft = {
 }
 
 /** A finish selection a log can mark installed (approved or ordered, not yet installed). */
-export type DailyLogInstallableSelection = { readonly id: string; readonly name: string; readonly roomName: string }
+export type DailyLogInstallableSelection = {
+  readonly id: string
+  readonly name: string
+  readonly roomName: string
+  /** Approved or ordered (shown on the phone checklist). */
+  readonly status: string
+}
 
 /** Everything a log carries besides its own fields. */
 export type DailyLogFollowUps = {
