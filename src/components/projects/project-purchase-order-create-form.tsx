@@ -99,7 +99,7 @@ const LINE_INPUT_CLASS =
   "h-8 rounded-none border-0 bg-transparent px-1 shadow-none focus-visible:ring-0 focus-visible:bg-background"
 
 type PurchaseOrderPickerOption = {
-  readonly onBudget?: boolean
+  readonly onBudget?: boolean; readonly unlisted?: boolean // unlisted: shown when saved, never offered
   readonly value: string
   readonly label: string
   readonly description?: string
@@ -133,8 +133,8 @@ function PurchaseOrderOptionPicker({
     options.find((option) => option.value === value) ?? null
   const hasBudgetCodes = options.some((option) => option.onBudget)
   const filteredOptions = options.filter((option) => {
-    if (normalizedQuery.length === 0) return !hasBudgetCodes || option.onBudget === true
-    return normalizedOptionText(
+    if (normalizedQuery.length === 0) return !option.unlisted && (!hasBudgetCodes || option.onBudget === true)
+    return !option.unlisted && normalizedOptionText(
       `${option.value} ${option.label} ${option.description ?? ""}`
     ).includes(normalizedQuery)
   })

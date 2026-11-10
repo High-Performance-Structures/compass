@@ -185,7 +185,7 @@ export function NuTechEmailSettingsSection(): React.ReactElement {
                     value={current}
                     options={[
                       ...(current !== "" && !known ? [{ value: current, label: current }] : []),
-                      ...costCodeOptions.map((option) => ({ value: option.value, label: option.label, keywords: option.divisionCode })),
+                      ...costCodeOptions.map((option) => ({ value: option.value, label: option.label, keywords: option.divisionCode, unlisted: option.unlisted })),
                     ]}
                     onValueChange={(next) => setCostCodes((codes) => ({ ...codes, [field.key]: next }))}
                   />

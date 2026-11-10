@@ -128,7 +128,7 @@ export type ProjectFinancialPhaseOption = {
 }
 
 export type ProjectFinancialCostCodeOption = {
-  readonly onBudget?: boolean
+  readonly onBudget?: boolean; readonly unlisted?: boolean // unlisted: old Sage name with a numbered twin
   readonly value: string
   readonly label: string
   readonly description: string
@@ -1104,7 +1104,7 @@ export async function getProjectFinancialCodingOptions(
       onBudget: row.onBudget,
       label: row.displayLabel,
       description: row.description,
-      divisionCode: row.divisionCode,
+      divisionCode: row.divisionCode, unlisted: !row.listed,
     })
   }
 

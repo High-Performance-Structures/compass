@@ -312,6 +312,7 @@ export async function loadProjectEstimateWorkspace(
         divisionName: row.divisionDescription,
         divisionLabel: row.divisionDisplayLabel,
         sageMapped: row.sageMapped,
+        unlisted: !row.listed,
       })),
     ],
     taxEntities: taxRows.map((row) => ({

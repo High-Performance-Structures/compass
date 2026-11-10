@@ -191,6 +191,8 @@ export type ProjectContactDivisionOption = {
 }
 
 export type ProjectContactCostCodeOption = {
+  /** An old Sage name with a numbered twin: shown for saved values, never offered. */
+  readonly unlisted?: boolean
   readonly onBudget?: boolean
   readonly value: string
   readonly label: string

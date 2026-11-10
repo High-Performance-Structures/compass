@@ -26,3 +26,12 @@ export function creatableComboboxText(
   )
   return exists ? null : text
 }
+
+/**
+ * The options a picker offers. An unlisted option (an old name kept so a
+ * saved value still reads, like "Fox-S800" beside "03 11 20.60 Fox-S800")
+ * labels the saved value but is never offered.
+ */
+export function listedComboboxOptions<T extends { readonly unlisted?: boolean }>(options: readonly T[]): readonly T[] {
+  return options.filter((option) => !option.unlisted)
+}

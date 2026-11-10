@@ -91,6 +91,26 @@ describe("cost code catalog after the Sage sync", () => {
     }
   })
 
+  it("offers each Sage record once: the numbered code, not its old name", () => {
+    const { catalog, byCode } = syncedCatalog()
+    expect(byCode.get("03 11 20.60")?.listed).toBe(true)
+    expect(byCode.get("Fox-S800")?.listed).toBe(false)
+    expect(byCode.get("ICF Shipping")?.listed).toBe(false)
+    expect(byCode.get("Tile Labor")?.listed).toBe(false)
+    // No numbered twin (Division 00 isn't synced): the name stays a choice.
+    expect(byCode.get("Company Overhead")?.listed).toBe(true)
+    // Every listed choice is a different Sage record.
+    const listedRecords = catalog.filter((row) => row.listed && /^\d+$/.test(row.sourceCostCode)).map((row) => row.sourceCostCode)
+    expect(new Set(listedRecords).size).toBe(listedRecords.length)
+    // The hidden name still resolves for old records and imports.
+    expect(resolveCatalogCostCode(byCode, "Fox-S800")).toMatchObject({ sourceCostCode: "3112060" })
+  })
+
+  it("keeps a name with no numbered twin listed", () => {
+    const { byCode } = syncedCatalog(SAGE.filter((record) => record.recordNumber !== "3112094"))
+    expect(byCode.get("ICF Shipping")?.listed).toBe(true)
+  })
+
   it("keeps builder fees mapped by name", () => {
     const { catalog } = syncedCatalog()
     expect(mapToSageCostCode("Company Overhead", indexSageCatalog(catalog))).toMatchObject({ status: "mapped", by: "fee_name", sageRecordNumber: "34" })

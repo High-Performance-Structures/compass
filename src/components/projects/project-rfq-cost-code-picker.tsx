@@ -91,6 +91,7 @@ export function ProjectRfqCostCodePicker({
       label: option.label,
       description: option.description,
       keywords: `${option.divisionCode} ${option.divisionLabel}`,
+      unlisted: option.unlisted,
     })),
   ]
   const visibleChoices = unmatchedCode

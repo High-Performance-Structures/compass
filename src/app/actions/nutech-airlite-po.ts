@@ -284,7 +284,8 @@ export async function getNuTechPurchaseOrderCatalog(projectId: string): Promise<
   }
 }
 
-export type NuTechCostCodeOption = { readonly value: string; readonly label: string; readonly divisionCode: string }
+/** `unlisted`: an old Sage name with a numbered twin, shown for a saved setting but never offered. */
+export type NuTechCostCodeOption = { readonly value: string; readonly label: string; readonly divisionCode: string; readonly unlisted: boolean }
 
 /** The company cost code list (numbered Sage codes plus named items like "ICF Shipping") for the Nu-Tech settings pickers. */
 export async function getNuTechCostCodeOptions(): Promise<readonly NuTechCostCodeOption[]> {
@@ -304,7 +305,7 @@ export async function getNuTechCostCodeOptions(): Promise<readonly NuTechCostCod
       })
       .from(sageCostCodes)
       .where(eq(sageCostCodes.active, true))
-    return projectEstimateCostCodeCatalog(sageRows, []).map((item) => ({ value: item.code, label: item.displayLabel, divisionCode: item.divisionCode }))
+    return projectEstimateCostCodeCatalog(sageRows, []).map((item) => ({ value: item.code, label: item.displayLabel, divisionCode: item.divisionCode, unlisted: !item.listed }))
   } catch {
     return []
   }

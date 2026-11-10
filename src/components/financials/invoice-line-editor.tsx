@@ -59,7 +59,7 @@ export function InvoiceLineEditor({
   readonly onChange: (lines: readonly EditorLine[]) => void
   readonly estimateLines: readonly EstimateLineForInvoice[] | null
   readonly catalog: readonly CatalogProductOption[]
-  readonly costCodes: readonly { readonly value: string; readonly label: string }[]
+  readonly costCodes: readonly { readonly value: string; readonly label: string; readonly unlisted?: boolean }[]
   readonly pricing: Pricing
   readonly taxRateBasisPoints: number | null
   readonly taxDistrictName: string | null

@@ -91,6 +91,8 @@ export type MachineCostCodeOption = {
   readonly value: string
   readonly label: string
   readonly onBudget?: boolean
+  /** An old Sage name with a numbered twin: shown for saved values, never offered. */
+  readonly unlisted?: boolean
 }
 
 /** Load after choosing a job so machine logs follow the same budget/search rules. */
@@ -101,7 +103,7 @@ export async function getMachineCostCodeOptions(projectId: string): Promise<Resu
       .where(and(eq(projects.id, projectId), eq(projects.organizationId, orgId))).get()
     if (!project) return { success: false, error: "Project not found." }
     const codes = await loadProjectCostCodeChoices(db, project.id)
-    return { success: true, data: codes.map((code) => ({ value: code.code, label: code.displayLabel, onBudget: code.onBudget })) }
+    return { success: true, data: codes.map((code) => ({ value: code.code, label: code.displayLabel, onBudget: code.onBudget, unlisted: !code.listed })) }
   } catch (error) {
     return failure(error, "Couldn't load project cost codes.")
   }
@@ -242,7 +244,7 @@ export async function getEquipmentWorkspace(): Promise<EquipmentWorkspace> {
     hoursByJob: [...byJob.values()].sort((a, b) => b.runningHours - a.runningHours),
     rateBookMachines: rateRows.map((row) => ({ value: row.id, label: `${row.name} · ${(row.cents / 100).toLocaleString("en-US", { style: "currency", currency: "USD" })}/${row.unit}` })),
     jobs: jobRows.map((row) => ({ value: row.id, label: projectNumberAndName(row) })),
-    costCodes: costCodeCatalog.map((code) => ({ value: code.code, label: code.displayLabel })),
+    costCodes: costCodeCatalog.map((code) => ({ value: code.code, label: code.displayLabel, unlisted: !code.listed })),
     canManage,
   }
 }

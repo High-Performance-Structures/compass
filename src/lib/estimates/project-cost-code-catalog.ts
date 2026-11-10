@@ -35,14 +35,22 @@ export type ProjectEstimateCostCodeCatalogItem = {
   readonly divisionDescription: string
   readonly divisionDisplayLabel: string
   readonly sageMapped: boolean
+  /**
+   * False for a Sage name kept only so older records and imports resolve
+   * ("Fox-S800" when Sage's "03 11 20.60 Fox-S800" is the same record).
+   * Pickers keep it for a saved value but never offer it.
+   */
+  readonly listed: boolean
 }
+
+type CatalogEntry = Omit<ProjectEstimateCostCodeCatalogItem, "listed">
 
 const CSI_CODE_FROM_NAME =
   /^\s*(\d{2})\s+(\d{2})\s+(\d{2})(\.\d{2})?(?:\s*[-–—]\s*|\s+)?(.*)$/
 
 function catalogItemFromWorkbook(
   row: SageEstimateCatalogRow
-): ProjectEstimateCostCodeCatalogItem {
+): CatalogEntry {
   const [name, , divisionCode, divisionDescription] = row
   const match = CSI_CODE_FROM_NAME.exec(name)
   const matchedDivision = match?.[1]
@@ -106,7 +114,7 @@ function sageRecordNumbersByCode(namedSageRows: readonly EstimateSageNamedCostCo
 
 function sageCodeFromName(
   row: EstimateSageNamedCostCode
-): ProjectEstimateCostCodeCatalogItem | null {
+): CatalogEntry | null {
   if (!row.sourceSystem.toLowerCase().startsWith("sage")) return null
 
   const match = CSI_CODE_FROM_NAME.exec(row.description)
@@ -147,7 +155,7 @@ export function projectEstimateCostCodeCatalog(
   workbookRows: readonly SageEstimateCatalogRow[] =
     SAGE_ESTIMATE_COST_CODE_CATALOG
 ): readonly ProjectEstimateCostCodeCatalogItem[] {
-  const catalog = new Map<string, ProjectEstimateCostCodeCatalogItem>()
+  const catalog = new Map<string, CatalogEntry>()
 
   for (const row of workbookRows) {
     const item = catalogItemFromWorkbook(row)
@@ -226,7 +234,18 @@ export function projectEstimateCostCodeCatalog(
 
   // The retired Division 99 fee codes are never offered; builder fees go by
   // their canonical names.
-  return [...catalog.values()].filter((row) => !isLegacyFeeCostCode(row.code)).sort((left, right) => {
+  // One choice per Sage record: a name whose record also has a numbered
+  // code is unlisted; a name with no numbered twin stays a choice.
+  const numberedRecords = new Set(
+    [...catalog.values()]
+      .filter((row) => row.sageMapped && CSI_CODE_FROM_NAME.test(row.code) && SAGE_RECORD_NUMBER.test(row.sourceCostCode.trim()))
+      .map((row) => String(Number(row.sourceCostCode.trim())))
+  )
+  const listed = (row: CatalogEntry): boolean => {
+    const recordNumber = row.sourceCostCode.trim()
+    return CSI_CODE_FROM_NAME.test(row.code) || !SAGE_RECORD_NUMBER.test(recordNumber) || !numberedRecords.has(String(Number(recordNumber)))
+  }
+  return [...catalog.values()].filter((row) => !isLegacyFeeCostCode(row.code)).map((row) => ({ ...row, listed: listed(row) })).sort((left, right) => {
     const divisionOrder = left.divisionCode.localeCompare(right.divisionCode)
     return divisionOrder || left.displayLabel.localeCompare(right.displayLabel)
   })

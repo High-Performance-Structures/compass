@@ -812,7 +812,7 @@ export function ProjectEstimatePlanSwiftImportClient({
                 </table>
               </div>
               <datalist id="planswift-cost-code-options">
-                {costCodes.map((option) => (
+                {costCodes.filter((option) => !option.unlisted).map((option) => (
                   <option key={option.value} value={option.value}>
                     {option.label}
                   </option>

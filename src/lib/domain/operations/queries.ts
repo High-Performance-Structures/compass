@@ -442,6 +442,7 @@ export async function loadPurchaseOrderFormOptions(
       label: row.displayLabel,
       description: row.sageMapped ? row.description : `${row.description} · Needs Sage mapping review`,
       divisionCode: row.divisionCode,
+      unlisted: !row.listed,
     })
   }
   return {
@@ -460,6 +461,7 @@ export async function loadRfqCostCodeOptions(db: Db, projectId: string): Promise
     description: row.sageMapped ? row.description : `${row.description} · Needs Sage mapping review`,
     divisionCode: row.divisionCode,
     divisionLabel: row.divisionDisplayLabel,
+    unlisted: !row.listed,
   }))
 }
 

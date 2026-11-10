@@ -160,6 +160,7 @@ export function catalogProductColumns({
               ...workspace.namedCostCodes.map((costCode) => ({
                 value: `named:${costCode.name}`,
                 label: costCode.label,
+                unlisted: costCode.unlisted,
               })),
             ]}
             ariaLabel={`Sage cost code for ${product.name}`}
