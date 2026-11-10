@@ -15,10 +15,7 @@ import type {
 import { ProjectSelectionComboboxInput } from "@/components/projects/project-selection-combobox-input"
 import { SearchableCombobox } from "@/components/searchable-combobox"
 import { RecordDrawer } from "@/components/record-drawer"
-import {
-  SelectionCategoryPicker,
-  SelectionRoomPicker,
-} from "@/components/selections/selection-room-category-fields"
+import { SelectionRoomPicker } from "@/components/selections/selection-room-picker"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
@@ -81,9 +78,8 @@ export function ProjectSelectionCreateForm({
   const [status, setStatus] = React.useState<FormState>({ kind: "idle" })
   const [selectionStatus, setSelectionStatus] = React.useState<ProjectSelectionStatus>("needed")
   const [selectedRoomType, setSelectedRoomType] = React.useState(roomType)
-  // Room and category are state so a template choice can fill them in.
+  // Room is state so a template choice can fill it in.
   const [room, setRoom] = React.useState(roomName)
-  const [category, setCategory] = React.useState("")
   const [division, setDivision] = React.useState("all")
   const [templateGroups, setTemplateGroups] = React.useState<
     readonly FinishSelectionTemplateImportGroup[] | null
@@ -152,7 +148,7 @@ export function ProjectSelectionCreateForm({
     )
     if (!selection) return
     if (!roomName && !room.trim()) setRoom(selection.roomName)
-    setCategory(selection.category)
+    setFormFieldValue("category", selection.category)
     setFormFieldValue("name", selection.title)
     setFormFieldValue("description", selection.description ?? "")
     setFormFieldValue("notes", selection.notes ?? "")
@@ -164,7 +160,6 @@ export function ProjectSelectionCreateForm({
     setSelectionStatus("needed")
     setSelectedRoomType(roomType)
     setRoom(roomName)
-    setCategory("")
     setDivision("all")
     setSelectedTemplateId("")
     setSelectedTemplateSelectionId("")
@@ -304,7 +299,7 @@ export function ProjectSelectionCreateForm({
               <Field label="Room">
                 <SelectionRoomPicker
                   name="roomName"
-                  names={options.rooms}
+                  rooms={options.rooms}
                   value={room}
                   onValueChange={setRoom}
                   className={DOCUMENT_SELECT_CLASS}
@@ -423,12 +418,10 @@ export function ProjectSelectionCreateForm({
 
           <div className="space-y-3">
             <Field label="Category">
-              <SelectionCategoryPicker
+              <Input
                 name="category"
-                names={options.categories}
-                value={category}
-                onValueChange={setCategory}
-                className={DOCUMENT_SELECT_CLASS}
+                placeholder="Fixtures, flooring, cabinetry..."
+                className={DOCUMENT_INPUT_CLASS}
               />
             </Field>
             <Field label="Description">

@@ -1,7 +1,7 @@
 "use client"
 
 import * as React from "react"
-import { Check, ChevronsUpDown, Plus, X } from "lucide-react"
+import { Check, ChevronsUpDown, Plus } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import {
@@ -57,8 +57,6 @@ export type SearchableComboboxProps = {
    * kept and shown even when it is not an option.
    */
   readonly creatable?: boolean
-  /** With a value chosen, an item with this label clears it (for optional fields). */
-  readonly clearLabel?: string
 }
 export function SearchableCombobox({
   options,
@@ -80,7 +78,6 @@ export function SearchableCombobox({
   className,
   popoverClassName,
   creatable = false,
-  clearLabel,
 }: SearchableComboboxProps): React.ReactElement {
   const [open, setOpen] = React.useState(false)
   const [search, setSearch] = React.useState("")
@@ -151,21 +148,6 @@ export function SearchableCombobox({
           {effectiveHint ? <p className="border-b px-3 py-2 text-xs text-muted-foreground">{effectiveHint}</p> : null}
           <CommandList className="compass-content-scroll max-h-72">
             {createText === null && <CommandEmpty>{emptyMessage}</CommandEmpty>}
-            {clearLabel && value !== "" && search.trim() === "" && (
-              <CommandGroup>
-                <CommandItem
-                  value="__clear__"
-                  className={itemClassName}
-                  onSelect={() => {
-                    onValueChange("")
-                    setOpen(false)
-                  }}
-                >
-                  <X className="size-4" />
-                  <span className="text-muted-foreground">{clearLabel}</span>
-                </CommandItem>
-              </CommandGroup>
-            )}
             <CommandGroup heading={browsing ? browseHeading ?? (budgetBrowsing ? options.find((option) => option.onBudget)?.browseGroup ?? "On this job’s budget" : groupHeading) : groupHeading}>
               {visibleOptions.map((option) => (
                 <CommandItem

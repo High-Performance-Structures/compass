@@ -15,10 +15,7 @@ import type {
 } from "@/lib/domain/selections/types"
 import { ProjectSelectionComboboxInput } from "@/components/projects/project-selection-combobox-input"
 import { SearchableCombobox } from "@/components/searchable-combobox"
-import {
-  SelectionCategoryPicker,
-  SelectionRoomPicker,
-} from "@/components/selections/selection-room-category-fields"
+import { SelectionRoomPicker } from "@/components/selections/selection-room-picker"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import {
@@ -189,7 +186,7 @@ export function ProjectSelectionEditForm({
               <Field label="Room">
                 <SelectionRoomPicker
                   name="roomName"
-                  names={options.rooms}
+                  rooms={options.rooms}
                   value={selection.roomName}
                   className={DOCUMENT_SELECT_CLASS}
                 />
@@ -351,11 +348,10 @@ export function ProjectSelectionEditForm({
 
           <div className="space-y-3">
             <Field label="Category">
-              <SelectionCategoryPicker
+              <Input
                 name="category"
-                names={options.categories}
-                value={selection.category}
-                className={DOCUMENT_SELECT_CLASS}
+                defaultValue={selection.category}
+                className={DOCUMENT_INPUT_CLASS}
               />
             </Field>
             <Field label="Description">

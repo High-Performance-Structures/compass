@@ -13,13 +13,13 @@ import Link from "next/link"
 import {
   createProjectSelection,
   getProjectSelections,
-  getSelectionRoomCategoryOptions,
+  getSelectionRoomOptions,
 } from "@/app/actions/project-selections"
 import { saveChoiceFromLink } from "@/app/actions/selection-choices"
 import { ProjectCombobox } from "@/components/projects/project-combobox"
 import { SearchableCombobox } from "@/components/searchable-combobox"
 import { SelectionLinkCard } from "@/components/selections/selection-link-card"
-import { SelectionCategoryPicker, SelectionRoomPicker } from "@/components/selections/selection-room-category-fields"
+import { SelectionRoomPicker } from "@/components/selections/selection-room-picker"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -48,9 +48,8 @@ type Selections =
   | {
       readonly state: "ready"
       readonly items: readonly SaveTargetSelection[]
-      /** Room and Category suggestions: this job's, then the company's. */
+      /** Room suggestions: this job's rooms, then the company's. */
       readonly rooms: readonly string[]
-      readonly categories: readonly string[]
     }
   | { readonly state: "error"; readonly error: string }
 
@@ -87,11 +86,11 @@ export function SaveToCompassForm({
   const loadSelections = React.useCallback(async (projectId: string) => {
     setSelections({ state: "loading" })
     try {
-      const [summary, names] = await Promise.all([
+      const [summary, rooms] = await Promise.all([
         getProjectSelections(projectId),
-        getSelectionRoomCategoryOptions(projectId),
+        getSelectionRoomOptions(projectId),
       ])
-      setSelections({ state: "ready", items: saveTargetSelections(summary.rooms), ...names })
+      setSelections({ state: "ready", items: saveTargetSelections(summary.rooms), rooms })
     } catch (loadError) {
       setSelections({ state: "error", error: loadError instanceof Error ? loadError.message : "Unable to load this job's selections." })
     }
@@ -107,7 +106,6 @@ export function SaveToCompassForm({
 
   const items = React.useMemo(() => (selections.state === "ready" ? selections.items : []), [selections])
   const roomNames = selections.state === "ready" ? selections.rooms : NO_NAMES
-  const categoryNames = selections.state === "ready" ? selections.categories : NO_NAMES
   const selectionOptions = React.useMemo(
     () => [
       ...items.map((item) => ({
@@ -247,20 +245,26 @@ export function SaveToCompassForm({
               <SelectionRoomPicker
                 id={`${formId}-new-room`}
                 name="roomName"
-                names={roomNames}
+                rooms={roomNames}
                 value={newRoom}
                 onValueChange={setNewRoom}
               />
             </div>
             <div className="grid gap-1.5">
               <Label htmlFor={`${formId}-new-category`}>Category</Label>
-              <SelectionCategoryPicker
+              <Input
                 id={`${formId}-new-category`}
-                name="category"
-                names={categoryNames}
+                maxLength={200}
+                list={`${formId}-categories`}
+                placeholder="Uncategorized"
                 value={newCategory}
-                onValueChange={setNewCategory}
+                onChange={(event) => setNewCategory(event.target.value)}
               />
+              <datalist id={`${formId}-categories`}>
+                {[...new Set(items.map((item) => item.category))].map((category) => (
+                  <option key={category} value={category} />
+                ))}
+              </datalist>
             </div>
           </div>
         </fieldset>

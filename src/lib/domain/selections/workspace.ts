@@ -11,17 +11,12 @@ import {
   projectTemplateVersions
 } from "@/db/schema-templates"
 import { loadProjectCostCodeChoices } from "@/lib/cost-codes/catalog-server"
-import { readFeatureSettings } from "@/lib/feature-settings/server"
 import type { Db } from "@/lib/server/action-context"
 import { buildProjectTemplateContentApplication } from "@/lib/templates/project-template-content-application"
 import { parseTemplateChoiceOptions } from "@/lib/templates/template-creation-import"
 
 import { buildSelectionOptions, summarizeSelections, toSelectionItem } from "./rules"
-import {
-  buildSelectionRoomCategoryOptions,
-  ROOM_CATEGORY_OPTION_LIMIT,
-  type SelectionRoomCategoryOptions
-} from "./room-category-options"
+import { mergeRoomNames, ROOM_OPTION_LIMIT } from "./room-options"
 import { readProjectSelectionStatusLabels } from "./status-labels-server"
 import type { ProjectSelectionOptions, ProjectSelectionsSummary } from "./types"
 
@@ -63,7 +58,7 @@ export async function loadProjectSelectionOptions(
   projectId: string,
   organizationId: string
 ): Promise<ProjectSelectionOptions> {
-  const [costCodes, contacts, selections, statusLabels, roomCategory] = await Promise.all([
+  const [costCodes, contacts, selections, statusLabels, rooms] = await Promise.all([
     loadProjectCostCodeChoices(db, projectId),
     db
       .select({
@@ -87,68 +82,49 @@ export async function loadProjectSelectionOptions(
       .from(projectFinishSelections)
       .where(eq(projectFinishSelections.projectId, projectId)),
     readProjectSelectionStatusLabels(db, projectId),
-    loadSelectionRoomCategoryOptions(db, projectId, organizationId)
+    loadSelectionRoomOptions(db, projectId, organizationId)
   ])
-  return { ...buildSelectionOptions({ costCodes, contacts, selections }), statusLabels, ...roomCategory }
+  return { ...buildSelectionOptions({ costCodes, contacts, selections }), statusLabels, rooms }
 }
 
 /**
- * Room and Category suggestions for the selection forms: this job's rooms
- * and categories, then the company's (every job in the organization, at most
- * ROOM_CATEGORY_OPTION_LIMIT distinct names each), plus the category names in
- * Settings › Workflows › Selections lead times. Small DISTINCT reads only.
+ * Room suggestions for the selection forms: this job's rooms (rooms list and
+ * selections), then the rooms used on the company's other jobs (at most
+ * ROOM_OPTION_LIMIT distinct names each). Small DISTINCT reads only.
  */
-export async function loadSelectionRoomCategoryOptions(
+export async function loadSelectionRoomOptions(
   db: Db,
   projectId: string,
   organizationId: string
-): Promise<SelectionRoomCategoryOptions> {
-  const [jobRoomRows, jobSelectionRows, companyRoomRows, companyCategoryRows, settings] =
-    await Promise.all([
-      db
-        .select({ roomName: projectFinishSelectionRooms.roomName })
-        .from(projectFinishSelectionRooms)
-        .where(
-          and(
-            eq(projectFinishSelectionRooms.projectId, projectId),
-            eq(projectFinishSelectionRooms.active, true)
-          )
+): Promise<readonly string[]> {
+  const [jobRoomRows, jobSelectionRows, companyRoomRows] = await Promise.all([
+    db
+      .select({ roomName: projectFinishSelectionRooms.roomName })
+      .from(projectFinishSelectionRooms)
+      .where(
+        and(
+          eq(projectFinishSelectionRooms.projectId, projectId),
+          eq(projectFinishSelectionRooms.active, true)
         )
-        .limit(ROOM_CATEGORY_OPTION_LIMIT),
-      db
-        .selectDistinct({
-          roomName: projectFinishSelections.roomName,
-          category: projectFinishSelections.category
-        })
-        .from(projectFinishSelections)
-        .where(eq(projectFinishSelections.projectId, projectId))
-        .limit(ROOM_CATEGORY_OPTION_LIMIT),
-      db
-        .selectDistinct({ roomName: projectFinishSelections.roomName })
-        .from(projectFinishSelections)
-        .innerJoin(projects, eq(projects.id, projectFinishSelections.projectId))
-        .where(eq(projects.organizationId, organizationId))
-        .orderBy(asc(projectFinishSelections.roomName))
-        .limit(ROOM_CATEGORY_OPTION_LIMIT),
-      db
-        .selectDistinct({ category: projectFinishSelections.category })
-        .from(projectFinishSelections)
-        .innerJoin(projects, eq(projects.id, projectFinishSelections.projectId))
-        .where(eq(projects.organizationId, organizationId))
-        .orderBy(asc(projectFinishSelections.category))
-        .limit(ROOM_CATEGORY_OPTION_LIMIT),
-      readFeatureSettings(db, organizationId, "selections")
-    ])
-  return buildSelectionRoomCategoryOptions({
-    jobRooms: [
-      ...jobRoomRows.map((row) => row.roomName),
-      ...jobSelectionRows.map((row) => row.roomName)
-    ],
-    companyRooms: companyRoomRows.map((row) => row.roomName),
-    jobCategories: jobSelectionRows.map((row) => row.category),
-    companyCategories: companyCategoryRows.map((row) => row.category),
-    leadTimeCategories: Object.keys(settings.leadTimeDays)
-  })
+      )
+      .limit(ROOM_OPTION_LIMIT),
+    db
+      .selectDistinct({ roomName: projectFinishSelections.roomName })
+      .from(projectFinishSelections)
+      .where(eq(projectFinishSelections.projectId, projectId))
+      .limit(ROOM_OPTION_LIMIT),
+    db
+      .selectDistinct({ roomName: projectFinishSelections.roomName })
+      .from(projectFinishSelections)
+      .innerJoin(projects, eq(projects.id, projectFinishSelections.projectId))
+      .where(eq(projects.organizationId, organizationId))
+      .orderBy(asc(projectFinishSelections.roomName))
+      .limit(ROOM_OPTION_LIMIT)
+  ])
+  return mergeRoomNames(
+    [...jobRoomRows, ...jobSelectionRows].map((row) => row.roomName),
+    companyRoomRows.map((row) => row.roomName)
+  )
 }
 
 export type PublishedTemplateSelection = {
