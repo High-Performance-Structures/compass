@@ -252,6 +252,11 @@ namespace CompassSageClientProjectWriter
                 return RunArInvoiceDiagnostics();
             if (args.Length > 0 && String.Equals(args[0], "--ar-invoice-run", StringComparison.OrdinalIgnoreCase))
                 return RunArInvoicesOnly();
+            // Hand-run only, with a reviewed list kept outside this repo; never queued from Compass.
+            if (args.Length > 0 && String.Equals(args[0], "--rename-cost-codes", StringComparison.OrdinalIgnoreCase))
+                return RunCostCodeRename(args);
+            if (args.Length > 0 && String.Equals(args[0], "--rename-cost-codes-selftest", StringComparison.OrdinalIgnoreCase))
+                return RunCostCodeRenameSelfTest();
             bool diagnose = args.Length > 0 && String.Equals(args[0], "--diagnose", StringComparison.OrdinalIgnoreCase);
             try
             {

@@ -46,6 +46,7 @@ This section describes each one in the same way: its data flow, how it authentic
   - `…CompassChangeOrderWriter.cs` (adds approved prime change orders; never modifies or deletes one);
   - `…CompassEstimateWriter.cs` (adds an accepted estimate as the job's proposal, and the job budget when the company sends it; never a second one);
   - `…CompassArInvoiceWriter.cs` (adds a billed pay request as an AR invoice: this period's billing by cost code with retention; refuses an invoice number the accounting system already has with other amounts; never modifies or voids one).
+  - `…CompassCostCodeRenameWriter.cs` (hand-run only, never queued: `--rename-cost-codes --input <list.json> [--apply]` renames cost code descriptions from a reviewed list kept outside the repo. A dry run by default; `--apply` refuses unless every row still reads as reviewed, backs the rows up first, changes only the description through the API, reads every row back and renames any changed rows back if one fails).
 
   It calls the accounting system's API library through reflection. It is installed and repaired by `install_sage_client_project_writer.ps1`, `install_sage_contact_writer_release.ps1` (which swaps the binary and restores it on failure) and `repair_sage_client_project_writer.ps1`. Logs rotate at 5 MB.
 
