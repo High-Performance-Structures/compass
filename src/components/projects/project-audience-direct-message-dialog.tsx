@@ -10,13 +10,7 @@ import type {
 } from "@/lib/project-audience-direct-message"
 import { projectAudienceMessageRecipientHref } from "@/lib/project-audience-direct-message"
 import { Button } from "@/components/ui/button"
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog"
+import { RecordDrawer } from "@/components/record-drawer"
 import { Input } from "@/components/ui/input"
 import { ScrollArea } from "@/components/ui/scroll-area"
 
@@ -56,15 +50,17 @@ export function ProjectAudienceDirectMessageDialog({
   }
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-lg">
-        <DialogHeader>
-          <DialogTitle>Message your project team</DialogTitle>
-          <DialogDescription>
-            Choose an internal team member. Your message stays in this
-            project&apos;s private conversation.
-          </DialogDescription>
-        </DialogHeader>
+    <RecordDrawer
+      open={open}
+      onOpenChange={onOpenChange}
+      title="Message your project team"
+      description={
+        <>
+          Choose an internal team member. Your message stays in this
+          project&apos;s private conversation.
+        </>
+      }
+    >
         <div className="relative">
           <IconSearch className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
           <Input
@@ -106,7 +102,6 @@ export function ProjectAudienceDirectMessageDialog({
             )}
           </div>
         </ScrollArea>
-      </DialogContent>
-    </Dialog>
+    </RecordDrawer>
   )
 }

@@ -7,15 +7,8 @@ import { useRouter } from "next/navigation"
 import { createSubVendorRfi } from "@/app/actions/project-audience-sub-vendor"
 import { SearchableCombobox } from "@/components/searchable-combobox"
 import { Button } from "@/components/ui/button"
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from "@/components/ui/dialog"
+import { RecordDrawer } from "@/components/record-drawer"
+import { Slot } from "radix-ui"
 import { Input } from "@/components/ui/input"
 import {
   Select,
@@ -93,8 +86,8 @@ export function ProjectAudienceRfiCreateDialog({
   }
 
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger asChild>
+    <>
+      <Slot.Root onClick={() => setOpen(true)}>
         <Button
           type="button"
           title={
@@ -106,16 +99,19 @@ export function ProjectAudienceRfiCreateDialog({
           <IconQuestionMark className="size-4" />
           Send an RFI
         </Button>
-      </DialogTrigger>
-      <DialogContent className="sm:max-w-xl">
+      </Slot.Root>
+      <RecordDrawer
+        open={open}
+        onOpenChange={setOpen}
+        title="Send a request for information"
+        description={
+          <>
+            Route a project question to the internal project team. The
+            response will remain visible in this workspace.
+          </>
+        }
+      >
         <form onSubmit={submit}>
-          <DialogHeader>
-            <DialogTitle>Send a request for information</DialogTitle>
-            <DialogDescription>
-              Route a project question to the internal project team. The
-              response will remain visible in this workspace.
-            </DialogDescription>
-          </DialogHeader>
           <div className="mt-5 grid gap-4">
             {viewerIsInternal && (
               <p className="border bg-muted/40 p-3 text-sm text-muted-foreground">
@@ -192,16 +188,16 @@ export function ProjectAudienceRfiCreateDialog({
               </p>
             )}
           </div>
-          <DialogFooter className="mt-5">
+          <div className="mt-5 flex flex-wrap justify-end gap-2 border-t pt-4">
             <Button type="button" variant="outline" onClick={() => setOpen(false)}>
               Cancel
             </Button>
             <Button type="submit" disabled={pending}>
               {pending ? "Sending..." : "Send RFI"}
             </Button>
-          </DialogFooter>
+          </div>
         </form>
-      </DialogContent>
-    </Dialog>
+      </RecordDrawer>
+    </>
   )
 }

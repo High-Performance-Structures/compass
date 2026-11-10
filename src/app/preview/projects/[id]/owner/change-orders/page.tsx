@@ -7,10 +7,14 @@ import { ProjectAudienceChangeOrders } from "@/components/projects/project-audie
 
 export default async function OwnerChangeOrdersPage({
   params,
+  searchParams,
 }: {
   readonly params: Promise<{ readonly id: string }>
+  readonly searchParams: Promise<{ readonly item?: string | readonly string[] }>
 }): Promise<React.ReactElement> {
   const { id: rawProjectId } = await params
+  const query = await searchParams
+  const openItemId = (Array.isArray(query.item) ? query.item[0] : query.item) ?? null
   const id = await requireProjectRouteId(rawProjectId)
-  return <ProjectAudienceChangeOrders projectId={id} audience="owner" />
+  return <ProjectAudienceChangeOrders projectId={id} audience="owner" openItemId={openItemId} />
 }

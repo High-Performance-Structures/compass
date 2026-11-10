@@ -8,13 +8,7 @@ import {
   type GanttScrollPosition
 } from "@/components/schedule/gantt-chart"
 import { Button } from "@/components/ui/button"
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle
-} from "@/components/ui/dialog"
+import { RecordDrawer } from "@/components/record-drawer"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -323,17 +317,14 @@ export function ProjectAudienceGantt({
           </ResizablePanelGroup>
         )}
       </div>
-      <Dialog
+      <RecordDrawer
         open={selected !== undefined}
         onOpenChange={(open) => {
           if (!open) setSelectedId(null)
         }}
+        title={selected?.title ?? "Schedule item"}
+        description="Published schedule item"
       >
-        <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-xl">
-          <DialogHeader>
-            <DialogTitle>{selected?.title}</DialogTitle>
-            <DialogDescription>Published schedule item</DialogDescription>
-          </DialogHeader>
           {selected && (
             <>
               <dl className="grid grid-cols-2 gap-4 border-y py-4 text-sm">
@@ -364,8 +355,7 @@ export function ProjectAudienceGantt({
               <ScheduleItemResponses key={selected.id} item={selected} />
             </>
           )}
-        </DialogContent>
-      </Dialog>
+      </RecordDrawer>
     </div>
   )
 }

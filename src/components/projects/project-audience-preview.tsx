@@ -42,7 +42,7 @@ import { ProjectAudienceRfiCreateDialog } from "@/components/projects/project-au
 import { ProjectAudienceRfqResponseDialog } from "@/components/projects/project-audience-rfq-response-dialog"
 import { ProjectAudienceSchedule } from "@/components/projects/project-audience-schedule"
 import {
-  ownerUpdatePreviewHref,
+  projectAudienceSectionHref,
   projectAudienceConversationHref,
   type ProjectAudienceWorkspaceSection,
 } from "@/lib/project-audience-preview-routes"
@@ -519,7 +519,7 @@ function OwnerUpdateCard({
         size="sm"
         className="mt-4"
       >
-        <Link href={ownerUpdatePreviewHref(projectId, update.id)}>
+        <Link href={`${projectAudienceSectionHref(projectId, "owner", "updates")}?item=${encodeURIComponent(update.id)}`} scroll={false}>
           Open update
           <IconArrowRight className="size-4" />
         </Link>

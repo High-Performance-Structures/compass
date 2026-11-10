@@ -1,4 +1,5 @@
 import type * as React from "react"
+import Link from "next/link"
 import { ProjectPortalPrintButton } from "@/components/projects/project-portal-print-button"
 import { changeOrderReport } from "@/lib/print/audience-record-reports"
 import { notFound } from "next/navigation"
@@ -16,6 +17,8 @@ import {
 import { ProjectAudiencePreviewShell } from "@/components/projects/project-audience-preview-shell"
 import { ProjectChangeOrderDetail } from "@/components/projects/project-change-order-detail"
 import { ProjectChangeOrderList } from "@/components/projects/project-change-order-list"
+import { RouteRecordDrawer } from "@/components/record-drawer"
+import { Button } from "@/components/ui/button"
 import type { ProjectAudience } from "@/lib/project-audience-access"
 import { projectAudienceMessageShortcut } from "@/lib/project-audience-direct-message"
 import { projectAudienceSectionHref } from "@/lib/project-audience-preview-routes"
@@ -44,10 +47,13 @@ export async function ProjectAudienceChangeOrders({
   projectId,
   audience,
   changeOrderId,
+  openItemId = null,
 }: {
   readonly projectId: string
   readonly audience: ProjectAudience
   readonly changeOrderId?: string
+  /** The change order opened from the list (`?item=`), shown in the record drawer. */
+  readonly openItemId?: string | null
 }): Promise<React.ReactElement> {
   const preview = await loadPreview(projectId, audience)
   const route = routeAudience(audience)
@@ -74,6 +80,7 @@ export async function ProjectAudienceChangeOrders({
     messageChannels: preview.messageChannels,
   })
   if (changeOrderId && !item) notFound()
+  const openItem = openItemId ? (items.find((entry) => entry.id === openItemId) ?? null) : null
 
   return (
     <ProjectAudiencePreviewShell
@@ -108,8 +115,29 @@ export async function ProjectAudienceChangeOrders({
               canCreate={
                 !preview.viewerIsInternal && capabilities.canCreate
               }
+              openInDrawer
             />
           )}
+          {openItem ? (
+            <RouteRecordDrawer
+              key={openItem.id}
+              closeHref={baseHref}
+              title={`${openItem.changeOrderNumber} · ${openItem.title}`}
+              hideHeader
+              footer={
+                <Button asChild variant="link" className="px-0">
+                  <Link href={`${baseHref}/${encodeURIComponent(openItem.id)}`}>Open full page →</Link>
+                </Button>
+              }
+            >
+              <ProjectChangeOrderDetail
+                item={openItem}
+                backHref={null}
+                internal={false}
+                formOptions={formOptions}
+              />
+            </RouteRecordDrawer>
+          ) : null}
         </div>
       </main>
     </ProjectAudiencePreviewShell>
