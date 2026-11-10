@@ -132,7 +132,7 @@ export function ResponsiveDialog({
 /**
  * Body container for ResponsiveDialog content.
  * Scrollable when content exceeds available space.
- * On mobile, if pages prop is provided, renders as swipeable carousel.
+ * With `pages`: a swipeable carousel on mobile, the pages stacked on desktop.
  */
 export function ResponsiveDialogBody({
   children,
@@ -160,10 +160,14 @@ export function ResponsiveDialogBody({
     )
   }
 
-  // Default: single scrollable container
+  // Default: single scrollable container. On desktop the pages are shown one
+  // after another; without this, dialogs that pass only `pages` open empty.
   return (
     <div className={cn("space-y-2.5 py-1 overflow-y-auto flex-1 min-h-0", className)}>
-      {children}
+      {children ??
+        pages?.map((page, index) => (
+          <React.Fragment key={index}>{page}</React.Fragment>
+        ))}
     </div>
   )
 }
