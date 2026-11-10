@@ -22,6 +22,7 @@ export function ProjectChangeOrderList({
   canCreate = true,
   varianceOptions = null,
   initialFilter = "open",
+  openInDrawer = false,
 }: {
   readonly projectId: string
   readonly items: readonly ProjectChangeOrderItem[]
@@ -33,6 +34,8 @@ export function ProjectChangeOrderList({
   readonly varianceOptions?: ProjectVarianceOptions | null
   /** The status filter the sheet opens on. */
   readonly initialFilter?: ChangeOrderListFilter
+  /** Staff open a change order in the record drawer over the list. */
+  readonly openInDrawer?: boolean
 }): React.ReactElement {
   const openCount = items.filter(
     (item) => !["closed", "declined", "void"].includes(item.status)
@@ -70,7 +73,7 @@ export function ProjectChangeOrderList({
       />
 
       {items.length > 0 ? (
-        <ProjectChangeOrderRecordTable items={items} detailBaseHref={detailBaseHref} initialFilter={initialFilter} />
+        <ProjectChangeOrderRecordTable items={items} detailBaseHref={detailBaseHref} initialFilter={initialFilter} openInDrawer={openInDrawer} />
       ) : (
         <div className="border-y bg-background p-8 text-center">
           <IconFileInvoice className="mx-auto size-7 text-muted-foreground" />

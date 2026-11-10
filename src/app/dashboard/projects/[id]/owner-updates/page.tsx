@@ -17,9 +17,13 @@ import {
   getProjectFieldSummary,
   getOwnerUpdatePageCapabilities,
   getOwnerUpdateProjectHeader,
+  getOwnerProjectUpdateDocument,
   getProjectOwnerUpdates,
   type ProjectOwnerUpdateListItem,
 } from "@/app/actions/project-field"
+import { OwnerUpdateDocument } from "@/components/projects/owner-update-document"
+import { RouteRecordDrawer } from "@/components/record-drawer"
+import { currentDepartmentProfiles } from "@/lib/department-profiles-server"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import {
@@ -48,7 +52,10 @@ function OwnerUpdateLink({
 }): React.ReactElement {
   return (
     <Link
-      href={`${baseHref}/${update.id}`}
+      // Published updates open in the record drawer; drafts are written on
+      // the full page.
+      href={update.status === "draft" ? `${baseHref}/${update.id}` : `${baseHref}?item=${encodeURIComponent(update.id)}`}
+      scroll={update.status === "draft"}
       className="group block rounded-lg border p-4 transition-colors hover:bg-accent/40"
     >
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
@@ -75,10 +82,14 @@ function OwnerUpdateLink({
 
 export default async function ProjectOwnerUpdatesPage({
   params,
+  searchParams,
 }: {
   readonly params: Promise<{ readonly id: string }>
+  readonly searchParams: Promise<{ readonly item?: string | readonly string[] }>
 }): Promise<React.ReactElement> {
   const { id: rawProjectId } = await params
+  const query = await searchParams
+  const openItemId = (Array.isArray(query.item) ? query.item[0] : query.item) ?? null
   const id = decodeProjectRouteId(rawProjectId)
   let internalViewer = false
   let project: {
@@ -133,6 +144,11 @@ export default async function ProjectOwnerUpdatesPage({
   const historicalUpdates = ownerUpdates.filter(
     (update) => update.status !== "draft"
   )
+  // A published update opened from the list shows in the record drawer.
+  const openUpdate = openItemId ? historicalUpdates.find((update) => update.id === openItemId) ?? null : null
+  const openDocument = openUpdate
+    ? await getOwnerProjectUpdateDocument(project.id, openUpdate.id).catch(() => null)
+    : null
 
   return (
     <main className="mx-auto flex w-full max-w-6xl flex-col gap-4 p-3 sm:p-4 lg:p-6">
@@ -260,6 +276,22 @@ export default async function ProjectOwnerUpdatesPage({
           )}
         </CardContent>
       </Card>
+
+      {openUpdate && openDocument ? (
+        <RouteRecordDrawer
+          key={openUpdate.id}
+          closeHref={baseHref}
+          title={openUpdate.title}
+          hideHeader
+          footer={
+            <Button asChild variant="link" className="px-0">
+              <Link href={`${baseHref}/${openUpdate.id}`}>Open full page →</Link>
+            </Button>
+          }
+        >
+          <OwnerUpdateDocument document={openDocument} profiles={await currentDepartmentProfiles()} inDrawer />
+        </RouteRecordDrawer>
+      ) : null}
     </main>
   )
 }

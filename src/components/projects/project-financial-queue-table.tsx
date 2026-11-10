@@ -56,6 +56,8 @@ function matchesSearch(item: ProjectFinancialWorkflowItem, query: string): boole
 type QueueLinks = {
   /** The page a record opens on, when it has one (pay applications open their G702 / G703). */
   readonly href: (item: ProjectFinancialWorkflowItem) => string | null
+  /** Opens a pay application's Quick look in the record drawer. */
+  readonly quickLook: (item: ProjectFinancialWorkflowItem) => void
   readonly projectDriveUrl: string | null
   readonly developerModeEnabled: boolean
 }
@@ -73,17 +75,22 @@ export function financialQueueColumns(links: QueueLinks): ColumnDef<ProjectFinan
         return (
           <div className="min-w-32">
             <div className="flex flex-wrap items-center gap-2">
-              {href ? (
-                <a href={href} className="font-medium text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
-                  {workflowLabel(original.type)}
-                </a>
-              ) : (
-                <span className="font-medium">{workflowLabel(original.type)}</span>
-              )}
+              <span className="font-medium">{workflowLabel(original.type)}</span>
               {original.importedFrom && <SourceTag source={original.importedFrom} />}
               {original.sourceLabel && <Badge variant="secondary">{original.sourceLabel}</Badge>}
             </div>
             {original.number && <p className="text-xs text-muted-foreground">{original.number}</p>}
+            {href ? (
+              // Pay applications: a Quick look in the drawer, or Edit on the full page.
+              <div className="mt-1 flex flex-wrap gap-1">
+                <Button type="button" size="sm" variant="outline" className="h-7" onClick={() => links.quickLook(original)}>
+                  Quick look
+                </Button>
+                <Button asChild size="sm" variant="outline" className="h-7">
+                  <a href={href}>Edit</a>
+                </Button>
+              </div>
+            ) : null}
           </div>
         )
       },
@@ -183,9 +190,17 @@ export function ProjectFinancialQueueTable({
         : null,
     [projectId]
   )
+  // The Quick look is read on the server from `?item=` and shown in the drawer.
+  const quickLook = React.useCallback(
+    (item: ProjectFinancialWorkflowItem): void => {
+      if (!item.sourceRecordId) return
+      router.push(`/dashboard/projects/${projectId}/financials?item=${encodeURIComponent(item.sourceRecordId)}`, { scroll: false })
+    },
+    [projectId, router]
+  )
   const columns = React.useMemo(
-    () => financialQueueColumns({ href, projectDriveUrl, developerModeEnabled }),
-    [href, projectDriveUrl, developerModeEnabled]
+    () => financialQueueColumns({ href, quickLook, projectDriveUrl, developerModeEnabled }),
+    [href, quickLook, projectDriveUrl, developerModeEnabled]
   )
   const table = useRecordTable({
     data: visible,
@@ -226,8 +241,7 @@ export function ProjectFinancialQueueTable({
         emptyMessage={query ? "No financial records match this search." : "No financial records of this type."}
         rowIdPrefix="financial-row"
         onRowOpen={(item) => {
-          const target = href(item)
-          if (target) router.push(target)
+          if (href(item)) quickLook(item)
         }}
       />
     </div>
