@@ -20,6 +20,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
 import { useListSheetFilterLabel, useListSheetStartFilter } from "@/components/list-sheets/use-list-sheet"
+import { RecordDrawer } from "@/components/record-drawer"
 import { RecordSearchInput, RecordTable, useRecordTable } from "@/components/record-table"
 import { StatusFilterBar } from "@/components/status-filter-bar"
 import { Button } from "@/components/ui/button"
@@ -217,7 +218,7 @@ export function ShopTicketsWorkspace({
           Bills {workspace.project.projectNumber ?? "this project"} for labor and machine hours at the set rates in the rate book.
           {workspace.budgetCostCodes.length > 0 ? " Cost codes are checked against the project budget." : " This project has no budget, so cost codes aren't checked."}
         </p>
-        {workspace.canEdit && editor.mode === "closed" ? (
+        {workspace.canEdit ? (
           <Button type="button" onClick={() => setEditor({ mode: "new" })}>
             <IconPlus className="size-4" />
             New shop ticket
@@ -225,15 +226,25 @@ export function ShopTicketsWorkspace({
         ) : null}
       </div>
 
-      {editor.mode !== "closed" ? (
-        <ShopTicketEditor
-          key={editor.mode === "edit" ? editor.ticket.id : "new"}
-          projectId={projectId}
-          workspace={workspace}
-          ticket={editor.mode === "edit" ? editor.ticket : null}
-          onClose={() => setEditor({ mode: "closed" })}
-        />
-      ) : null}
+      {/* New and draft tickets are written in the record drawer, over the list. */}
+      <RecordDrawer
+        open={editor.mode !== "closed"}
+        onOpenChange={(open) => {
+          if (!open) setEditor({ mode: "closed" })
+        }}
+        title={editor.mode === "edit" ? `Edit draft ${editor.ticket.ticketNumber}` : "New shop ticket"}
+        hideHeader
+      >
+        {editor.mode !== "closed" ? (
+          <ShopTicketEditor
+            key={editor.mode === "edit" ? editor.ticket.id : "new"}
+            projectId={projectId}
+            workspace={workspace}
+            ticket={editor.mode === "edit" ? editor.ticket : null}
+            onClose={() => setEditor({ mode: "closed" })}
+          />
+        ) : null}
+      </RecordDrawer>
 
       {workspace.tickets.length === 0 ? (
         <p className="border-t py-6 text-sm text-muted-foreground">No shop tickets on this project yet.</p>

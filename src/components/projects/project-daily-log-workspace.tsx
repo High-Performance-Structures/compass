@@ -16,13 +16,7 @@ import { CompassLoadingOverlay } from "@/components/compass-loader"
 import { useDeveloperMode } from "@/components/developer-mode-provider"
 import { formatDate } from "@/lib/format"
 import { DailyLogCard } from "@/components/projects/daily-log/daily-log-card"
-import {
-  Sheet,
-  SheetContent,
-  SheetDescription,
-  SheetHeader,
-  SheetTitle,
-} from "@/components/ui/sheet"
+import { RecordDrawer, useRecordDrawerItem } from "@/components/record-drawer"
 import { DailyLogRecordTable } from "@/components/projects/daily-log/daily-log-record-table"
 import {
   DailyLogEditForm,
@@ -65,7 +59,8 @@ export function ProjectDailyLogWorkspace({
     React.useState<readonly ProjectDailyLogItem[]>(workspace.logs)
   const [filter, setFilter] = React.useState<LogFilter>("all")
   const [selectedIds, setSelectedIds] = React.useState<readonly string[]>([])
-  const [openLogId, setOpenLogId] = React.useState<string | null>(initialItemId)
+  // The open log lives in `?item=` so the link can be shared.
+  const [openLogId, openLogById, closeLog] = useRecordDrawerItem(initialItemId)
   const [showNewLog, setShowNewLog] = React.useState(initialShowNewLog)
   useQuickAddEntry("daily-log", () => setShowNewLog(true))
   const [showPrintOptions, setShowPrintOptions] = React.useState(false)
@@ -152,22 +147,8 @@ export function ProjectDailyLogWorkspace({
     )
   }, [])
 
-  // Opening a log keeps it in the URL (`?item=`) so the link can be shared,
-  // without reloading the workspace.
-  const openLog = React.useCallback((log: ProjectDailyLogItem): void => {
-    setOpenLogId(log.id)
-    const url = new URL(window.location.href)
-    url.searchParams.set("item", log.id)
-    window.history.replaceState(null, "", url)
-  }, [])
+  const openLog = React.useCallback((log: ProjectDailyLogItem): void => openLogById(log.id), [openLogById])
   const openedLog = logs.find((log) => log.id === openLogId) ?? null
-
-  const closeLog = React.useCallback((): void => {
-    setOpenLogId(null)
-    const url = new URL(window.location.href)
-    url.searchParams.delete("item")
-    window.history.replaceState(null, "", url)
-  }, [])
 
   function updateReview(
     log: ProjectDailyLogItem,
@@ -248,17 +229,9 @@ export function ProjectDailyLogWorkspace({
         <DailyLogMetrics logs={logs} counts={workspace.counts} />
 
         {/* New logs are written in a drawer too, over the list. */}
-        <Sheet open={showNewLog} onOpenChange={setShowNewLog}>
-          <SheetContent side="right" className="w-[min(94vw,720px)] overflow-y-auto sm:max-w-none">
-            <SheetHeader className="sr-only">
-              <SheetTitle>New daily log</SheetTitle>
-              <SheetDescription>Write today's daily log for this job.</SheetDescription>
-            </SheetHeader>
-            <div className="px-5 pt-8 pb-6">
-              <DailyLogNewForm forms={forms} form={workspace.form} isPending={isPending} />
-            </div>
-          </SheetContent>
-        </Sheet>
+        <RecordDrawer open={showNewLog} onOpenChange={setShowNewLog} title="New daily log" hideHeader>
+          <DailyLogNewForm forms={forms} form={workspace.form} isPending={isPending} />
+        </RecordDrawer>
 
         {showPrintOptions && (
           <DailyLogPrintOptions selectedLogs={selectedLogs} {...print} />
@@ -292,59 +265,54 @@ export function ProjectDailyLogWorkspace({
         />
 
         {/* A log opens in a drawer over the sheet, so the list stays in place. */}
-        <Sheet open={openedLog !== null} onOpenChange={(open) => {
+        <RecordDrawer
+          open={openedLog !== null}
+          onOpenChange={(open) => {
             if (!open) closeLog()
-          }}>
-          <SheetContent side="right" className="w-[min(94vw,720px)] overflow-y-auto sm:max-w-none" id="daily-log-open">
-            {openedLog ? (
-              <>
-                <SheetHeader className="border-b px-5 py-4">
-                  <SheetTitle>Daily log, {formatDate(openedLog.logDate, "medium", openedLog.logDate)}</SheetTitle>
-                  <SheetDescription>Work lines, photos, issues and to-dos for this log.</SheetDescription>
-                </SheetHeader>
-                <div className="px-5 pb-6">
-                  <DailyLogCard
+          }}
+          title={openedLog ? `Daily log, ${formatDate(openedLog.logDate, "medium", openedLog.logDate)}` : ""}
+          description="Work lines, photos, issues and to-dos for this log."
+        >
+          {openedLog ? (
+            <DailyLogCard
+              log={openedLog}
+              projectId={workspace.project.id}
+              assigneeOptions={assigneeOptions}
+              savedLogRules={forms.savedLogSetup?.rules ?? null}
+              developerModeEnabled={developerModeEnabled}
+              selected={selectedIds.includes(openedLog.id)}
+              onToggleSelected={() => toggleLog(openedLog.id)}
+              isPending={isPending}
+              isUploading={upload.isUploading}
+              editing={forms.editingLogId === openedLog.id}
+              uploadingFiles={upload.uploadingLogId === openedLog.id}
+              onEdit={() => forms.startEditingLog(openedLog)}
+              onAddFiles={() => upload.startUploadingFiles(openedLog)}
+              onReview={(reviewStatus, isClientVisible) => updateReview(openedLog, reviewStatus, isClientVisible)}
+              editForm={
+                forms.editingLogId === openedLog.id ? (
+                  <DailyLogEditForm
                     log={openedLog}
-                    projectId={workspace.project.id}
-                    assigneeOptions={assigneeOptions}
-                    savedLogRules={forms.savedLogSetup?.rules ?? null}
-                    developerModeEnabled={developerModeEnabled}
-                    selected={selectedIds.includes(openedLog.id)}
-                    onToggleSelected={() => toggleLog(openedLog.id)}
+                    forms={forms}
+                    form={workspace.form}
                     isPending={isPending}
-                    isUploading={upload.isUploading}
-                    editing={forms.editingLogId === openedLog.id}
-                    uploadingFiles={upload.uploadingLogId === openedLog.id}
-                    onEdit={() => forms.startEditingLog(openedLog)}
-                    onAddFiles={() => upload.startUploadingFiles(openedLog)}
-                    onReview={(reviewStatus, isClientVisible) => updateReview(openedLog, reviewStatus, isClientVisible)}
-                    editForm={
-                      forms.editingLogId === openedLog.id ? (
-                        <DailyLogEditForm
-                          log={openedLog}
-                          forms={forms}
-                          form={workspace.form}
-                          isPending={isPending}
-                          deletable={deletableIds.has(openedLog.id)}
-                          onDelete={() => setPendingDeleteIds([openedLog.id])}
-                        />
-                      ) : null
-                    }
-                    uploadPanel={
-                      upload.uploadingLogId === openedLog.id ? (
-                        <DailyLogUploadPanel
-                          log={openedLog}
-                          upload={upload}
-                          schedulePhases={workspace.schedulePhases}
-                        />
-                      ) : null
-                    }
+                    deletable={deletableIds.has(openedLog.id)}
+                    onDelete={() => setPendingDeleteIds([openedLog.id])}
                   />
-                </div>
-              </>
-            ) : null}
-          </SheetContent>
-        </Sheet>
+                ) : null
+              }
+              uploadPanel={
+                upload.uploadingLogId === openedLog.id ? (
+                  <DailyLogUploadPanel
+                    log={openedLog}
+                    upload={upload}
+                    schedulePhases={workspace.schedulePhases}
+                  />
+                ) : null
+              }
+            />
+          ) : null}
+        </RecordDrawer>
 
         {workspace.unattachedPhotos.length > 0 && (
           <DailyLogUnattachedPhotos workspace={workspace} />

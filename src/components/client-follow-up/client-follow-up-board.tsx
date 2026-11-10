@@ -15,6 +15,7 @@ import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { useListSheetFilterLabel, useListSheetStartFilter } from "@/components/list-sheets/use-list-sheet"
+import { RecordDrawer } from "@/components/record-drawer"
 import { RecordTable, useRecordTable } from "@/components/record-table"
 import { StatusFilterBar } from "@/components/status-filter-bar"
 import {
@@ -270,6 +271,8 @@ export function ClientFollowUpBoard({
     return `${item.projectLabel} ${item.summary} ${item.createdByName ?? ""} ${item.contactName ?? ""}`.toLowerCase().includes(normalizedQuery)
   })
   const selectedJob = jobId ? workspace.jobs.find((job) => job.id === jobId) ?? null : null
+  const [openedJobId, setOpenedJobId] = React.useState<string | null>(null)
+  const openedJob = openedJobId ? workspace.jobs.find((job) => job.id === openedJobId) ?? null : null
   const selectedPerson = personId ? workspace.leaderboard.find((entry) => entry.userId === personId) ?? null : null
 
   function setPeriod(period: ClientFollowUpPeriod): void {
@@ -345,34 +348,39 @@ export function ClientFollowUpBoard({
         </div>
       ) : null}
 
-      {selectedJob ? (
-        <section aria-labelledby="crm-selected-job" className="grid gap-4 rounded-lg border-l-4 bg-muted/30 p-4 lg:grid-cols-[minmax(0,1fr)_auto]"
-          style={{ borderLeftColor: `var(${PROJECT_AGING_LEVELS[selectedJob.signal.level].colorToken})` }}>
-          <div className="space-y-1">
-            <h2 id="crm-selected-job" className="text-lg font-semibold">{jobLabel(selectedJob)}</h2>
-            <p className="text-sm text-muted-foreground">{[selectedJob.clientName, selectedJob.jobStatusLabel, selectedJob.ownerName ? `Owner: ${selectedJob.ownerName}` : "No follow-up owner"].filter(Boolean).join(" · ")}</p>
-            <div className="max-w-md pt-2">
-              <FollowUpSection projectId={selectedJob.id} signal={selectedJob.signal} />
+      {/* A job opens in the record drawer, over the list. Picking a job in the
+          chart still narrows the list to it. */}
+      <RecordDrawer
+        open={openedJob !== null}
+        onOpenChange={(open) => {
+          if (!open) setOpenedJobId(null)
+        }}
+        eyebrow="Client follow-up"
+        title={openedJob ? jobLabel(openedJob) : ""}
+        description={openedJob ? [openedJob.clientName, openedJob.jobStatusLabel, openedJob.ownerName ? `Owner: ${openedJob.ownerName}` : "No follow-up owner"].filter(Boolean).join(" · ") : undefined}
+      >
+        {openedJob ? (
+          <div className="grid gap-4">
+            <FollowUpSection projectId={openedJob.id} signal={openedJob.signal} />
+            <div className="flex flex-wrap gap-2">
+              <Button asChild size="sm" variant="outline">
+                <Link href={`/dashboard/projects/${encodeURIComponent(openedJob.id)}/information#log-client-interaction`}>Information and history</Link>
+              </Button>
+              <Button asChild size="sm" variant="outline">
+                <Link href={`/dashboard?job=${encodeURIComponent(openedJob.id)}`}>Show on map</Link>
+              </Button>
+              <Button asChild size="sm" variant="outline">
+                <Link href={`/dashboard?job=${encodeURIComponent(openedJob.id)}&view=pipeline`}>Show in pipeline</Link>
+              </Button>
+              <Button asChild size="sm" variant="outline">
+                <Link href={`/dashboard/projects/${encodeURIComponent(openedJob.id)}`}>
+                  Open job <IconExternalLink className="size-3.5" />
+                </Link>
+              </Button>
             </div>
           </div>
-          <div className="flex flex-col gap-2">
-            <Button asChild size="sm" variant="outline">
-              <Link href={`/dashboard/projects/${encodeURIComponent(selectedJob.id)}/information#log-client-interaction`}>Information and history</Link>
-            </Button>
-            <Button asChild size="sm" variant="outline">
-              <Link href={`/dashboard?job=${encodeURIComponent(selectedJob.id)}`}>Show on map</Link>
-            </Button>
-            <Button asChild size="sm" variant="outline">
-              <Link href={`/dashboard?job=${encodeURIComponent(selectedJob.id)}&view=pipeline`}>Show in pipeline</Link>
-            </Button>
-            <Button asChild size="sm" variant="outline">
-              <Link href={`/dashboard/projects/${encodeURIComponent(selectedJob.id)}`}>
-                Open job <IconExternalLink className="size-3.5" />
-              </Link>
-            </Button>
-          </div>
-        </section>
-      ) : null}
+        ) : null}
+      </RecordDrawer>
 
       <div className="grid gap-6 xl:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
         <section aria-labelledby="crm-jobs" className="space-y-2">
@@ -399,9 +407,9 @@ export function ClientFollowUpBoard({
             itemLabel="jobs"
             emptyMessage="Nothing needs follow-up here. Every job has recent client contact."
             rowIdPrefix="crm-job"
-            focusedRowId={jobId}
+            focusedRowId={openedJobId ?? jobId}
             scrollToFocusedRow={false}
-            onRowOpen={(job) => setJobId(job.id === jobId ? null : job.id)}
+            onRowOpen={(job) => setOpenedJobId(job.id)}
           />
         </section>
 

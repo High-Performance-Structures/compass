@@ -1,4 +1,5 @@
 import { currentDepartmentProfiles } from "@/lib/department-profiles-server"
+import { RouteRecordDrawer } from "@/components/record-drawer"
 import { decodeProjectRouteId } from "@/lib/project-route-id"
 import type * as React from "react"
 import {
@@ -634,36 +635,47 @@ export default async function ProjectRfqsPage({
           }
         />
 
+        {/* The opened record shows in the record drawer, over the list. */}
         {selectedRfqs.length > 0 ? (
-          selectedRfqs.map((rfq) => (
-            <RfqCard
-              key={rfq.id}
-              brand={brand}
-              rfq={rfq}
-              projectId={id}
-              projectLabel={projectLabel}
-              isCreated={rfq.id === createdRfqId}
-              taskAssigneeOptions={taskAssignees}
-              selectionOptions={selectionOptions}
-              selectionsSummary={selectionsSummary}
-              costCodeOptions={costCodeOptions}
-              developerModeEnabled={developerModeEnabled}
-              bidWorkflow={
-                bidWorkspace.workflows.find(
-                  (workflow) => workflow.rfqOperationId === rfq.id
-                ) ?? null
-              }
-              canApproveBids={bidWorkspace.canApprove}
-              canImportBids={bidWorkspace.canImport}
-              editableEstimates={bidWorkspace.editableEstimates}
-              emailDeliveries={emailDeliveries.filter((delivery) => delivery.rfqOperationId === rfq.id)}
-              emailReplies={emailReplies.filter((reply) => reply.recordId === rfq.id)}
-              emailContacts={emailContacts}
-              manualResponseEvents={manualResponseEvents.filter((event) => event.rfqOperationId === rfq.id)}
-              quoteLinks={quoteLinks.filter((link) => link.rfqOperationId === rfq.id)}
-              statuses={rfqStatuses}
-            />
-          ))
+          <RouteRecordDrawer
+            key={selectedRfqId ?? "open"}
+            closeHref={`/dashboard/projects/${id}/rfqs?status=${statusFilter}`}
+            title={`RFQ ${selectedRfqs[0]?.title ?? ""}`}
+            hideHeader
+            className="w-[min(96vw,1120px)]"
+          >
+            <div className="grid gap-4">
+              {selectedRfqs.map((rfq) => (
+              <RfqCard
+                key={rfq.id}
+                brand={brand}
+                rfq={rfq}
+                projectId={id}
+                projectLabel={projectLabel}
+                isCreated={rfq.id === createdRfqId}
+                taskAssigneeOptions={taskAssignees}
+                selectionOptions={selectionOptions}
+                selectionsSummary={selectionsSummary}
+                costCodeOptions={costCodeOptions}
+                developerModeEnabled={developerModeEnabled}
+                bidWorkflow={
+                  bidWorkspace.workflows.find(
+                    (workflow) => workflow.rfqOperationId === rfq.id
+                  ) ?? null
+                }
+                canApproveBids={bidWorkspace.canApprove}
+                canImportBids={bidWorkspace.canImport}
+                editableEstimates={bidWorkspace.editableEstimates}
+                emailDeliveries={emailDeliveries.filter((delivery) => delivery.rfqOperationId === rfq.id)}
+                emailReplies={emailReplies.filter((reply) => reply.recordId === rfq.id)}
+                emailContacts={emailContacts}
+                manualResponseEvents={manualResponseEvents.filter((event) => event.rfqOperationId === rfq.id)}
+                quoteLinks={quoteLinks.filter((link) => link.rfqOperationId === rfq.id)}
+                statuses={rfqStatuses}
+              />
+              ))}
+            </div>
+          </RouteRecordDrawer>
         ) : rfqs.length > 0 ? (
           <p className="text-sm text-muted-foreground print:hidden">
             Select an RFQ to see its scope, documents, vendor response and quote tools.

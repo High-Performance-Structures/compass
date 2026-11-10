@@ -265,7 +265,7 @@ export function ShopTicketEditor({
   }
 
   return (
-    <section className="grid gap-4 border-t pt-4" aria-label={ticket ? `Edit ${ticket.ticketNumber}` : "New shop ticket"}>
+    <section className="grid gap-4" aria-label={ticket ? `Edit ${ticket.ticketNumber}` : "New shop ticket"}>
       <div className="flex flex-wrap items-baseline justify-between gap-2">
         <h2 className="text-base font-semibold">{ticket ? `Edit draft ${ticket.ticketNumber}` : "New shop ticket"}</h2>
         {!ticket ? <p className="text-sm text-muted-foreground">Compass assigns the next ticket number when you save.</p> : null}

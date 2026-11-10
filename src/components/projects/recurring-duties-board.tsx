@@ -12,6 +12,7 @@ import {
   type RecurringDutyInput,
 } from "@/app/actions/recurring-duties"
 import type { ColumnDef } from "@tanstack/react-table"
+import { RecordDrawer } from "@/components/record-drawer"
 import { RecordTable, useRecordTable } from "@/components/record-table"
 import { SearchableCombobox } from "@/components/searchable-combobox"
 import { Button } from "@/components/ui/button"
@@ -191,7 +192,7 @@ function DoneDutyForm({
   const choices = periodChoices(duty)
   return (
     <form
-      className="grid gap-3 border-y py-3 sm:grid-cols-2 lg:grid-cols-5"
+      className="grid gap-3 sm:grid-cols-2"
       aria-label={`Mark ${dutyName(duty)} done`}
       onSubmit={(event) => {
         event.preventDefault()
@@ -362,7 +363,7 @@ export function RecurringDutiesBoard({
               <Label htmlFor="recurring-show-inactive">Show turned off</Label>
             </div>
           ) : null}
-          {canManage && !edit ? (
+          {canManage ? (
             <Button type="button" size="sm" variant="outline" onClick={() => startEdit(null)}>
               Add recurring duty
             </Button>
@@ -370,108 +371,125 @@ export function RecurringDutiesBoard({
         </div>
       </div>
 
-      {edit ? (
-        <form
-          className="grid gap-3 border-y py-3 sm:grid-cols-2 lg:grid-cols-4"
-          onSubmit={(event) => {
-            event.preventDefault()
-            const { dutyId, dueDay, ...rest } = edit
-            run(() => saveRecurringDuty(projectId, dutyId, { ...rest, dueDay: Number(dueDay) }), dutyId ? "Recurring duty saved" : "Recurring duty added", () => setEdit(null))
-          }}
-          aria-label={edit.dutyId ? "Edit recurring duty" : "New recurring duty"}
-        >
-          <div className="grid gap-1.5">
-            <Label htmlFor="rd-title">Name</Label>
-            <Input id="rd-title" value={edit.title} placeholder="Bank reconciliation" onChange={(event) => setEdit({ ...edit, title: event.target.value })} />
-          </div>
-          <div className="grid gap-1.5">
-            <Label htmlFor="rd-account">Account (optional)</Label>
-            <Input id="rd-account" value={edit.accountName} placeholder="FSB" onChange={(event) => setEdit({ ...edit, accountName: event.target.value })} />
-          </div>
-          <div className="grid gap-1.5">
-            <Label htmlFor="rd-cadence">How often</Label>
-            <Select value={edit.cadence} onValueChange={(value) => setEdit({ ...edit, cadence: value === "quarterly" ? "quarterly" : value === "yearly" ? "yearly" : "monthly" })}>
-              <SelectTrigger id="rd-cadence">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="monthly">Monthly</SelectItem>
-                <SelectItem value="quarterly">Quarterly</SelectItem>
-                <SelectItem value="yearly">Yearly</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="grid gap-1.5">
-            <Label htmlFor="rd-due">Due day of the following month</Label>
-            <Input id="rd-due" inputMode="numeric" value={edit.dueDay} onChange={(event) => setEdit({ ...edit, dueDay: event.target.value.replace(/\D/g, "") })} />
-          </div>
-          <div className="grid gap-1.5">
-            <Label htmlFor="rd-code">Time logged as</Label>
-            <SearchableCombobox
-              id="rd-code"
-              ariaLabel="Time logged as"
-              placeholder="No duty"
-              options={dutyOptions.map((duty) => ({ value: duty.code, label: `${duty.code} ${duty.label}` }))}
-              value={edit.dutyCode}
-              onValueChange={(value) => setEdit({ ...edit, dutyCode: value })}
-              className="w-full"
-            />
-          </div>
-          <div className="grid gap-1.5">
-            <Label htmlFor="rd-owner">Owner</Label>
-            <SearchableCombobox
-              id="rd-owner"
-              ariaLabel="Owner"
-              placeholder="No owner"
-              options={staff}
-              value={edit.ownerUserId}
-              onValueChange={(value) => setEdit({ ...edit, ownerUserId: value })}
-              className="w-full"
-            />
-          </div>
-          <div className="flex items-end gap-2">
-            <Switch id="rd-active" checked={edit.active} onCheckedChange={(value) => setEdit({ ...edit, active: value })} />
-            <Label htmlFor="rd-active">Active</Label>
-          </div>
-          <div className="flex flex-wrap items-end gap-2">
-            <Button type="submit" size="sm" disabled={pending}>
-              Save
-            </Button>
-            <Button type="button" size="sm" variant="ghost" disabled={pending} onClick={() => setEdit(null)}>
-              Cancel
-            </Button>
-            {edit.dutyId ? (
-              <Button
-                type="button"
-                size="sm"
-                variant="ghost"
-                className="text-destructive"
-                disabled={pending}
-                onClick={() => {
-                  const id = edit.dutyId
-                  if (id) run(() => deleteRecurringDuty(projectId, id), "Recurring duty removed (turned off if it had history)", () => setEdit(null))
-                }}
-              >
-                Delete
-              </Button>
-            ) : null}
-          </div>
-        </form>
-      ) : null}
+      {/* Adding or editing a duty happens in the record drawer, over the list. */}
+      <RecordDrawer
+        open={edit !== null}
+        onOpenChange={(open) => {
+          if (!open) setEdit(null)
+        }}
+        title={edit?.dutyId ? "Edit recurring duty" : "New recurring duty"}
+      >
+        {edit ? (
+            <form
+              className="grid gap-3 sm:grid-cols-2"
+              onSubmit={(event) => {
+                event.preventDefault()
+                const { dutyId, dueDay, ...rest } = edit
+                run(() => saveRecurringDuty(projectId, dutyId, { ...rest, dueDay: Number(dueDay) }), dutyId ? "Recurring duty saved" : "Recurring duty added", () => setEdit(null))
+              }}
+              aria-label={edit.dutyId ? "Edit recurring duty" : "New recurring duty"}
+            >
+              <div className="grid gap-1.5">
+                <Label htmlFor="rd-title">Name</Label>
+                <Input id="rd-title" value={edit.title} placeholder="Bank reconciliation" onChange={(event) => setEdit({ ...edit, title: event.target.value })} />
+              </div>
+              <div className="grid gap-1.5">
+                <Label htmlFor="rd-account">Account (optional)</Label>
+                <Input id="rd-account" value={edit.accountName} placeholder="FSB" onChange={(event) => setEdit({ ...edit, accountName: event.target.value })} />
+              </div>
+              <div className="grid gap-1.5">
+                <Label htmlFor="rd-cadence">How often</Label>
+                <Select value={edit.cadence} onValueChange={(value) => setEdit({ ...edit, cadence: value === "quarterly" ? "quarterly" : value === "yearly" ? "yearly" : "monthly" })}>
+                  <SelectTrigger id="rd-cadence">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="monthly">Monthly</SelectItem>
+                    <SelectItem value="quarterly">Quarterly</SelectItem>
+                    <SelectItem value="yearly">Yearly</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="grid gap-1.5">
+                <Label htmlFor="rd-due">Due day of the following month</Label>
+                <Input id="rd-due" inputMode="numeric" value={edit.dueDay} onChange={(event) => setEdit({ ...edit, dueDay: event.target.value.replace(/\D/g, "") })} />
+              </div>
+              <div className="grid gap-1.5">
+                <Label htmlFor="rd-code">Time logged as</Label>
+                <SearchableCombobox
+                  id="rd-code"
+                  ariaLabel="Time logged as"
+                  placeholder="No duty"
+                  options={dutyOptions.map((duty) => ({ value: duty.code, label: `${duty.code} ${duty.label}` }))}
+                  value={edit.dutyCode}
+                  onValueChange={(value) => setEdit({ ...edit, dutyCode: value })}
+                  className="w-full"
+                />
+              </div>
+              <div className="grid gap-1.5">
+                <Label htmlFor="rd-owner">Owner</Label>
+                <SearchableCombobox
+                  id="rd-owner"
+                  ariaLabel="Owner"
+                  placeholder="No owner"
+                  options={staff}
+                  value={edit.ownerUserId}
+                  onValueChange={(value) => setEdit({ ...edit, ownerUserId: value })}
+                  className="w-full"
+                />
+              </div>
+              <div className="flex items-end gap-2">
+                <Switch id="rd-active" checked={edit.active} onCheckedChange={(value) => setEdit({ ...edit, active: value })} />
+                <Label htmlFor="rd-active">Active</Label>
+              </div>
+              <div className="flex flex-wrap items-end gap-2">
+                <Button type="submit" size="sm" disabled={pending}>
+                  Save
+                </Button>
+                <Button type="button" size="sm" variant="ghost" disabled={pending} onClick={() => setEdit(null)}>
+                  Cancel
+                </Button>
+                {edit.dutyId ? (
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="ghost"
+                    className="text-destructive"
+                    disabled={pending}
+                    onClick={() => {
+                      const id = edit.dutyId
+                      if (id) run(() => deleteRecurringDuty(projectId, id), "Recurring duty removed (turned off if it had history)", () => setEdit(null))
+                    }}
+                  >
+                    Delete
+                  </Button>
+                ) : null}
+              </div>
+            </form>
+        ) : null}
+      </RecordDrawer>
 
-      {doneDuty && done ? (
-        <DoneDutyForm
-          duty={doneDuty}
-          done={done}
-          pending={pending}
-          onChange={setDone}
-          onCancel={() => setDone(null)}
-          onSubmit={() => {
-            const { dutyId, ...rest } = done
-            run(() => markRecurringDutyDone(projectId, dutyId, rest), `${periodLabel(done.period)} marked done`, () => setDone(null))
-          }}
-        />
-      ) : null}
+      <RecordDrawer
+        open={doneDuty !== null}
+        onOpenChange={(open) => {
+          if (!open) setDone(null)
+        }}
+        title={doneDuty ? `Mark done: ${dutyName(doneDuty)}` : "Mark done"}
+      >
+        {doneDuty && done ? (
+            <DoneDutyForm
+              duty={doneDuty}
+              done={done}
+              pending={pending}
+              onChange={setDone}
+              onCancel={() => setDone(null)}
+              onSubmit={() => {
+                const { dutyId, ...rest } = done
+                run(() => markRecurringDutyDone(projectId, dutyId, rest), `${periodLabel(done.period)} marked done`, () => setDone(null))
+              }}
+            />
+        ) : null}
+      </RecordDrawer>
 
       <RecordTable
         table={table}
