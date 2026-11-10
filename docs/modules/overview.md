@@ -44,7 +44,7 @@ Modules are the parts specific to HPS's construction business:
 |--------|-------------|-----------------|
 | NetSuite | legacy/generic bidirectional ERP sync reference | `lib/netsuite/`, `actions/netsuite-sync.ts`, `components/netsuite/` |
 | Sage bridge | HPS active Sage 100 Contractor read-model and controlled-write path | `docs/wip/sage-api-bridge-2026-05-14.md`, `lib/sage/` |
-| Google Drive | document management via workspace delegation | `lib/google/`, `actions/google-drive.ts`, `components/files/` |
+| Google Drive | document management via workspace delegation | `lib/google/`, `actions/google-drive*.ts`, `components/files/` |
 | Scheduling | Gantt charts, CPM, baseline tracking | `lib/schedule/`, `actions/schedule.ts`, `components/schedule/` |
 | Financials | invoices, bills, payments, credit memos | `actions/invoices.ts`, `actions/vendor-bills.ts`, `components/financials/` |
 | Contracts | versioned document library, project packets, CA22, Foxit execution | `lib/contracts/`, `actions/contract-*.ts`, `components/projects/project-contract-*` |
@@ -63,7 +63,7 @@ Each module integrates with core through a consistent set of patterns. Here's th
 
 Schema: `src/db/schema-google.ts` defines `googleAuth` (encrypted service account key, workspace domain, shared drive selection) and `googleStarredFiles` (per-user file starring stored locally since Google's star API is per-account). It also extends the core `users` table with a `googleEmail` column for impersonation overrides.
 
-Actions: `src/app/actions/google-drive.ts` exports 17 server actions covering connection management, file CRUD, search, starred files, and storage quota. Every action calls `requireAuth()` and `requirePermission()` before touching data. Two-layer permissions: Compass RBAC gates whether you can even attempt the operation, then Google Workspace permissions determine what the impersonated user can actually see.
+Actions: `src/app/actions/google-drive.ts` (connection), `google-drive-files.ts` (file CRUD, search, stars, quota) and `google-drive-field.ts` (Field Mode). Every file action opens with `openDriveSession()`, which checks sign-in and `requirePermission()` before touching data. Two-layer permissions: Compass RBAC gates whether you can even attempt the operation, then Google Workspace permissions determine what the impersonated user can actually see.
 
 Components: `src/components/files/` contains the full file browser UI -- grid/list views, breadcrumb navigation, context menus, drag-drop upload, folder creation, rename/move dialogs, and a storage quota indicator. All built on shadcn/ui primitives.
 

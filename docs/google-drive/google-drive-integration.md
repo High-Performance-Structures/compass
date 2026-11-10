@@ -85,7 +85,7 @@ Migration `0015_busy_photon.sql` adds two tables and one column:
 Server actions
 ---
 
-All 16+ server actions live in `src/app/actions/google-drive.ts` and follow the standard Compass pattern: `"use server"`, authenticate with `requireAuth()`, check permissions with `requirePermission()`, return a discriminated union.
+The server actions live in `src/app/actions/google-drive.ts` (connection), `google-drive-files.ts` (Files page) and `google-drive-field.ts` (Field Mode) and follow the standard Compass pattern: `"use server"`, open with `openDriveSession()` (sign-in, `requirePermission()`, Drive client), return a discriminated union.
 
 ### Connection management (admin only)
 

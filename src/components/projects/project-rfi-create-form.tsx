@@ -9,7 +9,7 @@ import {
   IconUpload,
 } from "@tabler/icons-react"
 
-import { getUploadSessionUrl } from "@/app/actions/google-drive"
+import { getUploadSessionUrl } from "@/app/actions/google-drive-files"
 import {
   createProjectRfi,
   type ProjectRfiAttachmentInput,
