@@ -144,6 +144,7 @@ export default async function ProjectSelectionsPage({
         suppliers={sheet.suppliers}
         rounds={sheet.rounds}
         statusLabels={sheet.statusLabels}
+        leadTimeWarnings={sheet.leadTimeWarnings}
         initialFilter={parseSelectionListFilter(query.status ?? (await listSheetStartFilter("selections.job")))}
         initialOpenId={typeof query.selection === "string" ? query.selection : null}
       />

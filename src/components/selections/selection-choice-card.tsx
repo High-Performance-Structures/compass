@@ -3,8 +3,9 @@
 /*
  * One choice in the staff detail panel: drag handle, first photo (or the
  * supplier page's image), title, supplier price, supplier, lead time, owner
- * price and over/under the allowance, supplier link cards, the follow-ups
- * this choice opens, and the owner's-pick highlight. Rows are reordered with
+ * price and over/under the allowance, a lead-time warning when this choice
+ * must be ordered soon (or may arrive late), supplier link cards, the
+ * follow-ups this choice opens, and the owner's-pick highlight. Rows are reordered with
  * the shared line-order control (rows inside one selection).
  */
 import * as React from "react"
@@ -18,6 +19,7 @@ import { Button } from "@/components/ui/button"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { allowanceDeltaCents, pickedByLabel } from "@/lib/domain/selections/choice-rules"
 import type { SelectionChoiceView } from "@/lib/domain/selections/choices-read"
+import { staffLeadTimeNote, type SelectionLeadTimeWarning } from "@/lib/domain/selections/lead-time-rules"
 import { formatCents } from "@/lib/format"
 import { projectInternalPhotoUrl } from "@/lib/photo-sources"
 import { cn } from "@/lib/utils"
@@ -38,6 +40,7 @@ export function SelectionChoiceCard({
   choice,
   index,
   allowanceCents,
+  leadTimeWarning,
   followUpNames,
   busy,
   onEdit,
@@ -52,6 +55,8 @@ export function SelectionChoiceCard({
   readonly choice: SelectionChoiceView
   readonly index: number
   readonly allowanceCents: number | null
+  /** Set on the one choice whose lead time puts the selection at risk. */
+  readonly leadTimeWarning: SelectionLeadTimeWarning | null
   readonly followUpNames: readonly string[]
   readonly busy: boolean
   readonly onEdit: () => void
@@ -121,6 +126,17 @@ export function SelectionChoiceCard({
             <> · <OverUnder deltaCents={allowanceDeltaCents(choice.ownerPriceCents, allowanceCents)} /></>
           )}
         </span>
+        {leadTimeWarning && (
+          <p
+            role="note"
+            className={cn(
+              "rounded-md border px-2 py-1 text-xs font-medium",
+              leadTimeWarning.level === "late" ? "border-destructive/30 bg-destructive/10 text-destructive" : "border-warning/30 bg-warning/10 text-warning",
+            )}
+          >
+            {staffLeadTimeNote(leadTimeWarning)}
+          </p>
+        )}
         {choice.chosen && choice.chosenAt && (
           <p className="text-xs text-muted-foreground">
             {pickedByLabel(choice)}

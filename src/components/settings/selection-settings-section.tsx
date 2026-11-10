@@ -3,8 +3,9 @@
 /*
  * Settings > Workflows > Selections: the company's selection rounds (name,
  * the schedule item that sets the due date, days before it), default lead
- * times by category, the owner-price markup, and the variance-to-change-
- * order threshold. Also offers the "Save to Compass" bookmarks-bar button.
+ * times by category, how many days ahead a long lead time is flagged, the
+ * owner-price markup, and the variance-to-change-order threshold. Also
+ * offers the "Save to Compass" bookmarks-bar button.
  */
 import * as React from "react"
 import { IconArrowDown, IconArrowUp, IconPlus, IconTrash } from "@tabler/icons-react"
@@ -39,6 +40,7 @@ export function SelectionSettingsSection(): React.ReactElement {
   const [error, setError] = React.useState<string | null>(null)
   const [rounds, setRounds] = React.useState<readonly SelectionRound[]>(GROUP.defaults.rounds)
   const [leads, setLeads] = React.useState<readonly LeadRow[]>([])
+  const [warnDays, setWarnDays] = React.useState(String(GROUP.defaults.leadTimeWarningDays))
   const [markup, setMarkup] = React.useState("")
   const [threshold, setThreshold] = React.useState(String(GROUP.defaults.changeOrderThresholdPercent))
   const [pending, startTransition] = React.useTransition()
@@ -53,6 +55,7 @@ export function SelectionSettingsSection(): React.ReactElement {
     const value = parsed.success ? parsed.data : GROUP.defaults
     setRounds(value.rounds)
     setLeads(leadRows(value))
+    setWarnDays(String(value.leadTimeWarningDays))
     setMarkup(value.ownerMarkupPercent === null ? "" : String(value.ownerMarkupPercent))
     setThreshold(String(value.changeOrderThresholdPercent))
     setCanEdit(result.data.canEdit)
@@ -71,6 +74,7 @@ export function SelectionSettingsSection(): React.ReactElement {
   function save(event: React.FormEvent<HTMLFormElement>): void {
     event.preventDefault()
     const thresholdValue = numberOrNull(threshold)
+    const warnDaysValue = numberOrNull(warnDays)
     const value: SelectionSettings = {
       rounds: [...rounds],
       leadTimeDays: Object.fromEntries(
@@ -79,12 +83,13 @@ export function SelectionSettingsSection(): React.ReactElement {
           return row.category.trim() && days !== null ? [[row.category.trim(), Math.round(days)]] : []
         }),
       ),
+      leadTimeWarningDays: warnDaysValue === null ? GROUP.defaults.leadTimeWarningDays : Math.round(warnDaysValue),
       ownerMarkupPercent: numberOrNull(markup),
       changeOrderThresholdPercent: thresholdValue ?? GROUP.defaults.changeOrderThresholdPercent,
     }
     const checked = selectionSettingsSchema.safeParse(value)
     if (!checked.success) {
-      toast.error("Check the Selection Phases, lead times and percents: names are required, days are 0-730, percents can't be negative.")
+      toast.error("Check the Selection Phases, lead times and percents: names are required, days are 0-730, the lead-time warning is 0-90 days, percents can't be negative.")
       return
     }
     startTransition(async () => {
@@ -195,6 +200,14 @@ export function SelectionSettingsSection(): React.ReactElement {
                 <IconPlus className="size-4" /> Add category
               </Button>
             )}
+            <div className="max-w-xs space-y-1 pt-2">
+              <Label htmlFor="selection-lead-warning">Warn about long lead times (days ahead)</Label>
+              <Input id="selection-lead-warning" inputMode="numeric" value={warnDays} disabled={disabled} onChange={(event) => setWarnDays(event.target.value)} />
+              <p className="text-xs text-muted-foreground">
+                A choice must be ordered by its selection&apos;s due date minus its lead time. This many days before that order-by date, staff see a warning
+                on the selection, the owner sees &quot;choose by&quot; on that choice, and the project manager gets a to-do to order it.
+              </p>
+            </div>
           </fieldset>
 
           <div className="grid max-w-xl gap-4 sm:grid-cols-2">

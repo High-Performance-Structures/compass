@@ -4,7 +4,8 @@
  * The owner's choosing view: rooms down the side, each published selection
  * as a card of choice photos with the owner price and over/under the
  * allowance (owner prices include the builder fee), a link to the supplier's
- * page, "Suggest an item (paste a link)" and "Ask a question". Tapping a
+ * page, a gentle "choose by" note on a choice with a longer lead time,
+ * "Suggest an item (paste a link)" and "Ask a question". Tapping a
  * card makes it the owner's pick; they can change it until the selection is
  * approved. Staff previewing the owner view see it read-only.
  */
@@ -19,6 +20,7 @@ import { linkSiteName, SelectionLinkCard } from "@/components/selections/selecti
 import { Button } from "@/components/ui/button"
 import { allowanceDeltaCents } from "@/lib/domain/selections/choice-rules"
 import type { SelectionChoiceView } from "@/lib/domain/selections/choices-read"
+import { ownerLeadTimeNote } from "@/lib/domain/selections/lead-time-rules"
 import type { OwnerBoardSelection } from "@/lib/domain/selections/owner-board-read"
 import { formatCents, formatDate } from "@/lib/format"
 import { projectAudiencePhotoUrl } from "@/lib/photo-sources"
@@ -106,6 +108,8 @@ function SelectionCard({
           {choices.map((choice) => {
             const link = choice.links[0] ?? null
             const delta = allowanceDeltaCents(choice.ownerPriceCents, selection.allowanceCents)
+            // Only while the owner can still choose, and not on the choice already picked.
+            const leadTime = locked || choice.chosen ? null : (selection.leadTimeNotes[choice.id] ?? null)
             return (
               <div
                 key={choice.id}
@@ -133,6 +137,7 @@ function SelectionCard({
                         </>
                       )}
                     </span>
+                    {leadTime && <span className="text-xs font-medium text-warning">{ownerLeadTimeNote(leadTime)}</span>}
                     {choice.description && <span className="line-clamp-2 text-xs text-muted-foreground">{choice.description}</span>}
                   </span>
                 </button>

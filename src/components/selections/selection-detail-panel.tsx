@@ -34,6 +34,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { SortableRows } from "@/components/ui/sortable-rows"
 import type { SelectionChoiceView } from "@/lib/domain/selections/choices-read"
+import type { SelectionLeadTimeWarning } from "@/lib/domain/selections/lead-time-rules"
 import type { RoundCard } from "@/lib/domain/selections/rounds-server"
 import type { SupplierOption } from "@/lib/domain/selections/selection-sheet-read"
 import { formatCents, formatDate } from "@/lib/format"
@@ -114,6 +115,7 @@ export function SelectionDetailPanel({
   rounds,
   suppliers,
   statusLabels,
+  leadTimeWarning,
   onChanged,
 }: {
   readonly projectId: string
@@ -125,6 +127,8 @@ export function SelectionDetailPanel({
   readonly suppliers: readonly SupplierOption[]
   /** The company's status names. */
   readonly statusLabels: SelectionStatusLabels
+  /** The selection's lead-time warning, shown on the choice that sets it. */
+  readonly leadTimeWarning: SelectionLeadTimeWarning | null
   /** Refreshes the sheet after a change. */
   readonly onChanged: () => void
 }): React.ReactElement {
@@ -227,6 +231,7 @@ export function SelectionDetailPanel({
                       choice={choice}
                       index={index}
                       allowanceCents={row.allowanceCents}
+                      leadTimeWarning={leadTimeWarning?.choiceId === choice.id ? leadTimeWarning : null}
                       followUpNames={choice.dependentSelectionIds.flatMap((id) => names.get(id) ?? [])}
                       busy={pending}
                       onEdit={() => setDialog({ kind: "choice", choice })}

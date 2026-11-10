@@ -143,7 +143,7 @@ export const SCHEDULED_JOBS: readonly ScheduledJob[] = [
     everyMinutes: 10,
     offsetMinute: 6,
     heavy: false,
-    why: "Follow-ups are due by the day; 10 minutes late is unnoticeable.",
+    why: "Follow-ups are due by the day; 10 minutes late is unnoticeable. The first run each hour also makes selection lead-time to-dos.",
   },
   {
     name: "Client meeting transcripts",
