@@ -5,24 +5,31 @@
  * buttons, search, and a sortable sheet whose default order keeps each room
  * together with follow-up selections indented under the selection that
  * opens them, and a "Late risk" filter for selections whose lead time puts
- * them at risk of arriving late. Clicking a row opens its detail panel
- * beside the sheet.
+ * them at risk of arriving late. Clicking a row opens it in the standard
+ * record drawer (`?item=<id>` in the URL, so links open it too); Previous and
+ * Next in the drawer step through the rows as filtered and sorted, and
+ * "Add selection" above the sheet opens the create drawer.
  */
 import * as React from "react"
 import { useRouter } from "next/navigation"
 import type { ColumnDef } from "@tanstack/react-table"
-import { IconAlertTriangle } from "@tabler/icons-react"
+import { IconAlertTriangle, IconChevronLeft, IconChevronRight } from "@tabler/icons-react"
 
 import { useListSheetFilterLabel } from "@/components/list-sheets/use-list-sheet"
+import { RecordDrawer, useRecordDrawerItem } from "@/components/record-drawer"
 import { RecordSearchInput, RecordTable, useRecordTable } from "@/components/record-table"
 import { RecordStatusBadge } from "@/components/record-status-badge"
+import { ProjectSelectionCreateForm } from "@/components/projects/project-selection-create-form"
 import { OverUnder } from "@/components/selections/selection-choice-card"
 import { ChoiceTemplatesDialog } from "@/components/selections/choice-templates-dialog"
+import { SaveToCompassBookmarklet } from "@/components/selections/save-to-compass-bookmarklet"
 import { SelectionDetailPanel } from "@/components/selections/selection-detail-panel"
 import { SelectionRoundCards } from "@/components/selections/selection-round-cards"
 import { SourceTag } from "@/components/shared/source-tag"
 import { StatusFilterBar } from "@/components/status-filter-bar"
 import { Button } from "@/components/ui/button"
+import { recordStep } from "@/lib/shared/record-step"
+import type { ProjectSelectionOptions } from "@/lib/domain/selections/types"
 import { leadTimeLabel, type SelectionLeadTimeWarning } from "@/lib/domain/selections/lead-time-rules"
 import type { RoundCard } from "@/lib/domain/selections/rounds-server"
 import { selectionStatusLabel, type SelectionStatusLabels } from "@/lib/domain/selections/status-labels"
@@ -166,9 +173,12 @@ export function SelectionsSheet({
   leadTimeWarnings,
   initialFilter,
   initialOpenId = null,
+  createOptions,
 }: {
   readonly projectId: string
   readonly rows: readonly SelectionSheetRow[]
+  /** Rooms, cost codes and statuses for the "Add selection" drawer. */
+  readonly createOptions: ProjectSelectionOptions
   readonly suppliers: readonly SupplierOption[]
   readonly rounds: readonly RoundCard[]
   /** The company's status names (Settings › Selections › Status names). */
@@ -176,13 +186,13 @@ export function SelectionsSheet({
   /** Selections at risk of arriving late because of a lead time, from the server. */
   readonly leadTimeWarnings: readonly SelectionLeadTimeWarning[]
   readonly initialFilter: SelectionListFilter
-  /** A selection to open on arrival (for example from "Save to Compass"). */
+  /** A selection to open on arrival (`?item=`, for example from "Save to Compass"). */
   readonly initialOpenId?: string | null
 }): React.ReactElement {
   const router = useRouter()
   const [filter, setFilter] = React.useState<SelectionListFilter>(initialFilter)
   const [query, setQuery] = React.useState("")
-  const [openId, setOpenId] = React.useState<string | null>(() => (initialOpenId && rows.some((row) => row.id === initialOpenId) ? initialOpenId : null))
+  const [openId, openItem, closeItem] = useRecordDrawerItem(initialOpenId && rows.some((row) => row.id === initialOpenId) ? initialOpenId : null)
   // A round key, "" for selections in no round, or null for every round.
   const [round, setRound] = React.useState<string | null>(null)
   const inRound = React.useMemo(
@@ -208,9 +218,27 @@ export function SelectionsSheet({
     getRowId: rowId,
     resetKey: `${filter}:${query}:${round ?? "*"}:${lateRiskOnly ? "late" : ""}`,
     sheetId: "selections.job",
+    // Keeps the sheet on the open selection's page, including after Previous / Next.
+    initialItemId: openId,
   })
   const open = rows.find((row) => row.id === openId) ?? null
   const refresh = React.useCallback(() => router.refresh(), [router])
+
+  // The older Save to Compass link used `?selection=`; swap it for the standard `?item=` once.
+  React.useEffect(() => {
+    const url = new URL(window.location.href)
+    if (!url.searchParams.has("selection")) return
+    url.searchParams.delete("selection")
+    if (openId !== null) url.searchParams.set("item", openId)
+    window.history.replaceState(null, "", url)
+    // Only on arrival; later opens keep `?item=` through the drawer hook.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+  // Previous / Next follow the sheet's current filter, search and sort, across pages.
+  const step = recordStep(
+    table.getPrePaginationRowModel().rows.map((row) => row.id),
+    openId,
+  )
 
   return (
     <div className="flex min-w-0 flex-col gap-3">
@@ -226,6 +254,8 @@ export function SelectionsSheet({
       />
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex flex-wrap items-center gap-1">
+          <ProjectSelectionCreateForm projectId={projectId} options={createOptions} />
+          <SaveToCompassBookmarklet variant="compact" />
           <StatusFilterBar
             kind="button"
             label="Filter selections by status"
@@ -261,33 +291,82 @@ export function SelectionsSheet({
           className="sm:max-w-sm"
         />
       </div>
-      <div className="flex flex-wrap items-start gap-4">
-        <div className="min-w-0 flex-[999_1_560px]">
-          <RecordTable
-            table={table}
-            itemLabel="selections"
-            emptyMessage={query ? "No selections match this search." : "No selections match this filter."}
-            rowIdPrefix="selection-row"
-            focusedRowId={openId}
-            onRowOpen={(row) => setOpenId(row.id)}
+      <RecordTable
+        table={table}
+        itemLabel="selections"
+        emptyMessage={query ? "No selections match this search." : "No selections match this filter."}
+        rowIdPrefix="selection-row"
+        focusedRowId={openId}
+        scrollToFocusedRow={false}
+        onRowOpen={(row) => openItem(row.id)}
+      />
+      {/* An opened selection shows in the record drawer over the sheet, so the list stays in place. */}
+      <RecordDrawer
+        open={open !== null}
+        onOpenChange={(next) => {
+          if (!next) closeItem()
+        }}
+        title={
+          open ? (
+            <>
+              {open.name}
+              {open.sourceSystem === "buildertrend" && <SourceTag source="buildertrend" className="ml-1.5" />}
+            </>
+          ) : (
+            "Selection"
+          )
+        }
+        description={open ? [open.roomName, open.costCode, open.parentName ? `Follow-up of ${open.parentName}` : null].filter(Boolean).join(" · ") : undefined}
+        headerActions={
+          <>
+            <Button
+              type="button"
+              variant="outline"
+              size="icon"
+              className="size-8"
+              aria-label="Previous selection"
+              title="Previous selection"
+              disabled={step.kind !== "listed" || step.previousId === null}
+              onClick={() => {
+                if (step.kind === "listed" && step.previousId !== null) openItem(step.previousId)
+              }}
+            >
+              <IconChevronLeft className="size-4" />
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              size="icon"
+              className="size-8"
+              aria-label="Next selection"
+              title="Next selection"
+              disabled={step.kind !== "listed" || step.nextId === null}
+              onClick={() => {
+                if (step.kind === "listed" && step.nextId !== null) openItem(step.nextId)
+              }}
+            >
+              <IconChevronRight className="size-4" />
+            </Button>
+            <span className="text-xs tabular-nums text-muted-foreground" aria-live="polite">
+              {step.kind === "listed" ? `${step.position} of ${step.total}` : "Not in the current filter"}
+            </span>
+          </>
+        }
+      >
+        {open ? (
+          <SelectionDetailPanel
+            key={open.id}
+            projectId={projectId}
+            row={open}
+            rows={rows}
+            rounds={rounds}
+            suppliers={suppliers}
+            statusLabels={statusLabels}
+            leadTimeWarning={leadTimes.get(open.id) ?? null}
+            onChanged={refresh}
           />
-        </div>
-        {open && (
-          <div className="min-w-0 flex-[1_1_400px]">
-            <SelectionDetailPanel
-              key={open.id}
-              projectId={projectId}
-              row={open}
-              rows={rows}
-              rounds={rounds}
-              suppliers={suppliers}
-              statusLabels={statusLabels}
-              leadTimeWarning={leadTimes.get(open.id) ?? null}
-              onChanged={refresh}
-            />
-          </div>
-        )}
-      </div>
+        ) : null}
+      </RecordDrawer>
     </div>
   )
 }

@@ -87,7 +87,7 @@ test.describe("company cost-code catalog", () => {
 
   test("selection forms use budget browsing without silently excluding company divisions", async ({ page }) => {
     await page.goto("/dashboard/projects/e2e-cost-code-budget/selections")
-    await page.getByRole("button", { name: "New Selection", exact: true }).first().click()
+    await page.getByRole("button", { name: "Add selection", exact: true }).click()
     const dialog = page.getByRole("dialog", { name: "Add Finish Selection" })
     const field = dialog.locator("#selection-cost-code").locator("..").locator("..").getByRole("button", { name: "Open options" })
     await field.click()
