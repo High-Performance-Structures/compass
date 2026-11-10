@@ -4,21 +4,12 @@ import * as React from "react"
 import Image from "next/image"
 import {
   IconArrowRight,
-  IconChevronLeft,
-  IconChevronRight,
   IconMaximize,
   IconPlayerPause,
   IconPlayerPlay,
 } from "@tabler/icons-react"
 
-import { Button } from "@/components/ui/button"
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog"
+import { PhotoFullScreenViewer } from "@/components/photos/photo-full-screen-viewer"
 import { cn } from "@/lib/utils"
 import { ProjectAudienceDashboardPlaceholder } from "@/components/projects/project-audience-dashboard-placeholder"
 
@@ -35,13 +26,11 @@ export type AudienceDashboardPhoto = {
 
 /** How many of the newest photos the header slideshow cycles through. */
 const SLIDESHOW_PHOTOS = 6
-/** A horizontal swipe longer than this moves to the next or previous photo. */
-const SWIPE_DISTANCE = 40
 
 /**
  * The project photo beside the dashboard greeting: a slideshow of the newest
- * photos (or a default photo before there are any). Clicking it opens a larger
- * viewer that steps through every photo the viewer can see.
+ * photos (or a default photo before there are any). Clicking it opens the
+ * full-screen viewer, which steps through every photo the viewer can see.
  */
 export function ProjectAudienceDashboardPhoto({
   photos,
@@ -151,160 +140,23 @@ export function ProjectAudienceDashboardPhoto({
           </button>
         </div>
       )}
-      <ProjectPhotoViewer
+      <PhotoFullScreenViewer
         photos={available}
-        index={viewerIndex}
-        onIndexChange={setViewerIndex}
-        onFailed={markFailed}
+        currentId={viewerIndex === null ? null : (available[viewerIndex % available.length]?.id ?? null)}
+        describe={(photo) => ({
+          id: photo.id,
+          title: photo.alt,
+          subtitle: photo.dateLabel,
+          alt: photo.alt,
+          src: photo.src,
+          thumbSrc: photo.thumbnailSrc,
+          fallbackLabel: "Photo unavailable",
+          imageKey: photo.id,
+        })}
+        onSelect={(photoId) => setViewerIndex(available.findIndex((photo) => photo.id === photoId))}
+        onClose={() => setViewerIndex(null)}
+        onImageError={markFailed}
       />
     </div>
-  )
-}
-
-/** A larger view of the project photos, with previous/next, arrow keys, swipe and thumbnails. */
-function ProjectPhotoViewer({
-  photos,
-  index,
-  onIndexChange,
-  onFailed,
-}: {
-  readonly photos: readonly AudienceDashboardPhoto[]
-  readonly index: number | null
-  readonly onIndexChange: (index: number | null) => void
-  readonly onFailed: (photoId: string) => void
-}): React.ReactElement {
-  const thumbnailRefs = React.useRef<Record<string, HTMLButtonElement | null>>({})
-  const swipeStartX = React.useRef<number | null>(null)
-  const open = index !== null && photos.length > 0
-  const current = open ? photos[index % photos.length] : undefined
-  const position = open ? index % photos.length : 0
-
-  const step = React.useCallback(
-    (direction: 1 | -1): void => {
-      if (index === null || photos.length < 2) return
-      onIndexChange((index + direction + photos.length) % photos.length)
-    },
-    [index, onIndexChange, photos.length]
-  )
-
-  React.useEffect(() => {
-    if (!open) return
-    function handleKeyDown(event: KeyboardEvent): void {
-      if (event.altKey || event.ctrlKey || event.metaKey) return
-      if (event.key === "ArrowLeft") {
-        event.preventDefault()
-        step(-1)
-      } else if (event.key === "ArrowRight") {
-        event.preventDefault()
-        step(1)
-      }
-    }
-    window.addEventListener("keydown", handleKeyDown)
-    return () => window.removeEventListener("keydown", handleKeyDown)
-  }, [open, step])
-
-  // Keep the current thumbnail in view as the viewer steps through photos.
-  React.useEffect(() => {
-    if (!current) return
-    thumbnailRefs.current[current.id]?.scrollIntoView({ block: "nearest", inline: "center" })
-  }, [current])
-
-  return (
-    <Dialog open={open} onOpenChange={(next) => (next ? null : onIndexChange(null))}>
-      <DialogContent className="max-h-[94vh] gap-0 overflow-hidden p-0 sm:max-w-5xl">
-        {current ? (
-          <div className="grid max-h-[94vh] grid-rows-[auto_minmax(0,1fr)_auto]">
-            <DialogHeader className="border-b px-4 py-3 pr-12">
-              <DialogTitle className="line-clamp-1 text-base">{current.alt}</DialogTitle>
-              <DialogDescription>
-                {current.dateLabel} · {position + 1} of {photos.length}
-              </DialogDescription>
-            </DialogHeader>
-            <div
-              className="relative min-h-[50vh] bg-muted/40 sm:min-h-[62vh]"
-              onPointerDown={(event) => {
-                swipeStartX.current = event.clientX
-              }}
-              onPointerUp={(event) => {
-                const start = swipeStartX.current
-                swipeStartX.current = null
-                if (start === null) return
-                const distance = event.clientX - start
-                if (Math.abs(distance) >= SWIPE_DISTANCE) step(distance < 0 ? 1 : -1)
-              }}
-            >
-              <Image
-                key={current.id}
-                src={current.src}
-                alt={current.alt}
-                fill
-                sizes="(min-width: 1024px) 1024px, 100vw"
-                unoptimized
-                draggable={false}
-                className="select-none object-contain"
-                onError={() => onFailed(current.id)}
-              />
-              {photos.length > 1 && (
-                <>
-                  <Button
-                    type="button"
-                    variant="secondary"
-                    size="icon"
-                    onClick={() => step(-1)}
-                    aria-label="Previous photo"
-                    className="absolute top-1/2 left-3 z-10 -translate-y-1/2 rounded-full bg-background/90 shadow-md"
-                  >
-                    <IconChevronLeft className="size-5" />
-                  </Button>
-                  <Button
-                    type="button"
-                    variant="secondary"
-                    size="icon"
-                    onClick={() => step(1)}
-                    aria-label="Next photo"
-                    className="absolute top-1/2 right-3 z-10 -translate-y-1/2 rounded-full bg-background/90 shadow-md"
-                  >
-                    <IconChevronRight className="size-5" />
-                  </Button>
-                </>
-              )}
-            </div>
-            {photos.length > 1 && (
-              <div
-                className="flex gap-2 overflow-x-auto border-t bg-background px-4 py-3"
-                aria-label="All project photos"
-              >
-                {photos.map((photo, photoIndex) => (
-                  <button
-                    key={photo.id}
-                    ref={(element) => {
-                      thumbnailRefs.current[photo.id] = element
-                    }}
-                    type="button"
-                    onClick={() => onIndexChange(photoIndex)}
-                    aria-label={`Show photo ${photoIndex + 1}: ${photo.alt}`}
-                    aria-current={photoIndex === position ? "true" : undefined}
-                    className={cn(
-                      "relative h-14 w-20 shrink-0 overflow-hidden rounded-md border-2 focus-visible:outline-2 focus-visible:outline-ring",
-                      photoIndex === position ? "border-primary" : "border-transparent opacity-70 hover:opacity-100"
-                    )}
-                  >
-                    <Image
-                      src={photo.thumbnailSrc}
-                      alt=""
-                      fill
-                      sizes="80px"
-                      unoptimized
-                      className="object-cover"
-                      onError={() => onFailed(photo.id)}
-                    />
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
-        ) : null}
-      </DialogContent>
-    </Dialog>
   )
 }

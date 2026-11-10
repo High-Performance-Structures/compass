@@ -8,7 +8,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import type { ProjectPhotoLibrary, ProjectPhotoLibraryItem } from "@/app/actions/project-photos"
 import type { PhotoReviewCard } from "@/components/projects/photo-review/photo-review-card"
 import type { PhotoReviewToolbar } from "@/components/projects/photo-review/photo-review-toolbar"
-import type { PhotoPreviewDialog } from "@/components/projects/photo-review/photo-preview-dialog"
+import type { PhotoDrawer } from "@/components/projects/photo-review/photo-drawer"
 import { ProjectPhotoReview } from "@/components/projects/project-photo-review"
 
 Object.defineProperty(globalThis, "IS_REACT_ACT_ENVIRONMENT", { configurable: true, value: true })
@@ -17,6 +17,7 @@ vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: vi.fn() }) }))
 vi.mock("@/app/actions/project-photos", () => ({
   updateProjectPhotoPhase: vi.fn(),
   updateProjectPhotoPermissions: vi.fn(),
+  deleteProjectPhotos: vi.fn(),
 }))
 vi.mock("@/components/developer-mode-provider", () => ({
   useDeveloperMode: () => ({ developerModeEnabled: false }),
@@ -39,8 +40,8 @@ vi.mock("@/components/projects/photo-review/photo-review-toolbar", () => ({
       createElement("button", { type: "button", onClick: () => filters.setDateFilter("") }, "All dates"),
       createElement("button", { type: "button", onClick: () => filters.setPhotoSort("oldest") }, "Oldest first")),
 }))
-vi.mock("@/components/projects/photo-review/photo-preview-dialog", () => ({
-  PhotoPreviewDialog: ({ previewPhoto, filteredPhotos, onShowAdjacent, onClose }: React.ComponentProps<typeof PhotoPreviewDialog>) =>
+vi.mock("@/components/projects/photo-review/photo-drawer", () => ({
+  PhotoDrawer: ({ previewPhoto, filteredPhotos, onShowAdjacent, onClose }: React.ComponentProps<typeof PhotoDrawer>) =>
     previewPhoto ? createElement("div", { role: "dialog" },
       createElement("output", null, `${previewPhoto.id} of ${filteredPhotos.length}`),
       createElement("button", { type: "button", onClick: () => onShowAdjacent("next") }, "Next photo"),

@@ -3,6 +3,7 @@
 import * as React from "react"
 import Image from "next/image"
 import {
+  IconArrowsMaximize,
   IconChevronLeft,
   IconChevronRight,
   IconPhoto,
@@ -13,13 +14,8 @@ import type { AudiencePhoto } from "@/app/actions/project-audience-preview"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { SearchableCombobox } from "@/components/searchable-combobox"
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog"
+import { PhotoFullScreenViewer } from "@/components/photos/photo-full-screen-viewer"
+import { RecordDrawer } from "@/components/record-drawer"
 import {
   Select,
   SelectContent,
@@ -148,6 +144,24 @@ export function ProjectAudiencePhotoGallery({
     () => new Set(failedImageIds),
     [failedImageIds]
   )
+  const [fullScreen, setFullScreen] = React.useState(false)
+
+  /** The image URL for a photo (thumbnail for strips, original for the drawer and viewer). */
+  function imageFor(
+    photo: AudiencePhoto,
+    size: "thumbnail" | "original"
+  ): { readonly src: string | null; readonly label: string; readonly key: string } {
+    const resolvedImage = resolvePhotoImageSource(photo)
+    const retryAttempt = imageRetryAttempts[photo.id] ?? 0
+    const src =
+      failedImageSet.has(photo.id) || resolvedImage.src === null
+        ? null
+        : photoImageSourceForRetry(
+            size === "thumbnail" ? photoThumbnailSrc(resolvedImage.src) : resolvedImage.src,
+            retryAttempt
+          )
+    return { src, label: resolvedImage.label, key: `${photo.id}-${retryAttempt}` }
+  }
   const filteredPhotos = React.useMemo(() => {
     const filtered = photos.filter(
       (photo) =>
@@ -394,46 +408,32 @@ export function ProjectAudiencePhotoGallery({
         </p>
       )}
 
-      <Dialog
-        open={previewPhoto !== null}
+      <RecordDrawer
+        open={previewPhoto !== null && !fullScreen}
         onOpenChange={(open) => {
           if (!open) setPreviewPhoto(null)
         }}
+        eyebrow={
+          previewPhoto
+            ? `Photo · ${filteredPhotos.findIndex((photo) => photo.id === previewPhoto.id) + 1} of ${filteredPhotos.length}`
+            : "Photo"
+        }
+        title={previewPhoto ? (previewPhoto.caption ?? previewPhoto.fileName) : "Photo"}
+        description={previewPhoto ? `${formatDate(previewPhoto.photoDate)} · ${phaseLabel(previewPhoto.schedulePhase)}` : undefined}
       >
-        <DialogContent className="max-h-[92vh] overflow-hidden p-0 sm:max-w-5xl">
-          {previewPhoto && (
-            (() => {
-              const resolvedImage = resolvePhotoImageSource(previewPhoto)
-              const retryAttempt = imageRetryAttempts[previewPhoto.id] ?? 0
-              const imageSrc =
-                failedImageSet.has(previewPhoto.id) ||
-                resolvedImage.src === null
-                  ? null
-                  : photoImageSourceForRetry(
-                      resolvedImage.src,
-                      retryAttempt
-                    )
-
-              return (
-            <div className="grid max-h-[92vh] grid-rows-[auto_minmax(0,1fr)]">
-              <DialogHeader className="border-b px-4 py-3">
-                <DialogTitle className="line-clamp-1 text-base">
-                  {previewPhoto.caption ?? previewPhoto.fileName}
-                </DialogTitle>
-                <DialogDescription>
-                  {formatDate(previewPhoto.photoDate)} ·{" "}
-                  {phaseLabel(previewPhoto.schedulePhase)}
-                </DialogDescription>
-              </DialogHeader>
-              <div className="flex min-h-0 flex-col bg-muted/40">
-                <div className="relative min-h-[55vh] flex-1">
-                  {imageSrc ? (
+        {previewPhoto ? (
+          (() => {
+            const image = imageFor(previewPhoto, "original")
+            return (
+              <div className="grid gap-4">
+                <div className="relative h-[min(60vh,480px)] overflow-hidden rounded-lg bg-muted/40">
+                  {image.src ? (
                     <Image
-                      key={`${previewPhoto.id}-${retryAttempt}`}
-                      src={imageSrc}
+                      key={image.key}
+                      src={image.src}
                       alt={previewPhoto.caption ?? previewPhoto.fileName}
                       fill
-                      sizes="90vw"
+                      sizes="720px"
                       unoptimized
                       className="object-contain"
                       onError={() => markImageFailed(previewPhoto.id)}
@@ -441,9 +441,7 @@ export function ProjectAudiencePhotoGallery({
                   ) : (
                     <div className="flex h-full flex-col items-center justify-center gap-3 p-6 text-center">
                       <IconPhoto className="size-12 text-muted-foreground" />
-                      <p className="text-sm font-medium text-muted-foreground">
-                        {resolvedImage.label}
-                      </p>
+                      <p className="text-sm font-medium text-muted-foreground">{image.label}</p>
                     </div>
                   )}
                   {filteredPhotos.length > 1 && (
@@ -470,41 +468,57 @@ export function ProjectAudiencePhotoGallery({
                       </Button>
                     </>
                   )}
-                </div>
-                <div className="flex flex-wrap items-center justify-between gap-2 border-t bg-background px-4 py-3">
-                  <div>
-                    <p className="mb-2 text-xs text-muted-foreground">
-                      {filteredPhotos.findIndex(
-                        (photo) => photo.id === previewPhoto.id
-                      ) + 1}{" "}
-                      of {filteredPhotos.length}
-                    </p>
-                    <div className="flex flex-wrap gap-1">
-                      <Badge variant="secondary">
-                        Phase: {phaseLabel(previewPhoto.schedulePhase)}
-                      </Badge>
-                    </div>
-                    {previewPhoto.schedulePhase.length > 0 && (
-                      <p className="mt-2 max-w-2xl text-xs text-muted-foreground">
-                        {previewPhoto.schedulePhaseReason}
-                      </p>
-                    )}
-                  </div>
                   <Button
                     type="button"
-                    variant="outline"
-                    onClick={() => setPreviewPhoto(null)}
+                    variant="secondary"
+                    size="sm"
+                    onClick={() => setFullScreen(true)}
+                    className="absolute bottom-3 right-3 z-10 bg-background/90 shadow-md"
                   >
-                    Close
+                    <IconArrowsMaximize className="size-4" />
+                    Full screen
                   </Button>
                 </div>
+                <div className="flex flex-wrap gap-1">
+                  <Badge variant="secondary">Phase: {phaseLabel(previewPhoto.schedulePhase)}</Badge>
+                </div>
+                {previewPhoto.schedulePhase.length > 0 && (
+                  <p className="text-xs text-muted-foreground">{previewPhoto.schedulePhaseReason}</p>
+                )}
               </div>
-            </div>
-              )
-            })()
-          )}
-        </DialogContent>
-      </Dialog>
+            )
+          })()
+        ) : null}
+      </RecordDrawer>
+      <PhotoFullScreenViewer
+        photos={filteredPhotos}
+        currentId={fullScreen ? (previewPhoto?.id ?? null) : null}
+        describe={(photo) => {
+          const original = imageFor(photo, "original")
+          return {
+            id: photo.id,
+            title: photo.caption ?? photo.fileName,
+            subtitle: `${formatDate(photo.photoDate)} · ${phaseLabel(photo.schedulePhase)}`,
+            alt: photo.caption ?? photo.fileName,
+            src: original.src,
+            thumbSrc: imageFor(photo, "thumbnail").src,
+            fallbackLabel: original.label,
+            imageKey: original.key,
+          }
+        }}
+        onSelect={(photoId) => setPreviewPhoto(filteredPhotos.find((photo) => photo.id === photoId) ?? null)}
+        onClose={() => {
+          setFullScreen(false)
+          setPreviewPhoto(null)
+        }}
+        onImageError={markImageFailed}
+        arrowKeys={false}
+        actions={
+          <Button type="button" variant="outline" onClick={() => setFullScreen(false)}>
+            Show details
+          </Button>
+        }
+      />
     </section>
   )
 }
