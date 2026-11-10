@@ -4,7 +4,7 @@ import { z } from "zod/v4"
  * Settings > Workflows > Adding to Sage: who decides staff requests to add a
  * vendor, client, or one of their people to Sage. Pure and client-safe.
  */
-export const sageAddRequestSettingsSchema = z.object({
+const sageAddRequestSettingsSchema = z.object({
   /** The one staff member who approves; null: any active admin. */
   approverUserId: z.string().min(1).max(200).nullable(),
 })

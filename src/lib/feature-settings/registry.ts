@@ -243,7 +243,7 @@ export type MorningPlanSettings = z.infer<typeof morningPlanSettingsSchema>
  * Project calendars: one Google calendar per job, owned by the company's
  * Compass account and shared only with staff.
  */
-export const projectCalendarSettingsSchema = z.object({
+const projectCalendarSettingsSchema = z.object({
   /** off = not offered; selected = each job off until staff create one (default); open = every open and warranty job. */
   mode: z.enum(["off", "selected", "open"]),
   /** project = staff on the job's team; all = every staff member. */
@@ -269,7 +269,7 @@ const LOGO_DATA_URL = /^data:image\/png;base64,[a-z0-9+/]+={0,2}$/i
  * each its own job and number. Their jobs aren't flagged as duplicates just
  * for sharing a customer and name.
  */
-export const projectDuplicateSettingsSchema = z.object({
+const projectDuplicateSettingsSchema = z.object({
   repeatOrderDepartments: z.array(z.enum(["O", "H", "N", "D"])).max(4),
 })
 
@@ -385,7 +385,7 @@ export const jobWorkflowsSettingsSchema = z.object({
 
 export type JobWorkflowsSettings = z.infer<typeof jobWorkflowsSettingsSchema>
 
-export const clientInteractionSettingsSchema = z.object({
+const clientInteractionSettingsSchema = z.object({
   /** A logged contact needs at least this much written about what happened. */
   minimumSummaryCharacters: z.number().int().min(1).max(500),
   /** How far back a contact may be dated. */

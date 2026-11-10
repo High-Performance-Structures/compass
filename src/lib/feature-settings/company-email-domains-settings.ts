@@ -6,7 +6,7 @@ import { z } from "zod/v4"
  * it never matches a vendor by domain, and imported participants on it are
  * matched to the staff member with the same name before the @.
  */
-export const companyEmailDomainsSettingsSchema = z.object({
+const companyEmailDomainsSettingsSchema = z.object({
   domains: z.array(z.string().trim().toLowerCase().regex(/^(?=.{3,253}$)[a-z0-9](?:[a-z0-9-]*[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)+$/, "Enter a domain such as example.com.")).max(20),
 })
 

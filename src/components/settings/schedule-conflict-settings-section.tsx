@@ -2,17 +2,16 @@
 
 import * as React from "react"
 import { toast } from "sonner"
-import { getFeatureSettingsForEditor, saveFeatureSettings } from "@/app/actions/feature-settings"
+import { useFeatureSettingsEditor } from "@/hooks/use-feature-settings-editor"
 import { Button } from "@/components/ui/button"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import {
   FEATURE_SETTINGS,
   scheduleConflictSettingsSchema,
-  type ScheduleConflictSettingsValue,
+  type ScheduleConflictSettingsValue
 } from "@/lib/feature-settings/registry"
 
-const DEFAULTS = FEATURE_SETTINGS["schedule-conflicts"].defaults
 
 function aliasLines(settings: ScheduleConflictSettingsValue): string {
   return settings.aliases.map((alias) => `${alias.from} = ${alias.to}`).join("\n")
@@ -34,51 +33,30 @@ function parseAliases(text: string): ScheduleConflictSettingsValue["aliases"] {
  * of the same name ("old = new" per line).
  */
 export function ScheduleConflictSettingsSection(): React.ReactElement {
+  // The lists are edited as text, one entry per line.
   const [ignored, setIgnored] = React.useState("")
   const [aliases, setAliases] = React.useState("")
-  const [canEdit, setCanEdit] = React.useState(false)
-  const [error, setError] = React.useState<string | null>(null)
-  const [pending, startTransition] = React.useTransition()
-
-  const load = React.useCallback(async () => {
-    const result = await getFeatureSettingsForEditor("schedule-conflicts")
-    if (!result.success) {
-      setError(result.error)
-      return
+  const { error, disabled, save: saveSettings } = useFeatureSettingsEditor("schedule-conflicts", {
+    savedMessage: "Schedule conflict settings saved.",
+    onLoaded: (settings) => {
+      setIgnored(settings.ignoredParties.join("\n"))
+      setAliases(aliasLines(settings))
     }
-    const parsed = scheduleConflictSettingsSchema.safeParse(result.data.settings)
-    const settings = parsed.success ? parsed.data : DEFAULTS
-    setIgnored(settings.ignoredParties.join("\n"))
-    setAliases(aliasLines(settings))
-    setCanEdit(result.data.canEdit)
-  }, [])
-
-  React.useEffect(() => {
-    void load()
-  }, [load])
+  })
 
   function save(event: React.FormEvent<HTMLFormElement>): void {
     event.preventDefault()
     const parsed = scheduleConflictSettingsSchema.safeParse({
       ignoredParties: ignored.split("\n").map((line) => line.trim()).filter(Boolean),
-      aliases: parseAliases(aliases),
+      aliases: parseAliases(aliases)
     })
     if (!parsed.success) {
       toast.error(parsed.error.issues[0]?.message ?? "Check the schedule conflict settings.")
       return
     }
-    startTransition(async () => {
-      const result = await saveFeatureSettings("schedule-conflicts", parsed.data)
-      if (!result.success) {
-        toast.error(result.error)
-        return
-      }
-      toast.success("Schedule conflict settings saved.")
-      await load()
-    })
+    saveSettings(parsed.data)
   }
 
-  const disabled = pending || !canEdit
   return (
     <section aria-labelledby="schedule-conflict-settings" className="space-y-4 border-b pb-6">
       <div>

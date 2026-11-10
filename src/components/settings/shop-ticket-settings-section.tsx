@@ -2,7 +2,7 @@
 
 import * as React from "react"
 import { toast } from "sonner"
-import { getFeatureSettingsForEditor, saveFeatureSettings } from "@/app/actions/feature-settings"
+import { useFeatureSettingsEditor } from "@/hooks/use-feature-settings-editor"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -24,28 +24,12 @@ const DEPARTMENTS: readonly { readonly value: ShopTicketSettings["issuingDepartm
  * Rates are not here; they come from the rate book's Labor and Machine entries.
  */
 export function ShopTicketSettingsSection(): React.ReactElement {
-  const [settings, setSettings] = React.useState<ShopTicketSettings>(DEFAULTS)
+  // The starting number is typed into a text box, so it keeps its own state.
   const [startNumber, setStartNumber] = React.useState(String(DEFAULTS.startNumber))
-  const [canEdit, setCanEdit] = React.useState(false)
-  const [error, setError] = React.useState<string | null>(null)
-  const [pending, startTransition] = React.useTransition()
-
-  const load = React.useCallback(async () => {
-    const result = await getFeatureSettingsForEditor("shop-tickets")
-    if (!result.success) {
-      setError(result.error)
-      return
-    }
-    const parsed = shopTicketSettingsSchema.safeParse(result.data.settings)
-    const next = parsed.success ? parsed.data : DEFAULTS
-    setSettings(next)
-    setStartNumber(String(next.startNumber))
-    setCanEdit(result.data.canEdit)
-  }, [])
-
-  React.useEffect(() => {
-    void load()
-  }, [load])
+  const { settings, setSettings, canEdit, error, pending, save: saveSettings } = useFeatureSettingsEditor("shop-tickets", {
+    savedMessage: "Shop ticket settings saved.",
+    onLoaded: (next) => setStartNumber(String(next.startNumber)),
+  })
 
   function save(event: React.FormEvent<HTMLFormElement>): void {
     event.preventDefault()
@@ -54,15 +38,7 @@ export function ShopTicketSettingsSection(): React.ReactElement {
       toast.error(parsed.error.issues[0]?.message ?? "Check the shop ticket settings.")
       return
     }
-    startTransition(async () => {
-      const result = await saveFeatureSettings("shop-tickets", parsed.data)
-      if (!result.success) {
-        toast.error(result.error)
-        return
-      }
-      toast.success("Shop ticket settings saved.")
-      await load()
-    })
+    saveSettings(parsed.data)
   }
 
   const disabled = pending || !canEdit

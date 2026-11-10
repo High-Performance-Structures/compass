@@ -1,77 +1,36 @@
 "use client"
 
 import * as React from "react"
-import { toast } from "sonner"
-import {
-  getFeatureSettingsForEditor,
-  resetFeatureSettings,
-  saveFeatureSettings,
-} from "@/app/actions/feature-settings"
+import { useFeatureSettingsEditor } from "@/hooks/use-feature-settings-editor"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { FEATURE_SETTINGS, clientInteractionSettingsSchema } from "@/lib/feature-settings/registry"
+import { FEATURE_SETTINGS } from "@/lib/feature-settings/registry"
 
 const GROUP = FEATURE_SETTINGS["client-interactions"]
 
 /** What a logged client contact must include before it counts toward follow-up. */
 export function ClientInteractionSettingsSection(): React.ReactElement {
-  const [loaded, setLoaded] = React.useState(false)
-  const [canEdit, setCanEdit] = React.useState(false)
-  const [customized, setCustomized] = React.useState(false)
-  const [error, setError] = React.useState<string | null>(null)
+  // Numbers are typed into text boxes, so they keep their own state.
   const [minimum, setMinimum] = React.useState(String(GROUP.defaults.minimumSummaryCharacters))
   const [backdate, setBackdate] = React.useState(String(GROUP.defaults.maximumBackdateDays))
-  const [pending, startTransition] = React.useTransition()
-
-  const load = React.useCallback(async () => {
-    const result = await getFeatureSettingsForEditor("client-interactions")
-    if (!result.success) {
-      setError(result.error)
-      return
-    }
-    const parsed = clientInteractionSettingsSchema.safeParse(result.data.settings)
-    const settings = parsed.success ? parsed.data : GROUP.defaults
-    setMinimum(String(settings.minimumSummaryCharacters))
-    setBackdate(String(settings.maximumBackdateDays))
-    setCanEdit(result.data.canEdit)
-    setCustomized(result.data.customized)
-    setLoaded(true)
-  }, [])
-
-  React.useEffect(() => {
-    void load()
-  }, [load])
+  const { loaded, canEdit, customized, error, pending, disabled, save: saveSettings, reset } = useFeatureSettingsEditor(
+    "client-interactions",
+    {
+      savedMessage: "Client contact record settings saved.",
+      resetMessage: "Client contact record settings reset to defaults.",
+      onLoaded: (settings) => {
+        setMinimum(String(settings.minimumSummaryCharacters))
+        setBackdate(String(settings.maximumBackdateDays))
+      }
+    },
+  )
 
   function save(event: React.FormEvent<HTMLFormElement>): void {
     event.preventDefault()
-    startTransition(async () => {
-      const result = await saveFeatureSettings("client-interactions", {
-        minimumSummaryCharacters: Number(minimum),
-        maximumBackdateDays: Number(backdate),
-      })
-      if (!result.success) {
-        toast.error(result.error)
-        return
-      }
-      toast.success("Client contact record settings saved.")
-      await load()
-    })
+    saveSettings({ minimumSummaryCharacters: Number(minimum), maximumBackdateDays: Number(backdate) })
   }
 
-  function reset(): void {
-    startTransition(async () => {
-      const result = await resetFeatureSettings("client-interactions")
-      if (!result.success) {
-        toast.error(result.error)
-        return
-      }
-      toast.success("Client contact record settings reset to defaults.")
-      await load()
-    })
-  }
-
-  const disabled = pending || !canEdit
   return (
     <section aria-labelledby="client-interaction-settings" className="space-y-4 border-b pb-6">
       <div>
