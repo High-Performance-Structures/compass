@@ -65,6 +65,8 @@ import {
 } from "@/lib/domain/selections/choices-store"
 import { fetchLinkPreview, normalizeSupplierUrl } from "@/lib/selections/link-preview"
 import type { SelectionSheetRow } from "@/lib/selections/sheet"
+import { readSelectionStatusLabels } from "@/lib/domain/selections/status-labels-server"
+import type { SelectionStatusLabels } from "@/lib/domain/selections/status-labels"
 
 /*
  * Choices, supplier links, photo links, comments and follow-up selections
@@ -503,13 +505,19 @@ export type SelectionSheetData = {
   readonly suppliers: readonly SupplierOption[]
   /** The company's rounds as cards for this job (Settings > Selections). */
   readonly rounds: readonly RoundCard[]
+  /** The company's selection status names, with defaults filled in. */
+  readonly statusLabels: SelectionStatusLabels
 }
 
 /** The staff Selections sheet: every selection on the job plus the supplier list. Throws the access errors. */
 export async function getSelectionSheet(projectId: string): Promise<SelectionSheetData> {
   const { db, organizationId } = await staffSelectionContext(projectId, "read")
-  const [rows, suppliers] = await Promise.all([loadSelectionSheet(db, projectId), loadSupplierOptions(db, organizationId)])
-  return { rows, suppliers, rounds: await loadRoundCards(db, projectId, organizationId, rows) }
+  const [rows, suppliers, statusLabels] = await Promise.all([
+    loadSelectionSheet(db, projectId),
+    loadSupplierOptions(db, organizationId),
+    readSelectionStatusLabels(db, organizationId),
+  ])
+  return { rows, suppliers, rounds: await loadRoundCards(db, projectId, organizationId, rows), statusLabels }
 }
 
 /** The owner's choosing view (staff may preview it). Throws the access errors. */

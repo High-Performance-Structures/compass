@@ -39,6 +39,7 @@ import type { SupplierOption } from "@/lib/domain/selections/selection-sheet-rea
 import { formatCents, formatDate } from "@/lib/format"
 import { moveLine } from "@/lib/shared/line-order"
 import type { SelectionSheetRow } from "@/lib/selections/sheet"
+import type { SelectionStatusLabels } from "@/lib/domain/selections/status-labels"
 
 type Dialogs =
   | { readonly kind: "none" }
@@ -112,6 +113,7 @@ export function SelectionDetailPanel({
   rows,
   rounds,
   suppliers,
+  statusLabels,
   onChanged,
 }: {
   readonly projectId: string
@@ -121,6 +123,8 @@ export function SelectionDetailPanel({
   /** The company's rounds on this job. */
   readonly rounds: readonly RoundCard[]
   readonly suppliers: readonly SupplierOption[]
+  /** The company's status names. */
+  readonly statusLabels: SelectionStatusLabels
   /** Refreshes the sheet after a change. */
   readonly onChanged: () => void
 }): React.ReactElement {
@@ -187,7 +191,7 @@ export function SelectionDetailPanel({
             {row.sourceSystem === "buildertrend" && <SourceTag source="buildertrend" className="ml-1.5" />}
           </h2>
           {/* Keyed on the status so an automatic move or another edit shows after refresh. */}
-          <ProjectSelectionStatusSelect key={row.status} projectId={projectId} selectionId={row.id} status={row.status} onChanged={onChanged} />
+          <ProjectSelectionStatusSelect key={row.status} projectId={projectId} selectionId={row.id} status={row.status} labels={statusLabels} onChanged={onChanged} />
         </div>
         <span className="text-sm">
           Allowance {row.allowanceCents !== null ? <b>{formatCents(row.allowanceCents)}</b> : <span className="text-muted-foreground">not published</span>}

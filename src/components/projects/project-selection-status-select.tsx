@@ -1,6 +1,6 @@
 "use client"
 
-import { PROJECT_SELECTION_STATUS_OPTIONS } from "@/lib/domain/selections/statuses"
+import { selectionStatusOptions, type SelectionStatusLabels } from "@/lib/domain/selections/status-labels"
 import * as React from "react"
 
 import {
@@ -11,26 +11,28 @@ import type {
 } from "@/lib/domain/selections/types"
 import { SearchableCombobox } from "@/components/searchable-combobox"
 
-const STATUS_OPTIONS = PROJECT_SELECTION_STATUS_OPTIONS
-
 export function ProjectSelectionStatusSelect({
   projectId,
   selectionId,
   status,
+  labels,
   onChanged,
 }: {
   readonly projectId: string
   readonly selectionId: string
   readonly status: ProjectSelectionStatus
+  /** The company's status names, read on the server. */
+  readonly labels: SelectionStatusLabels
   /** Called after a change saves (e.g. to refresh the sheet). */
   readonly onChanged?: () => void
 }): React.ReactElement {
   const [currentStatus, setCurrentStatus] =
     React.useState<ProjectSelectionStatus>(status)
   const [saving, setSaving] = React.useState(false)
+  const statusOptions = selectionStatusOptions(labels)
 
   async function changeStatus(value: string): Promise<void> {
-    const option = STATUS_OPTIONS.find((item) => item.value === value)
+    const option = statusOptions.find((item) => item.value === value)
     if (!option) return
 
     const previous = currentStatus
@@ -56,7 +58,7 @@ export function ProjectSelectionStatusSelect({
       value={currentStatus}
       onValueChange={(value) => void changeStatus(value)}
       disabled={saving}
-      options={STATUS_OPTIONS}
+      options={statusOptions}
       ariaLabel="Selection status"
       placeholder="Choose status"
       searchPlaceholder="Search statuses..."

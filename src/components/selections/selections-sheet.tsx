@@ -20,12 +20,12 @@ import { SelectionRoundCards } from "@/components/selections/selection-round-car
 import { SourceTag } from "@/components/shared/source-tag"
 import { StatusFilterBar } from "@/components/status-filter-bar"
 import type { RoundCard } from "@/lib/domain/selections/rounds-server"
+import { selectionStatusLabel, type SelectionStatusLabels } from "@/lib/domain/selections/status-labels"
 import type { SupplierOption } from "@/lib/domain/selections/selection-sheet-read"
 import type { RecordStatusColor } from "@/lib/domain/record-statuses/statuses"
 import { formatDate } from "@/lib/format"
 import {
-  SELECTION_LIST_FILTERS,
-  SELECTION_STATUS_LABELS,
+  selectionListFilters,
   selectionMatchesFilter,
   selectionMatchesSearch,
   selectionStatusGroup,
@@ -47,7 +47,10 @@ const GROUP_COLOR: Readonly<Record<ReturnType<typeof selectionStatusGroup>, Reco
 const rowId = (row: SelectionSheetRow): string => row.id
 
 /** The Selections sheet's columns (registry sheet "selections.job"). */
-export function selectionColumns(roundNames: ReadonlyMap<string, string> = new Map()): ColumnDef<SelectionSheetRow>[] {
+export function selectionColumns(
+  roundNames: ReadonlyMap<string, string> = new Map(),
+  statusLabels?: SelectionStatusLabels,
+): ColumnDef<SelectionSheetRow>[] {
   const roundName = (row: SelectionSheetRow): string | undefined => (row.roundKey ? roundNames.get(row.roundKey) : undefined)
   return [
     {
@@ -130,7 +133,7 @@ export function selectionColumns(roundNames: ReadonlyMap<string, string> = new M
       header: "Status",
       size: 130,
       cell: ({ row: { original } }) => (
-        <RecordStatusBadge label={SELECTION_STATUS_LABELS[original.status]} color={GROUP_COLOR[selectionStatusGroup(original.status)]} />
+        <RecordStatusBadge label={selectionStatusLabel(original.status, statusLabels)} color={GROUP_COLOR[selectionStatusGroup(original.status)]} />
       ),
     },
   ]
@@ -141,12 +144,15 @@ export function SelectionsSheet({
   rows,
   suppliers,
   rounds,
+  statusLabels,
   initialFilter,
 }: {
   readonly projectId: string
   readonly rows: readonly SelectionSheetRow[]
   readonly suppliers: readonly SupplierOption[]
   readonly rounds: readonly RoundCard[]
+  /** The company's status names (Settings › Selections › Status names). */
+  readonly statusLabels: SelectionStatusLabels
   readonly initialFilter: SelectionListFilter
 }): React.ReactElement {
   const router = useRouter()
@@ -164,7 +170,7 @@ export function SelectionsSheet({
     [inRound, filter, query],
   )
   const roundNames = React.useMemo(() => new Map(rounds.map((item) => [item.key, item.name])), [rounds])
-  const columns = React.useMemo(() => selectionColumns(roundNames), [roundNames])
+  const columns = React.useMemo(() => selectionColumns(roundNames, statusLabels), [roundNames, statusLabels])
   const filterLabel = useListSheetFilterLabel("selections.job")
   const table = useRecordTable({
     data: visible,
@@ -192,7 +198,7 @@ export function SelectionsSheet({
         <StatusFilterBar
           kind="button"
           label="Filter selections by status"
-          options={SELECTION_LIST_FILTERS.map((option) => ({
+          options={selectionListFilters(statusLabels).map((option) => ({
             ...option,
             label: filterLabel(option.value, option.label),
             count: inRound.filter((row) => selectionMatchesFilter(row, option.value)).length,
@@ -222,7 +228,7 @@ export function SelectionsSheet({
         </div>
         {open && (
           <div className="min-w-0 flex-[1_1_400px]">
-            <SelectionDetailPanel key={open.id} projectId={projectId} row={open} rows={rows} rounds={rounds} suppliers={suppliers} onChanged={refresh} />
+            <SelectionDetailPanel key={open.id} projectId={projectId} row={open} rows={rows} rounds={rounds} suppliers={suppliers} statusLabels={statusLabels} onChanged={refresh} />
           </div>
         )}
       </div>

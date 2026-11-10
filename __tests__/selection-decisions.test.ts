@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { readFileSync } from "node:fs"
 import { projectSelectionComments } from "@/db/schema-selection-choices"
+import { organizationFeatureSettings } from "@/db/schema"
 import { getTableConfig, type SQLiteTable } from "drizzle-orm/sqlite-core"
 import { eq } from "drizzle-orm"
 import {
@@ -116,6 +117,8 @@ beforeEach(async () => {
     projectOperations,
     projectChangeOrders,
     projectSelectionComments,
+    // Status names (Settings › Selections) are read for publish Activity text.
+    organizationFeatureSettings,
   ])
     createTable(table)
   testDb.sqlite.exec(

@@ -14,7 +14,9 @@ import { recordActivityEvents, type ActivityActor } from "@/lib/activity-log"
 import { chunkD1Values } from "@/lib/d1-query"
 import type { Db } from "@/lib/server/action-context"
 
-import { PROJECT_SELECTION_STATUS_LABELS, type ProjectSelectionStatus } from "./statuses"
+import type { ProjectSelectionStatus } from "./statuses"
+import { selectionStatusLabel } from "./status-labels"
+import { readSelectionStatusLabels } from "./status-labels-server"
 import { updateFinishSelectionsStatement } from "./store"
 
 export type SelectionAdvanceTarget = "owner_review" | "ordered" | "installed"
@@ -92,6 +94,8 @@ export async function advanceSelectionStatus(
   if (project?.organizationId) {
     const organizationId = project.organizationId
     const why = reasonText(input.reason)
+    // Activity text uses the company's status names as they are now; metadata keeps the keys.
+    const labels = await readSelectionStatusLabels(db, organizationId)
     await recordActivityEvents(
       db,
       before.map((row) => ({
@@ -102,7 +106,7 @@ export async function advanceSelectionStatus(
         action: "selection_status_advanced",
         entityType: "project_finish_selection",
         entityId: row.id,
-        summary: `${row.name} moved from ${PROJECT_SELECTION_STATUS_LABELS[row.status]} to ${PROJECT_SELECTION_STATUS_LABELS[input.target]}: ${why}.`,
+        summary: `${row.name} moved from ${selectionStatusLabel(row.status, labels)} to ${selectionStatusLabel(input.target, labels)}: ${why}.`,
         metadata: {
           from: row.status,
           to: input.target,

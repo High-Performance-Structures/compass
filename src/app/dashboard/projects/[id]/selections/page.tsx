@@ -143,6 +143,7 @@ export default async function ProjectSelectionsPage({
         rows={sheet.rows}
         suppliers={sheet.suppliers}
         rounds={sheet.rounds}
+        statusLabels={sheet.statusLabels}
         initialFilter={parseSelectionListFilter(query.status ?? (await listSheetStartFilter("selections.job")))}
       />
       <div className="mt-8 border-t pt-6">

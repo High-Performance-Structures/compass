@@ -1,3 +1,5 @@
+import type { SelectionStatusLabels } from "@/lib/domain/selections/status-labels"
+
 import type { SelectionSpecification } from "./decisions"
 
 export type SelectionRequest = {
@@ -51,6 +53,8 @@ export type SelectionWorkspace = {
   readonly projectId: string
   readonly audience: "staff" | "owner" | "sub_vendor"
   readonly canWrite: boolean
+  /** The job's company status names (Settings › Selections › Status names). */
+  readonly statusLabels: SelectionStatusLabels
   readonly items: readonly SelectionDecisionItem[]
   readonly changeOrders: readonly {
     readonly id: string

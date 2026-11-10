@@ -37,6 +37,7 @@ import { SageEstimateSettingsSection } from "@/components/settings/sage-estimate
 import { SageContactReviewSettingsSection } from "@/components/settings/sage-contact-review-settings-section"
 import { SageAddRequestSettingsSection } from "@/components/settings/sage-add-request-settings-section"
 import { SelectionSettingsSection } from "@/components/settings/selection-settings-section"
+import { SelectionStatusNamesSection } from "@/components/settings/selection-status-names-section"
 import { ScheduleConflictSettingsSection } from "@/components/settings/schedule-conflict-settings-section"
 import { FieldCostCodeEditor } from "@/components/settings/field-cost-code-editor"
 import { DailyLogSettingsSection } from "@/components/settings/daily-log-settings-section"
@@ -335,7 +336,12 @@ function WorkflowAreaSection({ area }: { readonly area: WorkflowArea }): React.R
     case "sage-add-requests":
       return <SageAddRequestSettingsSection />
     case "selections":
-      return <SelectionSettingsSection />
+      return (
+        <>
+          <SelectionSettingsSection />
+          <SelectionStatusNamesSection />
+        </>
+      )
     case "change-order-acceptance":
       return <ChangeOrderAcceptanceSettingsSection />
     case "schedule-conflicts":

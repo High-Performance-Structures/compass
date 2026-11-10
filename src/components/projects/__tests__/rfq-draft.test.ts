@@ -22,6 +22,7 @@ import {
 import type { ProjectTaskAssigneeOption } from "@/lib/domain/contacts/types"
 import type { ProjectRfqCostCodeOption } from "@/lib/domain/operations/types"
 import type { ProjectSelectionItem, ProjectSelectionOptions } from "@/lib/domain/selections/types"
+import { DEFAULT_SELECTION_STATUS_LABELS } from "@/lib/domain/selections/status-labels"
 
 const costCodes: readonly ProjectRfqCostCodeOption[] = [
   { value: "08-500", label: "Windows", description: "", divisionCode: "08", divisionLabel: "08 Openings" },
@@ -33,6 +34,7 @@ const selectionOptions: ProjectSelectionOptions = {
   manufacturers: [],
   divisions: [],
   costCodes: costCodes.map((code) => ({ ...code, source: "sage", needsSageReview: false })),
+  statusLabels: DEFAULT_SELECTION_STATUS_LABELS,
 }
 
 function selection(overrides: Partial<ProjectSelectionItem> = {}): ProjectSelectionItem {

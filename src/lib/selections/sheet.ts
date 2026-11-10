@@ -5,6 +5,7 @@
  * no React, database or network access.
  */
 import { PROJECT_SELECTION_STATUS_LABELS, type ProjectSelectionStatus } from "@/lib/domain/selections/statuses"
+import { DEFAULT_SELECTION_STATUS_LABELS, selectionStatusLabel, type SelectionStatusLabels } from "@/lib/domain/selections/status-labels"
 
 export type SelectionSheetInput = {
   readonly selections: readonly {
@@ -112,7 +113,7 @@ export function selectionSheetRows(input: SelectionSheetInput): readonly Selecti
 
 export type SelectionListFilter = "open" | "needed" | "with_owner" | "approved" | "ordered" | "installed" | "all"
 
-export const SELECTION_LIST_FILTERS: readonly { readonly value: SelectionListFilter; readonly label: string }[] = [
+const SELECTION_LIST_FILTERS: readonly { readonly value: SelectionListFilter; readonly label: string }[] = [
   { value: "open", label: "Open" },
   { value: "needed", label: "Needed" },
   { value: "with_owner", label: "With owner" },
@@ -121,6 +122,25 @@ export const SELECTION_LIST_FILTERS: readonly { readonly value: SelectionListFil
   { value: "installed", label: "Installed" },
   { value: "all", label: "All" },
 ]
+
+/** The status whose company name labels each filter button ("Open" and "All" keep theirs). */
+const FILTER_NAMED_BY: Readonly<Partial<Record<SelectionListFilter, ProjectSelectionStatus>>> = {
+  needed: "needed",
+  with_owner: "owner_review",
+  approved: "approved",
+  ordered: "ordered",
+  installed: "installed",
+}
+
+/** The filter buttons labelled with the company's status names. Filter values (and grouping) never change. */
+export function selectionListFilters(
+  labels: SelectionStatusLabels = DEFAULT_SELECTION_STATUS_LABELS,
+): readonly { readonly value: SelectionListFilter; readonly label: string }[] {
+  return SELECTION_LIST_FILTERS.map((filter) => {
+    const status = FILTER_NAMED_BY[filter.value]
+    return status ? { ...filter, label: selectionStatusLabel(status, labels) } : filter
+  })
+}
 
 type SelectionStatusGroup = Exclude<SelectionListFilter, "open" | "all"> | "deferred"
 
@@ -137,7 +157,7 @@ const GROUP_BY_STATUS: Readonly<Record<ProjectSelectionStatus, SelectionStatusGr
   deferred: "deferred",
 }
 
-/** The shared status labels (one list for every selections screen). */
+/** The default status labels. Screens show the company's names via `selectionStatusLabel`. */
 export const SELECTION_STATUS_LABELS = PROJECT_SELECTION_STATUS_LABELS
 
 export function selectionStatusGroup(status: ProjectSelectionStatus): SelectionStatusGroup {

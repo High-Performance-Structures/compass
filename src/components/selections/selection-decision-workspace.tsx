@@ -28,6 +28,7 @@ import {
 import { Button } from "@/components/ui/button"
 import { ProjectPortalPrintButton } from "@/components/projects/project-portal-print-button"
 import { selectionReport } from "@/lib/selections/report"
+import { selectionProgressLabel } from "@/lib/domain/selections/status-labels"
 import type { ReportProject } from "@/lib/print/portal-report"
 import {
   AlertDialog,
@@ -98,7 +99,7 @@ function DecisionCard({
         <div className="mb-2 flex justify-end">
           <ProjectPortalPrintButton
             project={reportProject}
-            report={selectionReport([item], workspace.audience)}
+            report={selectionReport([item], workspace.audience, workspace.statusLabels)}
           />
         </div>
       )}
@@ -140,7 +141,7 @@ function DecisionCard({
             View product ↗
           </a>
         )}
-        <span>Progress: {item.status.replaceAll("_", " ")}</span>
+        <span>Progress: {selectionProgressLabel(item.status, workspace.statusLabels)}</span>
       </div>
       {(owner || staff) && (
         <dl className="mt-4 grid grid-cols-3 gap-3 border-y py-3 text-sm">
@@ -561,11 +562,11 @@ export function SelectionDecisionWorkspace({
         <div className="mb-4 flex flex-wrap gap-2">
           <ProjectPortalPrintButton
             project={reportProject}
-            report={selectionReport(items, workspace.audience)}
+            report={selectionReport(items, workspace.audience, workspace.statusLabels)}
           />
           <ProjectPortalPrintButton
             project={reportProject}
-            report={selectionReport(items, workspace.audience)}
+            report={selectionReport(items, workspace.audience, workspace.statusLabels)}
             roomSheets
             label="Print Preview (room sheets)"
           />

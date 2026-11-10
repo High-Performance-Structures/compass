@@ -1,10 +1,13 @@
 import type { PortalReport, PortalReportItem } from "@/lib/print/portal-report"
+import { DEFAULT_SELECTION_STATUS_LABELS, selectionProgressLabel, type SelectionStatusLabels } from "@/lib/domain/selections/status-labels"
 import { selectionMoney } from "./decisions"
 import type { SelectionDecisionItem, SelectionWorkspace } from "./types"
 
 export function selectionReport(
   items: readonly SelectionDecisionItem[],
   audience: SelectionWorkspace["audience"],
+  /** The company's status names (the workspace's `statusLabels`). */
+  statusLabels: SelectionStatusLabels = DEFAULT_SELECTION_STATUS_LABELS,
 ): PortalReport {
   const partner = audience === "sub_vendor"
   const rooms = new Map<string, PortalReportItem[]>()
@@ -27,6 +30,7 @@ export function selectionReport(
         ["Model", spec.model],
         ["Color / finish", spec.colorFinish],
         ["Supplier", spec.supplierName],
+        ["Progress", selectionProgressLabel(item.status, statusLabels)],
         ...(!partner
           ? ([
               ["Allowance", selectionMoney(item.allowanceCents)],
