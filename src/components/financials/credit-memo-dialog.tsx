@@ -1,26 +1,20 @@
 "use client"
 
 import * as React from "react"
-import { ProjectCombobox } from "@/components/projects/project-combobox"
-import { SearchableCombobox } from "@/components/searchable-combobox"
-import { Button } from "@/components/ui/button"
 import {
   ResponsiveDialog,
   ResponsiveDialogBody,
-  ResponsiveDialogFooter,
 } from "@/components/ui/responsive-dialog"
-import { DatePicker } from "@/components/ui/date-picker"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select"
-import { Textarea } from "@/components/ui/textarea"
-import { LineItemsEditor } from "./line-items-editor"
+  ChoiceField,
+  CustomerField,
+  DateField,
+  DialogSaveFooter,
+  LineItemsField,
+  MemoField,
+  ProjectField,
+  TextField,
+} from "./financial-dialog-fields"
 import {
   creditMemoTotals,
   lineItemsSubtotal,
@@ -116,92 +110,21 @@ export function CreditMemoDialog({
 
   const page1 = (
     <>
-      <div className="space-y-1.5">
-        <Label className="text-xs">Customer *</Label>
-        <SearchableCombobox
-          options={customers.map((customer) => ({
-            value: customer.id,
-            label: customer.name,
-            description: customer.company ?? customer.email ?? undefined,
-            keywords: [customer.company, customer.email, customer.phone]
-              .filter(Boolean)
-              .join(" "),
-          }))}
-          value={customerId}
-          onValueChange={setCustomerId}
-          ariaLabel="Choose customer"
-          placeholder="Select customer"
-          searchPlaceholder="Search name, company, or email..."
-          emptyMessage="No matching customers."
-          className="h-9"
-        />
-      </div>
-      <div className="space-y-1.5">
-        <Label className="text-xs">Project</Label>
-        <ProjectCombobox
-          projects={projects}
-          value={projectId}
-          onValueChange={setProjectId}
-          specialOptions={[
-            { value: "", label: "None", keywords: "clear no project" },
-          ]}
-          className="h-9"
-        />
-      </div>
-      <div className="space-y-1.5">
-        <Label className="text-xs">Memo #</Label>
-        <Input
-          className="h-9"
-          value={memoNumber}
-          onChange={(e) => setMemoNumber(e.target.value)}
-        />
-      </div>
-      <div className="space-y-1.5">
-        <Label className="text-xs">Status</Label>
-        <Select value={status} onValueChange={setStatus}>
-          <SelectTrigger className="h-9">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            {CREDIT_MEMO_STATUSES.map((s) => (
-              <SelectItem key={s} value={s}>
-                {s}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </div>
+      <CustomerField label="Customer *" customers={customers} value={customerId} onChange={setCustomerId} />
+      <ProjectField projects={projects} value={projectId} onChange={setProjectId} />
+      <TextField label="Memo #" value={memoNumber} onChange={setMemoNumber} />
+      <ChoiceField label="Status" choices={CREDIT_MEMO_STATUSES} value={status} onChange={setStatus} />
     </>
   )
 
   const page2 = (
     <>
-      <div className="space-y-1.5">
-        <Label className="text-xs">Issue Date *</Label>
-        <DatePicker
-          value={issueDate}
-          onChange={setIssueDate}
-          placeholder="Select issue date"
-        />
-      </div>
-      <div className="space-y-1.5">
-        <Label className="text-xs">Memo</Label>
-        <Textarea
-          value={memoText}
-          onChange={(e) => setMemoText(e.target.value)}
-          rows={2}
-          className="text-sm"
-        />
-      </div>
+      <DateField label="Issue Date *" value={issueDate} onChange={setIssueDate} placeholder="Select issue date" />
+      <MemoField value={memoText} onChange={setMemoText} />
     </>
   )
 
-  const page3 = (
-    <div className="space-y-1.5">
-      <Label className="text-xs">Line Items</Label>
-      <LineItemsEditor value={lines} onChange={setLines} />
-    </div>
-  )
+  const page3 = <LineItemsField lines={lines} onChange={setLines} />
 
   return (
     <ResponsiveDialog
@@ -212,20 +135,10 @@ export function CreditMemoDialog({
     >
       <form onSubmit={handleSubmit} className="flex flex-col flex-1 min-h-0">
         <ResponsiveDialogBody pages={[page1, page2, page3]} />
-
-        <ResponsiveDialogFooter>
-          <Button
-            type="button"
-            variant="outline"
-            onClick={() => onOpenChange(false)}
-            className="h-9"
-          >
-            Cancel
-          </Button>
-          <Button type="submit" className="h-9">
-            {initialData ? "Save Changes" : "Create Credit Memo"}
-          </Button>
-        </ResponsiveDialogFooter>
+        <DialogSaveFooter
+          onCancel={() => onOpenChange(false)}
+          submitLabel={initialData ? "Save Changes" : "Create Credit Memo"}
+        />
       </form>
     </ResponsiveDialog>
   )

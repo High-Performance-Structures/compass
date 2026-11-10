@@ -1,27 +1,22 @@
 "use client"
 
 import * as React from "react"
-import { ProjectCombobox } from "@/components/projects/project-combobox"
-import { SearchableCombobox } from "@/components/searchable-combobox"
-import { Button } from "@/components/ui/button"
 import {
   ResponsiveDialog,
   ResponsiveDialogBody,
-  ResponsiveDialogFooter,
 } from "@/components/ui/responsive-dialog"
-import { Checkbox } from "@/components/ui/checkbox"
-import { DatePicker } from "@/components/ui/date-picker"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select"
-import { Textarea } from "@/components/ui/textarea"
-import { LineItemsEditor } from "./line-items-editor"
+  ChoiceField,
+  CustomerField,
+  DateField,
+  DialogSaveFooter,
+  LineItemsField,
+  MemoField,
+  PreconstructionField,
+  ProjectField,
+  TaxAndTotalsFields,
+  TextField,
+} from "./financial-dialog-fields"
 import {
   billTotals,
   lineItemsSubtotal,
@@ -142,143 +137,25 @@ export function InvoiceDialog({
 
   const page1 = (
     <>
-      <div className="space-y-1.5">
-        <Label className="text-xs">Customer *</Label>
-        <SearchableCombobox
-          options={customers.map((customer) => ({
-            value: customer.id,
-            label: customer.name,
-            description: customer.company ?? customer.email ?? undefined,
-            keywords: [customer.company, customer.email, customer.phone]
-              .filter(Boolean)
-              .join(" "),
-          }))}
-          value={customerId}
-          onValueChange={setCustomerId}
-          ariaLabel="Choose customer"
-          placeholder="Select customer"
-          searchPlaceholder="Search name, company, or email..."
-          emptyMessage="No matching customers."
-          className="h-9"
-        />
-      </div>
-      <div className="space-y-1.5">
-        <Label className="text-xs">Project</Label>
-        <ProjectCombobox
-          projects={projects}
-          value={projectId}
-          onValueChange={setProjectId}
-          specialOptions={[
-            { value: "", label: "None", keywords: "clear no project" },
-          ]}
-          className="h-9"
-        />
-      </div>
-      <div className="space-y-1.5">
-        <Label className="text-xs">Invoice #</Label>
-        <Input
-          className="h-9"
-          value={invoiceNumber}
-          onChange={(e) => setInvoiceNumber(e.target.value)}
-        />
-      </div>
-      <div className="space-y-1.5">
-        <Label className="text-xs">Status</Label>
-        <Select value={status} onValueChange={setStatus}>
-          <SelectTrigger className="h-9">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            {INVOICE_STATUSES.map((s) => (
-              <SelectItem key={s} value={s}>
-                {s.replace("_", " ")}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </div>
+      <CustomerField label="Customer *" customers={customers} value={customerId} onChange={setCustomerId} />
+      <ProjectField projects={projects} value={projectId} onChange={setProjectId} />
+      <TextField label="Invoice #" value={invoiceNumber} onChange={setInvoiceNumber} />
+      <ChoiceField label="Status" choices={INVOICE_STATUSES} value={status} onChange={setStatus} />
     </>
   )
 
   const page2 = (
     <>
-      <div className="space-y-1.5">
-        <Label className="text-xs">Issue Date *</Label>
-        <DatePicker
-          value={issueDate}
-          onChange={setIssueDate}
-          placeholder="Select issue date"
-        />
-      </div>
-      <div className="space-y-1.5">
-        <Label className="text-xs">Due Date</Label>
-        <DatePicker
-          value={dueDate}
-          onChange={setDueDate}
-          placeholder="Select due date"
-        />
-      </div>
-      <div className="space-y-1.5">
-        <Label className="text-xs">Memo</Label>
-        <Textarea
-          value={memo}
-          onChange={(e) => setMemo(e.target.value)}
-          rows={2}
-          className="text-sm"
-        />
-      </div>
-      <label className="flex items-start gap-2 text-sm">
-        <Checkbox
-          checked={preconstruction}
-          onCheckedChange={(value) => setPreconstruction(value === true)}
-          className="mt-0.5"
-        />
-        <span>
-          Preconstruction billing
-          <span className="block text-xs text-muted-foreground">
-            Design, plans or engineering billed under a separate agreement. It doesn&apos;t block replacing the construction contract estimate.
-          </span>
-        </span>
-      </label>
+      <DateField label="Issue Date *" value={issueDate} onChange={setIssueDate} placeholder="Select issue date" />
+      <DateField label="Due Date" value={dueDate} onChange={setDueDate} placeholder="Select due date" />
+      <MemoField value={memo} onChange={setMemo} />
+      <PreconstructionField verb="billed" checked={preconstruction} onChange={setPreconstruction} />
     </>
   )
 
-  const page3 = (
-    <div className="space-y-1.5">
-      <Label className="text-xs">Line Items</Label>
-      <LineItemsEditor value={lines} onChange={setLines} />
-    </div>
-  )
+  const page3 = <LineItemsField lines={lines} onChange={setLines} />
 
-  const page4 = (
-    <>
-      <div className="space-y-1.5">
-        <Label className="text-xs">Tax</Label>
-        <Input
-          type="number"
-          className="h-9"
-          min={0}
-          step="any"
-          value={tax || ""}
-          onChange={(e) => setTax(parseFloat(e.target.value) || 0)}
-        />
-      </div>
-      <div className="space-y-1.5 rounded-md bg-muted/50 p-3">
-        <div className="flex justify-between text-xs">
-          <span className="text-muted-foreground">Subtotal:</span>
-          <span className="font-medium">${subtotal.toFixed(2)}</span>
-        </div>
-        <div className="flex justify-between text-xs">
-          <span className="text-muted-foreground">Tax:</span>
-          <span className="font-medium">${tax.toFixed(2)}</span>
-        </div>
-        <div className="flex justify-between text-sm font-semibold pt-1 border-t">
-          <span>Total:</span>
-          <span>${total.toFixed(2)}</span>
-        </div>
-      </div>
-    </>
-  )
+  const page4 = <TaxAndTotalsFields tax={tax} onTaxChange={setTax} subtotal={subtotal} total={total} />
 
   return (
     <ResponsiveDialog
@@ -289,20 +166,10 @@ export function InvoiceDialog({
     >
       <form onSubmit={handleSubmit} className="flex flex-col flex-1 min-h-0">
         <ResponsiveDialogBody pages={[page1, page2, page3, page4]} />
-
-        <ResponsiveDialogFooter>
-          <Button
-            type="button"
-            variant="outline"
-            onClick={() => onOpenChange(false)}
-            className="h-9"
-          >
-            Cancel
-          </Button>
-          <Button type="submit" className="h-9">
-            {initialData ? "Save Changes" : "Create Invoice"}
-          </Button>
-        </ResponsiveDialogFooter>
+        <DialogSaveFooter
+          onCancel={() => onOpenChange(false)}
+          submitLabel={initialData ? "Save Changes" : "Create Invoice"}
+        />
       </form>
     </ResponsiveDialog>
   )
