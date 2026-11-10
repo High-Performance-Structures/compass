@@ -1,3 +1,4 @@
+import { SAGE_COST_CODE_SOURCE } from "@/lib/domain/sage-bridge/cost-code-sync-rules"
 import { BUILDER_FEE_NAMES, canonicalFeeLabel, isLegacyFeeCostCode } from "@/lib/domain/financials/builder-fee-codes"
 import { CSI_PROJECT_TOTALS_FALLBACK_COST_CODES } from "@/lib/estimates/csi-project-totals-catalog"
 import {
@@ -6,6 +7,10 @@ import {
 } from "@/lib/estimates/sage-estimate-cost-code-catalog"
 
 export type EstimateSageCostCode = {
+  /** "sage" for rows read from Sage by the cost code sync; older rows came from a spreadsheet. */
+  readonly sourceSystem: string
+  /** Sage's cost code record number for synced rows. */
+  readonly sourceRecordId: string | null
   readonly code: string
   readonly description: string
   readonly displayLabel: string
@@ -127,6 +132,15 @@ function sageCodeFromName(
   }
 }
 
+function syncedRecordNumber(row: EstimateSageCostCode): string | null {
+  const recordNumber = row.sourceRecordId?.trim() ?? ""
+  return row.sourceSystem === SAGE_COST_CODE_SOURCE && /^\d+$/.test(recordNumber) ? recordNumber : null
+}
+
+function namedKey(divisionCode: string, name: string): string {
+  return `${divisionCode}|${name.trim().replaceAll(/\s+/g, " ").toLowerCase()}`
+}
+
 export function projectEstimateCostCodeCatalog(
   sageRows: readonly EstimateSageCostCode[],
   namedSageRows: readonly EstimateSageNamedCostCode[],
@@ -140,18 +154,30 @@ export function projectEstimateCostCodeCatalog(
     catalog.set(item.code, item)
   }
 
+  // Bare Sage names ("Fox-S800") by division, for the synced rows: the
+  // workbook's named codes keep resolving and take the exact Sage record.
+  const syncedRecordsByName = new Map<string, Set<string>>()
   for (const row of sageRows) {
-    for (const [code, item] of catalog) {
-      if (
-        item.sourceCostCode === row.description &&
-        item.divisionCode === row.divisionCode
-      ) {
-        catalog.delete(code)
+    const recordNumber = syncedRecordNumber(row)
+    if (recordNumber) {
+      const key = namedKey(row.divisionCode, row.description)
+      const set = syncedRecordsByName.get(key) ?? new Set<string>()
+      set.add(recordNumber)
+      syncedRecordsByName.set(key, set)
+    } else {
+      // A spreadsheet-imported row replaces the workbook entry it came from.
+      for (const [code, item] of catalog) {
+        if (
+          item.sourceCostCode === row.description &&
+          item.divisionCode === row.divisionCode
+        ) {
+          catalog.delete(code)
+        }
       }
     }
     catalog.set(row.code, {
       code: row.code,
-      sourceCostCode: row.code,
+      sourceCostCode: recordNumber ?? row.code,
       description: row.description,
       displayLabel: row.displayLabel,
       divisionCode: row.divisionCode,
@@ -159,6 +185,15 @@ export function projectEstimateCostCodeCatalog(
       divisionDisplayLabel: row.divisionDisplayLabel,
       sageMapped: true,
     })
+  }
+
+  // A workbook name ("Fox-S800", "ICF Shipping") stays a choice so older
+  // records keep resolving, addressed to the one Sage record with that name.
+  for (const [code, item] of catalog) {
+    if (CSI_CODE_FROM_NAME.test(code) || SAGE_RECORD_NUMBER.test(item.sourceCostCode.trim())) continue
+    const records = syncedRecordsByName.get(namedKey(item.divisionCode, item.description))
+    const [only] = records ?? []
+    if (records?.size === 1 && only) catalog.set(code, { ...item, sourceCostCode: only })
   }
 
   for (const row of namedSageRows) {

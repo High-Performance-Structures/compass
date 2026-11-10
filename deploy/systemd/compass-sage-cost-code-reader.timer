@@ -1,0 +1,12 @@
+[Unit]
+Description=Ask Compass every 5 minutes whether to read Sage cost codes (reads hourly or on request)
+
+[Timer]
+OnBootSec=3min
+OnUnitInactiveSec=5min
+AccuracySec=30s
+Persistent=true
+Unit=compass-sage-cost-code-reader.service
+
+[Install]
+WantedBy=timers.target

@@ -29,6 +29,7 @@ import { PayApplicationSettingsSection } from "@/components/settings/pay-applica
 import { ChangeOrderAcceptanceSettingsSection } from "@/components/settings/change-order-acceptance-settings-section"
 import { VarianceSettingsSection } from "@/components/settings/variance-settings-section"
 import { SageExportSettingsSection } from "@/components/settings/sage-export-settings-section"
+import { SageCostCodeSyncSection } from "@/components/settings/sage-cost-code-sync-section"
 import { SageArInvoiceSettingsSection } from "@/components/settings/sage-ar-invoice-settings-section"
 import { SagePayRequestCheckSettingsSection } from "@/components/settings/sage-pay-request-check-settings-section"
 import { SimpleInvoiceSettingsSection } from "@/components/settings/simple-invoice-settings-section"
@@ -323,6 +324,7 @@ function WorkflowAreaSection({ area }: { readonly area: WorkflowArea }): React.R
           <SageExportSettingsSection />
           <SagePayRequestCheckSettingsSection />
           <SageArInvoiceSettingsSection />
+          <SageCostCodeSyncSection />
         </div>
       )
     case "simple-invoices":

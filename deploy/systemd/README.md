@@ -74,6 +74,34 @@ To redeploy after a change, repeat the first `install` line from an
 up-to-date checkout of main; the timer picks up the new script on its next
 run. A healthy run prints `{"status": "ok", "jobs": N, "changeOrders": M}`.
 
+## Sage cost code reader
+
+A third read-only reader keeps Compass's cost code catalog (`sage_cost_codes`)
+the same as Sage's cost code list (`dbo.cstcde`). Every five minutes it asks
+Compass whether a read is due: an hour after the last one, or right away after
+someone presses "Refresh from Sage" (Settings > Workflows > Sage export). When
+it is, it runs one SELECT of every record number and name and posts the list;
+Compass adds new codes, updates changed ones in place, and marks codes Sage no
+longer has inactive (never deleted). A read that looks incomplete (fewer than
+80% of the active Sage codes) changes nothing. Uses the same secrets and
+read-only SQL account as the readers above. Install it next to them:
+
+```bash
+install -m 0755 scripts/sage_cost_code_reader.py \
+  "$HOME/.local/lib/compass/sage_cost_code_reader.py"
+install -m 0644 deploy/systemd/compass-sage-cost-code-reader.service \
+  "$HOME/.config/systemd/user/"
+install -m 0644 deploy/systemd/compass-sage-cost-code-reader.timer \
+  "$HOME/.config/systemd/user/"
+systemctl --user daemon-reload
+systemctl --user enable --now compass-sage-cost-code-reader.timer
+```
+
+A healthy idle check prints `{"status": "ok", "due": false}`; a read prints the
+counts Compass applied (`inserted`, `updated`, `inactivated`, `unchanged`,
+`skipped`). Run `sage_cost_code_reader.py --once --force` under the same secret
+wrapper to read immediately.
+
 ## Feedback Desk bug-delivery consumer
 
 From the Compass repository root, create or reuse the real Git checkout that

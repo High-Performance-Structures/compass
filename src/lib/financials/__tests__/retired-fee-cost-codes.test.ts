@@ -66,6 +66,8 @@ describe("retired 99 x0 00 fee codes", () => {
     const catalog = projectEstimateCostCodeCatalog(
       [
         {
+          sourceSystem: "sage_xlsx",
+          sourceRecordId: null,
           code: "99 10 00",
           description: "Legacy Overhead",
           displayLabel: "99 10 00 Legacy Overhead",

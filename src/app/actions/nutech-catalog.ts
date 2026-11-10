@@ -164,6 +164,8 @@ export async function getNuTechCatalogWorkspace(): Promise<NuTechCatalogWorkspac
       db
         .select({
           id: sageCostCodes.id,
+          sourceSystem: sageCostCodes.sourceSystem,
+          sourceRecordId: sageCostCodes.sourceRecordId,
           code: sageCostCodes.code,
           description: sageCostCodes.description,
           displayLabel: sageCostCodes.displayLabel,

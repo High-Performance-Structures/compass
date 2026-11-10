@@ -293,6 +293,8 @@ export async function getNuTechCostCodeOptions(): Promise<readonly NuTechCostCod
     await requireFeaturePermission(user, "nutech-orders", "read")
     const sageRows = await db
       .select({
+        sourceSystem: sageCostCodes.sourceSystem,
+        sourceRecordId: sageCostCodes.sourceRecordId,
         code: sageCostCodes.code,
         description: sageCostCodes.description,
         displayLabel: sageCostCodes.displayLabel,

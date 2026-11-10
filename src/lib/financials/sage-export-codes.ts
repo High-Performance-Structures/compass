@@ -41,6 +41,14 @@ function normalized(value: string): string {
   return value.trim().replaceAll(/\s+/g, " ").toLowerCase()
 }
 
+/** "Fox-S800" from "03 11 20.60 - Fox-S800"; a bare name or a code alone comes back unchanged. */
+function nameWithoutCsiCode(value: string): string {
+  const match = CSI_PREFIX.exec(value)
+  if (!match) return value
+  const rest = value.slice(match[0].length).replace(/^\s*[-–—]?\s*/, "").trim()
+  return rest || value
+}
+
 /** "01 31 00" from "01 31 00 - Project Management", or null. */
 function csiCodePrefix(value: string): string | null {
   const match = CSI_PREFIX.exec(value)
@@ -76,6 +84,7 @@ function catalogNames(entry: SageCatalogEntry): readonly string[] {
   for (const text of [entry.code, entry.description, entry.sourceCostCode]) {
     if (!text.trim() || isSageRecordNumber(text)) continue
     names.add(normalized(canonicalFeeCostCode(text.trim())))
+    names.add(normalized(canonicalFeeCostCode(nameWithoutCsiCode(text.trim()))))
     const csi = csiCodePrefix(text)
     if (csi) names.add(csi)
   }
@@ -92,8 +101,10 @@ export function indexSageCatalog(catalog: readonly SageCatalogEntry[]): SageCata
     if (!entry.sageMapped) continue
     if (!byCode.has(entry.code)) byCode.set(entry.code, entry)
     for (const name of [entry.description, entry.code, entry.sourceCostCode]) {
-      const key = normalized(name)
-      if (key && !byName.has(key)) byName.set(key, entry)
+      // Sage names are being renamed "<code> - <name>": the bare name finds the row too.
+      for (const key of [normalized(name), normalized(nameWithoutCsiCode(name))]) {
+        if (key && !isSageRecordNumber(key) && !byName.has(key)) byName.set(key, entry)
+      }
     }
     const recordNumber = normalizedSageRecordNumber(entry.sourceCostCode) ?? normalizedSageRecordNumber(entry.code)
     if (!recordNumber) continue
