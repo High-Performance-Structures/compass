@@ -1,12 +1,8 @@
 "use client"
 
 import * as React from "react"
-import { useRouter } from "next/navigation"
 
-import { createRfqRequest } from "@/app/actions/project-operations"
 import type { ProjectRfqCostCodeOption } from "@/lib/domain/operations/types"
-import { directoryVendorPick } from "@/lib/domain/contacts/rules"
-import type { ProjectTaskAssigneeOption } from "@/lib/domain/contacts/types"
 import type {
   ProjectSelectionItem,
   ProjectSelectionOptions,
@@ -14,13 +10,11 @@ import type {
 } from "@/lib/domain/selections/types"
 import { withPickedFiles, type PickedProjectFile } from "@/lib/files/picked-files"
 import { RFQ_VENDOR_CATEGORY_OPTIONS, type RfqVendorCategoryOption } from "@/lib/project-rfq-categories"
-import { cleanText } from "@/lib/shared/guards"
 
 import {
   ALL,
   EMPTY_SELECTION_FILTERS,
   categoryMatches,
-  contactTypeLabel,
   divisionForSelection,
   filtersWithDivision,
   flattenSelections,
@@ -31,83 +25,21 @@ import {
   newDocumentLink,
   newLine,
   normalizeChoice,
-  optionMatches,
   selectionMatchesFilters,
-  toDocumentInput,
-  toScopeInput,
   type DraftRfqDocumentLink,
   type DraftRfqScopeLine,
   type RfqDocumentField,
   type RfqLineField,
-  type RfqStatus,
   type SelectionFilterState,
 } from "./rfq-draft"
 
-/** Recipient ("Requested from") picker state and actions. */
-function useRfqRecipient(recipientOptions: readonly ProjectTaskAssigneeOption[]) {
-  const [recipientPickerOpen, setRecipientPickerOpen] = React.useState(false)
-  const [recipientQuery, setRecipientQuery] = React.useState("")
-  const [selectedRecipientId, setSelectedRecipientId] = React.useState<
-    string | null
-  >(null)
-  const [requestedFrom, setRequestedFrom] = React.useState("")
-  const [recipientEmail, setRecipientEmail] = React.useState("")
-  const normalizedRecipientQuery = normalizeChoice(recipientQuery)
-  const projectRecipientOptions = recipientOptions.filter(
-    (option) =>
-      option.source === "project" &&
-      optionMatches(option, normalizedRecipientQuery)
-  )
-  const directoryRecipientOptions = recipientOptions.filter(
-    (option) =>
-      option.source === "directory" &&
-      optionMatches(option, normalizedRecipientQuery)
-  )
-  const selectedRecipient = selectedRecipientId
-    ? (recipientOptions.find((option) => option.id === selectedRecipientId) ??
-      null)
-    : null
-
-  function useTypedRecipient(): void {
-    const typedName = recipientQuery.trim()
-    if (!typedName) return
-
-    setSelectedRecipientId(null)
-    setRequestedFrom(typedName)
-    setRecipientQuery("")
-    setRecipientPickerOpen(false)
-  }
-
-  function clearRecipient(): void {
-    setSelectedRecipientId(null)
-    setRequestedFrom("")
-    setRecipientEmail("")
-    setRecipientQuery("")
-  }
-
-  return {
-    recipientPickerOpen,
-    setRecipientPickerOpen,
-    recipientQuery,
-    setRecipientQuery,
-    selectedRecipientId,
-    setSelectedRecipientId,
-    requestedFrom,
-    setRequestedFrom,
-    recipientEmail,
-    setRecipientEmail,
-    normalizedRecipientQuery,
-    projectRecipientOptions,
-    directoryRecipientOptions,
-    selectedRecipient,
-    useTypedRecipient,
-    clearRecipient,
-  }
-}
-
-export type RfqRecipientState = ReturnType<typeof useRfqRecipient> & {
-  readonly selectRecipient: (option: ProjectTaskAssigneeOption) => void
-}
+/*
+ * The parts of an RFQ draft that "New RFQ" (use-rfq-create-draft.ts) and
+ * "Edit RFQ" (project-rfq-edit-form.tsx) share: trade category, finish
+ * selection import, scope rows and the plans/specs links. The pickers in
+ * this folder (RfqCategoryPicker, RfqSelectionImport, RfqScopeRows,
+ * RfqDocumentLinks) each take one piece of this state.
+ */
 
 /** Finish-selection import state: filters, picks and derived lists. */
 function useRfqSelections(
@@ -215,13 +147,17 @@ export type RfqSelectionsState = ReturnType<typeof useRfqSelections> & {
 }
 
 /** Scope rows and plans/specs document links. */
-function useRfqRows(costCodeOptions: readonly ProjectRfqCostCodeOption[]) {
-  const [lines, setLines] = React.useState<readonly DraftRfqScopeLine[]>([
-    newLine(),
-  ])
+function useRfqRows(
+  costCodeOptions: readonly ProjectRfqCostCodeOption[],
+  initialLines: readonly DraftRfqScopeLine[],
+  initialDocumentLinks: readonly DraftRfqDocumentLink[]
+) {
+  const [lines, setLines] = React.useState<readonly DraftRfqScopeLine[]>(
+    initialLines.length > 0 ? initialLines : [newLine()]
+  )
   const [documentLinks, setDocumentLinks] = React.useState<
     readonly DraftRfqDocumentLink[]
-  >([newDocumentLink()])
+  >(initialDocumentLinks.length > 0 ? initialDocumentLinks : [newDocumentLink()])
   const [filePickerOpen, setFilePickerOpen] = React.useState(false)
 
   function addLine(): void {
@@ -321,10 +257,10 @@ function useRfqRows(costCodeOptions: readonly ProjectRfqCostCodeOption[]) {
 export type RfqRowsState = ReturnType<typeof useRfqRows>
 
 /** Vendor category / trade picker state. */
-function useRfqCategory() {
+function useRfqCategory(initialCategory: string) {
   const [categoryPickerOpen, setCategoryPickerOpen] = React.useState(false)
   const [categoryQuery, setCategoryQuery] = React.useState("")
-  const [vendorCategory, setVendorCategory] = React.useState("")
+  const [vendorCategory, setVendorCategory] = React.useState(initialCategory)
   const normalizedCategoryQuery = normalizeChoice(categoryQuery)
   const vendorCategoryOptions = RFQ_VENDOR_CATEGORY_OPTIONS.filter((option) =>
     categoryMatches(option, normalizedCategoryQuery)
@@ -360,44 +296,38 @@ export type RfqCategoryState = ReturnType<typeof useRfqCategory> & {
   readonly selectVendorCategory: (option: RfqVendorCategoryOption) => void
 }
 
-/** Every piece of "New RFQ" draft state, its actions and the submit. */
-export function useRfqCreateDraft({
-  projectId,
-  recipientOptions,
+/** Starting values; "New RFQ" starts empty, "Edit RFQ" from the saved RFQ. */
+export type RfqScopeDraftInitial = {
+  readonly vendorCategory: string
+  readonly lines: readonly DraftRfqScopeLine[]
+  readonly documentLinks: readonly DraftRfqDocumentLink[]
+}
+
+export const EMPTY_RFQ_SCOPE_DRAFT: RfqScopeDraftInitial = {
+  vendorCategory: "",
+  lines: [],
+  documentLinks: [],
+}
+
+/**
+ * Category, selection import and rows wired together: picking a trade with a
+ * CSI division narrows the selection filters to it, and importing selections
+ * adds them as scope rows.
+ */
+export function useRfqScopeDraft({
   selectionOptions,
   selectionsSummary,
   costCodeOptions,
+  initial,
 }: {
-  readonly projectId: string
-  readonly recipientOptions: readonly ProjectTaskAssigneeOption[]
   readonly selectionOptions: ProjectSelectionOptions
   readonly selectionsSummary: ProjectSelectionsSummary
   readonly costCodeOptions: readonly ProjectRfqCostCodeOption[]
+  readonly initial: RfqScopeDraftInitial
 }) {
-  const router = useRouter()
-  const formRef = React.useRef<HTMLFormElement>(null)
-  const [open, setOpen] = React.useState(false)
-  const baseRecipient = useRfqRecipient(recipientOptions)
-  const baseCategory = useRfqCategory()
-  const [priority, setPriority] = React.useState("normal")
+  const baseCategory = useRfqCategory(initial.vendorCategory)
   const baseSelections = useRfqSelections(selectionOptions, selectionsSummary)
-  const rows = useRfqRows(costCodeOptions)
-  const [status, setStatus] = React.useState<RfqStatus>({ kind: "idle" })
-  const lineCount = rows.lines.filter(
-    (line) => cleanText(line.description) !== null
-  ).length
-  const documentCount = rows.documentLinks.filter(
-    (link) => cleanText(link.url) !== null
-  ).length
-
-  function selectRecipient(option: ProjectTaskAssigneeOption): void {
-    baseRecipient.setSelectedRecipientId(option.id)
-    baseRecipient.setRequestedFrom(option.companyName ?? option.name)
-    baseRecipient.setRecipientEmail(option.email ?? "")
-    baseCategory.setVendorCategory(contactTypeLabel(option.contactType))
-    baseRecipient.setRecipientQuery("")
-    baseRecipient.setRecipientPickerOpen(false)
-  }
+  const rows = useRfqRows(costCodeOptions, initial.lines, initial.documentLinks)
 
   function selectVendorCategory(option: RfqVendorCategoryOption): void {
     baseCategory.setVendorCategory(option.label)
@@ -417,72 +347,16 @@ export function useRfqCreateDraft({
     baseSelections.setSelectedSelectionIds(new Set())
   }
 
-  async function handleSubmit(
-    event: React.FormEvent<HTMLFormElement>
-  ): Promise<void> {
-    event.preventDefault()
-    const form = formRef.current
-    if (!form) return
-
-    setStatus({ kind: "saving" })
-    const formData = new FormData(form)
-    const result = await createRfqRequest(projectId, {
-      title: String(formData.get("title") ?? ""),
-      vendorCategory: cleanText(baseCategory.vendorCategory),
-      requestedFrom: cleanText(baseRecipient.requestedFrom),
-      recipientEmail: cleanText(baseRecipient.recipientEmail),
-      responseDueDate: cleanText(
-        String(formData.get("responseDueDate") ?? "")
-      ),
-      vendorPick: directoryVendorPick(baseRecipient.selectedRecipient),
-      priority,
-      scope: cleanText(String(formData.get("scope") ?? "")),
-      scopeItems: rows.lines.map(toScopeInput),
-      documentLinks: rows.documentLinks.map(toDocumentInput),
-    })
-
-    if (!result.success) {
-      setStatus({ kind: "error", message: result.error })
-      return
-    }
-
-    form.reset()
-    baseRecipient.setSelectedRecipientId(null)
-    baseRecipient.setRequestedFrom("")
-    baseRecipient.setRecipientEmail("")
+  /** Back to an empty draft after "New RFQ" is created. */
+  function reset(): void {
     baseCategory.setVendorCategory("")
-    setPriority("normal")
     baseSelections.setSelectedSelectionIds(new Set())
-    baseSelections.setSelectionFilters({ division: ALL, costCode: ALL, roomName: ALL })
+    baseSelections.setSelectionFilters(EMPTY_SELECTION_FILTERS)
     rows.setLines([newLine()])
     rows.setDocumentLinks([newDocumentLink()])
-    setStatus({ kind: "saved", message: "RFQ draft created." })
-    setOpen(false)
-    router.push(
-      `/dashboard/projects/${projectId}/rfqs?created=${encodeURIComponent(
-        result.id
-      )}`
-    )
-    router.refresh()
   }
 
-  const recipient: RfqRecipientState = { ...baseRecipient, selectRecipient }
   const category: RfqCategoryState = { ...baseCategory, selectVendorCategory }
   const selections: RfqSelectionsState = { ...baseSelections, importSelectedSelections }
-
-  return {
-    formRef,
-    open,
-    setOpen,
-    recipient,
-    category,
-    priority,
-    setPriority,
-    selections,
-    rows,
-    status,
-    lineCount,
-    documentCount,
-    handleSubmit,
-  }
+  return { category, selections, rows, reset }
 }

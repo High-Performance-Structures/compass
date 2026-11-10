@@ -14,7 +14,7 @@ import { Input } from "@/components/ui/input"
 import { cleanText } from "@/lib/shared/guards"
 
 import { DOCUMENT_INPUT_CLASS } from "./rfq-draft"
-import type { RfqRowsState } from "./use-rfq-create-draft"
+import type { RfqRowsState } from "./use-rfq-scope-draft"
 
 /** "Plans & specs package": links and Drive files the vendor may price from. */
 export function RfqDocumentLinks({

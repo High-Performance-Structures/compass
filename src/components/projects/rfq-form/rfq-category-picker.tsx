@@ -12,7 +12,7 @@ import {
 } from "@/components/ui/popover"
 import { cn } from "@/lib/utils"
 
-import type { RfqCategoryState } from "./use-rfq-create-draft"
+import type { RfqCategoryState } from "./use-rfq-scope-draft"
 
 /** "Vendor category / trade": a CSI trade, or a typed category. */
 export function RfqCategoryPicker({

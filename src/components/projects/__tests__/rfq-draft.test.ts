@@ -18,7 +18,7 @@ import {
   selectionStatusLabel,
   toDocumentInput,
   toScopeInput,
-} from "@/components/projects/rfq-create/rfq-draft"
+} from "@/components/projects/rfq-form/rfq-draft"
 import type { ProjectTaskAssigneeOption } from "@/lib/domain/contacts/types"
 import type { ProjectRfqCostCodeOption } from "@/lib/domain/operations/types"
 import type { ProjectSelectionItem, ProjectSelectionOptions } from "@/lib/domain/selections/types"

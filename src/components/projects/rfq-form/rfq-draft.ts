@@ -1,5 +1,5 @@
 /*
- * Pure draft rules for the "New RFQ" sheet: scope rows, document links,
+ * Pure draft rules for the "New RFQ" and "Edit RFQ" sheets: scope rows, document links,
  * recipient/category matching and finish-selection filters.
  */
 

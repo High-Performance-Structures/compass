@@ -1,43 +1,17 @@
 "use client"
 
-import { PROJECT_SELECTION_STATUS_LABELS } from "@/lib/domain/selections/statuses"
-import { ProjectDriveFilePicker } from "@/components/projects/project-drive-file-picker"
-import { withPickedFiles } from "@/lib/files/picked-files"
 import * as React from "react"
 import { useRouter } from "next/navigation"
-import {
-  IconCheck,
-  IconChevronDown,
-  IconFolderOpen,
-  IconPencil,
-  IconPlus,
-  IconTrash,
-} from "@tabler/icons-react"
+import { IconCheck, IconPencil } from "@tabler/icons-react"
 
-import type { CreateRfqDocumentLinkInput, CreateRfqScopeLineInput, ProjectRfqCostCodeOption, ProjectRfqItem } from "@/lib/domain/operations/types"
 import { updateRfqRequest } from "@/app/actions/project-operations"
+import type { ProjectRfqCostCodeOption, ProjectRfqItem } from "@/lib/domain/operations/types"
 import type {
-  ProjectSelectionItem,
   ProjectSelectionOptions,
   ProjectSelectionsSummary,
 } from "@/lib/domain/selections/types"
-import { SearchableCombobox } from "@/components/searchable-combobox"
 import { Button } from "@/components/ui/button"
-import { Checkbox } from "@/components/ui/checkbox"
 import { Input } from "@/components/ui/input"
-import { RfqScopeRows } from "@/components/projects/rfq-create/rfq-scope-rows"
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "@/components/ui/popover"
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select"
 import {
   Sheet,
   SheetContent,
@@ -47,182 +21,52 @@ import {
   SheetTrigger,
 } from "@/components/ui/sheet"
 import { Textarea } from "@/components/ui/textarea"
+import { cleanText } from "@/lib/shared/guards"
+
+import { RfqCategoryPicker } from "./rfq-form/rfq-category-picker"
+import { RfqDocumentLinks } from "./rfq-form/rfq-document-links"
 import {
-  RFQ_VENDOR_CATEGORY_OPTIONS,
-  type RfqVendorCategoryOption,
-} from "@/lib/project-rfq-categories"
-import { cn } from "@/lib/utils"
+  DOCUMENT_INPUT_CLASS,
+  toDocumentInput,
+  toScopeInput,
+} from "./rfq-form/rfq-draft"
+import { RfqField, RfqPrioritySelect } from "./rfq-form/rfq-fields"
+import { RfqScopeRows } from "./rfq-form/rfq-scope-rows"
+import { RfqSelectionImport } from "./rfq-form/rfq-selection-import"
+import { useRfqScopeDraft, type RfqScopeDraftInitial } from "./rfq-form/use-rfq-scope-draft"
 
-type DraftRfqScopeLine = {
-  readonly id: string
-  readonly description: string
-  readonly phaseCode: string
-  readonly costCode: string
-  readonly notes: string
-}
+/*
+ * "Edit RFQ" sheet. Uses the same pieces as "New RFQ" (rfq-form/), started
+ * from the saved RFQ. The recipient is plain text here; picking a directory
+ * contact happens only when the RFQ is created.
+ */
 
-type DraftRfqDocumentLink = {
-  readonly id: string
-  readonly label: string
-  readonly url: string
-  readonly notes: string
-}
-
-type RfqLineField = "description" | "notes"
-type RfqDocumentField = "label" | "url" | "notes"
-type SelectionFilterState = {
-  readonly division: string
-  readonly costCode: string
-  readonly roomName: string
-}
 type FormStatus =
   | { readonly kind: "idle" }
   | { readonly kind: "saving" }
   | { readonly kind: "saved" }
   | { readonly kind: "error"; readonly message: string }
 
-const DOCUMENT_INPUT_CLASS =
-  "rounded-none border-x-0 border-t-0 px-0 shadow-none focus-visible:ring-0 focus-visible:border-foreground"
-const ALL = "all"
-
-function cleanValue(value: string): string | null {
-  const trimmed = value.trim()
-  return trimmed.length > 0 ? trimmed : null
-}
-
-function normalizeChoice(value: string): string {
-  return value.trim().toLowerCase()
-}
-
-function categoryMatches(
-  option: RfqVendorCategoryOption,
-  normalizedQuery: string
-): boolean {
-  if (!normalizedQuery) return true
-  return normalizeChoice(`${option.label} ${option.division ?? ""}`).includes(
-    normalizedQuery
-  )
-}
-
-function newLine(): DraftRfqScopeLine {
+/** The saved RFQ as draft rows the shared pickers can edit. */
+function draftFromRfq(rfq: ProjectRfqItem): RfqScopeDraftInitial {
   return {
-    id: crypto.randomUUID(),
-    description: "",
-    phaseCode: "",
-    costCode: "",
-    notes: "",
+    vendorCategory: rfq.vendorCategory ?? "",
+    lines: rfq.scopeItems.map((line) => ({
+      id: crypto.randomUUID(),
+      // Selection links are recorded when the RFQ is created; editing keeps them.
+      selectionId: null,
+      description: line.description,
+      phaseCode: line.phaseCode ?? "",
+      costCode: line.costCode ?? "",
+      notes: line.notes ?? "",
+    })),
+    documentLinks: rfq.documentLinks.map((link) => ({
+      id: crypto.randomUUID(),
+      label: link.label,
+      url: link.url,
+      notes: link.notes ?? "",
+    })),
   }
-}
-
-function lineFromSelection(
-  selection: ProjectSelectionItem,
-  costCodeOptions: readonly ProjectRfqCostCodeOption[]
-): DraftRfqScopeLine {
-  const detail = [
-    selection.manufacturer ? `Manufacturer: ${selection.manufacturer}` : null,
-    selection.model ? `Model: ${selection.model}` : null,
-    selection.colorFinish ? `Finish: ${selection.colorFinish}` : null,
-    selection.supplierName ? `Supplier: ${selection.supplierName}` : null,
-    selection.productUrl ? `Product: ${selection.productUrl}` : null,
-    selection.notes ? `Notes: ${selection.notes}` : null,
-  ]
-    .filter((value): value is string => value !== null)
-    .join(" | ")
-
-  return {
-    id: crypto.randomUUID(),
-    description: `${selection.roomName}: ${selection.name}`,
-    phaseCode:
-      costCodeOptions.find((option) => option.value === selection.costCode)
-        ?.divisionCode ?? selection.phaseCode ?? "",
-    costCode: selection.costCode ?? "",
-    notes: detail,
-  }
-}
-
-function newDocumentLink(): DraftRfqDocumentLink {
-  return {
-    id: crypto.randomUUID(),
-    label: "",
-    url: "",
-    notes: "",
-  }
-}
-
-function selectionStatusLabel(status: ProjectSelectionItem["status"]): string {
-  return PROJECT_SELECTION_STATUS_LABELS[status]
-}
-
-function flattenSelections(
-  summary: ProjectSelectionsSummary
-): readonly ProjectSelectionItem[] {
-  return summary.rooms.flatMap((room) => room.selections)
-}
-
-function divisionForSelection(
-  selection: ProjectSelectionItem,
-  options: ProjectSelectionOptions
-): string | null {
-  if (!selection.costCode) return null
-  return (
-    options.costCodes.find((option) => option.value === selection.costCode)
-      ?.divisionCode ?? selection.costCode.slice(0, 2)
-  )
-}
-
-function selectionMatchesFilters({
-  filters,
-  options,
-  selection,
-}: {
-  readonly filters: SelectionFilterState
-  readonly options: ProjectSelectionOptions
-  readonly selection: ProjectSelectionItem
-}): boolean {
-  if (filters.roomName !== ALL && selection.roomName !== filters.roomName) {
-    return false
-  }
-  if (filters.costCode !== ALL && selection.costCode !== filters.costCode) {
-    return false
-  }
-  if (filters.division !== ALL) {
-    return divisionForSelection(selection, options) === filters.division
-  }
-  return true
-}
-
-function toScopeInput(line: DraftRfqScopeLine): CreateRfqScopeLineInput {
-  return {
-    description: cleanValue(line.description),
-    phaseCode: cleanValue(line.phaseCode),
-    costCode: cleanValue(line.costCode),
-    notes: cleanValue(line.notes),
-  }
-}
-
-function toDocumentInput(
-  link: DraftRfqDocumentLink
-): CreateRfqDocumentLinkInput {
-  return {
-    label: cleanValue(link.label),
-    url: cleanValue(link.url),
-    notes: cleanValue(link.notes),
-  }
-}
-
-function Field({
-  label,
-  children,
-}: {
-  readonly label: string
-  readonly children: React.ReactNode
-}): React.ReactElement {
-  return (
-    <label className="space-y-1.5">
-      <span className="text-xs font-medium text-muted-foreground">{label}</span>
-      {children}
-    </label>
-  )
 }
 
 export function ProjectRfqEditForm({
@@ -240,246 +84,15 @@ export function ProjectRfqEditForm({
 }): React.ReactElement {
   const router = useRouter()
   const [open, setOpen] = React.useState(false)
-  const [categoryPickerOpen, setCategoryPickerOpen] = React.useState(false)
-  const [categoryQuery, setCategoryQuery] = React.useState("")
-  const [vendorCategory, setVendorCategory] = React.useState(
-    rfq.vendorCategory ?? ""
-  )
   const [priority, setPriority] = React.useState(rfq.priority)
-  const [selectionFilters, setSelectionFilters] =
-    React.useState<SelectionFilterState>({
-      division: ALL,
-      costCode: ALL,
-      roomName: ALL,
-    })
-  const [selectedSelectionIds, setSelectedSelectionIds] = React.useState<
-    ReadonlySet<string>
-  >(new Set())
-  const [lines, setLines] = React.useState<readonly DraftRfqScopeLine[]>(
-    rfq.scopeItems.length > 0
-      ? rfq.scopeItems.map((line) => ({
-          id: crypto.randomUUID(),
-          description: line.description,
-          phaseCode: line.phaseCode ?? "",
-          costCode: line.costCode ?? "",
-          notes: line.notes ?? "",
-        }))
-      : [newLine()]
-  )
-  const [documentLinks, setDocumentLinks] = React.useState<
-    readonly DraftRfqDocumentLink[]
-  >(
-    rfq.documentLinks.length > 0
-      ? rfq.documentLinks.map((link) => ({
-          id: crypto.randomUUID(),
-          label: link.label,
-          url: link.url,
-          notes: link.notes ?? "",
-        }))
-      : [newDocumentLink()]
-  )
   const [status, setStatus] = React.useState<FormStatus>({ kind: "idle" })
-  const normalizedCategoryQuery = normalizeChoice(categoryQuery)
-  const vendorCategoryOptions = RFQ_VENDOR_CATEGORY_OPTIONS.filter((option) =>
-    categoryMatches(option, normalizedCategoryQuery)
-  )
-  const allSelections = React.useMemo(
-    () => flattenSelections(selectionsSummary),
-    [selectionsSummary]
-  )
-  const selectionCostCodes = React.useMemo(
-    () =>
-      selectionOptions.costCodes.filter((option) =>
-        allSelections.some((selection) => selection.costCode === option.value)
-      ),
-    [allSelections, selectionOptions.costCodes]
-  )
-  const selectionDivisions = React.useMemo(
-    () =>
-      selectionOptions.divisions.filter((division) =>
-        allSelections.some(
-          (selection) =>
-            divisionForSelection(selection, selectionOptions) === division.value
-        )
-      ),
-    [allSelections, selectionOptions]
-  )
-  const filteredSelectionCostCodes = React.useMemo(
-    () =>
-      selectionFilters.division === ALL
-        ? selectionCostCodes
-        : selectionCostCodes.filter(
-            (option) => option.divisionCode === selectionFilters.division
-          ),
-    [selectionCostCodes, selectionFilters.division]
-  )
-  const filteredSelections = React.useMemo(
-    () =>
-      allSelections.filter((selection) =>
-        selectionMatchesFilters({
-          filters: selectionFilters,
-          options: selectionOptions,
-          selection,
-        })
-      ),
-    [allSelections, selectionFilters, selectionOptions]
-  )
-  const selectedSelections = React.useMemo(
-    () =>
-      allSelections.filter((selection) => selectedSelectionIds.has(selection.id)),
-    [allSelections, selectedSelectionIds]
-  )
-
-  function selectVendorCategory(option: RfqVendorCategoryOption): void {
-    setVendorCategory(option.label)
-    setCategoryQuery("")
-    setCategoryPickerOpen(false)
-    if (option.division) {
-      setSelectionFilters((current) => ({
-        ...current,
-        division: option.division ?? ALL,
-        costCode:
-          option.division === null ||
-          selectionOptions.costCodes.some(
-            (costCode) =>
-              costCode.value === current.costCode &&
-              costCode.divisionCode === option.division
-          )
-            ? current.costCode
-            : ALL,
-      }))
-    }
-  }
-
-  function useTypedVendorCategory(): void {
-    const typedCategory = categoryQuery.trim()
-    if (!typedCategory) return
-    setVendorCategory(typedCategory)
-    setCategoryQuery("")
-    setCategoryPickerOpen(false)
-  }
-
-  function clearVendorCategory(): void {
-    setVendorCategory("")
-    setCategoryQuery("")
-  }
-
-  function addLine(): void {
-    setLines((current) => [...current, newLine()])
-  }
-
-  function toggleSelection(selectionId: string, checked: boolean): void {
-    setSelectedSelectionIds((current) => {
-      const next = new Set(current)
-      if (checked) {
-        next.add(selectionId)
-      } else {
-        next.delete(selectionId)
-      }
-      return next
-    })
-  }
-
-  function selectAllFilteredSelections(): void {
-    setSelectedSelectionIds((current) => {
-      const next = new Set(current)
-      for (const selection of filteredSelections) {
-        next.add(selection.id)
-      }
-      return next
-    })
-  }
-
-  function clearSelectedSelections(): void {
-    setSelectedSelectionIds(new Set())
-  }
-
-  function importSelectedSelections(): void {
-    if (selectedSelections.length === 0) return
-    const importedLines = selectedSelections.map((selection) =>
-      lineFromSelection(selection, costCodeOptions)
-    )
-    setLines((current) => {
-      const meaningfulLines = current.filter(
-        (line) =>
-          cleanValue(line.description) !== null ||
-          cleanValue(line.phaseCode) !== null ||
-          cleanValue(line.costCode) !== null ||
-          cleanValue(line.notes) !== null
-      )
-      return [...meaningfulLines, ...importedLines]
-    })
-    setSelectedSelectionIds(new Set())
-  }
-
-  function removeLine(id: string): void {
-    setLines((current) =>
-      current.length === 1 ? current : current.filter((line) => line.id !== id)
-    )
-  }
-
-  function updateLine(id: string, field: RfqLineField, value: string): void {
-    setLines((current) =>
-      current.map((line) =>
-        line.id === id ? { ...line, [field]: value } : line
-      )
-    )
-  }
-
-  function updateLineDivision(id: string, divisionCode: string): void {
-    setLines((current) => current.map((line) => {
-      if (line.id !== id) return line
-      const selectedCode = costCodeOptions.find(
-        (option) => option.value === line.costCode
-      )
-      return {
-        ...line,
-        phaseCode: divisionCode,
-        costCode: selectedCode?.divisionCode === divisionCode
-          ? line.costCode : "",
-      }
-    }))
-  }
-
-  function updateLineCostCode(id: string, costCode: string): void {
-    const selectedCode = costCodeOptions.find(
-      (option) => option.value === costCode
-    )
-    setLines((current) => current.map((line) => line.id === id
-      ? {
-          ...line,
-          costCode,
-          phaseCode: selectedCode?.divisionCode ?? line.phaseCode,
-        }
-      : line
-    ))
-  }
-
-  const [filePickerOpen, setFilePickerOpen] = React.useState(false)
-
-  function addDocumentLink(): void {
-    setDocumentLinks((current) => [...current, newDocumentLink()])
-  }
-
-  function removeDocumentLink(id: string): void {
-    setDocumentLinks((current) =>
-      current.length === 1
-        ? current
-        : current.filter((link) => link.id !== id)
-    )
-  }
-
-  function updateDocumentLink(
-    id: string,
-    field: RfqDocumentField,
-    value: string
-  ): void {
-    setDocumentLinks((current) =>
-      current.map((link) =>
-        link.id === id ? { ...link, [field]: value } : link
-      )
-    )
-  }
+  const initial = React.useMemo(() => draftFromRfq(rfq), [rfq])
+  const { category, selections, rows } = useRfqScopeDraft({
+    selectionOptions,
+    selectionsSummary,
+    costCodeOptions,
+    initial,
+  })
 
   async function submitEdit(
     event: React.FormEvent<HTMLFormElement>
@@ -489,14 +102,14 @@ export function ProjectRfqEditForm({
     const formData = new FormData(event.currentTarget)
     const result = await updateRfqRequest(projectId, rfq.id, {
       title: String(formData.get("title") ?? ""),
-      vendorCategory: cleanValue(vendorCategory),
-      requestedFrom: cleanValue(String(formData.get("requestedFrom") ?? "")),
-      recipientEmail: cleanValue(String(formData.get("recipientEmail") ?? "")),
-      responseDueDate: cleanValue(String(formData.get("responseDueDate") ?? "")),
+      vendorCategory: cleanText(category.vendorCategory),
+      requestedFrom: cleanText(String(formData.get("requestedFrom") ?? "")),
+      recipientEmail: cleanText(String(formData.get("recipientEmail") ?? "")),
+      responseDueDate: cleanText(String(formData.get("responseDueDate") ?? "")),
       priority,
-      scope: cleanValue(String(formData.get("scope") ?? "")),
-      scopeItems: lines.map(toScopeInput),
-      documentLinks: documentLinks.map(toDocumentInput),
+      scope: cleanText(String(formData.get("scope") ?? "")),
+      scopeItems: rows.lines.map(toScopeInput),
+      documentLinks: rows.documentLinks.map(toDocumentInput),
     })
 
     if (!result.success) {
@@ -557,420 +170,60 @@ export function ProjectRfqEditForm({
           )}
 
           <div className="space-y-3">
-            <Field label="RFQ title / scope">
+            <RfqField label="RFQ title / scope">
               <Input
                 name="title"
                 defaultValue={rfq.title}
                 required
                 className={DOCUMENT_INPUT_CLASS}
               />
-            </Field>
-            <Field label="Overall scope">
+            </RfqField>
+            <RfqField label="Overall scope">
               <Textarea
                 name="scope"
                 defaultValue={rfq.description ?? ""}
                 className={`min-h-24 ${DOCUMENT_INPUT_CLASS}`}
               />
-            </Field>
+            </RfqField>
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-              <Field label="Requested from">
+              <RfqField label="Requested from">
                 <Input
                   name="requestedFrom"
                   defaultValue={rfq.companyName ?? rfq.assigneeName ?? ""}
                   className={DOCUMENT_INPUT_CLASS}
                 />
-              </Field>
-              <Field label="Recipient email">
+              </RfqField>
+              <RfqField label="Recipient email">
                 <Input
                   name="recipientEmail"
                   defaultValue={rfq.recipientEmail ?? ""}
                   className={DOCUMENT_INPUT_CLASS}
                 />
-              </Field>
-              <div className="space-y-1.5">
-                <span className="text-xs font-medium text-muted-foreground">
-                  Vendor category / trade
-                </span>
-                <Popover
-                  open={categoryPickerOpen}
-                  onOpenChange={setCategoryPickerOpen}
-                >
-                  <PopoverTrigger asChild>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      className={cn(
-                        "h-10 w-full justify-between rounded-none border-x-0 border-t-0 bg-background px-0 text-left font-normal shadow-none",
-                        !vendorCategory && "text-muted-foreground"
-                      )}
-                    >
-                      <span className="min-w-0 truncate">
-                        {vendorCategory || "Choose trade/category..."}
-                      </span>
-                      <IconChevronDown className="size-4 shrink-0 opacity-60" />
-                    </Button>
-                  </PopoverTrigger>
-                  <PopoverContent
-                    align="start"
-                    className="w-[min(30rem,calc(100vw-3rem))] p-0"
-                  >
-                    <div className="border-b p-3">
-                      <Input
-                        value={categoryQuery}
-                        onChange={(event) =>
-                          setCategoryQuery(event.target.value)
-                        }
-                        placeholder="Search trade or type a category..."
-                        autoFocus
-                      />
-                    </div>
-                    <div className="compass-content-scroll max-h-72 overflow-y-auto p-2">
-                      {vendorCategoryOptions.length > 0 ? (
-                        vendorCategoryOptions.map((option) => (
-                          <button
-                            key={`${option.division ?? "misc"}-${option.label}`}
-                            type="button"
-                            onClick={() => selectVendorCategory(option)}
-                            className="flex w-full items-start justify-between gap-3 rounded-md px-2 py-2 text-left text-sm hover:bg-accent"
-                          >
-                            <span className="min-w-0">
-                              <span className="block truncate font-medium">
-                                {option.label}
-                              </span>
-                              {option.division && (
-                                <span className="block truncate text-xs text-muted-foreground">
-                                  Division {option.division}
-                                </span>
-                              )}
-                            </span>
-                            {vendorCategory === option.label && (
-                              <IconCheck className="mt-0.5 size-4 shrink-0" />
-                            )}
-                          </button>
-                        ))
-                      ) : (
-                        <p className="px-2 py-3 text-sm text-muted-foreground">
-                          No matching categories.
-                        </p>
-                      )}
-                    </div>
-                    <div className="flex items-center justify-between gap-2 border-t p-2">
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="sm"
-                        onClick={clearVendorCategory}
-                      >
-                        Clear
-                      </Button>
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        disabled={!categoryQuery.trim()}
-                        onClick={useTypedVendorCategory}
-                      >
-                        Use typed category
-                      </Button>
-                    </div>
-                  </PopoverContent>
-                </Popover>
-              </div>
-              <Field label="Response needed by">
+              </RfqField>
+              <RfqCategoryPicker category={category} />
+              <RfqField label="Response needed by">
                 <Input
                   name="responseDueDate"
                   type="date"
                   defaultValue={rfq.dueDate ?? ""}
                   className={DOCUMENT_INPUT_CLASS}
                 />
-              </Field>
-              <div className="space-y-1.5">
-                <span className="text-xs font-medium text-muted-foreground">
-                  Priority
-                </span>
-                <Select value={priority} onValueChange={setPriority}>
-                  <SelectTrigger className="w-full rounded-none border-x-0 border-t-0 px-0 shadow-none">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent className="compass-content-scroll max-h-72">
-                    <SelectItem value="normal">Normal priority</SelectItem>
-                    <SelectItem value="high">High priority</SelectItem>
-                    <SelectItem value="critical">Critical</SelectItem>
-                    <SelectItem value="low">Low priority</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
+              </RfqField>
+              <RfqPrioritySelect priority={priority} onPriorityChange={setPriority} />
             </div>
           </div>
 
-          {allSelections.length > 0 && (
-            <div className="border-y">
-              <div className="flex flex-wrap items-center justify-between gap-2 border-b py-2">
-                <div>
-                  <h3 className="text-xs font-semibold uppercase text-muted-foreground">
-                    Import finish selections
-                  </h3>
-                  <p className="text-xs text-muted-foreground">
-                    Add more room selections to this RFQ scope.
-                  </p>
-                </div>
-                <div className="flex flex-wrap gap-2">
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    disabled={filteredSelections.length === 0}
-                    onClick={selectAllFilteredSelections}
-                  >
-                    Select filtered
-                  </Button>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    disabled={selectedSelectionIds.size === 0}
-                    onClick={clearSelectedSelections}
-                  >
-                    Clear
-                  </Button>
-                  <Button
-                    type="button"
-                    size="sm"
-                    disabled={selectedSelections.length === 0}
-                    onClick={importSelectedSelections}
-                  >
-                    Import {selectedSelections.length || ""}
-                  </Button>
-                </div>
-              </div>
-              <div className="grid gap-3 py-3 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)]">
-                <label className="space-y-1.5">
-                  <span className="text-xs font-medium text-muted-foreground">
-                    Division
-                  </span>
-                  <SearchableCombobox
-                    value={selectionFilters.division}
-                    onValueChange={(picked) => {
-                      // An empty value is the picker's reset: show all divisions.
-                      const value = picked || ALL
-                      setSelectionFilters((current) => ({
-                        ...current,
-                        division: value,
-                        costCode:
-                          value === ALL ||
-                          selectionOptions.costCodes.some(
-                            (option) =>
-                              option.value === current.costCode &&
-                              option.divisionCode === value
-                          )
-                            ? current.costCode
-                            : ALL,
-                      }))
-                    }}
-                    options={[
-                      { value: ALL, label: "All divisions" },
-                      ...selectionDivisions.map((option) => ({
-                        value: option.value,
-                        label: option.label,
-                        keywords: option.value,
-                      })),
-                    ]}
-                    ariaLabel="Filter selections by division"
-                    placeholder="All divisions"
-                    searchPlaceholder="Search divisions..."
-                    emptyMessage="No matching divisions."
-                  />
-                </label>
-
-                <label className="space-y-1.5">
-                  <span className="text-xs font-medium text-muted-foreground">
-                    Cost code
-                  </span>
-                  <SearchableCombobox
-                    value={selectionFilters.costCode}
-                    onValueChange={(picked) =>
-                      setSelectionFilters((current) => ({
-                        ...current,
-                        costCode: picked || ALL,
-                      }))
-                    }
-                    options={[
-                      { value: ALL, label: "All cost codes" },
-                      ...filteredSelectionCostCodes.map((option) => ({
-                        value: option.value,
-                        label: option.label,
-                        description: option.needsSageReview ? "Needs review" : undefined,
-                        keywords: option.value,
-                      })),
-                    ]}
-                    ariaLabel="Filter selections by cost code"
-                    placeholder="All cost codes"
-                    searchPlaceholder="Search cost codes..."
-                    emptyMessage="No matching cost codes."
-                  />
-                </label>
-
-                <label className="space-y-1.5">
-                  <span className="text-xs font-medium text-muted-foreground">
-                    Room
-                  </span>
-                  <SearchableCombobox
-                    value={selectionFilters.roomName}
-                    onValueChange={(picked) =>
-                      setSelectionFilters((current) => ({
-                        ...current,
-                        roomName: picked || ALL,
-                      }))
-                    }
-                    options={[
-                      { value: ALL, label: "All rooms" },
-                      ...selectionsSummary.rooms.map((room) => ({
-                        value: room.roomName,
-                        label: room.roomName,
-                        description: `${room.selections.length} selections`,
-                      })),
-                    ]}
-                    ariaLabel="Filter selections by room"
-                    placeholder="All rooms"
-                    searchPlaceholder="Search rooms..."
-                    emptyMessage="No matching rooms."
-                  />
-                </label>
-              </div>
-              <div className="compass-content-scroll max-h-72 overflow-y-auto border-t">
-                {filteredSelections.length > 0 ? (
-                  filteredSelections.map((selection) => (
-                    <label
-                      key={selection.id}
-                      className="grid cursor-pointer grid-cols-[1.5rem_minmax(0,1fr)_7rem_8rem] gap-2 border-b px-2 py-2 text-sm last:border-b-0 hover:bg-accent/60"
-                    >
-                      <Checkbox
-                        checked={selectedSelectionIds.has(selection.id)}
-                        onCheckedChange={(checked) =>
-                          toggleSelection(selection.id, checked === true)
-                        }
-                      />
-                      <span className="min-w-0">
-                        <span className="block truncate font-medium">
-                          {selection.roomName}: {selection.name}
-                        </span>
-                        <span className="block truncate text-xs text-muted-foreground">
-                          {[selection.category, selection.manufacturer, selection.model]
-                            .filter((value): value is string => Boolean(value))
-                            .join(" · ") || "Selection detail"}
-                        </span>
-                      </span>
-                      <span className="truncate text-xs text-muted-foreground">
-                        {selection.costCode ?? "No code"}
-                      </span>
-                      <span className="truncate text-xs text-muted-foreground">
-                        {selectionStatusLabel(selection.status)}
-                      </span>
-                    </label>
-                  ))
-                ) : (
-                  <p className="px-2 py-4 text-sm text-muted-foreground">
-                    No finish selections match these filters.
-                  </p>
-                )}
-              </div>
-            </div>
+          {selections.allSelections.length > 0 && (
+            <RfqSelectionImport
+              selections={selections}
+              selectionOptions={selectionOptions}
+              selectionsSummary={selectionsSummary}
+            />
           )}
 
-          <div className="border-y">
-            <div className="flex flex-wrap items-center justify-between gap-2 border-b py-2">
-              <h3 className="text-xs font-semibold uppercase text-muted-foreground">
-                Plans & specs package
-              </h3>
-              <div className="flex flex-wrap gap-2">
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  onClick={addDocumentLink}
-                >
-                  <IconPlus className="size-4" />
-                  Add link
-                </Button>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setFilePickerOpen(true)}
-                >
-                  <IconFolderOpen className="size-4" />
-                  Add files
-                </Button>
-                <ProjectDriveFilePicker
-                  projectId={projectId}
-                  open={filePickerOpen}
-                  onOpenChange={setFilePickerOpen}
-                  alreadyPickedUrls={documentLinks.map((link) => link.url.trim())}
-                  onPick={(files) => setDocumentLinks((current) => withPickedFiles(current, files, newDocumentLink))}
-                />
-              </div>
-            </div>
-            <div className="space-y-3 py-3">
-              {documentLinks.map((link, index) => (
-                <div
-                  key={link.id}
-                  className="grid gap-2 border-b pb-3 last:border-b-0 last:pb-0 md:grid-cols-[minmax(9rem,.8fr)_minmax(16rem,1.4fr)_minmax(10rem,1fr)_2.5rem]"
-                >
-                  <Input
-                    value={link.label}
-                    onChange={(event) =>
-                      updateDocumentLink(link.id, "label", event.target.value)
-                    }
-                    placeholder="Plan set, specs, addendum..."
-                    className={DOCUMENT_INPUT_CLASS}
-                    aria-label={`RFQ document ${index + 1} label`}
-                  />
-                  <Input
-                    value={link.url}
-                    onChange={(event) =>
-                      updateDocumentLink(link.id, "url", event.target.value)
-                    }
-                    placeholder="Link (or use Add files)"
-                    className={DOCUMENT_INPUT_CLASS}
-                    aria-label={`RFQ document ${index + 1} URL`}
-                  />
-                  <Input
-                    value={link.notes}
-                    onChange={(event) =>
-                      updateDocumentLink(link.id, "notes", event.target.value)
-                    }
-                    placeholder="Sheet range, revision, access note"
-                    className={DOCUMENT_INPUT_CLASS}
-                    aria-label={`RFQ document ${index + 1} notes`}
-                  />
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="icon"
-                    className="size-9"
-                    disabled={documentLinks.length === 1}
-                    onClick={() => removeDocumentLink(link.id)}
-                    aria-label={`Remove RFQ document ${index + 1}`}
-                  >
-                    <IconTrash className="size-4" />
-                  </Button>
-                </div>
-              ))}
-            </div>
-          </div>
+          <RfqDocumentLinks projectId={projectId} rows={rows} />
 
-          <RfqScopeRows
-            rows={{
-              lines,
-              setLines,
-              addLine,
-              removeLine,
-              updateLine,
-              updateLineDivision,
-              updateLineCostCode,
-            }}
-            costCodeOptions={costCodeOptions}
-          />
+          <RfqScopeRows rows={rows} costCodeOptions={costCodeOptions} />
 
           {status.kind === "error" && (
             <p className="border-l-2 border-l-destructive px-3 py-2 text-sm text-destructive">

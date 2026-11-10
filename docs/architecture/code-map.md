@@ -112,6 +112,11 @@ acceptance and e-signature; change orders and variances; templates.
 - Components: `src/components/projects/estimate-workspace/`,
   `src/components/projects/project-estimate*.tsx`, `src/components/rfqs/`,
   `src/components/templates/`, `src/components/rate-book/`
+- RFQ forms: "New RFQ" (`project-rfq-create-form.tsx`) and "Edit RFQ"
+  (`project-rfq-edit-form.tsx`) are built from the same pieces in
+  `src/components/projects/rfq-form/`: shared draft state in
+  `use-rfq-scope-draft.ts`, pure rules in `rfq-draft.ts`, one picker file per
+  section.
 - Change orders in detail: the server actions are
   `src/app/actions/project-change-orders.ts` (thin: permission context, load,
   save, revalidate); input checks are `src/lib/domain/estimates/change-order-rules.ts`;
