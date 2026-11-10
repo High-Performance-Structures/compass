@@ -1,0 +1,62 @@
+name: Deploy
+
+# Puts main live after every merge, the same way a person would: `bun run deploy`
+# (the ASCII bundle step plus the 2-minute update window in
+# scripts/deploy-with-update-window.mjs). Cloudflare Workers Builds stays
+# disabled because its default build skipped both.
+#
+# Runs once CI has passed on the merged commit. Pull requests already pass CI
+# and Tests before they can merge. If several merges land close together, only
+# the newest one deploys; it carries the earlier ones with it.
+#
+# A build that adds, renames or deletes a Durable Object class fails here at
+# upload. Deploy that one by hand with `bun run deploy:direct`.
+
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Deploy to Cloudflare
+    runs-on: ubuntu-latest
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.workflow_run.conclusion == 'success' &&
+       github.event.workflow_run.event == 'push')
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+          fetch-depth: 0
+
+      # Skip a merge that a newer one has already overtaken.
+      - name: Check this is still the newest main
+        id: newest
+        run: |
+          git fetch -q origin main
+          if [ "$(git rev-parse HEAD)" = "$(git rev-parse origin/main)" ]; then
+            echo "deploy=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "A newer commit is on main; its own run will deploy."
+            echo "deploy=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: oven-sh/setup-bun@v2
+        if: steps.newest.outputs.deploy == 'true'
+
+      - run: bun install --frozen-lockfile
+        if: steps.newest.outputs.deploy == 'true'
+
+      - run: bun run deploy
+        if: steps.newest.outputs.deploy == 'true'
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: 8716137c706ea3d5c209b330084fa9e2
