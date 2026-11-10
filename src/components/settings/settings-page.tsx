@@ -13,6 +13,7 @@ import {
   IconRobot,
   IconShieldLock,
   IconTag,
+  IconUsers,
 } from "@tabler/icons-react"
 
 import { useIsMobile } from "@/hooks/use-mobile"
@@ -35,6 +36,8 @@ import { RateBookTab } from "@/components/settings/rate-book-tab"
 import { WorkflowsTab } from "@/components/settings/workflows-tab"
 import { RecordStatusesTab } from "@/components/settings/record-statuses-tab"
 import { ListsTab } from "@/components/settings/lists-tab"
+import { AccessRequestSettingsSection } from "@/components/settings/access-request-settings-section"
+import { AccessRequestsCard } from "@/components/settings/access-requests-card"
 import { DepartmentProfilesSection } from "@/components/settings/department-profiles-section"
 import { InternalDepartmentSettingsSection } from "@/components/settings/internal-department-settings-section"
 import { NetSuiteConnectionStatus } from "@/components/netsuite/connection-status"
@@ -52,6 +55,7 @@ const SETTINGS_TABS = [
   { value: "preferences", label: "Preferences", icon: IconAdjustments },
   { value: "company", label: "Company", icon: IconBuildingSkyscraper },
   { value: "appearance", label: "Theme", icon: IconPalette },
+  { value: "people", label: "People", icon: IconUsers },
   { value: "permissions", label: "Permissions", icon: IconShieldLock },
   { value: "zone-charges", label: "Zone charges", icon: IconMapPin },
   { value: "rate-book", label: "Rate book", icon: IconBook },
@@ -66,7 +70,7 @@ type SectionValue = (typeof SETTINGS_TABS)[number]["value"]
 
 // wide sections get unconstrained width for tables/complex layouts
 const WIDE_SECTIONS = new Set<string>([
-  "appearance", "permissions", "agent", "rate-book", "workflows", "statuses", "lists",
+  "appearance", "people", "permissions", "agent", "rate-book", "workflows", "statuses", "lists",
 ])
 
 function IntegrationsSection() {
@@ -135,6 +139,13 @@ export function SettingsPageClient() {
         )
       case "appearance":
         return <AppearanceTab />
+      case "people":
+        return (
+          <div className="space-y-8">
+            <AccessRequestSettingsSection />
+            <AccessRequestsCard />
+          </div>
+        )
       case "permissions":
         return <PermissionsTab />
       case "zone-charges":

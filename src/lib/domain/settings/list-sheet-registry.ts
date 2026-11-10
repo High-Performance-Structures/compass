@@ -545,6 +545,30 @@ export const LIST_SHEETS: readonly ListSheetDefinition[] = [
       renamable: true,
     },
   },
+  {
+    id: "settings.access-requests",
+    label: "Access requests",
+    where: "Settings › People, access requests",
+    columns: [
+      { id: "person", label: "Person", kind: "text", required: true },
+      { id: "kind", label: "I am a", kind: "text" },
+      { id: "details", label: "Job or note", kind: "text" },
+      { id: "requested", label: "Requested", kind: "date" },
+      { id: "status", label: "Status", kind: "status" },
+    ],
+    defaultSort: null,
+    startFilter: {
+      options: [
+        { value: "pending", label: "Waiting" },
+        { value: "approved", label: "Approved" },
+        { value: "declined", label: "Declined" },
+        { value: "withdrawn", label: "Withdrawn" },
+        { value: "all", label: "All" },
+      ],
+      defaultValue: "pending",
+      renamable: true,
+    },
+  },
   ...FINANCIAL_LIST_SHEETS,
   {
     id: "nutech.catalog",

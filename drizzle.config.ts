@@ -58,6 +58,7 @@ export default defineConfig({
     "./src/db/schema-record-statuses.ts",
     "./src/db/schema-shop-tickets.ts",
     "./src/db/schema-warranty.ts",
+    "./src/db/schema-access-requests.ts",
     "./src/lib/sync/schema.ts",
   ],
   out: "./drizzle",

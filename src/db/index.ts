@@ -40,6 +40,7 @@ import * as internalDutySchema from "./schema-internal-duties"
 import * as shopTicketSchema from "./schema-shop-tickets"
 import * as projectLinkSchema from "./schema-project-links"
 import * as equipmentSchema from "./schema-equipment"
+import * as accessRequestSchema from "./schema-access-requests"
 
 const allSchemas = {
   ...rateBookSchema,
@@ -47,6 +48,7 @@ const allSchemas = {
   ...shopTicketSchema,
   ...projectLinkSchema,
   ...equipmentSchema,
+  ...accessRequestSchema,
   ...paperTrailSchema,
   ...selectionDecisionSchema,
   ...selectionChoiceSchema,

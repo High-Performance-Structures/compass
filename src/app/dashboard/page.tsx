@@ -1,7 +1,9 @@
 import type * as React from "react"
 import { cookies } from "next/headers"
 
+import { getRequestAccessPageData } from "@/app/actions/access-requests"
 import { getActiveCherishStories } from "@/app/actions/cherish-stories"
+import { RequestAccessPanel } from "@/components/access-requests/request-access-panel"
 import { getDashboardOverview } from "@/app/actions/dashboard-overview"
 import { getMyTodaysPlan, getTeamWorkload } from "@/app/actions/morning-plan"
 import { getProjectAudienceOptions } from "@/app/actions/project-audience-preview"
@@ -50,6 +52,13 @@ export default async function Page(): Promise<React.ReactElement> {
     if (projectId) {
       return <ClientRedirect href={`/preview/projects/${encodeURIComponent(projectId)}/${audience}`} />
     }
+  }
+
+  // Someone who signed up without an invitation belongs to no company yet:
+  // instead of an empty dashboard, show them Request access.
+  if (currentUser && (currentUser.organizationType === "personal" || currentUser.organizationType === null)) {
+    const access = await getRequestAccessPageData()
+    if (access.success && !access.data.hasCompany) return <RequestAccessPanel data={access.data} />
   }
 
   const [
