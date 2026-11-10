@@ -37,6 +37,13 @@ describe("[MESSAGE] intake", () => {
     expect(await routeProjectInboundEmail({ ...input(db), candidate: { ...known, gmailMessageId: "unknown-2", fromAddress: "unknown@example.test" } })).toEqual({ kind: "needs_review", projectId: "proj-project-a" })
     expect(db.sqlite.prepare("SELECT COUNT(*) AS count FROM correspondence_messages").get()).toEqual({ count: 1 })
   })
+  it("posts an untagged email to the project inbox as a project message", async () => {
+    const db = setup()
+    db.sqlite.exec("UPDATE projects SET id='proj-project-a' WHERE id='project-b'")
+    const untagged = candidate({ toAddress: "jarvis+project-proj-project-a@hps-colorado.com", fromAddress: "staff-a@example.test", subject: '@"Staff A" Test email' })
+    expect((await routeProjectInboundEmail({ ...input(db), candidate: untagged })).kind).toBe("routed")
+    expect(db.sqlite.prepare("SELECT COUNT(*) AS count FROM correspondence_messages").get()).toEqual({ count: 1 })
+  })
   it("routes verified SMS through the shared tag parser and rejects unknown numbers", async () => {
     const db = setup()
     db.sqlite.exec("INSERT INTO notification_preferences(user_id,sms_enabled,sms_phone_number,sms_consent_accepted,sms_consent_disclosure_version,sms_consent_phone_number,updated_at) VALUES ('staff-a',1,'+13035550123',1,'2026-06-30','+13035550123','2026-09-05')")

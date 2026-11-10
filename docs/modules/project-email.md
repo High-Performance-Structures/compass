@@ -19,6 +19,11 @@ system sender. Google must authorize
 the selected mailbox; a failure is reported without switching sender identities.
 The central tracked Reply-To address stays in place regardless of the sender.
 
+Email sent to a project's address, on the To or Cc line, from project staff or
+a project contact is saved as a project message when its subject has no tag
+such as `[RFI]` or `[DAILY LOG]`. Tagged subjects still go to their record type,
+and email from unknown senders or with attached files is held for review.
+
 Incoming replies are attached to the original conversation through its tracked
 Reply-To address. Each reply is granted only to currently active conversation
 participants. Removing project access removes portal access to the conversation

@@ -716,6 +716,7 @@ async function routeVerifiedProjectInboundMessage(input: {
   readonly candidate: InboundCandidate
   readonly source: ProjectInboundSource
   readonly todoDetails?: ReviewedInboundTodoDetails
+  /** Where a message without a subject tag goes; none holds it for review. */ readonly untaggedDestination?: ProjectEmailDestination
 }): Promise<ProjectInboundRouteResult> {
   const projectId = input.projectId
   const [project] = await input.db
@@ -732,7 +733,7 @@ async function routeVerifiedProjectInboundMessage(input: {
     return { kind: "other_organization" }
   }
 
-  const destination = projectEmailDestination(input.candidate.subject)
+  const destination = projectEmailDestination(input.candidate.subject) ?? input.untaggedDestination ?? null
   if (!destination) {
     await recordActivityEvent({
       db: input.db,
@@ -870,11 +871,8 @@ export async function routeProjectInboundEmail(input: {
     return { kind: "needs_review", projectId }
   }
 
-  return routeVerifiedProjectInboundMessage({
-    ...input,
-    projectId,
-    source: EMAIL_SOURCE,
-  })
+  // Staff and contacts email the project inbox without tags: post as a message.
+  return routeVerifiedProjectInboundMessage({ ...input, projectId, source: EMAIL_SOURCE, untaggedDestination: "message" })
 }
 
 function normalizedPhone(value: string): string {
