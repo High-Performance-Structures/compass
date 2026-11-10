@@ -22,11 +22,13 @@ Open project **Selections** and review the room list before adding products. Use
 
 ## Add a Selection {#add-selection}
 
-Choose **Add selection** at the top of the **Selections** sheet, next to the status buttons (or **Add** on a room further down to start with that room filled in). The form opens in a drawer on the right. Record the room, category, item, manufacturer, model, finish, supplier, quantity, product URL, division, cost code, status, visibility, and useful notes. **Room** is a drop-down list of the rooms already used on your company's jobs (this job's first); type to search, and if the room isn't there choose **Add “…”** to use what you typed. A product link supplements identifying details; web content can change.
+Choose **Add selection** at the top of the **Selections** sheet, next to the status buttons (or **Add** on a room under **Work on › Finish specs** to start with that room filled in). The form opens in a drawer on the right. Record the room, category, item, manufacturer, model, finish, supplier, quantity, product URL, division, cost code, status, visibility, and useful notes. **Room** is a drop-down list of the rooms already used on your company's jobs (this job's first); type to search, and if the room isn't there choose **Add “…”** to use what you typed. A product link supplements identifying details; web content can change.
 
 ## Choices, Links and Follow-ups {#choices}
 
-The **Selections** sheet at the top of the page lists every selection with its room, cost code, number of choices, the owner's pick, how the pick compares with the allowance, the due date and status. Follow-up selections sit indented under the selection whose choice opens them. Use the status buttons and search to narrow the list, and click a row to open it in a drawer on the right, over the sheet. The page address then links to that selection, so you can share it. Close the drawer to go back to the sheet.
+The page shows one area at a time: choose it from **Work on** under the page header. **Selection sheet** (the default) holds the sheet, **Publish to owner** sets owner terms and publishes, **Finish specs** edits products room by room, and **Print & share** prints, copies and emails. The address keeps the area (`?work=`), so a link opens the same area.
+
+The **Selections** sheet lists every selection with its room, cost code, number of choices, the owner's pick, how the pick compares with the allowance, the due date and status. Follow-up selections sit indented under the selection whose choice opens them. Use the status buttons and search to narrow the list, and click a row to open it in a drawer on the right, over the sheet. The page address then links to that selection, so you can share it. Close the drawer to go back to the sheet.
 
 The arrows at the top of the drawer go to the previous and next selection in the sheet as it is filtered and sorted, without closing the drawer, and show where you are ("3 of 12"). To walk an owner through a Selection Phase, click its card above the sheet, open the first selection and step through with the arrows.
 
@@ -70,7 +72,9 @@ Delete only an unneeded record when authorized and after reviewing dependencies.
 
 ## Filter and Share {#filter-share}
 
-Filter by room, division, cost code, or status for owner review, room sheets, RFQ scope, or a project packet. Review the filtered result before printing, copying, or sharing. Choose **Packet** or **Room sheets**, then **Print Preview** opens the filtered packet in a new tab with **Print / Save PDF**.
+**Publish to owner**, **Finish specs** and **Print & share** share one filter bar: search, room, division and cost code. Rooms start folded to one line with the item count and status ("3 waiting on owner", "all approved", late risk); open one, or use **Expand all** / **Collapse all**. In **Publish to owner**, tick selections to publish several together, or click one to open its terms, publish form, links and history in a drawer on the right.
+
+In **Print & share**, choose **Organize by** **Room** or **Category**, then the print style: **Packet** (one document) or **Room sheets** / **Category sheets** (each room or category starts on its own page; category sheets suit trades, and each item names its room). **Print Preview** opens the filtered printout in a new tab with **Print / Save PDF**, and **Copy sheet** copies a spreadsheet in the same order. Review the filtered result before printing, copying, or sharing.
 
 ## Quick Check {#quick-check}
 

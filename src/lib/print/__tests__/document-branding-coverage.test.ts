@@ -16,7 +16,7 @@ const REACT_PRINT_DOCUMENTS = [
 /** Print-only documents rendered to PDF on the server (directly or from a snapshot). */
 const SERVER_GENERATED_PRINT_DOCUMENTS = [
   "src/lib/print/rfq-print.ts",
-  "src/components/projects/project-selection-share-actions.tsx",
+  "src/lib/selections/selection-packet.ts",
 ] as const
 
 function source(file: string): string {

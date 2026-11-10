@@ -1,5 +1,12 @@
 "use client"
 
+/*
+ * The Selections page's "Finish specs" area: one folded group per room
+ * (room, count, "2 need decision" / "all approved" / late risk) with Expand
+ * all / Collapse all and Import above. Opening a room shows its selection
+ * rows with follow-ups indented, and each row edits through the existing
+ * edit sheet. The page's shared filter bar narrows the rooms.
+ */
 import { selectionStatusLabel } from "@/lib/domain/selections/status-labels"
 import * as React from "react"
 import { useRouter } from "next/navigation"
@@ -22,22 +29,13 @@ import { ProjectSelectionCreateForm } from "@/components/projects/project-select
 import { ProjectFinishScheduleImportSheet } from "@/components/projects/project-finish-schedule-import-sheet"
 import { ProjectSelectionDeleteButton } from "@/components/projects/project-selection-delete-button"
 import { ProjectSelectionEditForm } from "@/components/projects/project-selection-edit-form"
-import { ProjectSelectionShareActions } from "@/components/projects/project-selection-share-actions"
 import { ProjectSelectionStatusSelect } from "@/components/projects/project-selection-status-select"
-import {
-  DeveloperOnly,
-  useDeveloperMode,
-} from "@/components/developer-mode-provider"
-import { SearchableCombobox } from "@/components/searchable-combobox"
+import { DeveloperOnly } from "@/components/developer-mode-provider"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import type { ProjectBrand } from "@/lib/project-branding"
-
-type SelectionFilterState = {
-  readonly division: string
-  readonly costCode: string
-  readonly roomName: string
-}
+import { FoldedGroup, FoldedGroupsToolbar, useFoldedGroups } from "@/components/folded-groups"
+import type { SelectionLeadTimeWarning } from "@/lib/domain/selections/lead-time-rules"
+import { specRoomPills } from "@/lib/selections/work-filter"
 
 type CostCodeDisplay = {
   readonly label: string
@@ -46,8 +44,6 @@ type CostCodeDisplay = {
   readonly needsSageReview: boolean
   readonly source: ProjectSelectionOptions["costCodes"][number]["source"]
 }
-
-const ALL = "all"
 
 function formatQuantity(value: number | null): string {
   if (value === null) return "-"
@@ -77,131 +73,6 @@ function buildCostCodeMap(
       },
     ])
   )
-}
-
-function selectionMatchesFilters(
-  selection: ProjectSelectionItem,
-  filters: SelectionFilterState,
-  costCodeMap: ReadonlyMap<string, CostCodeDisplay>
-): boolean {
-  if (filters.roomName !== ALL && selection.roomName !== filters.roomName) {
-    return false
-  }
-
-  if (filters.costCode !== ALL && selection.costCode !== filters.costCode) {
-    return false
-  }
-
-  if (filters.division !== ALL) {
-    if (!selection.costCode) return false
-    return costCodeMap.get(selection.costCode)?.divisionCode === filters.division
-  }
-
-  return true
-}
-
-function summarizeFilteredSelections(
-  summary: ProjectSelectionsSummary,
-  filters: SelectionFilterState,
-  costCodeMap: ReadonlyMap<string, CostCodeDisplay>
-): ProjectSelectionsSummary {
-  const rooms = summary.rooms
-    .map((room) => ({
-      ...room,
-      selections: room.selections.filter((selection) =>
-        selectionMatchesFilters(selection, filters, costCodeMap)
-      ),
-    }))
-    .filter((room) => filters.roomName === ALL || room.roomName === filters.roomName)
-    .filter((room) => room.selections.length > 0)
-    .map((room) => ({
-      ...room,
-      selectionCount: room.selections.length,
-    }))
-
-  const selections = rooms.flatMap((room) => room.selections)
-
-  return {
-    totalCount: selections.length,
-    roomCount: rooms.length,
-    sourceWorkbookCount: new Set(
-      rooms
-        .map((room) => room.sourceWorkbookId)
-        .filter((value): value is string => Boolean(value))
-    ).size,
-    needsDecisionCount: selections.filter((selection) =>
-      ["needed", "proposed", "owner_review", "unavailable"].includes(
-        selection.status
-      )
-    ).length,
-    approvedCount: selections.filter((selection) => selection.status === "approved")
-      .length,
-    pricingCount: selections.filter((selection) =>
-      ["pricing", "rfq_sent"].includes(selection.status)
-    ).length,
-    orderedCount: selections.filter((selection) =>
-      ["ordered", "installed"].includes(selection.status)
-    ).length,
-    rooms,
-  }
-}
-
-function filterLabel({
-  costCodeMap,
-  filters,
-  options,
-}: {
-  readonly costCodeMap: ReadonlyMap<string, CostCodeDisplay>
-  readonly filters: SelectionFilterState
-  readonly options: ProjectSelectionOptions
-}): string | null {
-  const parts: string[] = []
-
-  if (filters.roomName !== ALL) parts.push(filters.roomName)
-  if (filters.division !== ALL) {
-    parts.push(
-      options.divisions.find((option) => option.value === filters.division)
-        ?.label ?? filters.division
-    )
-  }
-  if (filters.costCode !== ALL) {
-    parts.push(costCodeMap.get(filters.costCode)?.label ?? filters.costCode)
-  }
-
-  return parts.length > 0 ? parts.join(" / ") : null
-}
-
-function selectionCostCodeCounts(
-  summary: ProjectSelectionsSummary
-): ReadonlyMap<string, number> {
-  const counts = new Map<string, number>()
-
-  for (const room of summary.rooms) {
-    for (const selection of room.selections) {
-      if (!selection.costCode) continue
-      counts.set(selection.costCode, (counts.get(selection.costCode) ?? 0) + 1)
-    }
-  }
-
-  return counts
-}
-
-function selectionDivisionCounts({
-  costCodeCounts,
-  costCodeMap,
-}: {
-  readonly costCodeCounts: ReadonlyMap<string, number>
-  readonly costCodeMap: ReadonlyMap<string, CostCodeDisplay>
-}): ReadonlyMap<string, number> {
-  const counts = new Map<string, number>()
-
-  for (const [costCode, count] of costCodeCounts) {
-    const divisionCode = costCodeMap.get(costCode)?.divisionCode
-    if (!divisionCode) continue
-    counts.set(divisionCode, (counts.get(divisionCode) ?? 0) + count)
-  }
-
-  return counts
 }
 
 function ProjectSelectionCostCodeReviewButton({
@@ -496,257 +367,75 @@ function EmptySelectionsState({
 }
 
 export function ProjectSelectionsWorkspace({
-  brand,
-  clientName,
   options,
   projectId,
-  projectLabel,
   summary,
+  filteredSummary,
+  onClearFilters,
+  leadTimeWarnings = [],
 }: {
-  readonly brand: ProjectBrand
-  readonly clientName: string | null
   readonly options: ProjectSelectionOptions
   readonly projectId: string
-  readonly projectLabel: string
+  /** Every room, for the empty state. */
   readonly summary: ProjectSelectionsSummary
+  /** The rooms the page's shared filter shows. */
+  readonly filteredSummary: ProjectSelectionsSummary
+  readonly onClearFilters: () => void
+  readonly leadTimeWarnings?: readonly SelectionLeadTimeWarning[]
 }): React.ReactElement {
-  const { developerModeEnabled } = useDeveloperMode()
-  const [filters, setFilters] = React.useState<SelectionFilterState>({
-    division: ALL,
-    costCode: ALL,
-    roomName: ALL,
-  })
+  const folds = useFoldedGroups()
   const costCodeMap = React.useMemo(() => buildCostCodeMap(options), [options])
-  const costCodeCounts = React.useMemo(
-    () => selectionCostCodeCounts(summary),
-    [summary]
+  const lateRisk = React.useMemo(
+    () => new Set(leadTimeWarnings.map((warning) => warning.selectionId)),
+    [leadTimeWarnings]
   )
-  const divisionCounts = React.useMemo(
-    () => selectionDivisionCounts({ costCodeCounts, costCodeMap }),
-    [costCodeCounts, costCodeMap]
-  )
-  const codedCount = React.useMemo(
-    () =>
-      Array.from(costCodeCounts.values()).reduce(
-        (total, count) => total + count,
-        0
-      ),
-    [costCodeCounts]
-  )
-  const divisionOptions = React.useMemo(
-    () =>
-      options.divisions.filter((option) => divisionCounts.has(option.value)),
-    [divisionCounts, options.divisions]
-  )
-  const costCodeOptions = React.useMemo(
-    () =>
-      options.costCodes.filter((option) => {
-        if (!costCodeCounts.has(option.value)) return false
-        return filters.division === ALL || option.divisionCode === filters.division
-      }),
-    [costCodeCounts, filters.division, options.costCodes]
-  )
-  const filteredSummary = React.useMemo(
-    () => summarizeFilteredSelections(summary, filters, costCodeMap),
-    [costCodeMap, filters, summary]
-  )
-  const activeFilterLabel = filterLabel({ costCodeMap, filters, options })
-  const hasFilters =
-    filters.division !== ALL || filters.costCode !== ALL || filters.roomName !== ALL
-
-  function clearFilters(): void {
-    setFilters({ division: ALL, costCode: ALL, roomName: ALL })
-  }
-
-  function changeDivision(value: string): void {
-    setFilters((current) => ({
-      ...current,
-      division: value,
-      costCode:
-        value === ALL ||
-        options.costCodes.some(
-          (option) =>
-            option.value === current.costCode && option.divisionCode === value
-        )
-          ? current.costCode
-          : ALL,
-    }))
-  }
 
   if (summary.rooms.length === 0) {
     return <EmptySelectionsState projectId={projectId} />
   }
 
   return (
-    <div className="space-y-4">
-      <section className="border bg-background">
-        <div className="grid gap-3 p-3 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)_auto]">
-          <label className="space-y-1.5">
-            <span className="text-xs font-medium text-muted-foreground">
-              Division
-            </span>
-            <SearchableCombobox
-              value={filters.division}
-              // An empty value is the picker's reset: show all divisions.
-              onValueChange={(picked) => changeDivision(picked || ALL)}
-              options={[
-                { value: ALL, label: "All divisions" },
-                ...divisionOptions.map((option) => ({
-                  value: option.value,
-                  label: option.label,
-                  description: `${divisionCounts.get(option.value) ?? 0} selections`,
-                  keywords: option.value,
-                })),
-              ]}
-              ariaLabel="Filter by division"
-              placeholder="All divisions"
-              searchPlaceholder="Search divisions..."
-              emptyMessage="No matching divisions."
-            />
-          </label>
-
-          <label className="space-y-1.5">
-            <span className="text-xs font-medium text-muted-foreground">
-              Cost code
-            </span>
-            <SearchableCombobox
-              value={filters.costCode}
-              onValueChange={(picked) =>
-                setFilters((current) => ({ ...current, costCode: picked || ALL }))
-              }
-              options={[
-                { value: ALL, label: "All cost codes" },
-                ...costCodeOptions.map((option) => ({
-                  value: option.value,
-                  label: option.label,
-                  description: [
-                    `${costCodeCounts.get(option.value) ?? 0} selections`,
-                    developerModeEnabled && option.needsSageReview ? "needs Sage review" : null,
-                  ].filter(Boolean).join(" · "),
-                  keywords: option.value,
-                })),
-              ]}
-              ariaLabel="Filter by cost code"
-              placeholder="All cost codes"
-              searchPlaceholder="Search cost codes..."
-              emptyMessage="No matching cost codes."
-            />
-          </label>
-
-          <label className="space-y-1.5">
-            <span className="text-xs font-medium text-muted-foreground">
-              Room
-            </span>
-            <SearchableCombobox
-              value={filters.roomName}
-              onValueChange={(picked) =>
-                setFilters((current) => ({ ...current, roomName: picked || ALL }))
-              }
-              options={[
-                { value: ALL, label: "All rooms" },
-                ...summary.rooms.map((room) => ({
-                  value: room.roomName,
-                  label: room.roomName,
-                  description: `${room.selections.length} selections`,
-                })),
-              ]}
-              ariaLabel="Filter by room"
-              placeholder="All rooms"
-              searchPlaceholder="Search rooms..."
-              emptyMessage="No matching rooms."
-            />
-          </label>
-
-          <div className="flex items-end">
-            <Button
-              type="button"
-              variant="outline"
-              className="w-full lg:w-auto"
-              disabled={!hasFilters}
-              onClick={clearFilters}
-            >
-              Clear
-            </Button>
-          </div>
-        </div>
-        <div className="flex flex-wrap items-center justify-between gap-3 border-t px-3 py-2 text-sm">
-          <span className="text-muted-foreground">
-            Showing {filteredSummary.totalCount} of {summary.totalCount} selections
-            {activeFilterLabel ? ` for ${activeFilterLabel}` : ""}
-            {" · "}
-            {codedCount} cost-coded
-          </span>
-          <div className="flex flex-wrap gap-2">
-            <Badge variant="secondary">
-              {filteredSummary.roomCount} room
-              {filteredSummary.roomCount === 1 ? "" : "s"}
-            </Badge>
-            <Badge variant="outline">
-              {filteredSummary.needsDecisionCount} need decision
-            </Badge>
-            <Badge variant="outline">
-              {filteredSummary.approvedCount} approved
-            </Badge>
-          </div>
-        </div>
-      </section>
-
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <ProjectSelectionShareActions
-          brand={brand}
-          clientName={clientName}
-          filterLabel={activeFilterLabel}
-          projectId={projectId}
-          projectLabel={projectLabel}
-          summary={filteredSummary}
-        />
-        <div className="flex flex-wrap gap-2">
-          <ProjectFinishScheduleImportSheet projectId={projectId} />
-        </div>
-      </div>
+    <div className="space-y-3">
+      <FoldedGroupsToolbar
+        state={folds}
+        keys={filteredSummary.rooms.map((room) => room.roomName)}
+      >
+        <ProjectFinishScheduleImportSheet projectId={projectId} />
+      </FoldedGroupsToolbar>
 
       {filteredSummary.rooms.length === 0 ? (
-        <EmptyFilteredState onClear={clearFilters} />
+        <EmptyFilteredState onClear={onClearFilters} />
       ) : (
-        <div className="space-y-4">
+        <div className="space-y-2">
           {filteredSummary.rooms.map((room) => (
-            <section key={room.roomName} className="border bg-background">
-              <div className="selection-room-header flex flex-wrap items-center justify-between gap-2 px-3 py-3">
-                <div>
-                  <h2 className="text-base font-extrabold tracking-tight">
-                    {room.roomName}
-                  </h2>
-                  {room.roomType && (
-                    <p className="mt-1 text-xs font-medium text-foreground/70">
-                      {room.roomType}
-                    </p>
-                  )}
-                </div>
-                <div className="flex flex-wrap items-center gap-2">
-                  <Badge variant="secondary">
-                    {room.selections.length} selection
-                    {room.selections.length === 1 ? "" : "s"}
-                  </Badge>
-                  {room.sourceWorkbookId && (
-                    <Badge variant="outline">Workbook room</Badge>
-                  )}
-                  <ProjectSelectionCreateForm
-                    projectId={projectId}
-                    options={options}
-                    roomName={room.roomName}
-                    roomType={room.roomType ?? ""}
-                    triggerLabel="Add"
-                    triggerVariant="outline"
-                  />
-                </div>
-              </div>
+            <FoldedGroup
+              key={room.roomName}
+              title={room.roomName}
+              subtitle={[room.roomType, room.sourceWorkbookId ? "Workbook room" : null]
+                .filter(Boolean)
+                .join(" · ")}
+              count={room.selections.length}
+              pills={specRoomPills(room.selections, lateRisk)}
+              open={folds.isOpen(room.roomName)}
+              onToggle={() => folds.toggle(room.roomName)}
+              actions={
+                <ProjectSelectionCreateForm
+                  projectId={projectId}
+                  options={options}
+                  roomName={room.roomName}
+                  roomType={room.roomType ?? ""}
+                  triggerLabel="Add"
+                  triggerVariant="outline"
+                />
+              }
+            >
               <SelectionTree
                 costCodeMap={costCodeMap}
                 options={options}
                 projectId={projectId}
                 selections={room.selections}
               />
-            </section>
+            </FoldedGroup>
           ))}
         </div>
       )}

@@ -5,7 +5,8 @@ import { SelectionsSheet } from "@/components/selections/selections-sheet"
 import { listSheetStartFilter } from "@/lib/domain/settings/list-sheets"
 import { parseSelectionListFilter } from "@/lib/selections/sheet"
 import { PageHeader } from "@/components/page-header"
-import { SelectionDecisionWorkspace } from "@/components/selections/selection-decision-workspace"
+import { SelectionsWorkAreas } from "@/components/selections/selections-work-areas"
+import { parseSelectionWorkArea } from "@/lib/selections/work-areas"
 import { decodeProjectRouteId } from "@/lib/project-route-id"
 import type * as React from "react"
 import Link from "next/link"
@@ -23,7 +24,6 @@ import { getProjects } from "@/app/actions/projects"
 import { ProjectBrandLogo } from "@/components/projects/project-brand-logo"
 import { ProjectContextWatermarkShell } from "@/components/projects/project-context-watermark-shell"
 import { ProjectQuickSwitcher } from "@/components/projects/project-quick-switcher"
-import { ProjectSelectionsWorkspace } from "@/components/projects/project-selections-workspace"
 import { DeveloperOnly } from "@/components/developer-mode-provider"
 import { Badge } from "@/components/ui/badge"
 import { permissionDeniedRedirectHref } from "@/lib/permission-redirect"
@@ -60,7 +60,13 @@ export default async function ProjectSelectionsPage({
   searchParams,
 }: {
   readonly params: Promise<{ readonly id: string }>
-  readonly searchParams: Promise<{ readonly status?: string; readonly item?: string; readonly selection?: string }>
+  readonly searchParams: Promise<{
+    readonly status?: string
+    readonly item?: string
+    readonly selection?: string
+    /** The "Work on" area: sheet (default), publish, specs or share. */
+    readonly work?: string
+  }>
 }): Promise<React.ReactElement> {
   const { id: rawProjectId } = await params
   const query = await searchParams
@@ -138,41 +144,31 @@ export default async function ProjectSelectionsPage({
       >
         Open owner selections preview →
       </Link>
-      <SelectionsSheet
-        projectId={id}
-        rows={sheet.rows}
-        suppliers={sheet.suppliers}
-        rounds={sheet.rounds}
-        statusLabels={sheet.statusLabels}
-        leadTimeWarnings={sheet.leadTimeWarnings}
-        initialFilter={parseSelectionListFilter(query.status ?? (await listSheetStartFilter("selections.job")))}
-        // `?item=` is the standard record link; `?selection=` is the older Save to Compass link.
-        initialOpenId={query.item ?? query.selection ?? null}
-        createOptions={selectionOptions}
-      />
-      <div className="mt-8 border-t pt-6">
-        <h2 className="text-lg font-semibold">Publish to the owner</h2>
-        <p className="mt-1 text-sm text-muted-foreground">
-          Set the allowance, owner price terms and due date, and publish each selection for the owner to choose.
-        </p>
-      </div>
-      <SelectionDecisionWorkspace
+      <SelectionsWorkAreas
+        // A record link (`?item=`) opens in the sheet, so it wins over `?work=`.
+        initialArea={query.item || query.selection ? "sheet" : parseSelectionWorkArea(query.work)}
+        sheet={
+          <SelectionsSheet
+            projectId={id}
+            rows={sheet.rows}
+            suppliers={sheet.suppliers}
+            rounds={sheet.rounds}
+            statusLabels={sheet.statusLabels}
+            leadTimeWarnings={sheet.leadTimeWarnings}
+            initialFilter={parseSelectionListFilter(query.status ?? (await listSheetStartFilter("selections.job")))}
+            // `?item=` is the standard record link; `?selection=` is the older Save to Compass link.
+            initialOpenId={query.item ?? query.selection ?? null}
+            createOptions={selectionOptions}
+          />
+        }
         workspace={await getSelectionWorkspace(id, "staff")}
-      />
-      <div className="mt-8 border-t pt-6">
-        <h2 className="text-lg font-semibold">Edit finish specifications</h2>
-        <p className="mt-1 text-sm text-muted-foreground">
-          Maintain products, rooms, quantities, and internal notes below.
-          Publish changes in Selections & Decisions above.
-        </p>
-      </div>
-      <ProjectSelectionsWorkspace
+        summary={summary}
+        options={selectionOptions}
+        leadTimeWarnings={sheet.leadTimeWarnings}
         brand={brand}
         clientName={project?.clientName ?? null}
-        projectLabel={label}
         projectId={id}
-        options={selectionOptions}
-        summary={summary}
+        projectLabel={label}
       />
     </ProjectContextWatermarkShell>
   )

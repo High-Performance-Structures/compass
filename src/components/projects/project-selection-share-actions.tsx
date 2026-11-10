@@ -1,5 +1,12 @@
 "use client"
 
+/*
+ * The Selections page's Print & share area: Print Preview organized by room
+ * (owner packet or one page per room) or by category (one document, or one
+ * page per category for trades), the spreadsheet copy in the same order, and
+ * the share link / email drafts. The printout and sheet text come from
+ * src/lib/selections/selection-packet.ts.
+ */
 import * as React from "react"
 import {
   IconCheck,
@@ -21,31 +28,22 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
+import { Label } from "@/components/ui/label"
 import type { ProjectBrand } from "@/lib/project-branding"
+import {
+  packetHtml,
+  packetTitles,
+  selectionSheetText,
+  type SelectionOrganizeBy,
+  type SelectionPrintMode,
+} from "@/lib/selections/selection-packet"
+import { escapeHtml } from "@/lib/shared/text"
 import { openPrintSnapshot } from "@/components/print/open-print-snapshot"
 
 type CopiedState = "link" | "email" | "html" | "sheet" | null
-type PrintMode = "packet" | "room_sheets"
-
-function escapeHtml(value: string): string {
-  return value
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;")
-    .replaceAll("'", "&#39;")
-}
-
-function plainText(value: string | null): string {
-  return value?.trim() ?? ""
-}
 
 function selectionLink(projectId: string): string {
   return `/dashboard/projects/${projectId}/selections`
-}
-
-function tsvCell(value: string | number | null): string {
-  return String(value ?? "").replaceAll("\t", " ").replaceAll("\n", " ")
 }
 
 function selectionPromptCount(summary: ProjectSelectionsSummary): number {
@@ -53,141 +51,6 @@ function selectionPromptCount(summary: ProjectSelectionsSummary): number {
     (total, room) => total + room.selections.length,
     0
   )
-}
-
-function packetSelectionRows(
-  summary: ProjectSelectionsSummary,
-  mode: PrintMode,
-  projectLabel: string
-): string {
-  return summary.rooms
-    .map((room) => {
-      const selectionRows =
-        room.selections.length === 0
-          ? `<div class="selection-print-blank-row"><p>No selection prompts added yet.</p></div>`
-          : room.selections
-              .map(
-                (selection) => `
-                  <div class="selection-print-item">
-                    <div class="selection-print-item-title">
-                      <h3>${escapeHtml(selection.name)}</h3>
-                      <span>${escapeHtml(selection.category)}</span>
-                    </div>
-                    <div class="selection-print-grid">
-                      <div>
-                        <span>Manufacturer</span>
-                        <p>${escapeHtml(plainText(selection.manufacturer))}</p>
-                      </div>
-                      <div>
-                        <span>Model</span>
-                        <p>${escapeHtml(plainText(selection.model))}</p>
-                      </div>
-                      <div>
-                        <span>Color / Finish</span>
-                        <p>${escapeHtml(plainText(selection.colorFinish))}</p>
-                      </div>
-                      <div>
-                        <span>Supplier</span>
-                        <p>${escapeHtml(plainText(selection.supplierName))}</p>
-                      </div>
-                    </div>
-                    ${
-                      selection.productUrl
-                        ? `<p class="selection-print-link">Product link: ${escapeHtml(selection.productUrl)}</p>`
-                        : ""
-                    }
-                    <div class="selection-print-notes">
-                      <span>Owner notes / questions</span>
-                    </div>
-                  </div>`
-              )
-              .join("")
-
-      if (mode === "room_sheets") {
-        return `
-          <section class="selection-print-room selection-print-room-sheet">
-            <header class="selection-print-room-page-header">
-              <div>
-                <p>${escapeHtml(projectLabel)} · Finish Schedule</p>
-                <h2>${escapeHtml(room.roomName)}</h2>
-              </div>
-              ${room.roomType ? `<span>${escapeHtml(room.roomType)}</span>` : ""}
-            </header>
-            ${selectionRows}
-          </section>`
-      }
-
-      return `
-        <section class="selection-print-room">
-          <div class="selection-print-room-heading">
-            <h2>${escapeHtml(room.roomName)}</h2>
-            ${room.roomType ? `<span>${escapeHtml(room.roomType)}</span>` : ""}
-          </div>
-          ${selectionRows}
-        </section>`
-    })
-    .join("")
-}
-
-function packetHtml({
-  brand,
-  projectLabel,
-  clientName,
-  filterLabel,
-  selectionUrl,
-  summary,
-  mode,
-}: {
-  readonly brand: ProjectBrand
-  readonly projectLabel: string
-  readonly clientName: string | null
-  readonly filterLabel: string | null
-  readonly selectionUrl: string
-  readonly summary: ProjectSelectionsSummary
-  readonly mode: PrintMode
-}): string {
-  const packetTitle =
-    mode === "room_sheets" ? "Room Finish Schedules" : "Finish Selections"
-  const packetNote =
-    mode === "room_sheets"
-      ? "Room sheets are formatted for jobsite posting. Each room starts on its own page."
-      : "Please review each room and fill in the selections that are ready for your decision. Product links, supplier notes, colors, finishes, and questions are all helpful."
-
-  return `
-    <header class="selection-print-header">
-      <div class="selection-print-brand">
-        <img src="${escapeHtml(brand.logoSrc)}" alt="${escapeHtml(brand.logoAlt)}" loading="eager" decoding="sync" data-project-brand-logo="true" />
-        <div>
-          <p>${escapeHtml(brand.companyName)}</p>
-          <span>Finish Selection Packet</span>
-          <div data-project-brand-contact="true">
-            ${brand.contactLines
-              .map(
-                (line) =>
-                  `<span style="display:block;margin-top:0.02in;text-align:left;text-transform:none;">${escapeHtml(line)}</span>`
-              )
-              .join("")}
-          </div>
-        </div>
-      </div>
-      <div class="selection-print-meta">
-        <p>${escapeHtml(projectLabel)}</p>
-        ${clientName ? `<span>${escapeHtml(clientName)}</span>` : ""}
-        ${filterLabel ? `<span>${escapeHtml(filterLabel)}</span>` : ""}
-      </div>
-    </header>
-
-    <section class="selection-print-intro">
-      <h1>${packetTitle}</h1>
-      <p>${escapeHtml(packetNote)}</p>
-      <a class="selection-print-open-link" href="${escapeHtml(selectionUrl)}">
-        Open this selection page in Compass
-      </a>
-    </section>
-
-    <div class="selection-print-rooms">
-      ${packetSelectionRows(summary, mode, projectLabel)}
-    </div>`.trim()
 }
 
 export function ProjectSelectionShareActions({
@@ -206,7 +69,8 @@ export function ProjectSelectionShareActions({
   readonly summary: ProjectSelectionsSummary
 }): React.ReactElement {
   const [copied, setCopied] = React.useState<CopiedState>(null)
-  const [printMode, setPrintMode] = React.useState<PrintMode>("packet")
+  const [printMode, setPrintMode] = React.useState<SelectionPrintMode>("packet")
+  const [organizeBy, setOrganizeBy] = React.useState<SelectionOrganizeBy>("room")
   const [previewError, setPreviewError] = React.useState<string | null>(null)
   const promptCount = selectionPromptCount(summary)
   const emailSubject = `${projectLabel} - Finish selections${
@@ -280,51 +144,6 @@ export function ProjectSelectionShareActions({
       </div>`.trim()
   }
 
-  function sheetText(): string {
-    const rows = [
-      [
-        "Room",
-        "Selection",
-        "Category",
-        "Quantity",
-        "Manufacturer",
-        "Model",
-        "Color / Finish",
-        "Supplier",
-        "Cost Code",
-        "Product Link",
-        "Owner Notes",
-      ],
-    ]
-
-    for (const room of summary.rooms) {
-      if (room.selections.length === 0) {
-        rows.push([room.roomName, "", "", "", "", "", "", "", "", "", ""])
-        continue
-      }
-
-      for (const selection of room.selections) {
-        rows.push([
-          room.roomName,
-          selection.name,
-          selection.category,
-          selection.quantity === null ? "" : String(selection.quantity),
-          plainText(selection.manufacturer),
-          plainText(selection.model),
-          plainText(selection.colorFinish),
-          plainText(selection.supplierName),
-          plainText(selection.costCode),
-          plainText(selection.productUrl),
-          "",
-        ])
-      }
-    }
-
-    return rows
-      .map((row) => row.map((cell) => tsvCell(cell)).join("\t"))
-      .join("\n")
-  }
-
   async function copyLink(): Promise<void> {
     await navigator.clipboard.writeText(absoluteSelectionUrl())
     setCopied("link")
@@ -357,23 +176,32 @@ export function ProjectSelectionShareActions({
   }
 
   async function copySheet(): Promise<void> {
-    await navigator.clipboard.writeText(sheetText())
+    await navigator.clipboard.writeText(selectionSheetText(summary, organizeBy))
     setCopied("sheet")
   }
 
   async function previewPacket(): Promise<void> {
     setPreviewError(null)
+    const { documentWords } = packetTitles(printMode, organizeBy)
     const result = await openPrintSnapshot({
       projectId,
       kind: "selection-packet",
-      title: printMode === "room_sheets" ? "Room finish schedules" : "Finish selections",
-      documentNumber: `${projectLabel} ${printMode === "room_sheets" ? "room sheets" : "selections"}`,
+      title:
+        organizeBy === "category"
+          ? printMode === "room_sheets"
+            ? "Category finish schedules"
+            : "Finish selections by category"
+          : printMode === "room_sheets"
+            ? "Room finish schedules"
+            : "Finish selections",
+      documentNumber: `${projectLabel} ${documentWords}`,
       html: packetHtml({
         brand,
         projectLabel,
         clientName,
         filterLabel,
         mode: printMode,
+        organizeBy,
         selectionUrl: absoluteSelectionUrl(),
         summary,
       }),
@@ -382,64 +210,114 @@ export function ProjectSelectionShareActions({
   }
 
   return (
-    <div className="flex flex-wrap justify-end gap-2 print:hidden">
-      <Select
-        value={printMode}
-        onValueChange={(value) => {
-          if (value === "packet" || value === "room_sheets") {
-            setPrintMode(value)
-          }
-        }}
-      >
-        <SelectTrigger size="sm" className="w-[170px]">
-          <SelectValue placeholder="Print style" />
-        </SelectTrigger>
-        <SelectContent>
-          <SelectItem value="packet">Packet</SelectItem>
-          <SelectItem value="room_sheets">Room sheets</SelectItem>
-        </SelectContent>
-      </Select>
-      <Button size="sm" onClick={() => void previewPacket()}>
-        <IconEye className="size-4" />
-        Print Preview
-      </Button>
-      <Button size="sm" variant="outline" onClick={copyLink}>
-        {copied === "link" ? (
-          <IconCheck className="size-4" />
-        ) : (
-          <IconCopy className="size-4" />
-        )}
-        {copied === "link" ? "Copied" : "Copy link"}
-      </Button>
-      <Button size="sm" variant="outline" onClick={copyEmail}>
-        {copied === "email" ? (
-          <IconCheck className="size-4" />
-        ) : (
-          <IconMail className="size-4" />
-        )}
-        {copied === "email" ? "Copied" : "Copy email draft"}
-      </Button>
-      <Button size="sm" variant="outline" onClick={copyHtmlEmail}>
-        {copied === "html" ? (
-          <IconCheck className="size-4" />
-        ) : (
-          <IconSparkles className="size-4" />
-        )}
-        {copied === "html" ? "Copied" : "Copy HTML email"}
-      </Button>
-      <Button size="sm" variant="outline" onClick={copySheet}>
-        {copied === "sheet" ? (
-          <IconCheck className="size-4" />
-        ) : (
-          <IconFileSpreadsheet className="size-4" />
-        )}
-        {copied === "sheet" ? "Copied" : "Copy sheet"}
-      </Button>
-      {previewError && (
-        <p role="alert" className="w-full text-right text-sm text-destructive">
-          {previewError}
+    <div className="space-y-5 print:hidden">
+      <section className="space-y-2">
+        <h2 className="text-sm font-semibold">Print</h2>
+        <div className="flex flex-wrap items-end gap-3">
+          <div className="space-y-1.5">
+            <Label htmlFor="selection-print-organize" className="text-xs text-muted-foreground">
+              Organize by
+            </Label>
+            <Select
+              value={organizeBy}
+              onValueChange={(value) => {
+                if (value === "room" || value === "category") setOrganizeBy(value)
+              }}
+            >
+              <SelectTrigger id="selection-print-organize" size="sm" className="w-[170px]">
+                <SelectValue placeholder="Organize by" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="room">Room</SelectItem>
+                <SelectItem value="category">Category</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="selection-print-style" className="text-xs text-muted-foreground">
+              Print style
+            </Label>
+            <Select
+              value={printMode}
+              onValueChange={(value) => {
+                if (value === "packet" || value === "room_sheets") {
+                  setPrintMode(value)
+                }
+              }}
+            >
+              <SelectTrigger id="selection-print-style" size="sm" className="w-[190px]">
+                <SelectValue placeholder="Print style" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="packet">Packet</SelectItem>
+                {/* Same mode either way: each group starts a new page. */}
+                <SelectItem value="room_sheets">
+                  {organizeBy === "category" ? "Category sheets" : "Room sheets"}
+                </SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <Button size="sm" onClick={() => void previewPacket()}>
+            <IconEye className="size-4" />
+            Print Preview
+          </Button>
+        </div>
+        <p className="text-xs text-muted-foreground">
+          {packetTitles(printMode, organizeBy).note} {promptCount} selection
+          {promptCount === 1 ? "" : "s"}
+          {filterLabel ? ` for ${filterLabel}` : ""}.
         </p>
-      )}
+        {previewError && (
+          <p role="alert" className="text-sm text-destructive">
+            {previewError}
+          </p>
+        )}
+      </section>
+
+      <section className="space-y-2 border-t pt-4">
+        <h2 className="text-sm font-semibold">Spreadsheet</h2>
+        <p className="text-xs text-muted-foreground">
+          Copies one row per selection, {organizeBy === "category" ? "category" : "room"} first, ready to paste into a sheet.
+        </p>
+        <Button size="sm" variant="outline" onClick={copySheet}>
+          {copied === "sheet" ? (
+            <IconCheck className="size-4" />
+          ) : (
+            <IconFileSpreadsheet className="size-4" />
+          )}
+          {copied === "sheet" ? "Copied" : "Copy sheet"}
+        </Button>
+      </section>
+
+      <section className="space-y-2 border-t pt-4">
+        <h2 className="text-sm font-semibold">Email & share</h2>
+        <div className="flex flex-wrap gap-2">
+          <Button size="sm" variant="outline" onClick={copyLink}>
+            {copied === "link" ? (
+              <IconCheck className="size-4" />
+            ) : (
+              <IconCopy className="size-4" />
+            )}
+            {copied === "link" ? "Copied" : "Copy link"}
+          </Button>
+          <Button size="sm" variant="outline" onClick={copyEmail}>
+            {copied === "email" ? (
+              <IconCheck className="size-4" />
+            ) : (
+              <IconMail className="size-4" />
+            )}
+            {copied === "email" ? "Copied" : "Copy email draft"}
+          </Button>
+          <Button size="sm" variant="outline" onClick={copyHtmlEmail}>
+            {copied === "html" ? (
+              <IconCheck className="size-4" />
+            ) : (
+              <IconSparkles className="size-4" />
+            )}
+            {copied === "html" ? "Copied" : "Copy HTML email"}
+          </Button>
+        </div>
+      </section>
     </div>
   )
 }
