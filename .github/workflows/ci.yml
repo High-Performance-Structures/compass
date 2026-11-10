@@ -51,3 +51,5 @@ jobs:
       - uses: oven-sh/setup-bun@v2
       - run: bun install --frozen-lockfile
       - run: bun run build
+      # Shared server code must stay in one copy (docs/architecture/server-bundle.md).
+      - run: bun run bundle:check

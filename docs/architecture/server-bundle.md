@@ -13,7 +13,8 @@ From `next build` to one Worker file
 
 `bun run deploy` runs three steps (see `package.json`):
 
-1. **`opennextjs-cloudflare build`** runs `next build` (Turbopack) and then
+1. **`opennextjs-cloudflare build`** runs `bun run build` (`next build` with
+   Turbopack, then `scripts/dedupe-server-chunks.mjs`, explained below) and
    packages the result for Cloudflare.
 2. **`scripts/ascii-worker-bundle.mjs`** rewrites any non-ASCII characters in
    the bundle (explained below).
@@ -40,11 +41,11 @@ What happens inside step 1:
   manifests into a single file:
   `.open-next/server-functions/default/handler.mjs`. Next's manifest loader
   (`load-manifest.external.js`) is patched to hold every manifest inline.
-- **The result is that duplicates survive.** esbuild sees each chunk as a
-  separate file, so the copies Turbopack made are all kept. That is why the same
-  module appears many times in `handler.mjs`.
+- **Duplicates would survive.** esbuild sees each chunk as a separate file,
+  so every copy Turbopack made would end up in `handler.mjs`. Step 1 removes
+  them first (next section).
 
-Baseline on main `26274ed3` (2026-11-08):
+Baseline on main `26274ed3` (2026-11-08), before copies were removed:
 
 | What | Size |
 |------|------|
@@ -54,9 +55,44 @@ Baseline on main `26274ed3` (2026-11-08):
 | Next manifests (inlined) | 4.81 MB |
 | V8 parse time of `handler.mjs` | ~393 ms |
 
-So roughly half the module code is extra copies. The biggest copied modules at
-that point were `src/db/schema.ts` (7 copies), `src/lib/permissions.ts` (28),
-Drizzle's SQLite dialect, and Capacitor's core plugins (37).
+So roughly half the module code was extra copies. The biggest copied modules
+were `src/db/schema.ts` (7 copies), `src/lib/permissions.ts` (28), Drizzle's
+SQLite dialect, and Capacitor's core plugins (37).
+
+
+Shared code is kept in one copy
+---
+
+`bun run build` is `next build` followed by `scripts/dedupe-server-chunks.mjs`.
+OpenNext's build calls `bun run build`, so the deploy, upload and preview
+scripts all get it, and so do CI's browser tests (they run `next start` on the
+same output).
+
+A Turbopack chunk is `module.exports = [id, ..., factory, ...]`. The runtime
+installs the first factory it sees for a module id and ignores later copies.
+The script finds every factory that appears byte for byte in more than one
+chunk, writes one copy to `shared-modules.js` in the chunks folder, and puts
+`__compassSharedModules[n]` in each chunk instead. Module ids, chunk files and
+load order are unchanged. Factories that use their own file's `require`,
+`module`, `exports`, `__dirname` or `__filename` are left in place.
+
+It does this for `.next/server/chunks/` (used by `next start`) and
+`.next/standalone/.next/server/chunks/` (the copy OpenNext packages), adds
+`shared-modules.js` to the server traces so OpenNext copies it, and writes
+`.next/server/module-names.json` (module id to source file) because the
+rewritten chunks' source maps no longer line up and are removed.
+
+What is left are copies the script can't merge, mostly the same module
+minified with different variable names in different chunks.
+
+**Keeping it that way.** CI's Build job runs `bun run bundle:check`
+(`scripts/bundle-duplicates-check.mjs`) after `bun run build`. It fails if
+`shared-modules.js` is missing or if the leftover copies grow more than
+250 KB over `scripts/bundle-duplicates-baseline.json`. A Next.js upgrade that
+changes the chunk format would make the dedupe step match nothing, and this
+check catches that. When leftover copies shrink, lock it in with
+`bun run bundle:check -- --write`. Don't raise the baseline to make a PR pass;
+find out why the listed modules are copied.
 
 
 The 128 MB memory limit and `exceededMemory`
@@ -160,11 +196,12 @@ node --experimental-vm-modules scripts/bundle-report.mjs --parse
   runtime and other `node_modules`, and OpenNext glue (from esbuild's
   `handler.mjs.meta.json`).
 - **Module code**: total, unique (each module id once), unique by source file,
-  and how many modules sit in more than one chunk. It reads each Turbopack
-  chunk's `[moduleId, factory, ...]` array and uses the chunk's source map
-  (in `.next/server/chunks/`) to name each module.
-- **Top duplicated modules**: which source files cost the most in extra
-  copies. These are the best targets when trimming the bundle.
+  how much sits in `shared-modules.js`, and how many modules are still in more
+  than one chunk. It reads each Turbopack chunk's `[moduleId, factory, ...]`
+  array (`scripts/turbopack-chunks.mjs`) and names modules from
+  `.next/server/module-names.json`.
+- **Top leftover copies**: which source files still cost the most in extra
+  copies.
 
 Compare the numbers before and after a change that adds a dependency or moves
 a large module. A change that adds megabytes to `handler.mjs` should say so in
