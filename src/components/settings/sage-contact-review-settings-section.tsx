@@ -1,72 +1,24 @@
 "use client"
 
 import * as React from "react"
-import { toast } from "sonner"
-import {
-  getFeatureSettingsForEditor,
-  resetFeatureSettings,
-  saveFeatureSettings,
-} from "@/app/actions/feature-settings"
+import { useFeatureSettingsEditor } from "@/hooks/use-feature-settings-editor"
 import { Button } from "@/components/ui/button"
 import { Label } from "@/components/ui/label"
 import { Switch } from "@/components/ui/switch"
 import { FEATURE_SETTINGS } from "@/lib/feature-settings/registry"
-import {
-  sageContactReviewSettingsSchema,
-  type SageContactReviewSettings,
-} from "@/lib/feature-settings/sage-contact-review-settings"
 
 const GROUP = FEATURE_SETTINGS["sage-contact-review"]
 
 /** Settings → Workflows: whether the requester may approve their own Sage contact changes. */
 export function SageContactReviewSettingsSection(): React.ReactElement {
-  const [loaded, setLoaded] = React.useState(false)
-  const [canEdit, setCanEdit] = React.useState(false)
-  const [customized, setCustomized] = React.useState(false)
-  const [error, setError] = React.useState<string | null>(null)
-  const [value, setValue] = React.useState<SageContactReviewSettings>(GROUP.defaults)
-  const [pending, startTransition] = React.useTransition()
-
-  const load = React.useCallback(async () => {
-    const result = await getFeatureSettingsForEditor("sage-contact-review")
-    if (!result.success) {
-      setError(result.error)
-      return
-    }
-    const parsed = sageContactReviewSettingsSchema.safeParse(result.data.settings)
-    setValue(parsed.success ? parsed.data : GROUP.defaults)
-    setCanEdit(result.data.canEdit)
-    setCustomized(result.data.customized)
-    setLoaded(true)
-  }, [])
-
-  React.useEffect(() => {
-    void load()
-  }, [load])
+  const { loaded, canEdit, customized, error, pending, settings: value, setSettings: setValue, save: saveSettings, reset } = useFeatureSettingsEditor("sage-contact-review", {
+    savedMessage: "Sage contact review settings saved.",
+    resetMessage: "Sage contact review settings reset to defaults."
+  })
 
   function save(event: React.FormEvent<HTMLFormElement>): void {
     event.preventDefault()
-    startTransition(async () => {
-      const result = await saveFeatureSettings("sage-contact-review", value)
-      if (!result.success) {
-        toast.error(result.error)
-        return
-      }
-      toast.success("Sage contact review settings saved.")
-      await load()
-    })
-  }
-
-  function reset(): void {
-    startTransition(async () => {
-      const result = await resetFeatureSettings("sage-contact-review")
-      if (!result.success) {
-        toast.error(result.error)
-        return
-      }
-      toast.success("Sage contact review settings reset to defaults.")
-      await load()
-    })
+    saveSettings(value)
   }
 
   return (

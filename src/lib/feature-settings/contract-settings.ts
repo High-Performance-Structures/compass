@@ -9,7 +9,7 @@ import { PAY_APPLICATION_OWNER_DETAILS } from "@/lib/financials/pay-application-
  */
 
 /** Contract deposits: how a received deposit reaches pay applications. */
-export const contractDepositSettingsSchema = z.object({
+const contractDepositSettingsSchema = z.object({
   /** New pay applications apply the unapplied deposit balance automatically. */
   autoApplyToPayApplications: z.boolean(),
 })
@@ -24,7 +24,7 @@ export const CONTRACT_DEPOSIT_SETTINGS_GROUP = {
   schema: contractDepositSettingsSchema,
 }
 
-export const payApplicationSettingsSchema = z.object({
+const payApplicationSettingsSchema = z.object({
   /** What the client sees on a pay application unless the draw overrides it. */
   ownerDetail: z.enum(PAY_APPLICATION_OWNER_DETAILS),
 })
@@ -42,7 +42,7 @@ export const PAY_APPLICATION_SETTINGS_GROUP = {
 export const CHANGE_ORDER_STAFF_SIGNOFF_ROLES = ["approvers", "admins", "nobody"] as const
 
 /** Change-order acceptance: how staff may record an owner's approval without a signed document. */
-export const changeOrderAcceptanceSettingsSchema = z.object({
+const changeOrderAcceptanceSettingsSchema = z.object({
   staffSignOff: z.enum(CHANGE_ORDER_STAFF_SIGNOFF_ROLES),
   /** A change order that changes the price needs written evidence of the approval. */
   pricedRequiresEvidence: z.boolean(),
@@ -71,7 +71,7 @@ export const INSURANCE_RATE_SOURCES = ["contract", "fixed", "off"] as const
  * orders ("contract" uses the job's own insurance line as a share of the rest
  * of the contract; "fixed" uses the percent below).
  */
-export const varianceSettingsSchema = z.object({
+const varianceSettingsSchema = z.object({
   defaultContractType: z.enum(PROJECT_CONTRACT_TYPES),
   insuranceCostCode: z.string().trim().min(1).max(80),
   insuranceDescription: z.string().trim().min(1).max(120),

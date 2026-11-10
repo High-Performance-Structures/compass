@@ -1,72 +1,24 @@
 "use client"
 
 import * as React from "react"
-import { toast } from "sonner"
-import {
-  getFeatureSettingsForEditor,
-  resetFeatureSettings,
-  saveFeatureSettings,
-} from "@/app/actions/feature-settings"
+import { useFeatureSettingsEditor } from "@/hooks/use-feature-settings-editor"
 import { Button } from "@/components/ui/button"
 import { Label } from "@/components/ui/label"
 import { Switch } from "@/components/ui/switch"
 import { FEATURE_SETTINGS } from "@/lib/feature-settings/registry"
-import {
-  contractDepositSettingsSchema,
-  type ContractDepositSettings,
-} from "@/lib/feature-settings/contract-settings"
 
 const GROUP = FEATURE_SETTINGS["contract-deposits"]
 
 /** Settings → Workflows: how received contract deposits reach pay applications. */
 export function ContractDepositSettingsSection(): React.ReactElement {
-  const [loaded, setLoaded] = React.useState(false)
-  const [canEdit, setCanEdit] = React.useState(false)
-  const [customized, setCustomized] = React.useState(false)
-  const [error, setError] = React.useState<string | null>(null)
-  const [value, setValue] = React.useState<ContractDepositSettings>(GROUP.defaults)
-  const [pending, startTransition] = React.useTransition()
-
-  const load = React.useCallback(async () => {
-    const result = await getFeatureSettingsForEditor("contract-deposits")
-    if (!result.success) {
-      setError(result.error)
-      return
-    }
-    const parsed = contractDepositSettingsSchema.safeParse(result.data.settings)
-    setValue(parsed.success ? parsed.data : GROUP.defaults)
-    setCanEdit(result.data.canEdit)
-    setCustomized(result.data.customized)
-    setLoaded(true)
-  }, [])
-
-  React.useEffect(() => {
-    void load()
-  }, [load])
+  const { loaded, canEdit, customized, error, pending, settings: value, setSettings: setValue, save: saveSettings, reset } = useFeatureSettingsEditor("contract-deposits", {
+    savedMessage: "Contract deposit settings saved.",
+    resetMessage: "Contract deposit settings reset to defaults."
+  })
 
   function save(event: React.FormEvent<HTMLFormElement>): void {
     event.preventDefault()
-    startTransition(async () => {
-      const result = await saveFeatureSettings("contract-deposits", value)
-      if (!result.success) {
-        toast.error(result.error)
-        return
-      }
-      toast.success("Contract deposit settings saved.")
-      await load()
-    })
-  }
-
-  function reset(): void {
-    startTransition(async () => {
-      const result = await resetFeatureSettings("contract-deposits")
-      if (!result.success) {
-        toast.error(result.error)
-        return
-      }
-      toast.success("Contract deposit settings reset to defaults.")
-      await load()
-    })
+    saveSettings(value)
   }
 
   return (

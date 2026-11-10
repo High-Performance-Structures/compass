@@ -208,7 +208,7 @@ export type PaperTrailSettings = z.infer<typeof paperTrailSettingsSchema>
  * My Compass calendar: a Google calendar in each staff member's account with
  * the Compass items assigned to them, kept current every few minutes.
  */
-export const myCompassCalendarSettingsSchema = z.object({
+const myCompassCalendarSettingsSchema = z.object({
   mode: z.enum(["off", "pilot", "on"]),
   pilotUserIds: z.array(z.string().min(1).max(80)).max(50),
   scheduleItems: z.boolean(),
@@ -507,7 +507,7 @@ export const projectTimelineSettingsSchema = z.object({
   days: z.number().int().min(3).max(60),
 })
 
-export type ProjectTimelineSettings = z.infer<typeof projectTimelineSettingsSchema>
+type ProjectTimelineSettings = z.infer<typeof projectTimelineSettingsSchema>
 
 /** Reminding staff who haven't written a daily log by the end of the day. */
 export const dailyLogReminderSettingsSchema = z.object({

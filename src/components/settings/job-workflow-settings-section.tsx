@@ -3,7 +3,7 @@
 import * as React from "react"
 import { IconArrowDown, IconArrowUp, IconTrash } from "@tabler/icons-react"
 import { toast } from "sonner"
-import { getFeatureSettingsForEditor, resetFeatureSettings, saveFeatureSettings } from "@/app/actions/feature-settings"
+import { useFeatureSettingsEditor } from "@/hooks/use-feature-settings-editor"
 import { useDepartmentProfiles } from "@/components/branding/department-profiles-provider"
 import { SearchableCombobox, type SearchableComboboxOption } from "@/components/searchable-combobox"
 import { Button } from "@/components/ui/button"
@@ -12,14 +12,14 @@ import { Label } from "@/components/ui/label"
 import { Switch } from "@/components/ui/switch"
 import { WorkflowCarryoverEditor } from "@/components/settings/workflow-carryover-editor"
 import { DEPARTMENT_CODES } from "@/lib/department-profiles"
-import { FEATURE_SETTINGS, jobWorkflowsSettingsSchema, type JobWorkflowsSettings } from "@/lib/feature-settings/registry"
+import { FEATURE_SETTINGS } from "@/lib/feature-settings/registry"
 import { DEPARTMENT_WORKFLOWS } from "@/lib/job-workflows/departments"
 import {
   orderedWorkflowSteps,
   type WorkflowCustomStep,
   type WorkflowOverrides,
   type WorkflowStepDefinition,
-  type WorkflowStepOverride,
+  type WorkflowStepOverride
 } from "@/lib/job-workflows/engine"
 import type { ProjectDepartment } from "@/lib/project-branding"
 import { PROJECT_JOB_STATUS_DEFINITIONS } from "@/lib/project-profile"
@@ -52,7 +52,7 @@ function StepEditor({
   onChange,
   position,
   onMove,
-  custom,
+  custom
 }: {
   readonly step: WorkflowStepDefinition
   readonly override: WorkflowStepOverride
@@ -199,7 +199,7 @@ function StepEditor({
                 onChange={(event) =>
                   onChange({
                     ...override,
-                    extraItems: (override.extraItems ?? []).map((entry) => (entry.id === extra.id ? { ...entry, label: event.target.value } : entry)),
+                    extraItems: (override.extraItems ?? []).map((entry) => (entry.id === extra.id ? { ...entry, label: event.target.value } : entry))
                   })
                 }
                 className="h-8 flex-1"
@@ -253,7 +253,7 @@ function cleanOverrides(overrides: WorkflowOverrides): WorkflowOverrides {
         label: step.label?.trim() || undefined,
         items: step.items
           ? Object.fromEntries(Object.entries(step.items).map(([itemId, item]) => [itemId, { ...item, label: item.label?.trim() || undefined }]))
-          : undefined,
+          : undefined
       },
     ]),
   )
@@ -265,30 +265,11 @@ function cleanOverrides(overrides: WorkflowOverrides): WorkflowOverrides {
  */
 export function JobWorkflowSettingsSection(): React.ReactElement {
   const profiles = useDepartmentProfiles()
-  const [loaded, setLoaded] = React.useState(false)
-  const [canEdit, setCanEdit] = React.useState(false)
-  const [customized, setCustomized] = React.useState(false)
-  const [error, setError] = React.useState<string | null>(null)
-  const [settings, setSettings] = React.useState<JobWorkflowsSettings>(GROUP.defaults)
+  const { loaded, canEdit, customized, error, pending, settings, setSettings, save: saveSettings, reset } = useFeatureSettingsEditor("job-workflows", {
+    savedMessage: "Job workflows saved.",
+    resetMessage: "Job workflows reset to the built-in steps."
+  })
   const [active, setActive] = React.useState<ProjectDepartment>(WORKFLOW_DEPARTMENTS[0] ?? "H")
-  const [pending, startTransition] = React.useTransition()
-
-  const load = React.useCallback(async () => {
-    const result = await getFeatureSettingsForEditor("job-workflows")
-    if (!result.success) {
-      setError(result.error)
-      return
-    }
-    const parsed = jobWorkflowsSettingsSchema.safeParse(result.data.settings)
-    setSettings(parsed.success ? parsed.data : GROUP.defaults)
-    setCanEdit(result.data.canEdit)
-    setCustomized(result.data.customized)
-    setLoaded(true)
-  }, [])
-
-  React.useEffect(() => {
-    void load()
-  }, [load])
 
   const definition = DEPARTMENT_WORKFLOWS[active]
   const overrides: WorkflowOverrides = settings.departments[active] ?? {}
@@ -300,7 +281,7 @@ export function JobWorkflowSettingsSection(): React.ReactElement {
   const setStep = (stepId: string, next: WorkflowStepOverride): void =>
     setSettings((current) => ({
       ...current,
-      departments: { ...current.departments, [active]: { ...(current.departments[active] ?? {}), [stepId]: next } },
+      departments: { ...current.departments, [active]: { ...(current.departments[active] ?? {}), [stepId]: next } }
     }))
   const setCustomSteps = (next: readonly WorkflowCustomStep[]): void =>
     setSettings((current) => ({ ...current, customSteps: { ...current.customSteps, [active]: [...next] } }))
@@ -324,7 +305,7 @@ export function JobWorkflowSettingsSection(): React.ReactElement {
       ...current,
       customSteps: { ...current.customSteps, [active]: [...(current.customSteps[active] ?? []), { id, label, jobStatusId: null }] },
       // New steps go last, after the current order.
-      order: { ...current.order, [active]: [...steps.map((step) => step.id), id] },
+      order: { ...current.order, [active]: [...steps.map((step) => step.id), id] }
     }))
     setNewStep("")
   }
@@ -335,7 +316,7 @@ export function JobWorkflowSettingsSection(): React.ReactElement {
       return {
         departments: { ...current.departments, [active]: remainingOverrides },
         order: { ...current.order, [active]: (current.order[active] ?? []).filter((stepId) => stepId !== id) },
-        customSteps: { ...current.customSteps, [active]: (current.customSteps[active] ?? []).filter((step) => step.id !== id) },
+        customSteps: { ...current.customSteps, [active]: (current.customSteps[active] ?? []).filter((step) => step.id !== id) }
       }
     })
   }
@@ -350,27 +331,7 @@ export function JobWorkflowSettingsSection(): React.ReactElement {
       toast.error("Name every step you added, or remove it.")
       return
     }
-    startTransition(async () => {
-      const result = await saveFeatureSettings("job-workflows", { ...settings, departments })
-      if (!result.success) {
-        toast.error(result.error)
-        return
-      }
-      toast.success("Job workflows saved.")
-      await load()
-    })
-  }
-
-  function reset(): void {
-    startTransition(async () => {
-      const result = await resetFeatureSettings("job-workflows")
-      if (!result.success) {
-        toast.error(result.error)
-        return
-      }
-      toast.success("Job workflows reset to the built-in steps.")
-      await load()
-    })
+    saveSettings({ ...settings, departments })
   }
 
   const disabled = pending || !canEdit
@@ -419,7 +380,7 @@ export function JobWorkflowSettingsSection(): React.ReactElement {
                     customIds.has(step.id)
                       ? {
                           onRename: (label) => setCustomSteps(customSteps.map((entry) => (entry.id === step.id ? { ...entry, label } : entry))),
-                          onRemove: () => removeStep(step.id),
+                          onRemove: () => removeStep(step.id)
                         }
                       : null
                   }

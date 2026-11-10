@@ -6,7 +6,7 @@ import { z } from "zod/v4"
  * the Sage contact review approve permission; this only decides whether the
  * person who asked for the change may also approve it.
  */
-export const sageContactReviewSettingsSchema = z.object({
+const sageContactReviewSettingsSchema = z.object({
   /** True: someone other than the requester must approve. False (default): the requester may approve their own. */
   requireSecondApprover: z.boolean(),
 })

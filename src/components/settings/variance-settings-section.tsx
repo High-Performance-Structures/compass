@@ -1,12 +1,7 @@
 "use client"
 
 import * as React from "react"
-import { toast } from "sonner"
-import {
-  getFeatureSettingsForEditor,
-  resetFeatureSettings,
-  saveFeatureSettings,
-} from "@/app/actions/feature-settings"
+import { useFeatureSettingsEditor } from "@/hooks/use-feature-settings-editor"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -16,8 +11,7 @@ import { PROJECT_CONTRACT_TYPES, type ProjectContractType } from "@/lib/domain/p
 import { FEATURE_SETTINGS } from "@/lib/feature-settings/registry"
 import {
   INSURANCE_RATE_SOURCES,
-  varianceSettingsSchema,
-  type VarianceSettings,
+  type VarianceSettings
 } from "@/lib/feature-settings/contract-settings"
 
 const KEY = "variances"
@@ -26,7 +20,7 @@ const GROUP = FEATURE_SETTINGS[KEY]
 const SOURCE_LABELS: Readonly<Record<VarianceSettings["insuranceRateSource"], string>> = {
   contract: "The job's own insurance line, as a share of the rest of its contract",
   fixed: "A fixed percent",
-  off: "Don't add insurance",
+  off: "Don't add insurance"
 }
 
 function isContractType(value: string): value is ProjectContractType {
@@ -39,53 +33,14 @@ function isRateSource(value: string): value is VarianceSettings["insuranceRateSo
 
 /** Settings → Workflows: default contract type and how liability insurance follows variances and change orders. */
 export function VarianceSettingsSection(): React.ReactElement {
-  const [loaded, setLoaded] = React.useState(false)
-  const [canEdit, setCanEdit] = React.useState(false)
-  const [customized, setCustomized] = React.useState(false)
-  const [error, setError] = React.useState<string | null>(null)
-  const [value, setValue] = React.useState<VarianceSettings>(GROUP.defaults)
-  const [pending, startTransition] = React.useTransition()
-
-  const load = React.useCallback(async () => {
-    const result = await getFeatureSettingsForEditor(KEY)
-    if (!result.success) {
-      setError(result.error)
-      return
-    }
-    const parsed = varianceSettingsSchema.safeParse(result.data.settings)
-    setValue(parsed.success ? parsed.data : GROUP.defaults)
-    setCanEdit(result.data.canEdit)
-    setCustomized(result.data.customized)
-    setLoaded(true)
-  }, [])
-
-  React.useEffect(() => {
-    void load()
-  }, [load])
+  const { loaded, canEdit, customized, error, pending, settings: value, setSettings: setValue, save: saveSettings, reset } = useFeatureSettingsEditor(KEY, {
+    savedMessage: "Variance settings saved.",
+    resetMessage: "Variance settings reset to defaults."
+  })
 
   function save(event: React.FormEvent<HTMLFormElement>): void {
     event.preventDefault()
-    startTransition(async () => {
-      const result = await saveFeatureSettings(KEY, value)
-      if (!result.success) {
-        toast.error(result.error)
-        return
-      }
-      toast.success("Variance settings saved.")
-      await load()
-    })
-  }
-
-  function reset(): void {
-    startTransition(async () => {
-      const result = await resetFeatureSettings(KEY)
-      if (!result.success) {
-        toast.error(result.error)
-        return
-      }
-      toast.success("Variance settings reset to defaults.")
-      await load()
-    })
+    saveSettings(value)
   }
 
   const disabled = pending || !canEdit

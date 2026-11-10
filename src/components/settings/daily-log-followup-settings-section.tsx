@@ -3,7 +3,7 @@
 import * as React from "react"
 import { toast } from "sonner"
 
-import { getFeatureSettingsForEditor, resetFeatureSettings, saveFeatureSettings } from "@/app/actions/feature-settings"
+import { useFeatureSettingsEditor } from "@/hooks/use-feature-settings-editor"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Input } from "@/components/ui/input"
@@ -14,11 +14,10 @@ import { DAILY_LOG_TODO_TYPE_LABELS, DAILY_LOG_TODO_TYPES, type DailyLogTodoMode
 import {
   dailyLogFollowUpSettingsSchema,
   FEATURE_SETTINGS,
-  type DailyLogFollowUpSettings,
+  type DailyLogFollowUpSettings
 } from "@/lib/feature-settings/registry"
 
 const KEY = "daily-log-followups"
-const DEFAULTS = FEATURE_SETTINGS[KEY].defaults
 
 const TODO_MODES: readonly { readonly value: DailyLogTodoMode; readonly label: string; readonly help: string }[] = [
   { value: "ask", label: "The crew flags which lines become to-dos", help: "Each issue and next-step line gets a Make to-do button." },
@@ -32,7 +31,7 @@ function SwitchRow({
   help,
   checked,
   disabled,
-  onChange,
+  onChange
 }: {
   readonly id: string
   readonly label: string
@@ -58,27 +57,10 @@ function SwitchRow({
  * refresh their projects.
  */
 export function DailyLogFollowUpSettingsSection(): React.ReactElement {
-  const [settings, setSettings] = React.useState<DailyLogFollowUpSettings>(DEFAULTS)
-  const [canEdit, setCanEdit] = React.useState(false)
-  const [customized, setCustomized] = React.useState(false)
-  const [error, setError] = React.useState<string | null>(null)
-  const [pending, startTransition] = React.useTransition()
-
-  const load = React.useCallback(async () => {
-    const result = await getFeatureSettingsForEditor(KEY)
-    if (!result.success) {
-      setError(result.error)
-      return
-    }
-    const parsed = dailyLogFollowUpSettingsSchema.safeParse(result.data.settings)
-    setSettings(parsed.success ? parsed.data : DEFAULTS)
-    setCanEdit(result.data.canEdit)
-    setCustomized(result.data.customized)
-  }, [])
-
-  React.useEffect(() => {
-    void load()
-  }, [load])
+  const { canEdit, customized, error, pending, settings, setSettings, save: saveSettings, reset } = useFeatureSettingsEditor(KEY, {
+    savedMessage: "Saved. Phones pick up the change when they next refresh.",
+    resetMessage: "Back to the defaults."
+  })
 
   const disabled = pending || !canEdit
   const update = (patch: Partial<DailyLogFollowUpSettings>): void => setSettings((current) => ({ ...current, ...patch }))
@@ -90,27 +72,7 @@ export function DailyLogFollowUpSettingsSection(): React.ReactElement {
       toast.error(parsed.error.issues[0]?.message ?? "Check the to-do settings.")
       return
     }
-    startTransition(async () => {
-      const result = await saveFeatureSettings(KEY, parsed.data)
-      if (!result.success) {
-        toast.error(result.error)
-        return
-      }
-      toast.success("Saved. Phones pick up the change when they next refresh.")
-      await load()
-    })
-  }
-
-  function reset(): void {
-    startTransition(async () => {
-      const result = await resetFeatureSettings(KEY)
-      if (!result.success) {
-        toast.error(result.error)
-        return
-      }
-      toast.success("Back to the defaults.")
-      await load()
-    })
+    saveSettings(parsed.data)
   }
 
   return (
@@ -154,7 +116,7 @@ export function DailyLogFollowUpSettingsSection(): React.ReactElement {
                       update({
                         todoTypes: checked === true
                           ? DAILY_LOG_TODO_TYPES.filter((item) => item === type || settings.todoTypes.includes(item))
-                          : settings.todoTypes.filter((item) => item !== type),
+                          : settings.todoTypes.filter((item) => item !== type)
                       })
                     }
                   />

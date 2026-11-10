@@ -3,40 +3,22 @@
 import * as React from "react"
 import { toast } from "sonner"
 
-import { getFeatureSettingsForEditor, resetFeatureSettings, saveFeatureSettings } from "@/app/actions/feature-settings"
+import { useFeatureSettingsEditor } from "@/hooks/use-feature-settings-editor"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { FEATURE_SETTINGS, projectTimelineSettingsSchema, type ProjectTimelineSettings } from "@/lib/feature-settings/registry"
+import { FEATURE_SETTINGS, projectTimelineSettingsSchema } from "@/lib/feature-settings/registry"
 import { PROJECT_TIMELINE_KIND_LABELS, PROJECT_TIMELINE_KINDS } from "@/lib/project-timeline/model"
 
 const KEY = "project-timeline"
-const DEFAULTS = FEATURE_SETTINGS[KEY].defaults
 
 /** What each job's Overview timeline shows, and how many days at a time. */
 export function ProjectTimelineSettingsSection(): React.ReactElement {
-  const [settings, setSettings] = React.useState<ProjectTimelineSettings>(DEFAULTS)
-  const [canEdit, setCanEdit] = React.useState(false)
-  const [customized, setCustomized] = React.useState(false)
-  const [error, setError] = React.useState<string | null>(null)
-  const [pending, startTransition] = React.useTransition()
-
-  const load = React.useCallback(async () => {
-    const result = await getFeatureSettingsForEditor(KEY)
-    if (!result.success) {
-      setError(result.error)
-      return
-    }
-    const parsed = projectTimelineSettingsSchema.safeParse(result.data.settings)
-    setSettings(parsed.success ? parsed.data : DEFAULTS)
-    setCanEdit(result.data.canEdit)
-    setCustomized(result.data.customized)
-  }, [])
-
-  React.useEffect(() => {
-    void load()
-  }, [load])
+  const { canEdit, customized, error, pending, settings, setSettings, save: saveSettings, reset } = useFeatureSettingsEditor(KEY, {
+    savedMessage: "Project timeline settings saved.",
+    resetMessage: "Back to the defaults."
+  })
 
   const disabled = pending || !canEdit
 
@@ -47,27 +29,7 @@ export function ProjectTimelineSettingsSection(): React.ReactElement {
       toast.error("Show between 3 and 60 days at a time.")
       return
     }
-    startTransition(async () => {
-      const result = await saveFeatureSettings(KEY, parsed.data)
-      if (!result.success) {
-        toast.error(result.error)
-        return
-      }
-      toast.success("Project timeline settings saved.")
-      await load()
-    })
-  }
-
-  function reset(): void {
-    startTransition(async () => {
-      const result = await resetFeatureSettings(KEY)
-      if (!result.success) {
-        toast.error(result.error)
-        return
-      }
-      toast.success("Back to the defaults.")
-      await load()
-    })
+    saveSettings(parsed.data)
   }
 
   return (
@@ -92,7 +54,7 @@ export function ProjectTimelineSettingsSection(): React.ReactElement {
                       ...settings,
                       kinds: checked === true
                         ? PROJECT_TIMELINE_KINDS.filter((item) => item === kind || settings.kinds.includes(item))
-                        : settings.kinds.filter((item) => item !== kind),
+                        : settings.kinds.filter((item) => item !== kind)
                     })
                   }
                 />

@@ -1,23 +1,19 @@
 "use client"
 
 import * as React from "react"
-import { toast } from "sonner"
 import { IconPlus, IconX } from "@tabler/icons-react"
 
-import { getFeatureSettingsForEditor, resetFeatureSettings, saveFeatureSettings } from "@/app/actions/feature-settings"
+import { useFeatureSettingsEditor } from "@/hooks/use-feature-settings-editor"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Switch } from "@/components/ui/switch"
 import {
-  DEFAULT_NOTIFICATION_DIGEST_SETTINGS,
   INSTANT_NOTIFICATION_KINDS,
   INSTANT_NOTIFICATION_KIND_LABELS,
-  notificationDigestSettingsSchema,
-  type InstantNotificationKind,
-  type NotificationDigestSettings,
-} from "@/lib/feature-settings/notification-digest-settings"
+  type InstantNotificationKind
+  } from "@/lib/feature-settings/notification-digest-settings"
 import { FEATURE_SETTINGS } from "@/lib/feature-settings/registry"
 import { clockLabel } from "@/lib/daily-logs/reminders"
 
@@ -26,29 +22,10 @@ const MAX_TIMES = 6
 
 /** Settings → Workflows → Notification digest: when change notices go out, and what is still sent right away. */
 export function NotificationDigestSettingsSection(): React.ReactElement {
-  const [loaded, setLoaded] = React.useState(false)
-  const [canEdit, setCanEdit] = React.useState(false)
-  const [customized, setCustomized] = React.useState(false)
-  const [error, setError] = React.useState<string | null>(null)
-  const [settings, setSettings] = React.useState<NotificationDigestSettings>(DEFAULT_NOTIFICATION_DIGEST_SETTINGS)
-  const [pending, startTransition] = React.useTransition()
-
-  const load = React.useCallback(async () => {
-    const result = await getFeatureSettingsForEditor("notification-digest")
-    if (!result.success) {
-      setError(result.error)
-      return
-    }
-    const parsed = notificationDigestSettingsSchema.safeParse(result.data.settings)
-    setSettings(parsed.success ? parsed.data : DEFAULT_NOTIFICATION_DIGEST_SETTINGS)
-    setCanEdit(result.data.canEdit)
-    setCustomized(result.data.customized)
-    setLoaded(true)
-  }, [])
-
-  React.useEffect(() => {
-    void load()
-  }, [load])
+  const { loaded, canEdit, customized, error, pending, settings, setSettings, save: saveSettings, reset } = useFeatureSettingsEditor("notification-digest", {
+    savedMessage: "Notification digest saved.",
+    resetMessage: "Notification digest reset to noon and 5 pm."
+  })
 
   function setTime(index: number, value: string): void {
     setSettings((current) => ({ ...current, times: current.times.map((time, at) => (at === index ? value : time)) }))
@@ -59,34 +36,14 @@ export function NotificationDigestSettingsSection(): React.ReactElement {
       ...current,
       instantKinds: checked
         ? [...new Set([...current.instantKinds, kind])]
-        : current.instantKinds.filter((value) => value !== kind),
+        : current.instantKinds.filter((value) => value !== kind)
     }))
   }
 
   function save(event: React.FormEvent<HTMLFormElement>): void {
     event.preventDefault()
     const times = [...new Set(settings.times.filter(Boolean))].sort()
-    startTransition(async () => {
-      const result = await saveFeatureSettings("notification-digest", { ...settings, times })
-      if (!result.success) {
-        toast.error(result.error)
-        return
-      }
-      toast.success("Notification digest saved.")
-      await load()
-    })
-  }
-
-  function reset(): void {
-    startTransition(async () => {
-      const result = await resetFeatureSettings("notification-digest")
-      if (!result.success) {
-        toast.error(result.error)
-        return
-      }
-      toast.success("Notification digest reset to noon and 5 pm.")
-      await load()
-    })
+    saveSettings({ ...settings, times })
   }
 
   const disabled = pending || !canEdit

@@ -3,42 +3,23 @@
 import * as React from "react"
 import { toast } from "sonner"
 
-import { getFeatureSettingsForEditor, resetFeatureSettings, saveFeatureSettings } from "@/app/actions/feature-settings"
+import { useFeatureSettingsEditor } from "@/hooks/use-feature-settings-editor"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import {
   FEATURE_SETTINGS,
-  internalDepartmentSettingsSchema,
-  type InternalDepartmentSettings,
-} from "@/lib/feature-settings/registry"
+  internalDepartmentSettingsSchema
+  } from "@/lib/feature-settings/registry"
 
 const KEY = "internal-department"
-const DEFAULTS = FEATURE_SETTINGS[KEY].defaults
 
 /** Settings → Company: the name of the department that lists internal workspaces. */
 export function InternalDepartmentSettingsSection(): React.ReactElement {
-  const [settings, setSettings] = React.useState<InternalDepartmentSettings>(DEFAULTS)
-  const [canEdit, setCanEdit] = React.useState(false)
-  const [customized, setCustomized] = React.useState(false)
-  const [error, setError] = React.useState<string | null>(null)
-  const [pending, startTransition] = React.useTransition()
-
-  const load = React.useCallback(async () => {
-    const result = await getFeatureSettingsForEditor(KEY)
-    if (!result.success) {
-      setError(result.error)
-      return
-    }
-    const parsed = internalDepartmentSettingsSchema.safeParse(result.data.settings)
-    setSettings(parsed.success ? parsed.data : DEFAULTS)
-    setCanEdit(result.data.canEdit)
-    setCustomized(result.data.customized)
-  }, [])
-
-  React.useEffect(() => {
-    void load()
-  }, [load])
+  const { canEdit, customized, error, pending, settings, setSettings, save: saveSettings, reset } = useFeatureSettingsEditor(KEY, {
+    savedMessage: "Internal department saved.",
+    resetMessage: "Back to the defaults."
+  })
 
   const disabled = pending || !canEdit
 
@@ -49,27 +30,7 @@ export function InternalDepartmentSettingsSection(): React.ReactElement {
       toast.error(parsed.error.issues[0]?.message ?? "Check the Internal department name.")
       return
     }
-    startTransition(async () => {
-      const result = await saveFeatureSettings(KEY, parsed.data)
-      if (!result.success) {
-        toast.error(result.error)
-        return
-      }
-      toast.success("Internal department saved.")
-      await load()
-    })
-  }
-
-  function reset(): void {
-    startTransition(async () => {
-      const result = await resetFeatureSettings(KEY)
-      if (!result.success) {
-        toast.error(result.error)
-        return
-      }
-      toast.success("Back to the defaults.")
-      await load()
-    })
+    saveSettings(parsed.data)
   }
 
   return (
