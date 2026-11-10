@@ -8,6 +8,7 @@ import {
   type WarrantySourceReviewPage,
   type WarrantySourceReviewRecord,
 } from "@/app/actions/project-warranty-source-review"
+import { RecordDrawer } from "@/components/record-drawer"
 import { RecordSearchInput, RecordTable } from "@/components/record-table"
 import { useServerRecordTable } from "@/components/use-server-record-table"
 import type { RecordPageQuery } from "@/lib/record-page"
@@ -77,19 +78,10 @@ export function warrantySourceColumns(onOpen: (record: WarrantySourceReviewRecor
   ]
 }
 
-/** The opened record's captured evidence, below the sheet. */
-function WarrantySourceDetail({ record, onClose }: { readonly record: WarrantySourceReviewRecord; readonly onClose: () => void }): React.ReactElement {
+/** The opened record's captured evidence, shown in the record drawer. */
+function WarrantySourceDetail({ record }: { readonly record: WarrantySourceReviewRecord }): React.ReactElement {
   return (
-    <article aria-labelledby="historical-warranty-record" className="space-y-4 border-t pt-4 text-sm">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <h3 id="historical-warranty-record" className="font-medium">{record.claimNumber ? `${record.claimNumber} · ` : ""}{record.title}</h3>
-          <p className="text-muted-foreground">
-            {warrantySourceDate(record.sourceCreatedAt)} · Source: {record.sourceStatus ?? "Not recorded"} · Review: {label(record.reviewStatus)}
-          </p>
-        </div>
-        <button type="button" className="text-muted-foreground underline underline-offset-4" onClick={onClose}>Close</button>
-      </div>
+    <article className="space-y-4 text-sm">
       <dl className="grid gap-3 sm:grid-cols-3">
         <div><dt className="text-muted-foreground">Buildertrend created</dt><dd>{warrantySourceDate(record.sourceCreatedAt)}</dd></div>
         <div><dt className="text-muted-foreground">Buildertrend modified</dt><dd>{warrantySourceDate(record.sourceUpdatedAt)}</dd></div>
@@ -163,7 +155,21 @@ export function ProjectWarrantySourceReview({
             scrollToFocusedRow={false}
             onRowOpen={setOpened}
           />
-          {opened ? <WarrantySourceDetail record={opened} onClose={() => setOpened(null)} /> : null}
+          <RecordDrawer
+            open={opened !== null}
+            onOpenChange={(open) => {
+              if (!open) setOpened(null)
+            }}
+            eyebrow="Historical warranty record · Staff only"
+            title={opened ? `${opened.claimNumber ? `${opened.claimNumber} · ` : ""}${opened.title}` : ""}
+            description={
+              opened
+                ? `${warrantySourceDate(opened.sourceCreatedAt)} · Source: ${opened.sourceStatus ?? "Not recorded"} · Review: ${label(opened.reviewStatus)}`
+                : undefined
+            }
+          >
+            {opened ? <WarrantySourceDetail record={opened} /> : null}
+          </RecordDrawer>
         </>
       )}
     </section>

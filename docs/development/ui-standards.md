@@ -235,6 +235,24 @@ just the first lists migrated. The owner approved this design on 2026-10-31.
   invoices and bills) can be put in order, because that order is part of the
   record. See "Line item order" below.
 
+### Record drawer (owner-approved standard)
+
+Opening a record from a list, and creating a new one, happens in a right-side
+drawer over the list, so the list stays where the person left it. Never render
+the opened record as a card above or below the list: on a long list it lands
+off-screen and the click looks like it did nothing.
+
+- Use `RecordDrawer` from `src/components/record-drawer.tsx` (720px wide,
+  bordered header, optional sticky footer). Use `useRecordDrawerItem` to keep
+  the open record in `?item=` so the link can be shared; closing clears it.
+- A record whose body has its own heading passes `hideHeader` so the title is
+  still read to screen readers.
+- Big working documents keep their full page and offer it from the drawer:
+  change orders and owner updates open in the drawer with "Open full page";
+  pay applications show **Quick look** (drawer) and **Edit** (full page) on the
+  row. Estimates keep their own page, where the list and editor already share
+  one screen.
+
 ### Line item order (owner-approved standard)
 
 Every line editor reorders its rows with one shared control,
