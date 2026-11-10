@@ -28,15 +28,7 @@ import { SearchableCombobox } from "@/components/searchable-combobox"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
 import { ProjectCombobox } from "@/components/projects/project-combobox"
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from "@/components/ui/dialog"
+import { RecordDrawer } from "@/components/record-drawer"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import {
@@ -333,29 +325,25 @@ export function WorkCalendarEventDialog(
   }
 
   return (
-    <Dialog open={open} onOpenChange={changeOpen}>
+    <>
       {props.variant === "create" && (
-        <DialogTrigger asChild>
-          <Button type="button" size="sm">
-            <IconCalendarPlus className="size-4" />
-            Add event
-          </Button>
-        </DialogTrigger>
+        <Button type="button" size="sm" onClick={() => changeOpen(true)}>
+          <IconCalendarPlus className="size-4" />
+          Add event
+        </Button>
       )}
-      <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl">
+      <RecordDrawer
+        open={open}
+        onOpenChange={changeOpen}
+        title={props.variant === "create" ? "Add work calendar event" : "Edit work calendar event"}
+        description={
+          <>
+            Add a meeting or ordinary event. A blank project files it under
+            the one configured H-Office project.
+          </>
+        }
+      >
         <form onSubmit={submit}>
-          <DialogHeader>
-            <DialogTitle>
-              {props.variant === "create"
-                ? "Add work calendar event"
-                : "Edit work calendar event"}
-            </DialogTitle>
-            <DialogDescription>
-              Add a meeting or ordinary event. A blank project files it under
-              the one configured H-Office project.
-            </DialogDescription>
-          </DialogHeader>
-
           <div className="grid gap-4 py-5">
             {props.variant === "create" && props.googleDestinations.length > 0 ? (
               <div className="grid gap-2">
@@ -735,7 +723,7 @@ export function WorkCalendarEventDialog(
             </div>
           </div>
 
-          <DialogFooter className="gap-2 sm:justify-between">
+          <div className="flex flex-wrap justify-end gap-2 border-t pt-4">
             <div>
               {props.variant === "edit" && (
                 <AlertDialog>
@@ -806,9 +794,9 @@ export function WorkCalendarEventDialog(
                     : "Save changes"}
               </Button>
             </div>
-          </DialogFooter>
+          </div>
         </form>
-      </DialogContent>
-    </Dialog>
+      </RecordDrawer>
+    </>
   )
 }

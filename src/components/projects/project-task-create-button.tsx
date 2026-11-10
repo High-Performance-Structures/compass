@@ -23,15 +23,8 @@ import type { ProjectTaskRecordType } from "@/lib/domain/operations/types"
 import { ProjectAssigneePicker } from "@/components/projects/project-assignee-picker"
 import { ProjectCompanyPicker } from "@/components/projects/project-company-picker"
 import { Button } from "@/components/ui/button"
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from "@/components/ui/dialog"
+import { RecordDrawer } from "@/components/record-drawer"
+import { Slot } from "radix-ui"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
@@ -232,8 +225,8 @@ export function ProjectTaskCreateButton({
   }
 
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger asChild>
+    <>
+      <Slot.Root onClick={() => setOpen(true)}>
         {triggerLabel ? (
           <Button type="button" variant="ghost" size="sm" className="h-7 shrink-0 px-2 text-xs" aria-label={triggerAriaLabel}>
             <IconListCheck className="size-3.5" />
@@ -255,15 +248,18 @@ export function ProjectTaskCreateButton({
           )}
         </Button>
         )}
-      </DialogTrigger>
-      <DialogContent className="sm:max-w-2xl">
+      </Slot.Root>
+      <RecordDrawer
+        open={open}
+        onOpenChange={setOpen}
+        title="Create to-do"
+        description={
+          <>
+            Add an assignable to-do from this {sourceLabel.toLowerCase()}.
+          </>
+        }
+      >
         <form onSubmit={submitTask} className="space-y-5">
-          <DialogHeader>
-            <DialogTitle>Create to-do</DialogTitle>
-            <DialogDescription>
-              Add an assignable to-do from this {sourceLabel.toLowerCase()}.
-            </DialogDescription>
-          </DialogHeader>
 
           <div className="space-y-2">
             <Label htmlFor={`task-title-${sourceRecordId ?? sourceLabel}`}>
@@ -407,7 +403,7 @@ export function ProjectTaskCreateButton({
             </p>
           )}
 
-          <DialogFooter>
+          <div className="flex flex-wrap justify-end gap-2 border-t pt-4">
             {directoryAssignee && (
               <Button
                 type="button"
@@ -435,9 +431,9 @@ export function ProjectTaskCreateButton({
                     ? "Assign to-do only"
                     : "Create to-do"}
             </Button>
-          </DialogFooter>
+          </div>
         </form>
-      </DialogContent>
-    </Dialog>
+      </RecordDrawer>
+    </>
   )
 }

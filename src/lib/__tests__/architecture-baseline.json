@@ -716,9 +716,6 @@
     "sageChangeOrderExports": [
       "src/lib/domain/sage-bridge/change-order-store.ts"
     ],
-    "sageCostCodes": [
-      "src/lib/domain/sage-bridge/cost-code-store.ts"
-    ],
     "sageClientDirectoryEntries": [
       "src/lib/domain/sage-bridge/store.ts"
     ],
@@ -748,6 +745,9 @@
     ],
     "sageContactSnapshots": [
       "src/lib/domain/sage-bridge/contact-store.ts"
+    ],
+    "sageCostCodes": [
+      "src/lib/domain/sage-bridge/cost-code-store.ts"
     ],
     "sageDepositArExports": [
       "src/lib/domain/sage-bridge/ar-invoice-store.ts"
@@ -1002,7 +1002,7 @@
     "src/components/projects/project-estimate-planswift-import-client.tsx": 866,
     "src/components/projects/project-purchase-order-create-form.tsx": 1059,
     "src/components/projects/projects-hub.tsx": 877,
-    "src/components/schedule/work-calendar-event-dialog.tsx": 815,
+    "src/components/schedule/work-calendar-event-dialog.tsx": 803,
     "src/components/schedule/work-calendar.tsx": 830,
     "src/components/settings/ai-model-tab.tsx": 1379,
     "src/components/ui/sidebar.tsx": 916,

@@ -12,14 +12,7 @@ import {
 } from "@/app/actions/customer-people"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog"
+import { RecordDrawer } from "@/components/record-drawer"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { findExistingNamedPerson } from "@/lib/customer-person-match"
@@ -146,12 +139,16 @@ export function CustomerPeopleDialog({
   }
 
   return (
-    <Dialog open={customer !== null} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl">
-        <DialogHeader>
-          <DialogTitle>People at {customer?.name}</DialogTitle>
-          <DialogDescription>One client company can have multiple named people. Project contacts refer to these shared records.</DialogDescription>
-        </DialogHeader>
+    <RecordDrawer
+      open={customer !== null}
+      onOpenChange={onOpenChange}
+      title={
+        <>
+          People at {customer?.name}
+        </>
+      }
+      description="One client company can have multiple named people. Project contacts refer to these shared records."
+    >
         <Button type="button" size="sm" variant="outline" className="w-fit" disabled={loading} onClick={() => void reload()}>Refresh people</Button>
         <div className="divide-y border-y">
           {loading ? <p className="py-4 text-sm text-muted-foreground">Loading people…</p> : null}
@@ -213,17 +210,16 @@ export function CustomerPeopleDialog({
               <div className="space-y-1"><Label htmlFor="customer-person-phone">Phone</Label><Input id="customer-person-phone" value={draft.phone} onChange={(event) => setDraft((current) => ({ ...current, phone: event.target.value }))} /></div>
             </div>
             <label className="flex items-center gap-2 text-sm"><Checkbox checked={draft.isPrimary} onCheckedChange={(checked) => setDraft((current) => ({ ...current, isPrimary: checked === true }))} />Primary contact</label>
-            <DialogFooter>
+            <div className="flex flex-wrap justify-end gap-2 border-t pt-4">
               {editingId ? <Button type="button" variant="outline" onClick={() => { setEditingId(null); setDraft(EMPTY) }}>Cancel edit</Button> : null}
               <Button type="submit" disabled={busy}>{editingId ? "Save person" : "Add person"}</Button>
-            </DialogFooter>
+            </div>
           </form>
         ) : customer?.sageLinked && !customer.sageVerified ? <div className="space-y-2 text-sm text-muted-foreground">
           <p>This client has a Sage number, but its exact Sage identity has not been verified. Look up the existing client link, then have an authorized reviewer approve it before proposing a new person.</p>
           {onVerifySageCompany ? <Button type="button" variant="outline" onClick={onVerifySageCompany}>Verify Sage client link</Button> : null}
         </div> : null}
         {customer?.sageVerified && canCreate && onSageCreate ? <Button type="button" variant="outline" onClick={onSageCreate}>Propose new Sage person</Button> : null}
-      </DialogContent>
-    </Dialog>
+    </RecordDrawer>
   )
 }
