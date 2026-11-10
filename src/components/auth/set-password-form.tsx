@@ -4,30 +4,13 @@ import * as React from "react";
 import { useRouter } from "next/navigation";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm } from "react-hook-form";
-import * as z from "zod";
 import { IconLoader } from "@tabler/icons-react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
-import { Label } from "@/components/ui/label";
-import { PasswordInput } from "@/components/auth/password-input";
-
-const setPasswordSchema = z
-  .object({
-    password: z
-      .string()
-      .min(8, "Password must be at least 8 characters")
-      .regex(/[A-Z]/, "Must contain an uppercase letter")
-      .regex(/[a-z]/, "Must contain a lowercase letter")
-      .regex(/[0-9]/, "Must contain a number"),
-    confirmPassword: z.string(),
-  })
-  .refine((data) => data.password === data.confirmPassword, {
-    message: "Passwords don't match",
-    path: ["confirmPassword"],
-  });
-
-type SetPasswordFormData = z.infer<typeof setPasswordSchema>;
+import { } from "@/components/ui/label";
+import { NewPasswordFields } from "@/components/auth/new-account-fields";
+import { setPasswordSchema, type SetPasswordInput } from "@/lib/validations/auth";
 
 interface SetPasswordFormProps {
   token: string;
@@ -40,12 +23,12 @@ export function SetPasswordForm({ token }: SetPasswordFormProps) {
   const {
     register,
     handleSubmit,
-    formState: { errors },
-  } = useForm<SetPasswordFormData>({
-    resolver: zodResolver(setPasswordSchema),
+    formState: { errors }
+  } = useForm<SetPasswordInput>({
+    resolver: zodResolver(setPasswordSchema)
   });
 
-  const onSubmit = async (data: SetPasswordFormData) => {
+  const onSubmit = async (data: SetPasswordInput) => {
     setIsLoading(true);
 
     try {
@@ -54,8 +37,8 @@ export function SetPasswordForm({ token }: SetPasswordFormProps) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           token,
-          newPassword: data.password,
-        }),
+          newPassword: data.password
+        })
       });
 
       const result = (await response.json()) as {
@@ -80,35 +63,13 @@ export function SetPasswordForm({ token }: SetPasswordFormProps) {
 
   return (
     <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
-      <div className="space-y-2">
-        <Label htmlFor="password">New password</Label>
-        <PasswordInput
-          id="password"
-          placeholder="••••••••"
-          autoComplete="new-password"
-          className="h-9 text-base"
-          {...register("password")}
-        />
-        {errors.password && (
-          <p className="text-xs text-destructive">{errors.password.message}</p>
-        )}
-      </div>
-
-      <div className="space-y-2">
-        <Label htmlFor="confirmPassword">Confirm password</Label>
-        <PasswordInput
-          id="confirmPassword"
-          placeholder="••••••••"
-          autoComplete="new-password"
-          className="h-9 text-base"
-          {...register("confirmPassword")}
-        />
-        {errors.confirmPassword && (
-          <p className="text-xs text-destructive">
-            {errors.confirmPassword.message}
-          </p>
-        )}
-      </div>
+      <NewPasswordFields
+        password={register("password")}
+        confirmPassword={register("confirmPassword")}
+        passwordError={errors.password?.message}
+        confirmPasswordError={errors.confirmPassword?.message}
+        passwordLabel="New password"
+      />
 
       <Button type="submit" disabled={isLoading} className="h-10 w-full">
         {isLoading ? (
