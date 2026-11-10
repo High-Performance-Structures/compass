@@ -1,10 +1,9 @@
 import { headers } from "next/headers"
 
-import { getDb } from "@/db"
 import { googleAuth } from "@/db/schema-google"
-import { requireAuth, type AuthUser } from "@/lib/auth"
+import { actionFailure, errorMessage, type ActionFailure } from "@/lib/action-result"
+import type { AuthUser } from "@/lib/auth"
 import { decrypt } from "@/lib/crypto"
-import { getCloudflareContext } from "@/lib/db"
 import { DriveClient } from "@/lib/google/client/drive-client"
 import {
   getGoogleConfig,
@@ -12,7 +11,8 @@ import {
   parseServiceAccountKey,
   type ServiceAccountKey,
 } from "@/lib/google/config"
-import { requirePermission } from "@/lib/permissions"
+import { requirePermission, type Action, type Resource } from "@/lib/permissions"
+import { requireUserContext, type Db } from "@/lib/server/action-context"
 
 /*
  * Google Drive access shared by the Drive actions and the actions that upload
@@ -20,11 +20,13 @@ import { requirePermission } from "@/lib/permissions"
  * account acts as the signed-in user's Google identity.
  */
 
-export function resolveGoogleEmail(user: AuthUser): string {
+function resolveGoogleEmail(user: AuthUser): string {
   return user.googleEmail ?? user.email
 }
 
-export async function getOrgGoogleAuth(db: ReturnType<typeof getDb>) {
+export type OrgGoogleAuth = typeof googleAuth.$inferSelect
+
+export async function getOrgGoogleAuth(db: Db): Promise<OrgGoogleAuth | null> {
   const rows = await db.select().from(googleAuth).limit(1)
   return rows[0] ?? null
 }
@@ -63,6 +65,51 @@ async function requestOrigin(): Promise<string | undefined> {
   return `${proto}://${host}`
 }
 
+/** Everything a Drive action needs once the caller is allowed in. */
+type DriveSession = {
+  readonly user: AuthUser
+  readonly db: Db
+  /** The organization's Drive connection (service account, shared drive). */
+  readonly auth: OrgGoogleAuth
+  readonly client: DriveClient
+  /** The Google identity the service account acts as: the signed-in user's. */
+  readonly googleEmail: string
+}
+
+export type DriveSessionResult =
+  | { readonly success: true; readonly session: DriveSession }
+  | ActionFailure
+
+/**
+ * The opening every Drive action shares: a signed-in user with `resource` /
+ * `action` permission, the organization's Drive connection, and a client
+ * acting as that user.
+ *
+ * Sign-in and permission failures throw, as `requireAuth` and
+ * `requirePermission` do, so the action's catch block reports them. A missing
+ * Google identity or Drive connection comes back as a failure the action
+ * returns as is.
+ */
+export async function openDriveSession(
+  resource: Resource,
+  action: Action
+): Promise<DriveSessionResult> {
+  const { user, db, env } = await requireUserContext()
+  requirePermission(user, resource, action)
+
+  const googleEmail = resolveGoogleEmail(user)
+  if (!googleEmail) return actionFailure("No Google account linked")
+
+  const auth = await getOrgGoogleAuth(db)
+  if (!auth) return actionFailure("Google Drive not connected")
+
+  const client = await buildDriveClient(
+    auth.serviceAccountKeyEncrypted,
+    getGoogleConfig(env).encryptionKey
+  )
+  return { success: true, session: { user, db, auth, client, googleEmail } }
+}
+
 /**
  * Starts a resumable Drive upload the browser sends the file to directly.
  * Requires document create permission and a linked Google identity.
@@ -76,26 +123,9 @@ export async function createDriveUploadSession(
   | { success: false; error: string }
 > {
   try {
-    const user = await requireAuth()
-    requirePermission(user, "document", "create")
-
-    const googleEmail = resolveGoogleEmail(user)
-    if (!googleEmail) {
-      return { success: false, error: "No Google account linked" }
-    }
-
-    const { env } = await getCloudflareContext()
-    const config = getGoogleConfig(env)
-    const db = getDb(env.DB)
-    const auth = await getOrgGoogleAuth(db)
-    if (!auth) {
-      return { success: false, error: "Google Drive not connected" }
-    }
-
-    const client = await buildDriveClient(
-      auth.serviceAccountKeyEncrypted,
-      config.encryptionKey
-    )
+    const opened = await openDriveSession("document", "create")
+    if (!opened.success) return opened
+    const { client, auth, googleEmail } = opened.session
 
     const uploadUrl = await client.initiateResumableUpload(
       googleEmail,
@@ -112,11 +142,6 @@ export async function createDriveUploadSession(
 
     return { success: true, uploadUrl }
   } catch (err) {
-    return {
-      success: false,
-      error: err instanceof Error
-        ? err.message
-        : "Failed to initiate upload",
-    }
+    return actionFailure(errorMessage(err, "Failed to initiate upload"))
   }
 }

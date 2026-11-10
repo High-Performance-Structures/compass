@@ -4066,7 +4066,7 @@ A company's workspace connection: encrypted service-account key and delegation s
 
 - **Schema:** `src/db/schema-google.ts` (export `googleAuth`)
 - **Owning domain:** not yet assigned to a domain store
-- **Writers (1):** `src/app/actions/google-drive.ts`
+- **Writers (1):** `src/lib/domain/documents/drive-connection-store.ts`
 
 | Column | Type | Flags | Default | References | Notes |
 |---|---|---|---|---|---|
@@ -4244,7 +4244,7 @@ Drive files a user starred in Compass. *(Curated description; the schema has no 
 
 - **Schema:** `src/db/schema-google.ts` (export `googleStarredFiles`)
 - **Owning domain:** not yet assigned to a domain store
-- **Writers (1):** `src/app/actions/google-drive.ts`
+- **Writers (1):** `src/lib/domain/documents/drive-connection-store.ts`
 
 | Column | Type | Flags | Default | References | Notes |
 |---|---|---|---|---|---|

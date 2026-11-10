@@ -5,7 +5,7 @@ import Link from "next/link"
 import { IconChevronRight } from "@tabler/icons-react"
 
 import { useFiles } from "@/hooks/use-files"
-import { getDriveFileInfo } from "@/app/actions/google-drive"
+import { getDriveFileInfo } from "@/app/actions/google-drive-files"
 import {
   Breadcrumb,
   BreadcrumbItem,

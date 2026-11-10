@@ -214,7 +214,7 @@
       "src/lib/domain/feedback/store.ts"
     ],
     "googleAuth": [
-      "src/app/actions/google-drive.ts"
+      "src/lib/domain/documents/drive-connection-store.ts"
     ],
     "googleCalendarConnections": [
       "src/lib/domain/calendars/store.ts"
@@ -229,7 +229,7 @@
       "src/lib/domain/calendars/store.ts"
     ],
     "googleStarredFiles": [
-      "src/app/actions/google-drive.ts"
+      "src/lib/domain/documents/drive-connection-store.ts"
     ],
     "gotoInboundEvents": [
       "src/lib/domain/feedback/inbound-store.ts"
@@ -973,7 +973,6 @@
     "src/app/actions/chat-messages.ts": 1157,
     "src/app/actions/cherish-pulse.ts": 912,
     "src/app/actions/contract-packets.ts": 1361,
-    "src/app/actions/google-drive.ts": 1357,
     "src/app/actions/greeting-cards.ts": 1104,
     "src/app/actions/listening-room.ts": 1085,
     "src/app/actions/nutech-orders.ts": 892,
@@ -1199,7 +1198,6 @@
     "src/app/actions/field-mode.ts": 2,
     "src/app/actions/github.ts": 1,
     "src/app/actions/google-calendar.ts": 1,
-    "src/app/actions/google-drive.ts": 16,
     "src/app/actions/greeting-card-recipients.ts": 1,
     "src/app/actions/greeting-cards.ts": 8,
     "src/app/actions/inbound-email-review.ts": 1,

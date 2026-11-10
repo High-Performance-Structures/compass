@@ -15,8 +15,8 @@ import {
   type FileItem,
   type StorageUsage,
 } from "@/lib/files-data"
+import { getGoogleDriveConnectionStatus } from "@/app/actions/google-drive"
 import {
-  getGoogleDriveConnectionStatus,
   listDriveFiles,
   listDriveFilesForView,
   searchDriveFiles,
@@ -29,7 +29,7 @@ import {
   getDriveStorageQuota,
   getUploadSessionUrl,
   listDriveFolders,
-} from "@/app/actions/google-drive"
+} from "@/app/actions/google-drive-files"
 
 export type FileView =
   | "projects"

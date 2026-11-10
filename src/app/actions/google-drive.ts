@@ -1,1138 +1,143 @@
 "use server"
 
-import { getCloudflareContext } from "@/lib/db"
-import { eq, and } from "drizzle-orm"
+import { and, eq } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
-import { getDb } from "@/db"
-import { organizationMembers, projects, users } from "@/db/schema"
-import { googleAuth, googleStarredFiles } from "@/db/schema-google"
-import { getCurrentUser, requireAuth } from "@/lib/auth"
-import { requirePermission } from "@/lib/permissions"
+
+import { organizationMembers, users } from "@/db/schema"
+import { actionFailure, errorMessage } from "@/lib/action-result"
+import { recordActivityEvent } from "@/lib/activity-log"
 import { encrypt } from "@/lib/crypto"
 import {
-  getGoogleConfig,
-  getGoogleCryptoSalt,
-  parseServiceAccountKey,
-} from "@/lib/google/config"
-import { DriveClient } from "@/lib/google/client/drive-client"
-import {
-  buildDriveClient,
-  createDriveUploadSession,
-  getOrgGoogleAuth,
-  resolveGoogleEmail,
-} from "@/lib/domain/documents/drive-session"
-import { mapDriveFileToFileItem } from "@/lib/google/mapper"
-import { isDriveItemWithinProjectFolder } from "@/lib/google/project-folder-boundary"
-import { filterFieldDocumentRootFolders } from "@/lib/field/document-access"
-import { assertFieldProjectMembership } from "@/lib/field/project-access"
-import type { FileItem } from "@/lib/files-data"
-import { isDemoUser } from "@/lib/demo"
-import { recordActivityEvent } from "@/lib/activity-log"
+  deleteDriveConnection,
+  readConnectionWorkspaceDomain,
+  replaceDriveConnection,
+  setConnectionSharedDrive,
+} from "@/lib/domain/documents/drive-connection-store"
+import { getOrgGoogleAuth, openDriveSession } from "@/lib/domain/documents/drive-session"
 import { updateUser } from "@/lib/domain/identity/store"
+import { DriveClient } from "@/lib/google/client/drive-client"
+import { getGoogleConfig, getGoogleCryptoSalt, parseServiceAccountKey } from "@/lib/google/config"
+import { requirePermission } from "@/lib/permissions"
 import {
   describeSenderAddressConflict,
   findSenderAddressConflict,
   isAddressInWorkspaceDomain,
   normalizeEmailAddress,
 } from "@/lib/sender-identity-guard"
-import {
-  PROJECT_FILE_SOURCES,
-  getProjectFolderMatch,
-  isProjectFolderName,
-  withProjectCategoryMetadata,
-  withProjectFileSource,
-  withProjectFolderMetadata,
-} from "@/lib/project-files"
-import { requireUserContext } from "@/lib/server/action-context"
+import { requireUserContext, userContext } from "@/lib/server/action-context"
 
-// helpers
+/*
+ * Connecting Compass to the company's Google Workspace (Settings): the
+ * service-account key, the shared drive files open in, and each person's
+ * Google address. Browsing files is google-drive-files.ts; Field Mode's
+ * project documents are google-drive-field.ts. How the service account acts
+ * as each person: docs/modules/google-drive.md.
+ */
 
-async function getStarredIds(
-  db: ReturnType<typeof getDb>,
-  userId: string
-): Promise<ReadonlySet<string>> {
-  const rows = await db
-    .select({ googleFileId: googleStarredFiles.googleFileId })
-    .from(googleStarredFiles)
-    .where(eq(googleStarredFiles.userId, userId))
-  return new Set(rows.map(r => r.googleFileId))
-}
+type DoneResult = { success: true } | { success: false; error: string }
 
-async function listProjectSourceFileItems(
-  client: DriveClient,
-  googleEmail: string,
-  starredIds: ReadonlySet<string>
-): Promise<FileItem[]> {
-  const files: FileItem[] = []
-
-  for (const source of PROJECT_FILE_SOURCES) {
-    try {
-      const driveFile = await client.getFile(
-        googleEmail,
-        source.folderId
-      )
-      files.push(
-        withProjectFileSource(
-          mapDriveFileToFileItem(driveFile, starredIds, null),
-          source
-        )
-      )
-    } catch {
-      files.push({
-        id: source.folderId,
-        name: source.label,
-        type: "folder",
-        size: 0,
-        path: [],
-        createdAt: "2026-04-06T00:00:00.000Z",
-        modifiedAt: "2026-04-06T00:00:00.000Z",
-        owner: { name: "HPS" },
-        starred: false,
-        shared: true,
-        trashed: false,
-        parentId: null,
-        webViewLink: `https://drive.google.com/drive/folders/${source.folderId}`,
-        projectFile: {
-          kind: "source",
-          sourceKey: source.key,
-          sourceLabel: source.label,
-        },
-      })
-    }
-  }
-
-  return files
-}
-
-function mergePinnedProjectSources(
-  files: FileItem[],
-  pinnedSources: FileItem[]
-): FileItem[] {
-  const seen = new Set<string>()
-  const merged: FileItem[] = []
-
-  for (const file of [...pinnedSources, ...files]) {
-    if (seen.has(file.id)) continue
-    seen.add(file.id)
-    merged.push(file)
-  }
-
-  return merged
-}
-
-async function listProjectDriveFolders(
-  client: DriveClient,
-  googleEmail: string,
-  starredIds: ReadonlySet<string>
-): Promise<FileItem[]> {
-  const projectFolders: FileItem[] = []
-  const errors: string[] = []
-
-  for (const source of PROJECT_FILE_SOURCES) {
-    try {
-      let pageToken: string | undefined
-
-      do {
-        const result = await client.listFiles(googleEmail, {
-          folderId: source.folderId,
-          query: "mimeType = 'application/vnd.google-apps.folder'",
-          orderBy: "modifiedTime desc",
-          pageSize: 100,
-          pageToken,
-        })
-
-        for (const driveFile of result.files) {
-          if (!isProjectFolderName(driveFile.name)) continue
-          const match = getProjectFolderMatch(driveFile.name)
-          if (!match || match.source.key !== source.key) continue
-
-          projectFolders.push(
-            withProjectFolderMetadata(
-              mapDriveFileToFileItem(
-                driveFile,
-                starredIds,
-                source.folderId
-              ),
-              match
-            )
-          )
-        }
-
-        pageToken = result.nextPageToken ?? undefined
-      } while (pageToken)
-    } catch (err) {
-      errors.push(
-        err instanceof Error ? err.message : "Unknown Drive error"
-      )
-      // A missing business-line root should not prevent other roots
-      // from loading.
-    }
-  }
-
-  if (
-    projectFolders.length === 0 &&
-    errors.length === PROJECT_FILE_SOURCES.length
-  ) {
-    throw new Error(errors[0])
-  }
-
-  return projectFolders
-}
-
-// connection management
-
-export async function getGoogleDriveConnectionStatus(): Promise<{
+type ConnectionStatus = {
   connected: boolean
   workspaceDomain: string | null
   sharedDriveName: string | null
-}> {
+}
+
+const NOT_CONNECTED: ConnectionStatus = { connected: false, workspaceDomain: null, sharedDriveName: null }
+
+/** Never fails: anything that goes wrong reads as "not connected". */
+export async function getGoogleDriveConnectionStatus(): Promise<ConnectionStatus> {
   try {
-    const user = await getCurrentUser() // keep nullable - graceful fallback
-    requirePermission(user, "document", "read")
-    const { env } = await getCloudflareContext()
-    const db = getDb(env.DB)
-    const auth = await getOrgGoogleAuth(db)
-
-    if (!auth) {
-      return {
-        connected: false,
-        workspaceDomain: null,
-        sharedDriveName: null,
-      }
-    }
-
-    return {
-      connected: true,
-      workspaceDomain: auth.workspaceDomain,
-      sharedDriveName: auth.sharedDriveName,
-    }
+    const context = await userContext()
+    if (!context.success) return NOT_CONNECTED
+    requirePermission(context.data.user, "document", "read")
+    const auth = await getOrgGoogleAuth(context.data.db)
+    if (!auth) return NOT_CONNECTED
+    return { connected: true, workspaceDomain: auth.workspaceDomain, sharedDriveName: auth.sharedDriveName }
   } catch {
-    return {
-      connected: false,
-      workspaceDomain: null,
-      sharedDriveName: null,
-    }
+    return NOT_CONNECTED
   }
 }
 
-export async function connectGoogleDrive(
-  serviceAccountKeyJson: string,
-  workspaceDomain: string
-): Promise<{ success: true } | { success: false; error: string }> {
+/**
+ * Saves the service-account key (encrypted) after one test call proves
+ * domain-wide delegation works. Replaces any earlier connection.
+ */
+export async function connectGoogleDrive(serviceAccountKeyJson: string, workspaceDomain: string): Promise<DoneResult> {
   try {
-    const user = await requireAuth()
+    const { user, db, env } = await requireUserContext()
     requirePermission(user, "organization", "update")
 
-    const parsed = parseServiceAccountKey(serviceAccountKeyJson)
-
-    const { env } = await getCloudflareContext()
-    const config = getGoogleConfig(env)
-    const db = getDb(env.DB)
-
-    // validate by making a test call
-    const client = new DriveClient({ serviceAccountKey: parsed })
-    const testEmail = user.email
+    const client = new DriveClient({ serviceAccountKey: parseServiceAccountKey(serviceAccountKeyJson) })
     try {
-      await client.getStorageQuota(testEmail)
+      await client.getStorageQuota(user.email)
     } catch (testErr) {
-      return {
-        success: false,
-        error: `Failed to connect: ${testErr instanceof Error ? testErr.message : "Unknown error"}. Check domain-wide delegation.`,
-      }
+      return actionFailure(
+        `Failed to connect: ${errorMessage(testErr, "Unknown error")}. Check domain-wide delegation.`
+      )
     }
 
-    const encryptedKey = await encrypt(
-      serviceAccountKeyJson,
-      config.encryptionKey,
-      getGoogleCryptoSalt()
-    )
-
-    // upsert: delete existing then insert
-    await db.delete(googleAuth).run()
-    await db
-      .insert(googleAuth)
-      .values({
-        id: crypto.randomUUID(),
-        organizationId: "org-1",
-        serviceAccountKeyEncrypted: encryptedKey,
-        workspaceDomain,
-        connectedBy: user.id,
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-      })
-      .run()
+    const encryptedKey = await encrypt(serviceAccountKeyJson, getGoogleConfig(env).encryptionKey, getGoogleCryptoSalt())
+    const now = new Date().toISOString()
+    await replaceDriveConnection(db, {
+      id: crypto.randomUUID(),
+      organizationId: "org-1",
+      serviceAccountKeyEncrypted: encryptedKey,
+      workspaceDomain,
+      connectedBy: user.id,
+      createdAt: now,
+      updatedAt: now,
+    })
 
     revalidatePath("/dashboard/files")
     return { success: true }
   } catch (err) {
-    return {
-      success: false,
-      error: err instanceof Error
-        ? err.message
-        : "Failed to connect Google Drive",
-    }
+    return actionFailure(errorMessage(err, "Failed to connect Google Drive"))
   }
 }
 
-export async function disconnectGoogleDrive(): Promise<
-  { success: true } | { success: false; error: string }
-> {
+export async function disconnectGoogleDrive(): Promise<DoneResult> {
   try {
     const { user, db } = await requireUserContext()
     requirePermission(user, "organization", "delete")
-    await db.delete(googleAuth).run()
+    await deleteDriveConnection(db)
     revalidatePath("/dashboard/files")
     return { success: true }
   } catch (err) {
-    return {
-      success: false,
-      error: err instanceof Error
-        ? err.message
-        : "Failed to disconnect",
-    }
+    return actionFailure(errorMessage(err, "Failed to disconnect"))
   }
 }
 
+/** Shared drives the signed-in admin can see, for the shared-drive picker. */
 export async function listAvailableSharedDrives(): Promise<
-  | {
-      success: true
-      drives: ReadonlyArray<{ id: string; name: string }>
-    }
+  | { success: true; drives: ReadonlyArray<{ id: string; name: string }> }
   | { success: false; error: string }
 > {
   try {
-    const user = await requireAuth()
-    requirePermission(user, "organization", "update")
-
-    const { env } = await getCloudflareContext()
-    const config = getGoogleConfig(env)
-    const db = getDb(env.DB)
-    const auth = await getOrgGoogleAuth(db)
-    if (!auth) {
-      return { success: false, error: "Google Drive not connected" }
-    }
-
-    const googleEmail = resolveGoogleEmail(user)
-    if (!googleEmail) {
-      return { success: false, error: "No Google email" }
-    }
-
-    const client = await buildDriveClient(
-      auth.serviceAccountKeyEncrypted,
-      config.encryptionKey
-    )
+    const opened = await openDriveSession("organization", "update")
+    if (!opened.success) return opened
+    const { client, googleEmail } = opened.session
     const result = await client.listSharedDrives(googleEmail)
-
-    return {
-      success: true,
-      drives: result.drives.map(d => ({
-        id: d.id,
-        name: d.name,
-      })),
-    }
+    return { success: true, drives: result.drives.map(d => ({ id: d.id, name: d.name })) }
   } catch (err) {
-    return {
-      success: false,
-      error: err instanceof Error ? err.message : "Failed",
-    }
+    return actionFailure(errorMessage(err, "Failed"))
   }
 }
 
-export async function selectSharedDrive(
-  driveId: string | null,
-  driveName: string | null
-): Promise<{ success: true } | { success: false; error: string }> {
+/** The shared drive the Files page opens in; null for My Drive. */
+export async function selectSharedDrive(driveId: string | null, driveName: string | null): Promise<DoneResult> {
   try {
     const { user, db } = await requireUserContext()
     requirePermission(user, "organization", "update")
 
     const auth = await getOrgGoogleAuth(db)
-    if (!auth) {
-      return { success: false, error: "Google Drive not connected" }
-    }
+    if (!auth) return actionFailure("Google Drive not connected")
 
-    await db
-      .update(googleAuth)
-      .set({
-        sharedDriveId: driveId,
-        sharedDriveName: driveName,
-        updatedAt: new Date().toISOString(),
-      })
-      .where(eq(googleAuth.id, auth.id))
-      .run()
+    await setConnectionSharedDrive(db, auth.id, driveId, driveName)
 
     revalidatePath("/dashboard/files")
     return { success: true }
   } catch (err) {
-    return {
-      success: false,
-      error: err instanceof Error ? err.message : "Failed",
-    }
-  }
-}
-
-// file operations
-
-export async function listDriveFiles(
-  folderId?: string,
-  pageToken?: string
-): Promise<
-  | {
-      success: true
-      files: FileItem[]
-      nextPageToken: string | null
-    }
-  | { success: false; error: string }
-> {
-  try {
-    const user = await requireAuth()
-    requirePermission(user, "document", "read")
-
-    const googleEmail = resolveGoogleEmail(user)
-    if (!googleEmail) {
-      return { success: false, error: "No Google account linked" }
-    }
-
-    const { env } = await getCloudflareContext()
-    const config = getGoogleConfig(env)
-    const db = getDb(env.DB)
-    const auth = await getOrgGoogleAuth(db)
-    if (!auth) {
-      return { success: false, error: "Google Drive not connected" }
-    }
-
-    const client = await buildDriveClient(
-      auth.serviceAccountKeyEncrypted,
-      config.encryptionKey
-    )
-    const starredIds = await getStarredIds(db, user.id)
-
-    const targetFolder =
-      folderId ?? auth.sharedDriveId ?? "root"
-    const result = await client.listFiles(googleEmail, {
-      folderId: targetFolder,
-      driveId: auth.sharedDriveId ?? undefined,
-      pageToken,
-      orderBy: "folder,name",
-    })
-
-    let files = result.files.map(f =>
-      withProjectCategoryMetadata(
-        mapDriveFileToFileItem(f, starredIds, folderId ?? null)
-      )
-    )
-
-    if (!folderId && !pageToken) {
-      const projectSources = await listProjectSourceFileItems(
-        client,
-        googleEmail,
-        starredIds
-      )
-      files = mergePinnedProjectSources(files, projectSources)
-    }
-
-    return {
-      success: true,
-      files,
-      nextPageToken: result.nextPageToken ?? null,
-    }
-  } catch (err) {
-    return {
-      success: false,
-      error: err instanceof Error ? err.message : "Failed to list files",
-    }
-  }
-}
-
-export async function listProjectDriveFilesForField(
-  projectId: string
-): Promise<
-  | {
-      success: true
-      files: FileItem[]
-      nextPageToken: string | null
-    }
-  | { success: false; error: string }
-> {
-  try {
-    const user = await requireAuth()
-    requirePermission(user, "document", "read")
-    if (isDemoUser(user.id)) {
-      return { success: true, files: [], nextPageToken: null }
-    }
-
-    const { env } = await getCloudflareContext()
-    const config = getGoogleConfig(env)
-    const db = getDb(env.DB)
-    await assertFieldProjectMembership(db, user.id, projectId)
-
-    const project = await db
-      .select({ folderId: projects.googleDriveFolderId })
-      .from(projects)
-      .where(eq(projects.id, projectId))
-      .limit(1)
-      .then((rows) => rows[0] ?? null)
-    if (!project?.folderId) {
-      return { success: false, error: "Project folder is not mapped" }
-    }
-
-    const auth = await getOrgGoogleAuth(db)
-    if (!auth) {
-      return { success: false, error: "Google Drive not connected" }
-    }
-    const connectedBy = await db
-      .select({ email: users.email, googleEmail: users.googleEmail })
-      .from(users)
-      .where(eq(users.id, auth.connectedBy))
-      .limit(1)
-      .then((rows) => rows[0] ?? null)
-    if (!connectedBy) {
-      return { success: false, error: "Google Drive connection owner not found" }
-    }
-
-    const client = await buildDriveClient(
-      auth.serviceAccountKeyEncrypted,
-      config.encryptionKey
-    )
-    const starredIds = await getStarredIds(db, user.id)
-    const result = await client.listFiles(
-      connectedBy.googleEmail ?? connectedBy.email,
-      {
-        folderId: project.folderId,
-        driveId: auth.sharedDriveId ?? undefined,
-        orderBy: "folder,name",
-      }
-    )
-
-    return {
-      success: true,
-      files: filterFieldDocumentRootFolders(result.files).map((file) =>
-        withProjectCategoryMetadata(
-          mapDriveFileToFileItem(file, starredIds, project.folderId)
-        )
-      ),
-      nextPageToken: result.nextPageToken ?? null,
-    }
-  } catch (err) {
-    return {
-      success: false,
-      error: err instanceof Error ? err.message : "Failed to list project files",
-    }
-  }
-}
-
-export async function listProjectDriveFolderForField(
-  projectId: string,
-  folderId: string
-): Promise<
-  | {
-      success: true
-      folderName: string
-      files: FileItem[]
-      nextPageToken: string | null
-    }
-  | { success: false; error: string }
-> {
-  try {
-    const user = await requireAuth()
-    requirePermission(user, "document", "read")
-    if (isDemoUser(user.id)) {
-      return { success: true, folderName: "Documents", files: [], nextPageToken: null }
-    }
-
-    const { env } = await getCloudflareContext()
-    const config = getGoogleConfig(env)
-    const db = getDb(env.DB)
-    await assertFieldProjectMembership(db, user.id, projectId)
-
-    const project = await db
-      .select({ folderId: projects.googleDriveFolderId })
-      .from(projects)
-      .where(eq(projects.id, projectId))
-      .limit(1)
-      .then((rows) => rows[0] ?? null)
-    if (!project?.folderId) {
-      return { success: false, error: "Project folder is not mapped" }
-    }
-
-    const auth = await getOrgGoogleAuth(db)
-    if (!auth) {
-      return { success: false, error: "Google Drive not connected" }
-    }
-    const connectedBy = await db
-      .select({ email: users.email, googleEmail: users.googleEmail })
-      .from(users)
-      .where(eq(users.id, auth.connectedBy))
-      .limit(1)
-      .then((rows) => rows[0] ?? null)
-    if (!connectedBy) {
-      return { success: false, error: "Google Drive connection owner not found" }
-    }
-
-    const googleEmail = connectedBy.googleEmail ?? connectedBy.email
-    const client = await buildDriveClient(
-      auth.serviceAccountKeyEncrypted,
-      config.encryptionKey
-    )
-    const projectRoot = await client.listFiles(googleEmail, {
-      folderId: project.folderId,
-      driveId: auth.sharedDriveId ?? undefined,
-      orderBy: "folder,name",
-    })
-    const fieldDocumentRoots = filterFieldDocumentRootFolders(projectRoot.files)
-    let withinFieldDocuments = false
-    for (const root of fieldDocumentRoots) {
-      if (
-        await isDriveItemWithinProjectFolder({
-          client,
-          googleEmail,
-          itemId: folderId,
-          projectFolderId: root.id,
-        })
-      ) {
-        withinFieldDocuments = true
-        break
-      }
-    }
-    if (!withinFieldDocuments) {
-      return {
-        success: false,
-        error: "Folder is outside the documents available in Field Mode",
-      }
-    }
-
-    const [folder, starredIds, result] = await Promise.all([
-      client.getFile(googleEmail, folderId),
-      getStarredIds(db, user.id),
-      client.listFiles(googleEmail, {
-        folderId,
-        driveId: auth.sharedDriveId ?? undefined,
-        orderBy: "folder,name",
-      }),
-    ])
-
-    if (folder.mimeType !== "application/vnd.google-apps.folder") {
-      return { success: false, error: "The selected item is not a folder" }
-    }
-
-    return {
-      success: true,
-      folderName: folder.name,
-      files: result.files.map((file) =>
-        withProjectCategoryMetadata(
-          mapDriveFileToFileItem(file, starredIds, folderId)
-        )
-      ),
-      nextPageToken: result.nextPageToken ?? null,
-    }
-  } catch (err) {
-    return {
-      success: false,
-      error: err instanceof Error ? err.message : "Failed to list project folder",
-    }
-  }
-}
-
-export async function listDriveFilesForView(
-  view: string,
-  pageToken?: string
-): Promise<
-  | {
-      success: true
-      files: FileItem[]
-      nextPageToken: string | null
-    }
-  | { success: false; error: string }
-> {
-  try {
-    const user = await requireAuth()
-    requirePermission(user, "document", "read")
-
-    const googleEmail = resolveGoogleEmail(user)
-    if (!googleEmail) {
-      return { success: false, error: "No Google account linked" }
-    }
-
-    const { env } = await getCloudflareContext()
-    const config = getGoogleConfig(env)
-    const db = getDb(env.DB)
-    const auth = await getOrgGoogleAuth(db)
-    if (!auth) {
-      return { success: false, error: "Google Drive not connected" }
-    }
-
-    const client = await buildDriveClient(
-      auth.serviceAccountKeyEncrypted,
-      config.encryptionKey
-    )
-    const starredIds = await getStarredIds(db, user.id)
-
-    let result
-
-    switch (view) {
-      case "projects":
-        return {
-          success: true,
-          files: await listProjectDriveFolders(
-            client,
-            googleEmail,
-            starredIds
-          ),
-          nextPageToken: null,
-        }
-
-      case "shared":
-        result = await client.listFiles(googleEmail, {
-          sharedWithMe: true,
-          driveId: auth.sharedDriveId ?? undefined,
-          pageToken,
-        })
-        break
-
-      case "recent": {
-        const thirtyDaysAgo = new Date()
-        thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30)
-        result = await client.listFiles(googleEmail, {
-          query: `modifiedTime > '${thirtyDaysAgo.toISOString()}'`,
-          orderBy: "modifiedTime desc",
-          driveId: auth.sharedDriveId ?? undefined,
-          pageToken,
-        })
-        break
-      }
-
-      case "starred": {
-        if (starredIds.size === 0) {
-          return {
-            success: true,
-            files: [],
-            nextPageToken: null,
-          }
-        }
-        const fileIds = [...starredIds]
-        const files: FileItem[] = []
-        for (const fileId of fileIds) {
-          try {
-            const file = await client.getFile(
-              googleEmail,
-              fileId
-            )
-            files.push(
-              mapDriveFileToFileItem(file, starredIds, null)
-            )
-          } catch {
-            // file may have been deleted
-          }
-        }
-        return { success: true, files, nextPageToken: null }
-      }
-
-      case "trash":
-        result = await client.listFiles(googleEmail, {
-          trashed: true,
-          driveId: auth.sharedDriveId ?? undefined,
-          pageToken,
-        })
-        break
-
-      default:
-        return { success: false, error: `Unknown view: ${view}` }
-    }
-
-    let files = result.files.map(f =>
-      withProjectCategoryMetadata(
-        mapDriveFileToFileItem(f, starredIds, null)
-      )
-    )
-
-    if (view === "shared" && !pageToken) {
-      const projectSources = await listProjectSourceFileItems(
-        client,
-        googleEmail,
-        starredIds
-      )
-      files = mergePinnedProjectSources(files, projectSources)
-    }
-
-    return {
-      success: true,
-      files,
-      nextPageToken: result.nextPageToken ?? null,
-    }
-  } catch (err) {
-    return {
-      success: false,
-      error: err instanceof Error ? err.message : "Failed to list files",
-    }
-  }
-}
-
-export async function searchDriveFiles(
-  query: string
-): Promise<
-  | { success: true; files: FileItem[] }
-  | { success: false; error: string }
-> {
-  try {
-    const user = await requireAuth()
-    requirePermission(user, "document", "read")
-
-    const googleEmail = resolveGoogleEmail(user)
-    if (!googleEmail) {
-      return { success: false, error: "No Google account linked" }
-    }
-
-    const { env } = await getCloudflareContext()
-    const config = getGoogleConfig(env)
-    const db = getDb(env.DB)
-    const auth = await getOrgGoogleAuth(db)
-    if (!auth) {
-      return { success: false, error: "Google Drive not connected" }
-    }
-
-    const client = await buildDriveClient(
-      auth.serviceAccountKeyEncrypted,
-      config.encryptionKey
-    )
-    const starredIds = await getStarredIds(db, user.id)
-
-    const result = await client.searchFiles(
-      googleEmail,
-      query,
-      50,
-      auth.sharedDriveId ?? undefined
-    )
-
-    const files = result.files.map(f =>
-      mapDriveFileToFileItem(f, starredIds, null)
-    )
-
-    return { success: true, files }
-  } catch (err) {
-    return {
-      success: false,
-      error: err instanceof Error
-        ? err.message
-        : "Search failed",
-    }
-  }
-}
-
-export async function createDriveFolder(
-  name: string,
-  parentId?: string
-): Promise<
-  | { success: true; folder: FileItem }
-  | { success: false; error: string }
-> {
-  try {
-    const user = await requireAuth()
-    requirePermission(user, "document", "create")
-
-    const googleEmail = resolveGoogleEmail(user)
-    if (!googleEmail) {
-      return { success: false, error: "No Google account linked" }
-    }
-
-    const { env } = await getCloudflareContext()
-    const config = getGoogleConfig(env)
-    const db = getDb(env.DB)
-    const auth = await getOrgGoogleAuth(db)
-    if (!auth) {
-      return { success: false, error: "Google Drive not connected" }
-    }
-
-    const client = await buildDriveClient(
-      auth.serviceAccountKeyEncrypted,
-      config.encryptionKey
-    )
-
-    const driveFile = await client.createFolder(googleEmail, {
-      name,
-      parentId: parentId ?? auth.sharedDriveId ?? undefined,
-      driveId: auth.sharedDriveId ?? undefined,
-    })
-
-    const starredIds = await getStarredIds(db, user.id)
-    const folder = mapDriveFileToFileItem(
-      driveFile,
-      starredIds,
-      parentId ?? null
-    )
-
-    revalidatePath("/dashboard/files")
-    return { success: true, folder }
-  } catch (err) {
-    return {
-      success: false,
-      error: err instanceof Error
-        ? err.message
-        : "Failed to create folder",
-    }
-  }
-}
-
-export async function renameDriveFile(
-  fileId: string,
-  newName: string
-): Promise<{ success: true } | { success: false; error: string }> {
-  try {
-    const user = await requireAuth()
-    requirePermission(user, "document", "update")
-
-    const googleEmail = resolveGoogleEmail(user)
-    if (!googleEmail) {
-      return { success: false, error: "No Google account linked" }
-    }
-
-    const { env } = await getCloudflareContext()
-    const config = getGoogleConfig(env)
-    const db = getDb(env.DB)
-    const auth = await getOrgGoogleAuth(db)
-    if (!auth) {
-      return { success: false, error: "Google Drive not connected" }
-    }
-
-    const client = await buildDriveClient(
-      auth.serviceAccountKeyEncrypted,
-      config.encryptionKey
-    )
-    await client.renameFile(googleEmail, fileId, newName)
-
-    revalidatePath("/dashboard/files")
-    return { success: true }
-  } catch (err) {
-    return {
-      success: false,
-      error: err instanceof Error
-        ? err.message
-        : "Failed to rename",
-    }
-  }
-}
-
-export async function moveDriveFile(
-  fileId: string,
-  newParentId: string,
-  oldParentId: string
-): Promise<{ success: true } | { success: false; error: string }> {
-  try {
-    const user = await requireAuth()
-    requirePermission(user, "document", "update")
-
-    const googleEmail = resolveGoogleEmail(user)
-    if (!googleEmail) {
-      return { success: false, error: "No Google account linked" }
-    }
-
-    const { env } = await getCloudflareContext()
-    const config = getGoogleConfig(env)
-    const db = getDb(env.DB)
-    const auth = await getOrgGoogleAuth(db)
-    if (!auth) {
-      return { success: false, error: "Google Drive not connected" }
-    }
-
-    const client = await buildDriveClient(
-      auth.serviceAccountKeyEncrypted,
-      config.encryptionKey
-    )
-    await client.moveFile(
-      googleEmail,
-      fileId,
-      newParentId,
-      oldParentId
-    )
-
-    revalidatePath("/dashboard/files")
-    return { success: true }
-  } catch (err) {
-    return {
-      success: false,
-      error: err instanceof Error
-        ? err.message
-        : "Failed to move file",
-    }
-  }
-}
-
-export async function trashDriveFile(
-  fileId: string
-): Promise<{ success: true } | { success: false; error: string }> {
-  try {
-    const user = await requireAuth()
-    requirePermission(user, "document", "delete")
-
-    const googleEmail = resolveGoogleEmail(user)
-    if (!googleEmail) {
-      return { success: false, error: "No Google account linked" }
-    }
-
-    const { env } = await getCloudflareContext()
-    const config = getGoogleConfig(env)
-    const db = getDb(env.DB)
-    const auth = await getOrgGoogleAuth(db)
-    if (!auth) {
-      return { success: false, error: "Google Drive not connected" }
-    }
-
-    const client = await buildDriveClient(
-      auth.serviceAccountKeyEncrypted,
-      config.encryptionKey
-    )
-    await client.trashFile(googleEmail, fileId)
-
-    revalidatePath("/dashboard/files")
-    return { success: true }
-  } catch (err) {
-    return {
-      success: false,
-      error: err instanceof Error
-        ? err.message
-        : "Failed to trash file",
-    }
-  }
-}
-
-export async function restoreDriveFile(
-  fileId: string
-): Promise<{ success: true } | { success: false; error: string }> {
-  try {
-    const user = await requireAuth()
-    requirePermission(user, "document", "update")
-
-    const googleEmail = resolveGoogleEmail(user)
-    if (!googleEmail) {
-      return { success: false, error: "No Google account linked" }
-    }
-
-    const { env } = await getCloudflareContext()
-    const config = getGoogleConfig(env)
-    const db = getDb(env.DB)
-    const auth = await getOrgGoogleAuth(db)
-    if (!auth) {
-      return { success: false, error: "Google Drive not connected" }
-    }
-
-    const client = await buildDriveClient(
-      auth.serviceAccountKeyEncrypted,
-      config.encryptionKey
-    )
-    await client.restoreFile(googleEmail, fileId)
-
-    revalidatePath("/dashboard/files")
-    return { success: true }
-  } catch (err) {
-    return {
-      success: false,
-      error: err instanceof Error
-        ? err.message
-        : "Failed to restore file",
-    }
-  }
-}
-
-export async function getDriveStorageQuota(): Promise<
-  | { success: true; used: number; total: number }
-  | { success: false; error: string }
-> {
-  try {
-    const user = await requireAuth()
-    requirePermission(user, "document", "read")
-
-    const googleEmail = resolveGoogleEmail(user)
-    if (!googleEmail) {
-      return { success: false, error: "No Google account linked" }
-    }
-
-    const { env } = await getCloudflareContext()
-    const config = getGoogleConfig(env)
-    const db = getDb(env.DB)
-    const auth = await getOrgGoogleAuth(db)
-    if (!auth) {
-      return { success: false, error: "Google Drive not connected" }
-    }
-
-    const client = await buildDriveClient(
-      auth.serviceAccountKeyEncrypted,
-      config.encryptionKey
-    )
-    const about = await client.getStorageQuota(googleEmail)
-
-    return {
-      success: true,
-      used: Number(about.storageQuota.usage),
-      total: about.storageQuota.limit
-        ? Number(about.storageQuota.limit)
-        : 0,
-    }
-  } catch (err) {
-    return {
-      success: false,
-      error: err instanceof Error
-        ? err.message
-        : "Failed to get quota",
-    }
-  }
-}
-
-export async function getUploadSessionUrl(
-  fileName: string,
-  mimeType: string,
-  parentId?: string
-): Promise<
-  | { success: true; uploadUrl: string }
-  | { success: false; error: string }
-> {
-  return createDriveUploadSession(fileName, mimeType, parentId)
-}
-
-export async function toggleStarFile(
-  googleFileId: string
-): Promise<
-  | { success: true; starred: boolean }
-  | { success: false; error: string }
-> {
-  try {
-    const { user, db } = await requireUserContext()
-    requirePermission(user, "document", "read")
-
-    const existing = await db
-      .select()
-      .from(googleStarredFiles)
-      .where(
-        and(
-          eq(googleStarredFiles.userId, user.id),
-          eq(googleStarredFiles.googleFileId, googleFileId)
-        )
-      )
-      .get()
-
-    if (existing) {
-      await db
-        .delete(googleStarredFiles)
-        .where(eq(googleStarredFiles.id, existing.id))
-        .run()
-      return { success: true, starred: false }
-    }
-
-    await db
-      .insert(googleStarredFiles)
-      .values({
-        id: crypto.randomUUID(),
-        userId: user.id,
-        googleFileId,
-        createdAt: new Date().toISOString(),
-      })
-      .run()
-    return { success: true, starred: true }
-  } catch (err) {
-    return {
-      success: false,
-      error: err instanceof Error
-        ? err.message
-        : "Failed to toggle star",
-    }
+    return actionFailure(errorMessage(err, "Failed"))
   }
 }
 
@@ -1142,15 +147,12 @@ export async function toggleStarFile(
  * member of the caller's organization and the address must be an unclaimed
  * mailbox in that organization's connected Workspace domain.
  */
-export async function updateUserGoogleEmail(
-  userId: string,
-  googleEmail: string | null
-): Promise<{ success: true } | { success: false; error: string }> {
+export async function updateUserGoogleEmail(userId: string, googleEmail: string | null): Promise<DoneResult> {
   try {
     const { user, db } = await requireUserContext()
     requirePermission(user, "user", "update")
     if (!user.organizationId) {
-      return { success: false, error: "No active organization selected" }
+      return actionFailure("No active organization selected")
     }
     const organizationId = user.organizationId
 
@@ -1164,39 +166,26 @@ export async function updateUserGoogleEmail(
       .from(users)
       .innerJoin(
         organizationMembers,
-        and(
-          eq(organizationMembers.userId, users.id),
-          eq(organizationMembers.organizationId, organizationId)
-        )
+        and(eq(organizationMembers.userId, users.id), eq(organizationMembers.organizationId, organizationId))
       )
       .where(eq(users.id, userId))
       .get()
     if (!target || !target.isActive) {
-      return { success: false, error: "User not found in this organization" }
+      return actionFailure("User not found in this organization")
     }
 
     let nextGoogleEmail: string | null = null
     if (googleEmail !== null && googleEmail.trim() !== "") {
       const address = normalizeEmailAddress(googleEmail)
       if (!address) {
-        return { success: false, error: "Enter a valid email address" }
+        return actionFailure("Enter a valid email address")
       }
-      const auth = await db
-        .select({ workspaceDomain: googleAuth.workspaceDomain })
-        .from(googleAuth)
-        .where(eq(googleAuth.organizationId, organizationId))
-        .get()
-      if (!auth) {
-        return {
-          success: false,
-          error: "Connect Google Workspace before setting Google emails",
-        }
+      const workspaceDomain = await readConnectionWorkspaceDomain(db, organizationId)
+      if (workspaceDomain === null) {
+        return actionFailure("Connect Google Workspace before setting Google emails")
       }
-      if (!isAddressInWorkspaceDomain(address, auth.workspaceDomain)) {
-        return {
-          success: false,
-          error: `Google email must be an address in ${auth.workspaceDomain}`,
-        }
+      if (!isAddressInWorkspaceDomain(address, workspaceDomain)) {
+        return actionFailure(`Google email must be an address in ${workspaceDomain}`)
       }
       const conflict = await findSenderAddressConflict(db, {
         organizationId,
@@ -1204,7 +193,7 @@ export async function updateUserGoogleEmail(
         excludeUserId: target.id,
       })
       if (conflict) {
-        return { success: false, error: describeSenderAddressConflict(conflict) }
+        return actionFailure(describeSenderAddressConflict(conflict))
       }
       nextGoogleEmail = address
     }
@@ -1223,9 +212,7 @@ export async function updateUserGoogleEmail(
       organizationId,
       actor: user,
       category: "account",
-      action: nextGoogleEmail
-        ? "user.google_email_set"
-        : "user.google_email_cleared",
+      action: nextGoogleEmail ? "user.google_email_set" : "user.google_email_cleared",
       entityType: "user",
       entityId: target.id,
       summary: nextGoogleEmail
@@ -1240,117 +227,6 @@ export async function updateUserGoogleEmail(
     revalidatePath("/dashboard/people")
     return { success: true }
   } catch (err) {
-    return {
-      success: false,
-      error: err instanceof Error
-        ? err.message
-        : "Failed to update email",
-    }
-  }
-}
-
-export async function getDriveFileInfo(
-  fileId: string
-): Promise<
-  | { success: true; file: FileItem }
-  | { success: false; error: string }
-> {
-  try {
-    const user = await requireAuth()
-    requirePermission(user, "document", "read")
-
-    const googleEmail = resolveGoogleEmail(user)
-    if (!googleEmail) {
-      return { success: false, error: "No Google account linked" }
-    }
-
-    const { env } = await getCloudflareContext()
-    const config = getGoogleConfig(env)
-    const db = getDb(env.DB)
-    const auth = await getOrgGoogleAuth(db)
-    if (!auth) {
-      return { success: false, error: "Google Drive not connected" }
-    }
-
-    const client = await buildDriveClient(
-      auth.serviceAccountKeyEncrypted,
-      config.encryptionKey
-    )
-    const starredIds = await getStarredIds(db, user.id)
-    const driveFile = await client.getFile(
-      googleEmail,
-      fileId
-    )
-
-    return {
-      success: true,
-      file: mapDriveFileToFileItem(driveFile, starredIds, null),
-    }
-  } catch (err) {
-    return {
-      success: false,
-      error: err instanceof Error
-        ? err.message
-        : "Failed to get file",
-    }
-  }
-}
-
-export async function listDriveFolders(
-  parentId?: string
-): Promise<
-  | {
-      success: true
-      folders: ReadonlyArray<{ id: string; name: string }>
-    }
-  | { success: false; error: string }
-> {
-  try {
-    const user = await requireAuth()
-    requirePermission(user, "document", "read")
-
-    const googleEmail = resolveGoogleEmail(user)
-    if (!googleEmail) {
-      return { success: false, error: "No Google account linked" }
-    }
-
-    const { env } = await getCloudflareContext()
-    const config = getGoogleConfig(env)
-    const db = getDb(env.DB)
-    const auth = await getOrgGoogleAuth(db)
-    if (!auth) {
-      return { success: false, error: "Google Drive not connected" }
-    }
-
-    const client = await buildDriveClient(
-      auth.serviceAccountKeyEncrypted,
-      config.encryptionKey
-    )
-
-    const targetFolder =
-      parentId ?? auth.sharedDriveId ?? "root"
-    const result = await client.listFiles(googleEmail, {
-      folderId: targetFolder,
-      query:
-        "mimeType = 'application/vnd.google-apps.folder'",
-      driveId: auth.sharedDriveId ?? undefined,
-      pageSize: 200,
-      orderBy: "name",
-    })
-
-    return {
-      success: true,
-      folders: result.files.map(f => ({
-        id: f.id,
-        name: f.name,
-      })),
-    }
-  } catch (err) {
-    return {
-      success: false,
-      error: err instanceof Error
-        ? err.message
-        : "Failed to list folders",
-    }
+    return actionFailure(errorMessage(err, "Failed to update email"))
   }
 }

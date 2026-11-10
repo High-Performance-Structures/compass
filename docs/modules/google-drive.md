@@ -20,7 +20,13 @@ src/lib/google/
     types.ts                    # DriveFile, DriveFileList, DriveAbout, etc.
   mapper.ts                     # DriveFile -> FileItem conversion
 
-src/app/actions/google-drive.ts # 17 server actions
+src/app/actions/google-drive.ts        # connecting Drive (Settings)
+src/app/actions/google-drive-files.ts  # Files page: browse, search, change
+src/app/actions/google-drive-field.ts  # Field Mode project documents
+src/lib/domain/documents/
+  drive-session.ts              # openDriveSession: auth + permission + client
+  drive-connection-store.ts     # only writer of google_auth, google_starred_files
+src/lib/google/drive-listings.ts # project roots + "Projects" view listings
 src/db/schema-google.ts         # google_auth, google_starred_files
 src/components/files/           # file browser UI (14 components)
 ```
@@ -149,18 +155,17 @@ Google Docs, Sheets, and Slides are "native" files that can't be downloaded dire
 server actions
 ---
 
-`src/app/actions/google-drive.ts` exports 17 actions:
-
-**Connection management:**
+**Connection management** (`src/app/actions/google-drive.ts`):
 - `getGoogleDriveConnectionStatus` -- checks if a service account key is stored
 - `connectGoogleDrive` -- validates and stores the service account key (makes a test API call first)
 - `disconnectGoogleDrive` -- deletes the stored key
 - `listAvailableSharedDrives` -- lists shared drives for the setup UI
 - `selectSharedDrive` -- sets the default shared drive for the org
+- `updateUserGoogleEmail` -- set a user's Google impersonation email override
 
-**File operations:**
+**File operations** (`src/app/actions/google-drive-files.ts`):
 - `listDriveFiles` -- list files in a folder (or shared drive root)
-- `listDriveFilesForView` -- list files for special views: shared, recent, starred, trash
+- `listDriveFilesForView` -- list files for special views: projects, shared, recent, starred, trash
 - `searchDriveFiles` -- full-text search
 - `getDriveFileInfo` -- get metadata for a single file
 - `listDriveFolders` -- list only folders (for move dialog)
@@ -170,13 +175,12 @@ server actions
 - `trashDriveFile` / `restoreDriveFile` -- soft delete and restore
 - `getUploadSessionUrl` -- initiate a resumable upload and return the session URL
 - `getDriveStorageQuota` -- get storage usage info
+- `toggleStarFile` -- star/unstar a file (stored in Compass, not in Google)
 
-**User preferences:**
-- `toggleStarFile` -- star/unstar a file (stored locally, not in Google)
-- `getStarredFileIds` -- get the current user's starred file IDs
-- `updateUserGoogleEmail` -- set a user's Google impersonation email override
+**Field Mode** (`src/app/actions/google-drive-field.ts`):
+- `listProjectDriveFilesForField` / `listProjectDriveFolderForField` -- read-only job documents, read as the person who connected Drive
 
-Each action follows the same structure: authenticate, check RBAC, resolve the Google email, build a `DriveClient`, execute the operation, map results.
+Each file action starts with `openDriveSession(resource, action)` from `src/lib/domain/documents/drive-session.ts`: it checks sign-in and RBAC, resolves the Google email, loads the org's connection, and returns a ready `DriveClient`. Sign-in and permission failures throw (the action's catch reports them); "No Google account linked" and "Google Drive not connected" come back as failures. All writes to `google_auth` and `google_starred_files` go through `drive-connection-store.ts`.
 
 
 project folder provisioning

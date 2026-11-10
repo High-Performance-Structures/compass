@@ -260,8 +260,9 @@ contacts, invitations to the owner and vendor portals, duplicate merges.
 - Domain: `src/lib/domain/documents/`
 - Other logic: `src/lib/google/`, `src/lib/files/`, `src/lib/paper-trail/`,
   `src/lib/print/` (Print Preview)
-- Actions: `src/app/actions/project-documents.ts`, `google-drive.ts`,
-  `drive-picker.ts`, `paper-trail.ts`, `print-snapshots.ts`
+- Actions: `src/app/actions/project-documents.ts`, `google-drive.ts`
+  (connecting Drive), `google-drive-files.ts` (Files page),
+  `google-drive-field.ts` (Field Mode), `drive-picker.ts`, `paper-trail.ts`, `print-snapshots.ts`
 - Pages: `src/app/dashboard/files/`,
   `src/app/dashboard/projects/[id]/documents/`, `src/app/print/`
 - Components: `src/components/files/`, `src/components/google/`,

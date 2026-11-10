@@ -28,7 +28,7 @@ vi.mock("@/lib/permission-enforcement", () => ({
 vi.mock("@/lib/project-access", () => ({ assertProjectAccess: mocks.assertProjectAccess }))
 vi.mock("@/lib/db", () => ({ getCloudflareContext: vi.fn(async () => ({ env: { DB: {} } })) }))
 vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }))
-vi.mock("@/app/actions/google-drive", () => ({ getUploadSessionUrl: vi.fn() }))
+vi.mock("@/app/actions/google-drive-files", () => ({ getUploadSessionUrl: vi.fn() }))
 vi.mock("@/lib/financials/contract-budget-store", () => ({ rebuildProjectContractBudget: mocks.rebuild }))
 
 import {
