@@ -12,7 +12,7 @@
   "permissions": ["help:read", "project:read"],
   "routes": ["/dashboard/projects/[id]/selections"],
   "owner": "Project operations",
-  "lastReviewed": "2026-11-09"
+  "lastReviewed": "2026-11-10"
 }
 ---
 
@@ -22,13 +22,15 @@ Open project **Selections** and review the room list before adding products. Use
 
 ## Add a Selection {#add-selection}
 
-Open the room, add a selection, and record category, item, manufacturer, model, finish, supplier, quantity, product URL, division, cost code, status, visibility, and useful notes. A product link supplements identifying details; web content can change.
+Choose **Add selection** at the top of the **Selections** sheet, next to the status buttons (or **Add** on a room further down to start with that room filled in). The form opens in a drawer on the right. Record the room, category, item, manufacturer, model, finish, supplier, quantity, product URL, division, cost code, status, visibility, and useful notes. A product link supplements identifying details; web content can change.
 
 ## Choices, Links and Follow-ups {#choices}
 
-The **Selections** sheet at the top of the page lists every selection with its room, cost code, number of choices, the owner's pick, how the pick compares with the allowance, the due date and status. Follow-up selections sit indented under the selection whose choice opens them. Use the status buttons and search to narrow the list, and click a row to open its detail panel.
+The **Selections** sheet at the top of the page lists every selection with its room, cost code, number of choices, the owner's pick, how the pick compares with the allowance, the due date and status. Follow-up selections sit indented under the selection whose choice opens them. Use the status buttons and search to narrow the list, and click a row to open it in a drawer on the right, over the sheet. The page address then links to that selection, so you can share it. Close the drawer to go back to the sheet.
 
-In the detail panel:
+The arrows at the top of the drawer go to the previous and next selection in the sheet as it is filtered and sorted, without closing the drawer, and show where you are ("3 of 12"). To walk an owner through a Selection Phase, click its card above the sheet, open the first selection and step through with the arrows.
+
+In the drawer:
 
 - **Add choice** records an option's title, description, supplier, supplier price, owner price, lead time and status. The owner price is what the owner sees, including the builder fee; owners never see the supplier or the supplier price.
 - Drag choices (or use the arrows) to set the order the owner sees.
@@ -40,11 +42,11 @@ In the detail panel:
 
 Records imported from another system show a small source tag.
 
-**Selection Phases.** Cards above the sheet show each of the company's Selection Phases on this job: the due date (from the job's schedule), how many selections have the owner's pick, and how far the picks are over or under the allowance. Click a card to show only that Selection Phase's selections; **No Selection Phase** shows the rest. Put a selection in a Selection Phase from its detail panel. When every selection in a Selection Phase has the owner's pick, project staff get a "ready to finalize" notification once; if a pick is cleared, the next completion notifies again. (Selection Phases are separate from Sage phase codes, phase estimates and schedule phases.)
+**Selection Phases.** Cards above the sheet show each of the company's Selection Phases on this job: the due date (from the job's schedule), how many selections have the owner's pick, and how far the picks are over or under the allowance. Click a card to show only that Selection Phase's selections; **No Selection Phase** shows the rest. Put a selection in a Selection Phase from its drawer. When every selection in a Selection Phase has the owner's pick, project staff get a "ready to finalize" notification once; if a pick is cleared, the next completion notifies again. (Selection Phases are separate from Sage phase codes, phase estimates and schedule phases.)
 
 **Picking for the owner and signing a Selection Phase.** When the owner tells you their choice, use **Mark as owner's pick** on the choice and add a note such as "per phone call"; the panel and the printed Selection Phase show who picked it and when. When every selection in a Selection Phase has a pick, its card shows **Print Selection Phase** (Print Preview of the Selection Phase document: each item's room, photo, choice, supplier link, owner price and over/under the allowance, the Selection Phase total and a signature page) and **Send for signature**. Sending lets you choose the owners to sign from the job's owner contacts, makes the change order (fixed price, or cost plus above the Settings threshold) or variance for the difference, puts it in the same document, and opens Foxit to review and send; Foxit emails the owners. When they sign, the Selection Phase's selections become Approved, the change order is executed (or the variance approved), the signed PDF is saved to the job's Drive folder under Selections, and staff are notified. Changing a signed pick reopens only that selection; send the Selection Phase again to sign the change. Earlier signed documents stay listed with the Selection Phase.
 
-**Choice templates.** Reuse a set of choices on any job. In a selection's detail panel, **Save as template** saves its choices (prices, suppliers, lead times, product links), and **Apply template** adds a template's choices to it. **Choice templates** above the sheet lists the company's templates, applies one to every selection on the job in the template's category, deletes them, and imports templates from a CSV file. The CSV has one row per choice, with the columns Template, Category, Title, Description, Supplier, Supplier price, Owner price, Lead time days and Product URL; Template and Title are required. Supplier names that match a vendor link to it, and importing a template name that already exists replaces that template.
+**Choice templates.** Reuse a set of choices on any job. In a selection's drawer, **Save as template** saves its choices (prices, suppliers, lead times, product links), and **Apply template** adds a template's choices to it. **Choice templates** above the sheet lists the company's templates, applies one to every selection on the job in the template's category, deletes them, and imports templates from a CSV file. The CSV has one row per choice, with the columns Template, Category, Title, Description, Supplier, Supplier price, Owner price, Lead time days and Product URL; Template and Title are required. Supplier names that match a vendor link to it, and importing a template name that already exists replaces that template.
 
 Admins set the company defaults in **Settings › Workflows › Selections**: the Selection Phases and the schedule item that sets each Selection Phase's due date, default lead times by category (new choices start with them), the owner-price markup (a blank owner price is filled in from the supplier price, including prices returned on an RFQ; staff can change it), and the over-budget percent at which a variance is handled as a change order.
 
@@ -58,7 +60,7 @@ Choose the division first to narrow cost codes. If a valid project code is marke
 
 ## Status and Approval {#status-approval}
 
-Status should describe the current business state: Needed, Proposed, With owner, Approved, Pricing, RFQ sent, Ordered, Installed, Unavailable or Deferred. Change it from the dropdown at the top of a selection's detail panel. Compass also moves it forward on its own, and never backward: publishing it to the owner makes it With owner, sending its purchase order makes it Ordered, and ticking it under **Selections installed** on a daily log makes it Installed. Each automatic move is listed in Activity. Owner visibility and approval are separate from internal drafting.
+Status should describe the current business state: Needed, Proposed, With owner, Approved, Pricing, RFQ sent, Ordered, Installed, Unavailable or Deferred. Change it from the dropdown at the top of a selection's drawer. Compass also moves it forward on its own, and never backward: publishing it to the owner makes it With owner, sending its purchase order makes it Ordered, and ticking it under **Selections installed** on a daily log makes it Installed. Each automatic move is listed in Activity. Owner visibility and approval are separate from internal drafting.
 
 ## Change an Approved Selection {#approved-change}
 

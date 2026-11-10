@@ -14,16 +14,9 @@ import type {
 } from "@/lib/domain/selections/types"
 import { ProjectSelectionComboboxInput } from "@/components/projects/project-selection-combobox-input"
 import { SearchableCombobox } from "@/components/searchable-combobox"
+import { RecordDrawer } from "@/components/record-drawer"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import {
-  Sheet,
-  SheetContent,
-  SheetDescription,
-  SheetHeader,
-  SheetTitle,
-  SheetTrigger
-} from "@/components/ui/sheet"
 import { Textarea } from "@/components/ui/textarea"
 import {
   getFinishSelectionTemplateImportOptions,
@@ -67,7 +60,7 @@ export function ProjectSelectionCreateForm({
   options,
   roomName = "",
   roomType = "",
-  triggerLabel = "New Selection",
+  triggerLabel = "Add selection",
   triggerVariant = "default"
 }: {
   readonly projectId: string
@@ -211,28 +204,25 @@ export function ProjectSelectionCreateForm({
   }
 
   return (
-    <Sheet
-      open={open}
-      onOpenChange={(nextOpen) => {
-        setOpen(nextOpen)
-        if (nextOpen) setStatus({ kind: "idle" })
-      }}
-    >
-      <SheetTrigger asChild>
-        <Button type="button" variant={triggerVariant}>
-          <IconPlus className="size-4" />
-          {triggerLabel}
-        </Button>
-      </SheetTrigger>
-      <SheetContent className="w-[min(96vw,960px)] overflow-y-auto sm:max-w-none">
-        <SheetHeader className="border-b px-5 py-4">
-          <SheetTitle>Add Finish Selection</SheetTitle>
-          <SheetDescription>
-            Capture one selection with room context, product detail, and cost coding.
-          </SheetDescription>
-        </SheetHeader>
-
-        <form ref={formRef} onSubmit={submitSelection} className="space-y-4 px-5 pb-6">
+    <>
+      <Button
+        type="button"
+        variant={triggerVariant}
+        onClick={() => {
+          setStatus({ kind: "idle" })
+          setOpen(true)
+        }}
+      >
+        <IconPlus className="size-4" />
+        {triggerLabel}
+      </Button>
+      <RecordDrawer
+        open={open}
+        onOpenChange={setOpen}
+        title="Add Finish Selection"
+        description="Capture one selection with room context, product detail, and cost coding."
+      >
+        <form ref={formRef} onSubmit={submitSelection} className="space-y-4">
           <section className="border-y bg-muted/20 py-3">
             <div className="mb-2 flex items-center gap-2 text-xs font-medium">
               <IconTemplate className="size-4" />
@@ -466,7 +456,7 @@ export function ProjectSelectionCreateForm({
             </Button>
           </div>
         </form>
-      </SheetContent>
-    </Sheet>
+      </RecordDrawer>
+    </>
   )
 }

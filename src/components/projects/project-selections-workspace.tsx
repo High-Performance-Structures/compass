@@ -477,10 +477,8 @@ function EmptyFilteredState({
 }
 
 function EmptySelectionsState({
-  options,
   projectId,
 }: {
-  readonly options: ProjectSelectionOptions
   readonly projectId: string
 }): React.ReactElement {
   return (
@@ -488,10 +486,9 @@ function EmptySelectionsState({
       <IconPalette className="mx-auto size-7 text-muted-foreground" />
       <h2 className="mt-3 text-sm font-semibold">No selections yet</h2>
       <p className="mt-1 text-sm text-muted-foreground">
-        Add the first room-based selection or import a finish schedule workbook.
+        Use "Add selection" at the top of the page, or import a finish schedule workbook.
       </p>
       <div className="mt-5 flex flex-wrap justify-center gap-2">
-        <ProjectSelectionCreateForm projectId={projectId} options={options} />
         <ProjectFinishScheduleImportSheet projectId={projectId} />
       </div>
     </div>
@@ -577,7 +574,7 @@ export function ProjectSelectionsWorkspace({
   }
 
   if (summary.rooms.length === 0) {
-    return <EmptySelectionsState options={options} projectId={projectId} />
+    return <EmptySelectionsState projectId={projectId} />
   }
 
   return (
@@ -705,7 +702,6 @@ export function ProjectSelectionsWorkspace({
         />
         <div className="flex flex-wrap gap-2">
           <ProjectFinishScheduleImportSheet projectId={projectId} />
-          <ProjectSelectionCreateForm projectId={projectId} options={options} />
         </div>
       </div>
 

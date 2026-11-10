@@ -34,4 +34,18 @@ describe("SaveToCompassBookmarklet", () => {
     expect(href).toContain(JSON.stringify(`${window.location.origin}/save-to-compass`))
     expect(container.textContent).toContain("Drag this button to your bookmarks bar.")
   })
+
+  it("compact: just the draggable button, with the instruction as its tooltip", () => {
+    container = document.createElement("div")
+    document.body.append(container)
+    const mounted = createRoot(container)
+    root = mounted
+    act(() => mounted.render(React.createElement(SaveToCompassBookmarklet, { variant: "compact" })))
+    const link = container.querySelector("a")
+    expect(link?.getAttribute("draggable")).toBe("true")
+    expect(link?.getAttribute("href")?.startsWith("javascript:")).toBe(true)
+    expect(link?.getAttribute("title")).toContain("Drag this button to your bookmarks bar.")
+    expect(container.querySelector("h3")).toBeNull()
+    expect(container.textContent).toBe("Save to Compass")
+  })
 })

@@ -145,7 +145,7 @@ export function SaveToCompassForm({
       setSaved({
         jobLabel: jobLabel(job),
         selectionName: targetName,
-        href: `/dashboard/projects/${encodeURIComponent(job.id)}/selections?selection=${encodeURIComponent(targetId)}`,
+        href: `/dashboard/projects/${encodeURIComponent(job.id)}/selections?item=${encodeURIComponent(targetId)}`,
       })
     })
   }

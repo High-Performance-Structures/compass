@@ -1,7 +1,8 @@
 "use client"
 
 /*
- * The staff detail panel beside the Selections sheet: the selection's
+ * The staff detail panel in the Selections sheet's record drawer: status,
+ * allowance and Selection Phase, then the selection's
  * choices (drag to reorder, owner's pick, links, photos, follow-ups),
  * "Add choice", "Paste product link", "Ask supplier to price", the to-dos
  * and RFQs linked to the selection, and its comments.
@@ -28,7 +29,6 @@ import { AttachPhotosDialog, FollowUpsDialog, PasteLinkDialog, PickForOwnerDialo
 import { SelectionLinkCard } from "@/components/selections/selection-link-card"
 import { SelectionPriceRequest } from "@/components/selections/selection-price-request"
 import { SelectionRoundTemplateControls } from "@/components/selections/selection-round-template-controls"
-import { SourceTag } from "@/components/shared/source-tag"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -184,16 +184,11 @@ export function SelectionDetailPanel({
   const panel = detail?.panel ?? null
 
   return (
-    <aside className="flex min-w-0 flex-col gap-4 rounded-lg border bg-card p-4" aria-label={`${row.name} details`}>
-      <header className="flex flex-col gap-1">
-        <span className="text-xs text-muted-foreground">
-          {[row.roomName, row.costCode, row.parentName ? `Follow-up of ${row.parentName}` : null].filter(Boolean).join(" · ")}
-        </span>
-        <div className="flex flex-wrap items-start justify-between gap-2">
-          <h2 className="text-xl font-semibold">
-            {row.name}
-            {row.sourceSystem === "buildertrend" && <SourceTag source="buildertrend" className="ml-1.5" />}
-          </h2>
+    <div className="flex min-w-0 flex-col gap-4">
+      {/* The drawer header shows the selection's name, room and cost code. */}
+      <header className="flex flex-col gap-2">
+        <div className="flex flex-wrap items-center gap-3">
+          <span className="text-sm font-medium">Status</span>
           {/* Keyed on the status so an automatic move or another edit shows after refresh. */}
           <ProjectSelectionStatusSelect key={row.status} projectId={projectId} selectionId={row.id} status={row.status} labels={statusLabels} onChanged={onChanged} />
         </div>
@@ -408,6 +403,6 @@ export function SelectionDetailPanel({
         open={dialog.kind === "price"}
         onOpenChange={(open) => !open && setDialog({ kind: "none" })}
       />
-    </aside>
+    </div>
   )
 }
