@@ -22,7 +22,10 @@ The central tracked Reply-To address stays in place regardless of the sender.
 Email sent to a project's address, on the To or Cc line, from project staff or
 a project contact is saved as a project message when its subject has no tag
 such as `[RFI]` or `[DAILY LOG]`. Tagged subjects still go to their record type,
-and email from unknown senders or with attached files is held for review.
+and email from unknown senders is held for review. Attached files (up to 10, 25 MB
+each) are saved with the message in the private correspondence Drive folder and
+open for the message's recipients. If the files can't be stored, the whole email
+stays in review instead.
 
 Incoming replies are attached to the original conversation through its tracked
 Reply-To address. Each reply is granted only to currently active conversation
@@ -55,8 +58,8 @@ Drive membership are not suitable for private staging. Configuration must point
 to a regular Drive folder with only the dedicated user's ACL. If that requirement
 is not met, attachment staging fails with an actionable error.
 
-Email replies containing new inbound files continue to require manual review;
-this change covers attachments composed and sent from Compass.
+Email replies containing new inbound files continue to require manual review.
+New emails to the project address keep their files (see above).
 
 
 ## Drafts and Sent

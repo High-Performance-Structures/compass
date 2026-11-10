@@ -306,6 +306,11 @@ export async function insertAttachment(db: Db, row: AttachmentInsert): Promise<v
   await db.insert(correspondenceAttachments).values(row)
 }
 
+/** Files that arrive with an inbound message are saved in its batch. */
+export function attachmentInsertStatement(db: Db, row: AttachmentInsert): BatchItem<"sqlite"> {
+  return db.insert(correspondenceAttachments).values(row)
+}
+
 /** Binds an unsent, live upload to the message being saved. */
 export function attachToMessageStatement(db: Db, attachmentId: string, messageId: string): BatchItem<"sqlite"> {
   return db.update(correspondenceAttachments).set({ messageId }).where(and(eq(correspondenceAttachments.id, attachmentId), isNull(correspondenceAttachments.messageId), isNull(correspondenceAttachments.retiredAt)))

@@ -10,7 +10,8 @@ import { isInternalStaffRole } from "@/lib/user-roles"
 import type { InboundCandidate } from "./gmail-message-parser"
 import { projectEmailTitle } from "./project-address"
 import { inboundProjectMessageRecipients } from "./project-message-mentions"
-import { conversationInsertStatement, messageInsertStatement, participantInsertStatement, recipientInsertStatement, writeGuardDeleteStatement, writeGuardInsertStatement } from "@/lib/domain/correspondence/store"
+import { storeInboundMessageAttachments } from "@/lib/correspondence/inbound-attachments"
+import { attachmentInsertStatement, conversationInsertStatement, messageInsertStatement, participantInsertStatement, recipientInsertStatement, writeGuardDeleteStatement, writeGuardInsertStatement } from "@/lib/domain/correspondence/store"
 import { notificationEventInsertStatement, notificationRecipientInsertStatement } from "@/lib/domain/notifications/store"
 
 /** Called only after the shared email/SMS router verifies the sender and project. */
@@ -25,8 +26,6 @@ export async function routeInboundProjectMessage(input: {
   readonly now: string
 }): Promise<{ readonly id: string; readonly status: "routed_message" } | null> {
   if (!isCorrespondenceEnabled(input.projectId, input.env) && !isCorrespondenceEnabled(input.projectId)) return null
-  // Keep the full incoming item in review until its files can be safely imported.
-  if (input.candidate.attachments.length > 0) return null
   const sourceKey = JSON.stringify(["project-message", input.organizationId, input.projectId, input.source, input.candidate.gmailMessageId])
   const digest = new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(sourceKey)))
   const id = `inbound-message-${Array.from(digest, (byte) => byte.toString(16).padStart(2, "0")).join("")}`
@@ -49,25 +48,33 @@ export async function routeInboundProjectMessage(input: {
   const recipients = inboundProjectMessageRecipients(text, staff.map((person) => ({
     ...person, name: person.name ?? [person.firstName, person.lastName].filter(Boolean).join(" "), assigned: Boolean(person.assigned), inApp: person.inApp ?? true,
   })))
-  if (!recipients) return null
+  if (!recipients || !recipients[0]) return null
+  // Files are stored before the batch; any that can't be stored keep the email in review.
+  const files = await storeInboundMessageAttachments({ ...input, messageId: id, ownerUserId: recipients[0].id, attachments: input.candidate.attachments })
+    .catch((error: unknown) => { console.error("[project-message-routing] attachment storage failed", error); return null })
+  if (!files) return null
   const title = projectEmailTitle(input.candidate.subject) || "Project message"
   const sender = `${input.candidate.fromName?.trim() || input.candidate.fromAddress} <${input.candidate.fromAddress}>`
   const eventId = `notification-${id}`
   const guardId = crypto.randomUUID()
   // Save the message, audience grants, and in-app notification in one D1 batch.
   // External sender headers never grant access or impersonate a Compass account.
-  await input.db.batch([
+  try { await input.db.batch([
     writeGuardInsertStatement(input.db, guardId, sql`CASE WHEN EXISTS(SELECT 1 FROM projects WHERE id=${input.projectId} AND organization_id=${input.organizationId}) AND NOT EXISTS(SELECT 1 FROM json_each(${JSON.stringify(recipients.map((person) => person.id))}) person WHERE NOT EXISTS(SELECT 1 FROM users u JOIN organization_members om ON om.user_id=u.id JOIN organizations o ON o.id=om.organization_id WHERE u.id=person.value AND u.is_active=1 AND o.type='internal' AND om.organization_id=${input.organizationId} AND om.role IN (SELECT value FROM json_each(${JSON.stringify(staffRoles)}))
       AND (${!requiresAssignment} OR EXISTS(SELECT 1 FROM project_members pm WHERE pm.project_id=${input.projectId} AND pm.user_id=u.id)
         OR EXISTS(SELECT 1 FROM project_contacts pc WHERE pc.project_id=${input.projectId} AND pc.source_entity_type='user' AND pc.source_entity_id=u.id AND pc.contact_type='internal' AND pc.active=1))
     )) THEN 1 ELSE 0 END`),
     conversationInsertStatement(input.db, { id: conversationId, organizationId: input.organizationId, projectId: input.projectId, subject: title, createdAt: input.now }),
     messageInsertStatement(input.db, { id, conversationId, authorUserId: null, authorName: sender, source: input.source, sourceKey, body: input.body, sentAt: input.candidate.receivedAt, requestHash: sourceKey }),
+    ...files.rows.map((row) => attachmentInsertStatement(input.db, row)),
     ...recipients.map((person) => participantInsertStatement(input.db, [{ id: `${id}-participant-${person.id}`, conversationId, userId: person.id, name: person.name || person.email, email: person.email, role: "staff" }])),
     ...recipients.map((person) => recipientInsertStatement(input.db, [{ id: `${id}-recipient-${person.id}`, messageId: id, userId: person.id, name: person.name || person.email, kind: "to" }])),
     notificationEventInsertStatement(input.db, { id: eventId, organizationId: input.organizationId, projectId: input.projectId, eventType: "project_message", sourceType: "project_correspondence", sourceId: id, title: `Project message from ${input.candidate.fromName?.trim() || input.candidate.fromAddress}`, body: title, href: `/dashboard/projects/${encodeURIComponent(input.projectId)}/messages?conversationId=${encodeURIComponent(conversationId)}&messageId=${encodeURIComponent(id)}`, audience: "internal", createdBy: null, createdAt: input.now }),
     ...recipients.map((person) => notificationRecipientInsertStatement(input.db, { id: `${eventId}-${person.id}`, eventId, userId: person.id, inApp: person.inApp, createdAt: input.now })),
     writeGuardDeleteStatement(input.db, guardId),
-  ])
+  ]) } catch (error) {
+    await files.discard()
+    throw error
+  }
   return { id, status: "routed_message" }
 }

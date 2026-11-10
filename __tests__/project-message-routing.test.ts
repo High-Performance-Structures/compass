@@ -7,6 +7,12 @@ import type { InboundCandidate } from "@/lib/email/gmail-message-parser"
 
 vi.mock("server-only", () => ({}))
 vi.mock("@/lib/activity-log", () => ({ recordActivityEvent: vi.fn() }))
+const drive = vi.hoisted(() => ({
+  uploadFile: vi.fn(async (_user: string, file: { readonly name: string; readonly mimeType: string }) => ({ id: `drive-${file.name}`, name: file.name, mimeType: file.mimeType })),
+  trashFile: vi.fn(async () => {}),
+  getFile: vi.fn(async (_user: string, id: string) => ({ id, mimeType: "application/vnd.google-apps.folder", permissions: [{ type: "user", emailAddress: "files@example.test" }] })),
+}))
+vi.mock("@/lib/google/organization-drive", () => ({ getOrganizationDriveContext: async () => ({ client: drive }) }))
 vi.mock("@/lib/correspondence/access", () => ({ isCorrespondenceEnabled: (_id: string, env: unknown) => typeof env === "object" && env !== null && "COMPASS_CORRESPONDENCE_ENABLED" in env && env.COMPASS_CORRESPONDENCE_ENABLED === "true" }))
 
 let database: CorrespondenceTestDatabase | undefined
@@ -80,6 +86,21 @@ describe("[MESSAGE] intake", () => {
     expect(await routeInboundProjectMessage({ ...input(db), source: "sms" })).toBeNull()
     db.sqlite.exec("UPDATE users SET is_active=1 WHERE id='staff-a'")
     expect(await routeInboundProjectMessage({ ...input(db), candidate: candidate({ attachments: [{ attachmentId: "file-1", fileName: "photo.jpg", mimeType: "image/jpeg", size: 10, data: null }] }), source: "email" })).toBeNull()
+  })
+  it("saves an email's files with the project message", async () => {
+    const db = setup()
+    const env = { COMPASS_CORRESPONDENCE_ENABLED: "true", COMPASS_CORRESPONDENCE_DRIVE_USER: "files@example.test", COMPASS_CORRESPONDENCE_STAGING_FOLDERS: JSON.stringify({ "org-a": "private-folder" }) }
+    const withFile = candidate({ attachments: [{ attachmentId: "file-1", fileName: "inspection.pdf", mimeType: "application/pdf", size: 3, data: new Uint8Array([1, 2, 3]) }] })
+    const routed = await routeInboundProjectMessage({ ...input(db), env, candidate: withFile, source: "email" })
+    expect(routed?.status).toBe("routed_message")
+    expect(db.sqlite.prepare("SELECT name, message_id AS messageId, drive_file_id AS driveFileId, owner_user_id AS ownerUserId FROM correspondence_attachments").all())
+      .toEqual([{ name: "inspection.pdf", messageId: routed?.id, driveFileId: "drive-inspection.pdf", ownerUserId: "staff-a" }])
+  })
+  it("keeps an email with files in review when private file storage isn't set up", async () => {
+    const db = setup()
+    const withFile = candidate({ attachments: [{ attachmentId: "file-1", fileName: "inspection.pdf", mimeType: "application/pdf", size: 3, data: new Uint8Array([1, 2, 3]) }] })
+    expect(await routeInboundProjectMessage({ ...input(db), candidate: withFile, source: "email" })).toBeNull()
+    expect(db.sqlite.prepare("SELECT COUNT(*) AS count FROM correspondence_messages").get()).toEqual({ count: 0 })
   })
   it("respects notification preferences and messaging availability", async () => {
     const db = setup()
