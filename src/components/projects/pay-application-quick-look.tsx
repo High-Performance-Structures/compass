@@ -13,10 +13,7 @@ import type { ProjectOwnerPayApplicationDraft } from "@/app/actions/project-fina
 import { PayApplicationBillingControls, payApplicationStatusLabel } from "@/components/projects/pay-application-billing-controls"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-
-function money(value: number): string {
-  return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(value)
-}
+import { formatCurrency } from "@/lib/utils"
 
 export function PayApplicationQuickLook({
   projectId,
@@ -51,7 +48,7 @@ export function PayApplicationQuickLook({
         ].map(([label, value]) => (
           <div key={String(label)} className="bg-background px-4 py-3">
             <dt className="text-xs text-muted-foreground">{label}</dt>
-            <dd className="mt-1 text-lg font-semibold tabular-nums">{money(Number(value))}</dd>
+            <dd className="mt-1 text-lg font-semibold tabular-nums">{formatCurrency(Number(value))}</dd>
           </div>
         ))}
       </dl>
