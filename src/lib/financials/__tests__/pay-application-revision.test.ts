@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest"
 
-import { lineAmountsOnRevision } from "../owner-pay-application-refresh"
+import { fullyBilledWorkOnRevision, lineAmountsOnRevision } from "../owner-pay-application-refresh"
 
 describe("lineAmountsOnRevision", () => {
   it("adds an executed change order to a draft line as a current change", () => {
@@ -31,5 +31,36 @@ describe("lineAmountsOnRevision", () => {
     expect(amounts.balanceToFinish).toBe(7_500)
     expect(amounts.retainageHeld).toBe(400)
     expect(amounts.percentComplete).toBe(34.8)
+  })
+})
+
+describe("fullyBilledWorkOnRevision", () => {
+  const fullyBilled = { adjustedEstimate: 10_000, previousWorkCompleted: 0, storedMaterials: 0, totalCosts: 10_000, retainageHeld: 500 }
+
+  it("keeps a fully billed line fully billed when a credit lowers its value", () => {
+    expect(fullyBilledWorkOnRevision(fullyBilled, 800_000)).toEqual({
+      currentWorkCompleted: 8_000,
+      currentCosts: 8_000,
+      totalCosts: 8_000,
+      percentComplete: 100,
+      balanceToFinish: 0,
+      retainageHeld: 400,
+    })
+  })
+
+  it("bills an added charge on a fully billed line this period", () => {
+    const amounts = fullyBilledWorkOnRevision({ ...fullyBilled, previousWorkCompleted: 6_000, storedMaterials: 1_000 }, 1_250_000)
+    expect(amounts?.currentWorkCompleted).toBe(5_500)
+    expect(amounts?.currentCosts).toBe(6_500)
+    expect(amounts?.totalCosts).toBe(12_500)
+  })
+
+  it("leaves partly billed and unchanged lines alone", () => {
+    expect(fullyBilledWorkOnRevision({ ...fullyBilled, totalCosts: 5_000 }, 1_200_000)).toBeNull()
+    expect(fullyBilledWorkOnRevision(fullyBilled, 1_000_000)).toBeNull()
+  })
+
+  it("never takes this period's work below zero", () => {
+    expect(fullyBilledWorkOnRevision({ ...fullyBilled, previousWorkCompleted: 10_000 }, 800_000)).toBeNull()
   })
 })

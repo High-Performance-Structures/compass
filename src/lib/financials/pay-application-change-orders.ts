@@ -7,6 +7,7 @@ import { chunkD1Values } from "@/lib/d1-query"
 import { BUDGET_PROJECTION_SOURCE, COMPASS_DRAW_SOURCE } from "@/lib/domain/financials/rules"
 import { priorPayApplicationCondition } from "@/lib/financials/owner-pay-application-refresh"
 import { loadPayApplicationShares, shareKey, type PayApplicationShare } from "@/lib/financials/pay-application-shares"
+import { lineChangeOrderKey, type LineChangeOrder } from "@/lib/financials/pay-application-line-checks"
 
 export type PayApplicationChangeOrder = {
   readonly id: string
@@ -252,4 +253,68 @@ export function varianceSplitter<T extends { readonly costCode: string; readonly
     remainingByCode.set(line.costCode, remaining - cents)
     return { ...line, totalVariances: roundCents(cents / 100) }
   }
+}
+
+/**
+ * The executed change orders and variances that changed an existing assembly's
+ * rows, by row (cost code and assembly), so each row can say why its value
+ * moved. Separate work already has its own row named after the change order.
+ */
+export function lineChangeOrdersByRow(
+  rows: readonly {
+    readonly changeOrderId: string
+    readonly costCode: string
+    readonly contractAssemblyId: string | null
+    readonly amountCents: number
+    readonly number: string | null
+    readonly title: string | null
+    readonly recordType: string | null
+  }[]
+): Readonly<Record<string, readonly LineChangeOrder[]>> {
+  const byRow = new Map<string, Map<string, { number: string; title: string; recordType: LineChangeOrder["recordType"]; cents: number }>>()
+  for (const row of rows) {
+    if (!row.contractAssemblyId) continue
+    const key = lineChangeOrderKey(row.costCode, `asm:${row.contractAssemblyId}`)
+    const changes = byRow.get(key) ?? new Map()
+    const entry = changes.get(row.changeOrderId) ?? {
+      number: row.number ?? "",
+      title: row.title ?? "",
+      recordType: row.recordType === "variance" ? "variance" : "change_order",
+      cents: 0,
+    }
+    entry.cents += row.amountCents
+    changes.set(row.changeOrderId, entry)
+    byRow.set(key, changes)
+  }
+  return Object.fromEntries(
+    [...byRow.entries()].map(([key, changes]) => [
+      key,
+      [...changes.values()]
+        .filter((entry) => entry.cents !== 0)
+        .map(({ number, title, recordType, cents }) => ({ number, title, recordType, amount: roundCents(cents / 100) })),
+    ])
+  )
+}
+
+/** Per-row change order labels for a pay application's contract budget revision. */
+export async function payApplicationLineChangeOrders(
+  db: ReturnType<typeof getDb>,
+  budgetRevisionId: string | null
+): Promise<Readonly<Record<string, readonly LineChangeOrder[]>>> {
+  if (!budgetRevisionId) return {}
+  const rows = await db
+    .select({
+      changeOrderId: projectContractBudgetAdjustments.changeOrderId,
+      costCode: projectContractBudgetAdjustments.costCode,
+      contractAssemblyId: projectContractBudgetAdjustments.contractAssemblyId,
+      amountCents: projectContractBudgetAdjustments.amountCents,
+      number: projectChangeOrders.changeOrderNumber,
+      title: projectChangeOrders.title,
+      recordType: projectChangeOrders.recordType,
+    })
+    .from(projectContractBudgetAdjustments)
+    .leftJoin(projectChangeOrders, eq(projectChangeOrders.id, projectContractBudgetAdjustments.changeOrderId))
+    .where(eq(projectContractBudgetAdjustments.revisionId, budgetRevisionId))
+    .orderBy(projectContractBudgetAdjustments.executedAt)
+  return lineChangeOrdersByRow(rows)
 }

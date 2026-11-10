@@ -5,6 +5,7 @@ import { notFound } from "next/navigation"
 import { IconFileDollar } from "@tabler/icons-react"
 
 import { getProjectOwnerPayApplicationDraft } from "@/app/actions/project-financial-workflows"
+import { getPayApplicationLineChangeOrders } from "@/app/actions/pay-application-line-change-orders"
 import { ProjectOwnerPayApplicationEditor } from "@/components/projects/project-owner-pay-application-editor"
 import { PageHeader } from "@/components/page-header"
 import { getPayApplicationShopTickets } from "@/app/actions/shop-ticket-billing"
@@ -32,7 +33,7 @@ export default async function ProjectPayApplicationPage({
   if (!application) notFound()
   // The Sage export preview is for draws not yet billed (draft or ready); office staff only.
   const showSagePreview = application.status !== "billed"
-  const [shopTickets, receivables, sagePreview, sageState, sagePanel, sageInvoice, sageBillingCheck] = await Promise.all([
+  const [shopTickets, receivables, sagePreview, sageState, sagePanel, sageInvoice, sageBillingCheck, lineChangeOrders] = await Promise.all([
     getPayApplicationShopTickets(id, applicationId).catch(() => null),
     getProjectReceivablePayments(id),
     showSagePreview ? getSageExportPreview(id, applicationId).catch(() => null) : null,
@@ -42,6 +43,8 @@ export default async function ProjectPayApplicationPage({
     getPayRequestSageInvoiceState(id, applicationId).catch(() => null),
     // Companies whose pay requests are created in Sage; office finance staff only.
     getPayRequestSageBillingCheck(id, applicationId).catch(() => null),
+    // Labels only; a failure leaves rows unlabeled.
+    getPayApplicationLineChangeOrders(id, applicationId).catch(() => ({})),
   ])
   // Billed amounts synced from Sage are read only here; they change in Sage.
   const sageSynced = application.billingSource === "sage"
@@ -59,6 +62,7 @@ export default async function ProjectPayApplicationPage({
         projectId={id}
         application={application}
         shopTicketProvenance={shopTickets?.lineProvenance ?? []}
+        lineChangeOrders={lineChangeOrders}
         sageSynced={sageSynced}
       />
       {sageState ? (

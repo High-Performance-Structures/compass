@@ -2,7 +2,7 @@
 
 import { Fragment, useState, useTransition, type FormEvent } from "react"
 import { useRouter } from "next/navigation"
-import { IconArrowBackUp, IconCircleCheck, IconDeviceFloppy, IconEye, IconRefresh, IconTrash } from "@tabler/icons-react"
+import { IconAlertTriangle, IconArrowBackUp, IconCircleCheck, IconDeviceFloppy, IconEye, IconRefresh, IconTrash } from "@tabler/icons-react"
 
 import {
   deleteProjectOwnerPayApplicationDraft,
@@ -17,6 +17,13 @@ import {
   type ProjectOwnerPayApplicationLine,
 } from "@/app/actions/project-financial-workflows"
 import type { PayApplicationShopTicketState } from "@/lib/financials/pay-application-shop-tickets"
+import {
+  lineChangeOrderKey,
+  lineChangeOrderLabel,
+  overBilledAmount,
+  overBilledLines,
+  type LineChangeOrder,
+} from "@/lib/financials/pay-application-line-checks"
 import { ContextualHelpBeacon } from "@/components/help/contextual-help-beacon"
 import { PayApplicationBillingControls, payApplicationStatusLabel } from "@/components/projects/pay-application-billing-controls"
 import {
@@ -82,6 +89,7 @@ function PayApplicationLineEditor({
   editable,
   onMessage,
   shopTickets,
+  changeOrders,
 }: {
   readonly projectId: string
   readonly applicationId: string
@@ -89,7 +97,9 @@ function PayApplicationLineEditor({
   readonly editable: boolean
   readonly onMessage: (message: string) => void
   readonly shopTickets: ShopTicketProvenance | undefined
+  readonly changeOrders: readonly LineChangeOrder[]
 }): React.ReactElement {
+  const overBilled = overBilledAmount(line)
   const router = useRouter()
   const [isPending, startTransition] = useTransition()
   const [ownerVisible, setOwnerVisible] = useState(line.ownerVisible)
@@ -156,6 +166,11 @@ function PayApplicationLineEditor({
             includes {formatCents(shopTickets.amountCents)} from {shopTickets.ticketNumbers.join(", ")}
           </p>
         )}
+        {changeOrders.map((change) => (
+          <p key={`${change.number}:${change.title}`} className="text-xs text-muted-foreground">
+            {lineChangeOrderLabel(change, money)}
+          </p>
+        ))}
       </div>
       <span className="text-right">{money(line.adjustedEstimate)}</span>
       <span className="text-right">{money(line.previousWorkCompleted)}</span>
@@ -209,6 +224,12 @@ function PayApplicationLineEditor({
           </Button>
         )}
       </div>
+      {overBilled > 0 && (
+        <p className="flex items-center gap-1 text-sm text-destructive lg:col-span-full">
+          <IconAlertTriangle className="size-4" />
+          Billed {money(overBilled)} more than its scheduled value of {money(line.adjustedEstimate)}.
+        </p>
+      )}
       {error && (
         <p id={`${line.id}-error`} role="alert" className="text-sm text-destructive lg:col-span-full">
           {error}
@@ -445,12 +466,15 @@ export function ProjectOwnerPayApplicationEditor({
   projectId,
   application,
   shopTicketProvenance,
+  lineChangeOrders = {},
   sageSynced = false,
 }: {
   readonly projectId: string
   readonly application: ProjectOwnerPayApplicationDraft
   /** Shop ticket amounts imported onto each line; empty when the person can't see shop tickets. */
   readonly shopTicketProvenance: readonly ShopTicketProvenance[]
+  /** Change orders behind each row's change, by cost code and assembly; empty when not loaded. */
+  readonly lineChangeOrders?: Readonly<Record<string, readonly LineChangeOrder[]>>
   /** Billed amounts are synced from Sage, so they are read only here. */
   readonly sageSynced?: boolean
 }): React.ReactElement {
@@ -462,13 +486,18 @@ export function ProjectOwnerPayApplicationEditor({
   const hasAssemblies = application.lines.some((line) => line.assemblyKey !== null)
   const [groupBy, setGroupBy] = useState<GroupBy>(hasAssemblies ? "assembly" : "division")
   const editable = application.status === "draft"
+  const overBilled = overBilledLines(application.lines)
+  const overBilledWarning =
+    overBilled.length > 0
+      ? `${overBilled.length === 1 ? `${overBilled[0]?.costCode} is` : `${overBilled.length} lines are`} billed past the scheduled value, often after a credit change order. Bill ${overBilled.length === 1 ? "it" : "them"} to 100% unless the overage is intended.`
+      : null
   const amountsEditable = editable && !sageSynced
 
   function updateBudget(): void {
     setMessage(null)
     startTransition(async () => {
       const result = await updateProjectOwnerPayApplicationBudget(projectId, application.id)
-      setMessage(result.success ? "Pay application updated to the current contract budget. Work already entered was kept." : result.error)
+      setMessage(result.success ? "Pay application updated to the current contract budget. Work already entered was kept, and fully billed lines stay at 100%." : result.error)
       router.refresh()
     })
   }
@@ -585,6 +614,12 @@ export function ProjectOwnerPayApplicationEditor({
                       <AlertDialogDescription>
                         This locks the draw so it can be reviewed and entered in Sage. You can send it back to draft while it&apos;s in review.
                       </AlertDialogDescription>
+                      {overBilledWarning && (
+                        <p className="flex items-start gap-2 rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+                          <IconAlertTriangle className="mt-0.5 size-4 shrink-0" />
+                          {overBilledWarning}
+                        </p>
+                      )}
                     </AlertDialogHeader>
                     <AlertDialogFooter>
                       <AlertDialogCancel>Keep editing</AlertDialogCancel>
@@ -596,6 +631,12 @@ export function ProjectOwnerPayApplicationEditor({
             )}
           </div>
         </div>
+        {overBilledWarning && (
+          <p role="alert" className="flex items-center gap-2 border-b bg-destructive/10 px-4 py-3 text-sm text-destructive">
+            <IconAlertTriangle className="size-4 shrink-0" />
+            {overBilledWarning}
+          </p>
+        )}
         {!sageSynced && (application.newerBudgetRevision || application.assemblySplitStale) && (
           <div className="flex flex-wrap items-center justify-between gap-3 border-b bg-muted/35 px-4 py-3 text-sm">
             <p>
@@ -682,6 +723,7 @@ export function ProjectOwnerPayApplicationEditor({
                   editable={amountsEditable}
                   onMessage={setMessage}
                   shopTickets={provenanceByLine.get(line.id)}
+                  changeOrders={lineChangeOrders[lineChangeOrderKey(line.costCode, line.assemblyKey)] ?? []}
                 />
               ))}
             </Fragment>

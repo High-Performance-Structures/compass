@@ -234,6 +234,47 @@ export function lineAmountsOnRevision(
   }
 }
 
+/**
+ * A line billed to exactly its scheduled value stays fully billed when a change
+ * order moves that value: this period's work takes the difference, so a credit
+ * or an added charge reaches the draw without re-entering it. Null when the
+ * line wasn't fully billed, its value didn't change, or the difference would
+ * take this period's work below zero.
+ */
+export function fullyBilledWorkOnRevision(
+  line: {
+    readonly adjustedEstimate: number
+    readonly previousWorkCompleted: number
+    readonly storedMaterials: number
+    readonly totalCosts: number
+    readonly retainageHeld: number
+  },
+  adjustedBudgetCents: number
+): {
+  readonly currentWorkCompleted: number
+  readonly currentCosts: number
+  readonly totalCosts: number
+  readonly percentComplete: number
+  readonly balanceToFinish: number
+  readonly retainageHeld: number
+} | null {
+  const scheduledCents = Math.round(line.adjustedEstimate * 100)
+  if (scheduledCents <= 0 || Math.round(line.totalCosts * 100) !== scheduledCents) return null
+  if (adjustedBudgetCents === scheduledCents) return null
+  const currentCents = adjustedBudgetCents - Math.round(line.previousWorkCompleted * 100) - Math.round(line.storedMaterials * 100)
+  if (currentCents < 0) return null
+  const retainageRate = line.totalCosts > 0 ? line.retainageHeld / line.totalCosts : 0
+  const total = adjustedBudgetCents / 100
+  return {
+    currentWorkCompleted: currentCents / 100,
+    currentCosts: roundCents(currentCents / 100 + line.storedMaterials),
+    totalCosts: total,
+    percentComplete: 100,
+    balanceToFinish: 0,
+    retainageHeld: roundCents(total * retainageRate),
+  }
+}
+
 type ShareLineAmounts = {
   readonly previousWorkCompletedCents: number
   readonly currentWorkCompletedCents: number
@@ -309,8 +350,9 @@ function cents(value: number): number {
 /**
  * Bring a draft pay application onto a contract budget revision and its
  * assembly split, keeping the work already entered. A cost code whose shares
- * are unchanged is updated in place; one whose split changed has its entered
- * amounts spread across the new shares by scheduled value.
+ * are unchanged is updated in place (a fully billed row stays fully billed);
+ * one whose split changed has its entered amounts spread across the new
+ * shares by scheduled value.
  */
 export async function syncDraftPayApplication(
   db: ReturnType<typeof getDb>,
@@ -396,6 +438,7 @@ export async function syncDraftPayApplication(
             budgetRevisionLineId: share.budgetRevisionLineId,
             sourceRecordId: share.budgetRevisionLineId,
             ...lineAmountsOnRevision(line, share),
+            ...(fullyBilledWorkOnRevision(line, share.adjustedBudgetCents) ?? {}),
             assemblyName: share.assemblyName,
             assemblySort: share.assemblySort,
             ownerLabel: share.assemblyName ? `${share.description} · ${share.assemblyName}` : share.description,
