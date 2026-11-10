@@ -11,7 +11,7 @@ import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { PasswordInput } from "@/components/auth/password-input"
+import { NameFields, NewPasswordFields } from "@/components/auth/new-account-fields"
 import { signupSchema, type SignupInput } from "@/lib/validations/auth"
 
 export function SignupForm() {
@@ -65,41 +65,12 @@ export function SignupForm() {
 
   return (
     <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-        <div className="space-y-2">
-          <Label htmlFor="firstName">First name</Label>
-          <Input
-            id="firstName"
-            type="text"
-            placeholder="John"
-            autoComplete="given-name"
-            className="h-9 text-base"
-            {...register("firstName")}
-          />
-          {errors.firstName && (
-            <p className="text-xs text-destructive">
-              {errors.firstName.message}
-            </p>
-          )}
-        </div>
-
-        <div className="space-y-2">
-          <Label htmlFor="lastName">Last name</Label>
-          <Input
-            id="lastName"
-            type="text"
-            placeholder="Doe"
-            autoComplete="family-name"
-            className="h-9 text-base"
-            {...register("lastName")}
-          />
-          {errors.lastName && (
-            <p className="text-xs text-destructive">
-              {errors.lastName.message}
-            </p>
-          )}
-        </div>
-      </div>
+      <NameFields
+        firstName={register("firstName")}
+        lastName={register("lastName")}
+        firstNameError={errors.firstName?.message}
+        lastNameError={errors.lastName?.message}
+      />
 
       <div className="space-y-2">
         <Label htmlFor="email">Email</Label>
@@ -116,35 +87,12 @@ export function SignupForm() {
         )}
       </div>
 
-      <div className="space-y-2">
-        <Label htmlFor="password">Password</Label>
-        <PasswordInput
-          id="password"
-          placeholder="••••••••"
-          autoComplete="new-password"
-          className="h-9 text-base"
-          {...register("password")}
-        />
-        {errors.password && (
-          <p className="text-xs text-destructive">{errors.password.message}</p>
-        )}
-      </div>
-
-      <div className="space-y-2">
-        <Label htmlFor="confirmPassword">Confirm password</Label>
-        <PasswordInput
-          id="confirmPassword"
-          placeholder="••••••••"
-          autoComplete="new-password"
-          className="h-9 text-base"
-          {...register("confirmPassword")}
-        />
-        {errors.confirmPassword && (
-          <p className="text-xs text-destructive">
-            {errors.confirmPassword.message}
-          </p>
-        )}
-      </div>
+      <NewPasswordFields
+        password={register("password")}
+        confirmPassword={register("confirmPassword")}
+        passwordError={errors.password?.message}
+        confirmPasswordError={errors.confirmPassword?.message}
+      />
 
       <Button type="submit" disabled={isLoading} className="h-10 w-full">
         {isLoading ? (
