@@ -1,12 +1,7 @@
 "use client"
 
 import * as React from "react"
-import { toast } from "sonner"
-import {
-  getFeatureSettingsForEditor,
-  resetFeatureSettings,
-  saveFeatureSettings,
-} from "@/app/actions/feature-settings"
+import { useFeatureSettingsEditor } from "@/hooks/use-feature-settings-editor"
 import { Button } from "@/components/ui/button"
 import { Label } from "@/components/ui/label"
 import {
@@ -14,16 +9,14 @@ import {
   SelectContent,
   SelectItem,
   SelectTrigger,
-  SelectValue,
+  SelectValue
 } from "@/components/ui/select"
 import { Switch } from "@/components/ui/switch"
 import {
   CLIENT_FOLLOW_UP_PERIODS,
   CLIENT_FOLLOW_UP_PERIOD_LABEL,
-  clientFollowUpSettingsSchema,
-  isClientFollowUpPeriod,
-  type ClientFollowUpSettings,
-} from "@/lib/client-follow-up/leaderboard"
+  isClientFollowUpPeriod
+  } from "@/lib/client-follow-up/leaderboard"
 import { FEATURE_SETTINGS } from "@/lib/feature-settings/registry"
 
 const GROUP = FEATURE_SETTINGS["client-follow-up"]
@@ -37,53 +30,14 @@ const TOGGLES: readonly { readonly key: "leaderboardEnabled" | "streaksEnabled" 
 
 /** Settings → Workflows: how the Client follow-up page shows team activity. */
 export function ClientFollowUpSettingsSection(): React.ReactElement {
-  const [loaded, setLoaded] = React.useState(false)
-  const [canEdit, setCanEdit] = React.useState(false)
-  const [customized, setCustomized] = React.useState(false)
-  const [error, setError] = React.useState<string | null>(null)
-  const [value, setValue] = React.useState<ClientFollowUpSettings>(GROUP.defaults)
-  const [pending, startTransition] = React.useTransition()
-
-  const load = React.useCallback(async () => {
-    const result = await getFeatureSettingsForEditor("client-follow-up")
-    if (!result.success) {
-      setError(result.error)
-      return
-    }
-    const parsed = clientFollowUpSettingsSchema.safeParse(result.data.settings)
-    setValue(parsed.success ? parsed.data : GROUP.defaults)
-    setCanEdit(result.data.canEdit)
-    setCustomized(result.data.customized)
-    setLoaded(true)
-  }, [])
-
-  React.useEffect(() => {
-    void load()
-  }, [load])
+  const { loaded, canEdit, customized, error, pending, settings: value, setSettings: setValue, save: saveSettings, reset } = useFeatureSettingsEditor("client-follow-up", {
+    savedMessage: "Client follow-up settings saved.",
+    resetMessage: "Client follow-up settings reset to defaults."
+  })
 
   function save(event: React.FormEvent<HTMLFormElement>): void {
     event.preventDefault()
-    startTransition(async () => {
-      const result = await saveFeatureSettings("client-follow-up", value)
-      if (!result.success) {
-        toast.error(result.error)
-        return
-      }
-      toast.success("Client follow-up settings saved.")
-      await load()
-    })
-  }
-
-  function reset(): void {
-    startTransition(async () => {
-      const result = await resetFeatureSettings("client-follow-up")
-      if (!result.success) {
-        toast.error(result.error)
-        return
-      }
-      toast.success("Client follow-up settings reset to defaults.")
-      await load()
-    })
+    saveSettings(value)
   }
 
   const disabled = pending || !canEdit

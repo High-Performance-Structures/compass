@@ -2,11 +2,7 @@
 
 import * as React from "react"
 import { toast } from "sonner"
-import {
-  getFeatureSettingsForEditor,
-  resetFeatureSettings,
-  saveFeatureSettings,
-} from "@/app/actions/feature-settings"
+import { useFeatureSettingsEditor } from "@/hooks/use-feature-settings-editor"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -16,16 +12,15 @@ import { arInvoiceDescription } from "@/lib/domain/sage-bridge/ar-invoice-rules"
 import { FEATURE_SETTINGS } from "@/lib/feature-settings/registry"
 import { INVOICE_DATE_SOURCES, type InvoiceDateSource } from "@/lib/feature-settings/sage-ar-invoice-settings"
 import {
-  sagePayRequestCheckSettingsSchema,
-  type SagePayRequestCheckSettings,
-} from "@/lib/feature-settings/sage-pay-request-check-settings"
+  sagePayRequestCheckSettingsSchema
+  } from "@/lib/feature-settings/sage-pay-request-check-settings"
 
 const KEY = "sage-pay-request-check"
 const GROUP = FEATURE_SETTINGS[KEY]
 
 const DATE_LABELS: Readonly<Record<InvoiceDateSource, string>> = {
   period_end: "Pay request period end",
-  billed_date: "Day it was approved for billing",
+  billed_date: "Day it was approved for billing"
 }
 
 function isDateSource(value: string): value is InvoiceDateSource {
@@ -39,29 +34,10 @@ function wholeNumber(text: string, fallback: number): number {
 
 /** Settings → Workflows → Sage export: the Enter in Sage checklist and the posted invoice check. */
 export function SagePayRequestCheckSettingsSection(): React.ReactElement {
-  const [loaded, setLoaded] = React.useState(false)
-  const [canEdit, setCanEdit] = React.useState(false)
-  const [customized, setCustomized] = React.useState(false)
-  const [error, setError] = React.useState<string | null>(null)
-  const [value, setValue] = React.useState<SagePayRequestCheckSettings>(GROUP.defaults)
-  const [pending, startTransition] = React.useTransition()
-
-  const load = React.useCallback(async () => {
-    const result = await getFeatureSettingsForEditor(KEY)
-    if (!result.success) {
-      setError(result.error)
-      return
-    }
-    const parsed = sagePayRequestCheckSettingsSchema.safeParse(result.data.settings)
-    setValue(parsed.success ? parsed.data : GROUP.defaults)
-    setCanEdit(result.data.canEdit)
-    setCustomized(result.data.customized)
-    setLoaded(true)
-  }, [])
-
-  React.useEffect(() => {
-    void load()
-  }, [load])
+  const { loaded, canEdit, customized, error, pending, settings: value, setSettings: setValue, save: saveSettings, reset } = useFeatureSettingsEditor(KEY, {
+    savedMessage: "Sage pay request check settings saved.",
+    resetMessage: "Sage pay request check settings reset to defaults."
+  })
 
   function save(event: React.FormEvent<HTMLFormElement>): void {
     event.preventDefault()
@@ -70,27 +46,7 @@ export function SagePayRequestCheckSettingsSection(): React.ReactElement {
       toast.error(parsed.error.issues[0]?.message ?? "Check the Sage pay request check settings.")
       return
     }
-    startTransition(async () => {
-      const result = await saveFeatureSettings(KEY, parsed.data)
-      if (!result.success) {
-        toast.error(result.error)
-        return
-      }
-      toast.success("Sage pay request check settings saved.")
-      await load()
-    })
-  }
-
-  function reset(): void {
-    startTransition(async () => {
-      const result = await resetFeatureSettings(KEY)
-      if (!result.success) {
-        toast.error(result.error)
-        return
-      }
-      toast.success("Sage pay request check settings reset to defaults.")
-      await load()
-    })
+    saveSettings(parsed.data)
   }
 
   const disabled = pending || !canEdit

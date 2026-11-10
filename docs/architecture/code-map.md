@@ -356,7 +356,9 @@ Company settings (everything under Settings) and per-person preferences.
   `view-preferences.ts`, `list-sheets.ts`, `themes.ts`
 - Page: `src/app/dashboard/settings/page.tsx`
 - Components: `src/components/settings/` (`settings-page.tsx` plus one
-  `*-settings-section.tsx` per group)
+  `*-settings-section.tsx` per group). A section loads, saves and resets
+  its company setting with `useFeatureSettingsEditor(key, ...)`
+  (`src/hooks/use-feature-settings-editor.ts`) and only draws its inputs.
 - Theme presets: `src/lib/theme/presets/` (one file per built-in theme,
   `index.ts` lists them)
 - Docs: [theming](../development/theming.md)

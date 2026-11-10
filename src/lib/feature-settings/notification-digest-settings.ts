@@ -25,7 +25,7 @@ export const INSTANT_NOTIFICATION_KIND_LABELS: { readonly [K in InstantNotificat
   system_alerts: "System problems (payment or Sage connection failures)",
 }
 
-export const notificationDigestSettingsSchema = z.object({
+const notificationDigestSettingsSchema = z.object({
   /** "off" sends every notification right away, as before. */
   mode: z.enum(["on", "off"]),
   /** Company-time clock times (HH:MM) the digest goes out, earliest first. */

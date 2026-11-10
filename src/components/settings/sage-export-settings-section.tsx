@@ -2,11 +2,7 @@
 
 import * as React from "react"
 import { toast } from "sonner"
-import {
-  getFeatureSettingsForEditor,
-  resetFeatureSettings,
-  saveFeatureSettings,
-} from "@/app/actions/feature-settings"
+import { useFeatureSettingsEditor } from "@/hooks/use-feature-settings-editor"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -39,29 +35,10 @@ const EXAMPLE = { projectNumber: "X-100-200", sageJobNumber: "1200" } as const
 
 /** Settings → Workflows: billing cycle and invoice number formats for the Sage export. */
 export function SageExportSettingsSection(): React.ReactElement {
-  const [loaded, setLoaded] = React.useState(false)
-  const [canEdit, setCanEdit] = React.useState(false)
-  const [customized, setCustomized] = React.useState(false)
-  const [error, setError] = React.useState<string | null>(null)
-  const [value, setValue] = React.useState<SageExportSettings>(GROUP.defaults)
-  const [pending, startTransition] = React.useTransition()
-
-  const load = React.useCallback(async () => {
-    const result = await getFeatureSettingsForEditor(KEY)
-    if (!result.success) {
-      setError(result.error)
-      return
-    }
-    const parsed = sageExportSettingsSchema.safeParse(result.data.settings)
-    setValue(parsed.success ? parsed.data : GROUP.defaults)
-    setCanEdit(result.data.canEdit)
-    setCustomized(result.data.customized)
-    setLoaded(true)
-  }, [])
-
-  React.useEffect(() => {
-    void load()
-  }, [load])
+  const { loaded, canEdit, customized, error, pending, settings: value, setSettings: setValue, save: saveSettings, reset } = useFeatureSettingsEditor(KEY, {
+    savedMessage: "Sage export settings saved.",
+    resetMessage: "Sage export settings reset to defaults.",
+  })
 
   function save(event: React.FormEvent<HTMLFormElement>): void {
     event.preventDefault()
@@ -70,27 +47,7 @@ export function SageExportSettingsSection(): React.ReactElement {
       toast.error(parsed.error.issues[0]?.message ?? "Check the invoice number formats.")
       return
     }
-    startTransition(async () => {
-      const result = await saveFeatureSettings(KEY, parsed.data)
-      if (!result.success) {
-        toast.error(result.error)
-        return
-      }
-      toast.success("Sage export settings saved.")
-      await load()
-    })
-  }
-
-  function reset(): void {
-    startTransition(async () => {
-      const result = await resetFeatureSettings(KEY)
-      if (!result.success) {
-        toast.error(result.error)
-        return
-      }
-      toast.success("Sage export settings reset to defaults.")
-      await load()
-    })
+    saveSettings(parsed.data)
   }
 
   const disabled = pending || !canEdit

@@ -68,7 +68,7 @@ export const SAGE_CHANGE_ORDER_SETTINGS_GROUP = {
  * Settings > Workflows > Sage estimates: what Compass does with an accepted
  * estimate when the company uses Sage.
  */
-export const sageEstimateSettingsSchema = z.object({
+const sageEstimateSettingsSchema = z.object({
   /** Queue the job (if missing), proposal and optional budget as soon as an estimate is accepted. */
   autoSync: z.boolean(),
   /** Also send the job budget at cost (BudgetAddRq). */
