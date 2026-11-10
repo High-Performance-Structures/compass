@@ -6,15 +6,8 @@ import { useRouter } from "next/navigation"
 
 import { submitSubVendorRfqResponse } from "@/app/actions/project-audience-sub-vendor"
 import { Button } from "@/components/ui/button"
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from "@/components/ui/dialog"
+import { RecordDrawer } from "@/components/record-drawer"
+import { Slot } from "radix-ui"
 import { Input } from "@/components/ui/input"
 import {
   Select,
@@ -126,8 +119,8 @@ export function ProjectAudienceRfqResponseDialog({
   }
 
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger asChild>
+    <>
+      <Slot.Root onClick={() => setOpen(true)}>
         <Button
           type="button"
           size="sm"
@@ -143,16 +136,19 @@ export function ProjectAudienceRfqResponseDialog({
           <IconSend className="size-4" />
           {response ? "Revise response" : "Respond"}
         </Button>
-      </DialogTrigger>
-      <DialogContent className="sm:max-w-xl">
+      </Slot.Root>
+      <RecordDrawer
+        open={open}
+        onOpenChange={setOpen}
+        title={<>Respond to {rfqTitle}</>}
+        description={
+          <>
+            Submit pricing and delivery notes to the internal project team.
+            You can revise the response while the RFQ remains open.
+          </>
+        }
+      >
         <form onSubmit={submit}>
-          <DialogHeader>
-            <DialogTitle>Respond to {rfqTitle}</DialogTitle>
-            <DialogDescription>
-              Submit pricing and delivery notes to the internal project team.
-              You can revise the response while the RFQ remains open.
-            </DialogDescription>
-          </DialogHeader>
           <div className="mt-5 grid gap-4 sm:grid-cols-2">
             <label className="grid gap-1.5 text-sm font-medium sm:col-span-2">
               Response
@@ -276,16 +272,16 @@ export function ProjectAudienceRfqResponseDialog({
               </p>
             )}
           </div>
-          <DialogFooter className="mt-5">
+          <div className="mt-5 flex flex-wrap justify-end gap-2 border-t pt-4">
             <Button type="button" variant="outline" onClick={() => setOpen(false)}>
               Cancel
             </Button>
             <Button type="submit" disabled={pending}>
               {pending ? "Submitting..." : "Submit response"}
             </Button>
-          </DialogFooter>
+          </div>
         </form>
-      </DialogContent>
-    </Dialog>
+      </RecordDrawer>
+    </>
   )
 }

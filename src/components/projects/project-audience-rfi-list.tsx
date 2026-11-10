@@ -4,6 +4,7 @@ import * as React from "react"
 
 import { ProjectPortalPrintButton } from "@/components/projects/project-portal-print-button"
 import { ProjectRfiRecordTable } from "@/components/projects/project-rfi-record-table"
+import { RecordDrawer } from "@/components/record-drawer"
 import { RecordStatusBadge } from "@/components/record-status-badge"
 import { Badge } from "@/components/ui/badge"
 import { recordStatusColor, type RecordStatusList } from "@/lib/domain/record-statuses/rules"
@@ -13,7 +14,7 @@ import type { ReportProject } from "@/lib/print/portal-report"
 import type { AudienceRfi } from "@/lib/project-audience-preview-types"
 import { rfiListRow, rfiStatusLabel, selectedRfiIdFromLocation, type RfiListRow } from "@/lib/rfis/record-list"
 
-/** The selected RFI, read-only, as vendors saw it before the table. */
+/** The selected RFI, read-only, shown in the record drawer. */
 function AudienceRfiCard({
   item,
   project,
@@ -24,7 +25,7 @@ function AudienceRfiCard({
   readonly statuses: RecordStatusList
 }): React.ReactElement {
   return (
-    <article id={`rfi-${item.id}`} className="scroll-mt-24 rounded-md border bg-background p-3">
+    <article id={`rfi-${item.id}`}>
       <div className="flex flex-wrap items-start justify-between gap-2">
         <div>
           <p className="text-xs font-medium text-muted-foreground">{item.rfiNumber}</p>
@@ -49,7 +50,7 @@ function AudienceRfiCard({
 
 /**
  * The sub/vendor RFI list: the shared record table, read-only. A row (or a
- * `?item=` / `#rfi-` link) opens that RFI below the table.
+ * `?item=` / `#rfi-` link) opens that RFI in the record drawer.
  */
 export function ProjectAudienceRfiList({
   rfis,
@@ -75,17 +76,20 @@ export function ProjectAudienceRfiList({
     if (fromLocation) setSelectedId(fromLocation)
   }, [rfis])
 
-  React.useEffect(() => {
-    if (!selectedId) return
-    document.getElementById(`rfi-${selectedId}`)?.scrollIntoView({ block: "start" })
-  }, [selectedId])
-
   const onSelect = React.useCallback((row: RfiListRow) => {
     setSelectedId(row.id)
     // Keep the open RFI in the URL so it can be shared or reloaded.
     const url = new URL(window.location.href)
     url.searchParams.set("item", row.id)
     url.hash = `rfi-${row.id}`
+    window.history.replaceState(window.history.state, "", url)
+  }, [])
+
+  const close = React.useCallback(() => {
+    setSelectedId(null)
+    const url = new URL(window.location.href)
+    url.searchParams.delete("item")
+    url.hash = ""
     window.history.replaceState(window.history.state, "", url)
   }, [])
 
@@ -100,9 +104,16 @@ export function ProjectAudienceRfiList({
         emptyMessage="No RFIs are currently visible for this project."
       />
       {selected ? (
-        <AudienceRfiCard item={selected} project={project} statuses={statuses} />
-      ) : rfis.length > 0 ? (
-        <p className="text-sm text-muted-foreground">Select an RFI to see its question and response.</p>
+        <RecordDrawer
+          open
+          onOpenChange={(open) => {
+            if (!open) close()
+          }}
+          title={`${selected.rfiNumber} · ${selected.subject}`}
+          hideHeader
+        >
+          <AudienceRfiCard item={selected} project={project} statuses={statuses} />
+        </RecordDrawer>
       ) : null}
     </div>
   )

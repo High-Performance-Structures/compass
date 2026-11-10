@@ -7,15 +7,8 @@ import { useRouter } from "next/navigation"
 import { respondToSubVendorPurchaseOrder } from "@/app/actions/project-audience-sub-vendor"
 import { SearchableCombobox } from "@/components/searchable-combobox"
 import { Button } from "@/components/ui/button"
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from "@/components/ui/dialog"
+import { RecordDrawer } from "@/components/record-drawer"
+import { Slot } from "radix-ui"
 import {
   Select,
   SelectContent,
@@ -139,8 +132,8 @@ export function ProjectAudiencePurchaseOrderResponseDialog({
   }
 
   return (
-    <Dialog open={open} onOpenChange={changeOpen}>
-      <DialogTrigger asChild>
+    <>
+      <Slot.Root onClick={() => changeOpen(true)}>
         <Button type="button" size="sm" disabled={!acceptsResponse}>
           {acknowledgement ? (
             <IconProgressCheck className="size-4" />
@@ -149,16 +142,19 @@ export function ProjectAudiencePurchaseOrderResponseDialog({
           )}
           {acknowledgement ? "Update status" : "Review & respond"}
         </Button>
-      </DialogTrigger>
-      <DialogContent className="sm:max-w-xl">
+      </Slot.Root>
+      <RecordDrawer
+        open={open}
+        onOpenChange={changeOpen}
+        title={<>Respond to {purchaseOrderLabel}</>}
+        description={
+          <>
+            Confirm receipt, share fulfillment progress, or route a question
+            to the internal project team.
+          </>
+        }
+      >
         <form onSubmit={submit}>
-          <DialogHeader>
-            <DialogTitle>Respond to {purchaseOrderLabel}</DialogTitle>
-            <DialogDescription>
-              Confirm receipt, share fulfillment progress, or route a question
-              to the internal project team.
-            </DialogDescription>
-          </DialogHeader>
           <div className="mt-5 grid gap-4">
             {acknowledgement && (
               <p className="border bg-muted/40 p-3 text-sm">
@@ -279,7 +275,7 @@ export function ProjectAudiencePurchaseOrderResponseDialog({
               </p>
             )}
           </div>
-          <DialogFooter className="mt-5">
+          <div className="mt-5 flex flex-wrap justify-end gap-2 border-t pt-4">
             <Button type="button" variant="outline" onClick={() => setOpen(false)}>
               Cancel
             </Button>
@@ -292,9 +288,9 @@ export function ProjectAudiencePurchaseOrderResponseDialog({
                     ? "Send status update"
                     : "Send question"}
             </Button>
-          </DialogFooter>
+          </div>
         </form>
-      </DialogContent>
-    </Dialog>
+      </RecordDrawer>
+    </>
   )
 }
