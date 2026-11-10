@@ -10,11 +10,16 @@
 import * as React from "react"
 import Link from "next/link"
 
-import { createProjectSelection, getProjectSelections } from "@/app/actions/project-selections"
+import {
+  createProjectSelection,
+  getProjectSelections,
+  getSelectionRoomCategoryOptions,
+} from "@/app/actions/project-selections"
 import { saveChoiceFromLink } from "@/app/actions/selection-choices"
 import { ProjectCombobox } from "@/components/projects/project-combobox"
 import { SearchableCombobox } from "@/components/searchable-combobox"
 import { SelectionLinkCard } from "@/components/selections/selection-link-card"
+import { SelectionCategoryPicker, SelectionRoomPicker } from "@/components/selections/selection-room-category-fields"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -28,6 +33,7 @@ import {
 } from "@/lib/selections/save-to-compass"
 
 const NEW_SELECTION = "__new__"
+const NO_NAMES: readonly string[] = []
 
 type Job = {
   readonly id: string
@@ -39,7 +45,13 @@ type Job = {
 type Selections =
   | { readonly state: "idle" }
   | { readonly state: "loading" }
-  | { readonly state: "ready"; readonly items: readonly SaveTargetSelection[] }
+  | {
+      readonly state: "ready"
+      readonly items: readonly SaveTargetSelection[]
+      /** Room and Category suggestions: this job's, then the company's. */
+      readonly rooms: readonly string[]
+      readonly categories: readonly string[]
+    }
   | { readonly state: "error"; readonly error: string }
 
 type Saved = { readonly jobLabel: string; readonly selectionName: string; readonly href: string }
@@ -75,8 +87,11 @@ export function SaveToCompassForm({
   const loadSelections = React.useCallback(async (projectId: string) => {
     setSelections({ state: "loading" })
     try {
-      const summary = await getProjectSelections(projectId)
-      setSelections({ state: "ready", items: saveTargetSelections(summary.rooms) })
+      const [summary, names] = await Promise.all([
+        getProjectSelections(projectId),
+        getSelectionRoomCategoryOptions(projectId),
+      ])
+      setSelections({ state: "ready", items: saveTargetSelections(summary.rooms), ...names })
     } catch (loadError) {
       setSelections({ state: "error", error: loadError instanceof Error ? loadError.message : "Unable to load this job's selections." })
     }
@@ -91,6 +106,8 @@ export function SaveToCompassForm({
   }
 
   const items = React.useMemo(() => (selections.state === "ready" ? selections.items : []), [selections])
+  const roomNames = selections.state === "ready" ? selections.rooms : NO_NAMES
+  const categoryNames = selections.state === "ready" ? selections.categories : NO_NAMES
   const selectionOptions = React.useMemo(
     () => [
       ...items.map((item) => ({
@@ -227,35 +244,23 @@ export function SaveToCompassForm({
           <div className="grid gap-3 sm:grid-cols-2">
             <div className="grid gap-1.5">
               <Label htmlFor={`${formId}-new-room`}>Room</Label>
-              <Input
+              <SelectionRoomPicker
                 id={`${formId}-new-room`}
-                required
-                maxLength={200}
-                list={`${formId}-rooms`}
+                name="roomName"
+                names={roomNames}
                 value={newRoom}
-                onChange={(event) => setNewRoom(event.target.value)}
+                onValueChange={setNewRoom}
               />
-              <datalist id={`${formId}-rooms`}>
-                {[...new Set(items.map((item) => item.roomName))].map((room) => (
-                  <option key={room} value={room} />
-                ))}
-              </datalist>
             </div>
             <div className="grid gap-1.5">
               <Label htmlFor={`${formId}-new-category`}>Category</Label>
-              <Input
+              <SelectionCategoryPicker
                 id={`${formId}-new-category`}
-                maxLength={200}
-                list={`${formId}-categories`}
-                placeholder="Uncategorized"
+                name="category"
+                names={categoryNames}
                 value={newCategory}
-                onChange={(event) => setNewCategory(event.target.value)}
+                onValueChange={setNewCategory}
               />
-              <datalist id={`${formId}-categories`}>
-                {[...new Set(items.map((item) => item.category))].map((category) => (
-                  <option key={category} value={category} />
-                ))}
-              </datalist>
             </div>
           </div>
         </fieldset>

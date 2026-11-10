@@ -15,6 +15,10 @@ import type {
 import { ProjectSelectionComboboxInput } from "@/components/projects/project-selection-combobox-input"
 import { SearchableCombobox } from "@/components/searchable-combobox"
 import { RecordDrawer } from "@/components/record-drawer"
+import {
+  SelectionCategoryPicker,
+  SelectionRoomPicker,
+} from "@/components/selections/selection-room-category-fields"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
@@ -77,6 +81,9 @@ export function ProjectSelectionCreateForm({
   const [status, setStatus] = React.useState<FormState>({ kind: "idle" })
   const [selectionStatus, setSelectionStatus] = React.useState<ProjectSelectionStatus>("needed")
   const [selectedRoomType, setSelectedRoomType] = React.useState(roomType)
+  // Room and category are state so a template choice can fill them in.
+  const [room, setRoom] = React.useState(roomName)
+  const [category, setCategory] = React.useState("")
   const [division, setDivision] = React.useState("all")
   const [templateGroups, setTemplateGroups] = React.useState<
     readonly FinishSelectionTemplateImportGroup[] | null
@@ -144,13 +151,8 @@ export function ProjectSelectionCreateForm({
       (candidate) => candidate.id === selectionId
     )
     if (!selection) return
-    if (!roomName) {
-      const roomField = formRef.current?.elements.namedItem("roomName")
-      if (roomField instanceof HTMLInputElement && !roomField.value.trim()) {
-        roomField.value = selection.roomName
-      }
-    }
-    setFormFieldValue("category", selection.category)
+    if (!roomName && !room.trim()) setRoom(selection.roomName)
+    setCategory(selection.category)
     setFormFieldValue("name", selection.title)
     setFormFieldValue("description", selection.description ?? "")
     setFormFieldValue("notes", selection.notes ?? "")
@@ -161,6 +163,8 @@ export function ProjectSelectionCreateForm({
     formRef.current?.reset()
     setSelectionStatus("needed")
     setSelectedRoomType(roomType)
+    setRoom(roomName)
+    setCategory("")
     setDivision("all")
     setSelectedTemplateId("")
     setSelectedTemplateSelectionId("")
@@ -298,12 +302,12 @@ export function ProjectSelectionCreateForm({
           <div className="space-y-3">
             <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_minmax(0,.75fr)_minmax(0,.75fr)]">
               <Field label="Room">
-                <Input
+                <SelectionRoomPicker
                   name="roomName"
-                  defaultValue={roomName}
-                  placeholder="Kitchen"
-                  required
-                  className={DOCUMENT_INPUT_CLASS}
+                  names={options.rooms}
+                  value={room}
+                  onValueChange={setRoom}
+                  className={DOCUMENT_SELECT_CLASS}
                 />
               </Field>
               <Field label="Room type">
@@ -419,10 +423,12 @@ export function ProjectSelectionCreateForm({
 
           <div className="space-y-3">
             <Field label="Category">
-              <Input
+              <SelectionCategoryPicker
                 name="category"
-                placeholder="Fixtures, flooring, cabinetry..."
-                className={DOCUMENT_INPUT_CLASS}
+                names={options.categories}
+                value={category}
+                onValueChange={setCategory}
+                className={DOCUMENT_SELECT_CLASS}
               />
             </Field>
             <Field label="Description">

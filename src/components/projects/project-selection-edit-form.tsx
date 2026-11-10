@@ -15,6 +15,10 @@ import type {
 } from "@/lib/domain/selections/types"
 import { ProjectSelectionComboboxInput } from "@/components/projects/project-selection-combobox-input"
 import { SearchableCombobox } from "@/components/searchable-combobox"
+import {
+  SelectionCategoryPicker,
+  SelectionRoomPicker,
+} from "@/components/selections/selection-room-category-fields"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import {
@@ -183,11 +187,11 @@ export function ProjectSelectionEditForm({
           <div className="space-y-3">
             <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_minmax(0,.75fr)_minmax(0,.75fr)]">
               <Field label="Room">
-                <Input
+                <SelectionRoomPicker
                   name="roomName"
-                  defaultValue={selection.roomName}
-                  required
-                  className={DOCUMENT_INPUT_CLASS}
+                  names={options.rooms}
+                  value={selection.roomName}
+                  className={DOCUMENT_SELECT_CLASS}
                 />
               </Field>
               <Field label="Room type">
@@ -347,10 +351,11 @@ export function ProjectSelectionEditForm({
 
           <div className="space-y-3">
             <Field label="Category">
-              <Input
+              <SelectionCategoryPicker
                 name="category"
-                defaultValue={selection.category}
-                className={DOCUMENT_INPUT_CLASS}
+                names={options.categories}
+                value={selection.category}
+                className={DOCUMENT_SELECT_CLASS}
               />
             </Field>
             <Field label="Description">

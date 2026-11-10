@@ -37,9 +37,11 @@ import type {
   ProjectSelectionsSummary,
   UpdateProjectSelectionInput
 } from "@/lib/domain/selections/types"
+import type { SelectionRoomCategoryOptions } from "@/lib/domain/selections/room-category-options"
 import {
   loadProjectSelectionOptions,
   loadProjectSelections,
+  loadSelectionRoomCategoryOptions,
   loadPublishedTemplateSelection
 } from "@/lib/domain/selections/workspace"
 import { requireFeaturePermission } from "@/lib/permission-enforcement"
@@ -129,8 +131,20 @@ export async function importProjectFinishSchedule(
 export async function getProjectSelectionOptions(
   projectId: string
 ): Promise<ProjectSelectionOptions> {
-  const { db } = await staffSelectionContext(projectId, "read")
-  return loadProjectSelectionOptions(db, projectId)
+  const { db, organizationId } = await staffSelectionContext(projectId, "read")
+  return loadProjectSelectionOptions(db, projectId, organizationId)
+}
+
+/**
+ * Room and Category suggestions for one job (the job's first, then the
+ * company's). For forms that do not load the full picker options, such as
+ * the Save to Compass popup. Throws the access errors, as above.
+ */
+export async function getSelectionRoomCategoryOptions(
+  projectId: string
+): Promise<SelectionRoomCategoryOptions> {
+  const { db, organizationId } = await staffSelectionContext(projectId, "read")
+  return loadSelectionRoomCategoryOptions(db, projectId, organizationId)
 }
 
 export async function requestSelectionCostCodeSageReview(
