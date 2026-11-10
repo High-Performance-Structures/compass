@@ -17,6 +17,7 @@ import {
 import { getCurrentUser } from "@/lib/auth"
 import { canCreateProjectDriveFolder, canManageProjectRegistry } from "@/lib/permissions"
 import { ProjectDriveFolderButton } from "@/components/projects/project-drive-folder-button"
+import { ProjectDriveFolderLink } from "@/components/projects/project-drive-folder-link"
 import { getProjectAccessRecord } from "@/lib/project-access"
 import { projectAudiencePreviewHref } from "@/lib/project-audience-preview-routes"
 import { isDeveloperModeEnabled } from "@/lib/developer-mode-server"
@@ -509,9 +510,11 @@ export default async function ProjectSummaryPage({
             clientStatus={clientStatus}
           />
           <div className="flex shrink-0 items-center gap-2">
-            {canCreateDriveFolder && project && !project.googleDriveFolderId && (
+            {project?.googleDriveFolderId ? (
+              <ProjectDriveFolderLink folderId={project.googleDriveFolderId} />
+            ) : canCreateDriveFolder && project ? (
               <ProjectDriveFolderButton projectId={id} />
-            )}
+            ) : null}
             <ProjectActionsMenu
               projectId={id}
               projectDriveFolderId={project?.googleDriveFolderId ?? null}
