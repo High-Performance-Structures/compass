@@ -15,7 +15,7 @@ import { Button } from "@/components/ui/button"
 import { ProjectContextSwitcher } from "@/components/projects/project-context-switcher"
 import { useDeveloperMode } from "@/components/developer-mode-provider"
 import { PageHeader } from "@/components/page-header"
-import { PhotoPreviewDialog } from "@/components/projects/photo-review/photo-preview-dialog"
+import { PhotoDrawer, type PhotoDetailsInput } from "@/components/projects/photo-review/photo-drawer"
 import { PhotoReviewCard } from "@/components/projects/photo-review/photo-review-card"
 import { PhotoReviewToolbar } from "@/components/projects/photo-review/photo-review-toolbar"
 import { PhotoUploadSheet } from "@/components/projects/photo-review/photo-upload-sheet"
@@ -25,6 +25,7 @@ import { adjacentPhoto } from "@/lib/photos/carousel"
 import {
   filterAndSortPhotos,
   nextSelectedIds,
+  NO_PHASE_VALUE,
   PHOTO_DELETE_BATCH_LIMIT,
   photoReviewCounts,
   photoWithPhase,
@@ -231,9 +232,44 @@ export function ProjectPhotoReview({
     })
   }
 
-  /** Deletes the selected photos in parts the server accepts, stopping at the first error. */
+  /** Saves one photo's details from the drawer; saving approves it, as Apply does. */
+  function savePhotoDetails(photo: ProjectPhotoLibraryItem, input: PhotoDetailsInput): void {
+    const next = {
+      reviewStatus: "approved",
+      ownerVisible: input.ownerVisible,
+      subVendorVisible: input.subVendorVisible,
+      publicShareable: input.publicShareable,
+      photoKind: input.photoKind,
+    }
+    setMessage(null)
+    startTransition(async () => {
+      let updated: ProjectPhotoLibraryItem = { ...photo, ...next }
+      if (input.phase !== (photo.schedulePhase || NO_PHASE_VALUE)) {
+        const phaseResult = await updateProjectPhotoPhase(library.project.id, photo.id, input.phase)
+        if (!phaseResult.success) {
+          setMessage(phaseResult.error)
+          return
+        }
+        updated = photoWithPhase(updated, phaseResult.phase)
+      }
+      const result = await updateProjectPhotoPermissions(library.project.id, { photoIds: [photo.id], ...next })
+      if (!result.success) {
+        setMessage(result.error)
+        return
+      }
+      setPhotos((current) => current.map((item) => (item.id === photo.id ? updated : item)))
+      setPreviewPhoto(updated)
+      setMessage("Saved the photo.")
+    })
+  }
+
+  /** Deletes the selected photos. */
   function deleteSelectedPhotos(): void {
-    const photoIds = selectedIds
+    deletePhotos(selectedIds)
+  }
+
+  /** Deletes photos in parts the server accepts, stopping at the first error. */
+  function deletePhotos(photoIds: readonly string[]): void {
     setMessage(null)
     startTransition(async () => {
       const removed = new Set<string>()
@@ -258,6 +294,7 @@ export function ProjectPhotoReview({
 
       setPhotos((current) => current.filter((photo) => !removed.has(photo.id)))
       setSelectedIds((current) => current.filter((id) => !removed.has(id)))
+      setPreviewPhoto((current) => (current && removed.has(current.id) ? null : current))
       const parts = [`Deleted ${deleted} photo${deleted === 1 ? "" : "s"}.`]
       if (kept > 0) parts.push(`Kept ${kept} shown in a client update or social post.`)
       if (driveFailed > 0) parts.push(`${driveFailed} Drive file${driveFailed === 1 ? "" : "s"} couldn't be moved to the trash.`)
@@ -374,13 +411,18 @@ export function ProjectPhotoReview({
           </div>
         )}
 
-        <PhotoPreviewDialog
+        <PhotoDrawer
           previewPhoto={previewPhoto}
           filteredPhotos={filteredPhotos}
+          library={library}
           images={images}
           developerModeEnabled={developerModeEnabled}
+          isPending={isPending}
           onClose={() => setPreviewPhoto(null)}
+          onShowPhoto={(photoId) => setPreviewPhoto(filteredPhotos.find((photo) => photo.id === photoId) ?? null)}
           onShowAdjacent={showAdjacentPreview}
+          onSave={savePhotoDetails}
+          onDelete={(photo) => deletePhotos([photo.id])}
         />
 
         <PhotoUploadSheet upload={upload} phases={library.phases} />

@@ -252,6 +252,14 @@ off-screen and the click looks like it did nothing.
   pay applications show **Quick look** (drawer) and **Edit** (full page) on the
   row. Estimates keep their own page, where the list and editor already share
   one screen.
+- Photos open in the drawer too (photo, previous/next, details, Save) with a
+  **Full screen** button that opens `PhotoFullScreenViewer`
+  (`src/components/photos/photo-full-screen-viewer.tsx`): the photo as large as
+  the screen allows, a strip of nearby photos, arrow keys and swipe. Owners and
+  vendors use the same drawer and viewer.
+- The owner and vendor workspaces follow every rule in this section, so a
+  record opens the same way for staff, owners and vendors.
+- Confirmations (archive, delete) stay small centered alert dialogs.
 
 ### Line item order (owner-approved standard)
 
