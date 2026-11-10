@@ -17,6 +17,7 @@ import {
   vendors,
 } from "@/db/schema"
 import { projectSourceRecordParticipants } from "@/db/schema-participants"
+import type { ActionResult } from "@/lib/action-result"
 import type { DirectoryPerson } from "@/lib/domain/contacts/people-search"
 import { insertVendorPersonStatement } from "@/lib/domain/contacts/store"
 import {
@@ -232,11 +233,14 @@ async function groupStatements(
     readonly now: string
     readonly includeStaffOnlyProjects: boolean
   },
-): Promise<Written> {
+): Promise<ActionResult<Written>> {
   const { organizationId, group, known, now } = input
   const chosen = input.target.kind === "vendor" ? vendorPersonFor(organizationId, input.target, group, now) : { person: input.target.person, statement: null }
   const person = chosen.person
-  const resolved = await resolvePerson(db, `review:${person.ref}`, person, group.projectId, now, known)
+  const result = await resolvePerson(db, `review:${person.ref}`, person, group.projectId, now, known)
+  // A person who is not in the directory is never added to a project.
+  if (!result.success) return result
+  const resolved = result.data
   // A contact created here stands for the person on this project for the rest of the run.
   const linkType = person.type === "internal" || person.type === "vendor_contact" || person.type === "customer_contact" ? person.type : null
   if (linkType && resolved.contactId) known.set(knownContactKey(group.projectId, linkType, person.id), resolved.contactId)
@@ -254,7 +258,7 @@ async function groupStatements(
       identityStatus: REVIEW_IDENTITY_STATUSES.matched, reviewStatus: "reviewed", updatedAt: now,
     }),
   ]
-  return { statements: statements.filter((statement): statement is Statement => statement !== null), resolved }
+  return { success: true, data: { statements: statements.filter((statement): statement is Statement => statement !== null), resolved } }
 }
 
 const BATCH_STATEMENTS = 40
@@ -300,7 +304,7 @@ export async function decideIdentity(
     readonly now: string
     readonly includeStaffOnlyProjects: boolean
   },
-): Promise<IdentityDecisionOutcome> {
+): Promise<ActionResult<IdentityDecisionOutcome>> {
   const include = input.includeStaffOnlyProjects
   const groups = await listIdentityGroups(db, input.organizationId, input.key)
   const writable = groups.filter((group) => !isHeldGroup(group, include))
@@ -308,23 +312,25 @@ export async function decideIdentity(
   const rowsReviewed = writable.reduce((sum, group) => sum + group.rows, 0)
   const literal = groups[0]?.literal ?? input.key
   const base = { key: input.key, literal, projects: writable.length, rowsReviewed, legalHoldRows }
-  if (writable.length === 0) return { ...base, people: [], refs: [], rowsReviewed: 0 }
+  if (writable.length === 0) return { success: true, data: { ...base, people: [], refs: [], rowsReviewed: 0 } }
   const target = input.target
   if (target.kind === "leave") {
     await runBatches(db, [leaveStatement(db, input.organizationId, input.key, input.now, include)])
-    return { ...base, people: [], refs: [] }
+    return { success: true, data: { ...base, people: [], refs: [] } }
   }
   const statements: Statement[] = []
   let name = target.kind === "vendor" ? target.vendorName : target.person.name
   let ref = target.kind === "person" ? target.person.ref : null
   for (const group of writable) {
     const written = await groupStatements(db, { organizationId: input.organizationId, group, target, known: input.known, now: input.now, includeStaffOnlyProjects: include })
-    statements.push(...written.statements)
-    name = written.resolved.name
-    ref = written.resolved.ref ?? ref
+    // Nothing is written when any project would need a contact outside the directory.
+    if (!written.success) return written
+    statements.push(...written.data.statements)
+    name = written.data.resolved.name
+    ref = written.data.resolved.ref ?? ref
   }
   await runBatches(db, statements)
-  return { ...base, people: [name], refs: ref ? [ref] : [] }
+  return { success: true, data: { ...base, people: [name], refs: ref ? [ref] : [] } }
 }
 
 /** The project contacts that already stand for one directory person, on any of the company's projects. */
@@ -448,7 +454,8 @@ export async function runAutoResolve(
     }
     if (!target) continue
     const written = await groupStatements(db, { organizationId: input.organizationId, group, target, known, now: input.now, includeStaffOnlyProjects: include })
-    statements.push(...written.statements)
+    // A match that would need a contact outside the directory stays for review.
+    if (written.success) statements.push(...written.data.statements)
   }
   await runBatches(db, statements)
   return summary

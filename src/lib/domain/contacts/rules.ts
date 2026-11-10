@@ -432,13 +432,6 @@ export function nextVendorLink(input: {
 export const PROJECT_CONTACT_DIRECTORY_REQUIRED =
   "Add this person in Contacts first, then add them to the job from the directory."
 
-/**
- * Imported rows that may still arrive unlinked: they land in Contacts →
- * Unassigned / Needs review, where staff connect them to a directory record.
- * Kept open pending an owner decision on whether imports must link first.
- */
-const UNLINKED_IMPORT_SOURCE_SYSTEMS: readonly string[] = ["buildertrend"]
-
 const LINKED_SOURCE_ENTITY_TYPES: readonly string[] = ["customer", "vendor", "user"]
 
 type ProjectContactInsert = typeof projectContacts.$inferInsert
@@ -453,18 +446,14 @@ export function hasProjectContactDirectoryLink(row: ProjectContactLinkFields): b
   return Boolean(row.sourceEntityId && row.sourceEntityType && LINKED_SOURCE_ENTITY_TYPES.includes(row.sourceEntityType))
 }
 
-/** A new project contact may be written: linked, or an import awaiting review. */
-export function mayInsertProjectContact(row: ProjectContactLinkFields): boolean {
-  return hasProjectContactDirectoryLink(row) || UNLINKED_IMPORT_SOURCE_SYSTEMS.includes(row.sourceSystem ?? "")
-}
-
 /**
  * The store's check before any project contact insert: list fields are valid
- * and every row is linked (or an import awaiting review). Callers check first
- * and return a friendly failure; reaching this throw is a code bug.
+ * and every row is linked. There are no exceptions, imports included (owner
+ * decision 2026-11-10). Callers check first and return a friendly failure;
+ * reaching this throw is a code bug.
  */
 export function insertableProjectContacts<Rows extends ProjectContactInsert | ProjectContactInsert[]>(rows: Rows): Rows {
   const list: readonly ProjectContactInsert[] = Array.isArray(rows) ? rows : [rows]
-  if (!list.every(mayInsertProjectContact)) throw new Error(PROJECT_CONTACT_DIRECTORY_REQUIRED)
+  if (!list.every(hasProjectContactDirectoryLink)) throw new Error(PROJECT_CONTACT_DIRECTORY_REQUIRED)
   return checkedListFields("project_contacts", rows, PROJECT_CONTACT_LISTS)
 }

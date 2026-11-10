@@ -173,7 +173,9 @@ export async function resolveParticipantGroup(input: {
   if (!input.apply) {
     return { success: true, data: { ...common, changed: false, people: preview, refs: decision.type === "pick" ? [decision.ref] : [], rowsReviewed } }
   }
-  const outcome = await decideIdentity(db, { organizationId, key, target, known, now: input.now, includeStaffOnlyProjects: include })
+  const decided = await decideIdentity(db, { organizationId, key, target, known, now: input.now, includeStaffOnlyProjects: include })
+  if (!decided.success) return decided
+  const outcome = decided.data
   return { success: true, data: { ...common, changed: outcome.rowsReviewed > 0, people: outcome.people, refs: outcome.refs, rowsReviewed: outcome.rowsReviewed, projects: outcome.projects } }
 }
 

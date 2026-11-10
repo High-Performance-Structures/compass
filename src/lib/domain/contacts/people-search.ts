@@ -18,8 +18,9 @@ import { isInternalStaffRole } from "@/lib/user-roles"
  * One person anywhere in an organization's directory, found by a bounded,
  * server-side search (each source LIMIT 20, no unions): staff accounts and
  * internal contacts (archived ones too), vendor people, client people, and
- * project contacts that are not tied to a directory person (unassigned
- * people from imports, and people only listed on one project).
+ * this project's own contacts that are not tied to a directory person
+ * (another project's unlinked contacts are never offered: they would be
+ * copied outside the directory).
  *
  * A person is addressed by a reference `<type>:<id>`. `findDirectoryPerson`
  * re-reads one reference scoped to the organization, so a reference from
@@ -151,7 +152,8 @@ async function readPeople(db: Db, organizationId: string, projectId: string, mat
         // Only people not tied to a directory person (those are listed above).
         isNull(projectContacts.vendorContactId), isNull(projectContacts.customerContactId), isNull(projectContacts.internalContactId),
         ne(projectContacts.sourceEntityType, "user"),
-        or(eq(projectContacts.projectId, projectId), and(eq(projectContacts.sourceEntityType, NEW_PERSON_SOURCE), isNull(projectContacts.vendorId), isNull(projectContacts.customerId))),
+        // Only this project's own contacts: an unlinked contact is never copied to another project.
+        eq(projectContacts.projectId, projectId),
         filter("project_contact", projectContacts.id, (m) => and(eq(projectContacts.active, true), matches(m, projectContacts.displayName, projectContacts.email, [projectContacts.phone])) ?? sql`0`),
       ))
       .limit(limit) : [],
