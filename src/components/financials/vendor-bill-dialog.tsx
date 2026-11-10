@@ -1,26 +1,21 @@
 "use client"
 
 import * as React from "react"
-import { ProjectCombobox } from "@/components/projects/project-combobox"
-import { SearchableCombobox } from "@/components/searchable-combobox"
-import { Button } from "@/components/ui/button"
 import {
   ResponsiveDialog,
   ResponsiveDialogBody,
-  ResponsiveDialogFooter,
 } from "@/components/ui/responsive-dialog"
-import { DatePicker } from "@/components/ui/date-picker"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select"
-import { Textarea } from "@/components/ui/textarea"
-import { LineItemsEditor } from "./line-items-editor"
+  ChoiceField,
+  DateField,
+  DialogSaveFooter,
+  LineItemsField,
+  MemoField,
+  ProjectField,
+  TaxAndTotalsFields,
+  TextField,
+  VendorField,
+} from "./financial-dialog-fields"
 import {
   billTotals,
   lineItemsSubtotal,
@@ -134,130 +129,24 @@ export function VendorBillDialog({
 
   const page1 = (
     <>
-      <div className="space-y-1.5">
-        <Label className="text-xs">Vendor *</Label>
-        <SearchableCombobox
-          options={vendors.map((vendor) => ({
-            value: vendor.id,
-            label: vendor.name,
-            description: vendor.category,
-            keywords: [vendor.category, vendor.email, vendor.phone]
-              .filter(Boolean)
-              .join(" "),
-          }))}
-          value={vendorId}
-          onValueChange={setVendorId}
-          ariaLabel="Choose vendor"
-          placeholder="Select vendor"
-          searchPlaceholder="Search name, category, or email..."
-          emptyMessage="No matching vendors."
-          className="h-9"
-        />
-      </div>
-      <div className="space-y-1.5">
-        <Label className="text-xs">Project</Label>
-        <ProjectCombobox
-          projects={projects}
-          value={projectId}
-          onValueChange={setProjectId}
-          specialOptions={[
-            { value: "", label: "None", keywords: "clear no project" },
-          ]}
-          className="h-9"
-        />
-      </div>
-      <div className="space-y-1.5">
-        <Label className="text-xs">Bill #</Label>
-        <Input
-          className="h-9"
-          value={billNumber}
-          onChange={(e) => setBillNumber(e.target.value)}
-        />
-      </div>
-      <div className="space-y-1.5">
-        <Label className="text-xs">Status</Label>
-        <Select value={status} onValueChange={setStatus}>
-          <SelectTrigger className="h-9">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            {BILL_STATUSES.map((s) => (
-              <SelectItem key={s} value={s}>
-                {s.replace("_", " ")}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </div>
+      <VendorField label="Vendor *" vendors={vendors} value={vendorId} onChange={setVendorId} />
+      <ProjectField projects={projects} value={projectId} onChange={setProjectId} />
+      <TextField label="Bill #" value={billNumber} onChange={setBillNumber} />
+      <ChoiceField label="Status" choices={BILL_STATUSES} value={status} onChange={setStatus} />
     </>
   )
 
   const page2 = (
     <>
-      <div className="space-y-1.5">
-        <Label className="text-xs">Bill Date *</Label>
-        <DatePicker
-          value={billDate}
-          onChange={setBillDate}
-          placeholder="Select bill date"
-        />
-      </div>
-      <div className="space-y-1.5">
-        <Label className="text-xs">Due Date</Label>
-        <DatePicker
-          value={dueDate}
-          onChange={setDueDate}
-          placeholder="Select due date"
-        />
-      </div>
-      <div className="space-y-1.5">
-        <Label className="text-xs">Memo</Label>
-        <Textarea
-          value={memo}
-          onChange={(e) => setMemo(e.target.value)}
-          rows={2}
-          className="text-sm"
-        />
-      </div>
+      <DateField label="Bill Date *" value={billDate} onChange={setBillDate} placeholder="Select bill date" />
+      <DateField label="Due Date" value={dueDate} onChange={setDueDate} placeholder="Select due date" />
+      <MemoField value={memo} onChange={setMemo} />
     </>
   )
 
-  const page3 = (
-    <div className="space-y-1.5">
-      <Label className="text-xs">Line Items</Label>
-      <LineItemsEditor value={lines} onChange={setLines} />
-    </div>
-  )
+  const page3 = <LineItemsField lines={lines} onChange={setLines} />
 
-  const page4 = (
-    <>
-      <div className="space-y-1.5">
-        <Label className="text-xs">Tax</Label>
-        <Input
-          type="number"
-          className="h-9"
-          min={0}
-          step="any"
-          value={tax || ""}
-          onChange={(e) => setTax(parseFloat(e.target.value) || 0)}
-        />
-      </div>
-      <div className="space-y-1.5 rounded-md bg-muted/50 p-3">
-        <div className="flex justify-between text-xs">
-          <span className="text-muted-foreground">Subtotal:</span>
-          <span className="font-medium">${subtotal.toFixed(2)}</span>
-        </div>
-        <div className="flex justify-between text-xs">
-          <span className="text-muted-foreground">Tax:</span>
-          <span className="font-medium">${tax.toFixed(2)}</span>
-        </div>
-        <div className="flex justify-between text-sm font-semibold pt-1 border-t">
-          <span>Total:</span>
-          <span>${total.toFixed(2)}</span>
-        </div>
-      </div>
-    </>
-  )
+  const page4 = <TaxAndTotalsFields tax={tax} onTaxChange={setTax} subtotal={subtotal} total={total} />
 
   return (
     <ResponsiveDialog
@@ -268,20 +157,10 @@ export function VendorBillDialog({
     >
       <form onSubmit={handleSubmit} className="flex flex-col flex-1 min-h-0">
         <ResponsiveDialogBody pages={[page1, page2, page3, page4]} />
-
-        <ResponsiveDialogFooter>
-          <Button
-            type="button"
-            variant="outline"
-            onClick={() => onOpenChange(false)}
-            className="h-9"
-          >
-            Cancel
-          </Button>
-          <Button type="submit" className="h-9">
-            {initialData ? "Save Changes" : "Create Bill"}
-          </Button>
-        </ResponsiveDialogFooter>
+        <DialogSaveFooter
+          onCancel={() => onOpenChange(false)}
+          submitLabel={initialData ? "Save Changes" : "Create Bill"}
+        />
       </form>
     </ResponsiveDialog>
   )
