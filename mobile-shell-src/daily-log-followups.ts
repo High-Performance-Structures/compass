@@ -1,13 +1,14 @@
 /**
  * Field Mode's to-do and client contact parts of the daily log: blocked
  * to-dos carried forward, the open to-dos checklist, "Make to-do" on issue and
- * next-step lines, and client contact. Rendered as HTML strings like the rest
+ * next-step lines, client contact, and finish selections installed today. Rendered as HTML strings like the rest
  * of the form; every control carries `data-fu` (what it changes) and
  * `data-fu-key` (which to-do, line or contact), handled by `followUpAction`.
  */
 import { z } from "zod/v4"
 
 import type { DailyLogCostCodeOption } from "../src/lib/daily-logs/daily-log-form"
+import { PROJECT_SELECTION_STATUS_LABELS, PROJECT_SELECTION_STATUSES } from "../src/lib/domain/selections/statuses"
 import {
   clientContactsNamedIn,
   DAILY_LOG_INTERACTION_TYPES,
@@ -50,10 +51,12 @@ export const followUpDraftSchema = z.object({
     }),
   ),
   suggestionDismissed: z.boolean(),
+  // Selections ticked as installed; drafts saved before this start with none.
+  installed: z.array(z.string()).default([]),
 })
 
 export function emptyFollowUpDraft(): StoredFollowUpDraft {
-  return { ...EMPTY_DAILY_LOG_FOLLOW_UP_DRAFT, worked: [], blocked: {}, lineTodos: {}, skippedLines: [], contacts: [] }
+  return { ...EMPTY_DAILY_LOG_FOLLOW_UP_DRAFT, worked: [], blocked: {}, lineTodos: {}, skippedLines: [], contacts: [], installed: [] }
 }
 
 export type StoredFollowUpDraft = z.infer<typeof followUpDraftSchema>
@@ -67,6 +70,7 @@ export function storedFollowUpDraft(draft: DailyLogFollowUpDraft): StoredFollowU
     skippedLines: [...draft.skippedLines],
     contacts: draft.contacts.map((row) => ({ ...row })),
     suggestionDismissed: draft.suggestionDismissed,
+    installed: [...(draft.installed ?? [])],
   }
 }
 
@@ -80,6 +84,7 @@ export type FollowUpAction = {
 /** Controls whose change redraws the form (the rest are typed text). */
 export const FOLLOW_UP_REDRAW_CONTROLS: ReadonlySet<string> = new Set([
   "worked",
+  "installed",
   "blocked",
   "line-toggle",
   "line-type",
@@ -115,6 +120,11 @@ export function followUpAction(
   switch (control) {
     case "worked":
       return toggleWorkedTodo(draft, key)
+    case "installed": {
+      // A checkbox: "true" ticks it, anything else clears it.
+      const rest = (draft.installed ?? []).filter((id) => id !== key)
+      return { ...draft, installed: value === "true" ? [...rest, key] : rest }
+    }
     case "blocked": {
       if (value !== "still" && value !== "cleared") return draft
       if (draft.blocked[key] === value) {
@@ -218,6 +228,32 @@ export function todoChecklistHtml(
   return `<fieldset class="followup-list">
     <legend class="field-label">Open to-dos on this job</legend>
     <p class="field-hint">Tick what you worked on.${rules.tickAddsLine ? " A to-do with a cost code adds a line below for its hours." : ""} Ticking never marks a to-do finished.</p>
+    ${rows.join("")}
+  </fieldset>`
+}
+
+function selectionStatusLabel(status: string): string {
+  const known = PROJECT_SELECTION_STATUSES.find((value) => value === status)
+  return known ? PROJECT_SELECTION_STATUS_LABELS[known] : status
+}
+
+/** Approved or ordered finish selections; ticking one moves it to Installed when the log syncs. Hidden when there are none. */
+export function installedSelectionsHtml(setup: FieldDailyLogFollowUpSetup, draft: DailyLogFollowUpDraft, escape: Escape): string {
+  const selections = setup.installableSelections
+  if (selections.length === 0) return ""
+  const installed = new Set(draft.installed ?? [])
+  const rows = selections.map((selection) => {
+    const checked = installed.has(selection.id)
+    const status = checked ? `${selectionStatusLabel(selection.status)} → Installed` : selectionStatusLabel(selection.status)
+    return `<label class="followup-check">
+      <input type="checkbox" ${checked ? "checked" : ""} ${data("installed", selection.id, escape)} />
+      <span><span class="followup-title">${escape(selection.name)}</span>
+      <span class="field-hint">${selection.roomName ? `${escape(selection.roomName)} · ` : ""}${escape(status)}</span></span>
+    </label>`
+  })
+  return `<fieldset class="followup-list" id="log-selections-installed">
+    <legend class="field-label">Selections installed</legend>
+    <p class="field-hint">Tick the finish selections installed today. They move to Installed when the log is saved.</p>
     ${rows.join("")}
   </fieldset>`
 }

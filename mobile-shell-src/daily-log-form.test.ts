@@ -14,7 +14,9 @@ import {
   saveButtonLabel,
   updateLogDraft,
 } from "./daily-log-form"
-import { emptyFollowUpDraft, followUpAction } from "./daily-log-followups"
+import { fieldOutboxSchema, fieldProjectPacketSchema } from "../src/lib/field/types"
+import { followUpsFromDraft } from "../src/lib/daily-logs/log-followups"
+import { emptyFollowUpDraft, followUpAction, installedSelectionsHtml, storedFollowUpDraft } from "./daily-log-followups"
 
 const escape = (value: string): string => value.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll('"', "&quot;")
 const form = {
@@ -114,6 +116,7 @@ describe("Field Mode daily log to-dos and client contact", () => {
     ],
     clientContacts: [{ id: "c1", name: "Jordan Bishop", role: "Owner" }],
     assignees: [{ name: "Nu-Tech", kind: "supplier_task" as const }],
+    installableSelections: [],
   }
   const withSetup = { ...form, followUps: setup }
 
@@ -153,5 +156,111 @@ describe("Field Mode daily log to-dos and client contact", () => {
     delete old.followUps
     const parsed = logDraftSchema.parse(old)
     expect(parsed.followUps.worked).toEqual([])
+  })
+})
+
+describe("Field Mode daily log selections installed", () => {
+  const rules = {
+    todoMode: "off" as const,
+    todoTypes: [],
+    workedMovesToInProgress: false,
+    carryBlocked: false,
+    todoCostCodes: false,
+    tickAddsLine: false,
+    crewPicksCostCode: false,
+    clientContact: false,
+    clientContactSuggest: false,
+    minimumSummaryCharacters: 0,
+  }
+  const setup = {
+    rules,
+    openTodos: [],
+    clientContacts: [],
+    assignees: [],
+    installableSelections: [
+      { id: "s1", name: "Kitchen faucet <brass>", roomName: "Kitchen", status: "ordered" },
+      { id: "s2", name: "Tile", roomName: "", status: "approved" },
+    ],
+  }
+  const key = (): string => "unused"
+
+  it("is hidden when the job has no approved or ordered selections", () => {
+    const html = logFieldsHtml({ draft: emptyLogDraft("2026-11-09"), form: { ...form, followUps: { ...setup, installableSelections: [] } }, errors: new Map(), escape })
+    expect(html).not.toContain("Selections installed")
+  })
+
+  it("lists each selection with its room and status, and shows the move once ticked", () => {
+    let draft = emptyLogDraft("2026-11-09")
+    let html = logFieldsHtml({ draft, form: { ...form, followUps: setup }, errors: new Map(), escape })
+    expect(html).toContain("Selections installed")
+    expect(html).toContain('data-fu="installed" data-fu-key="s1"')
+    expect(html).toContain("Kitchen faucet &lt;brass>")
+    expect(html).toContain("Kitchen · Ordered")
+    expect(html).toContain(">Approved</span>")
+    draft = { ...draft, followUps: storedFollowUpDraft(followUpAction(draft.followUps, rules, { control: "installed", key: "s1", value: "true" }, key)) }
+    html = installedSelectionsHtml(setup, draft.followUps, escape)
+    expect(html).toContain("Ordered → Installed")
+    expect(html).toMatch(/checked\s+data-fu="installed" data-fu-key="s1"/)
+  })
+
+  it("ticks and unticks, and the ticks reach the log's follow-ups", () => {
+    let followUps = followUpAction(emptyFollowUpDraft(), rules, { control: "installed", key: "s1", value: "true" }, key)
+    followUps = followUpAction(followUps, rules, { control: "installed", key: "s2", value: "true" }, key)
+    followUps = followUpAction(followUps, rules, { control: "installed", key: "s1", value: "true" }, key)
+    expect(followUps.installed).toEqual(["s2", "s1"])
+    followUps = followUpAction(followUps, rules, { control: "installed", key: "s2", value: "false" }, key)
+    expect(followUps.installed).toEqual(["s1"])
+    const draft = { ...emptyLogDraft("2026-11-09"), followUps: storedFollowUpDraft(followUps) }
+    expect(followUpsFromDraft(draft.followUps, draft, rules).installedSelectionIds).toEqual(["s1"])
+  })
+
+  it("keeps ticks through the saved draft, and drafts saved before this start with none", () => {
+    const followUps = storedFollowUpDraft(followUpAction(emptyFollowUpDraft(), rules, { control: "installed", key: "s1", value: "true" }, key))
+    const saved = logDraftSchema.parse(JSON.parse(JSON.stringify({ ...emptyLogDraft("2026-11-09"), followUps })))
+    expect(saved.followUps.installed).toEqual(["s1"])
+    const old: Record<string, unknown> = { ...emptyFollowUpDraft() }
+    delete old.installed
+    expect(logDraftSchema.parse({ ...emptyLogDraft("2026-11-09"), followUps: old }).followUps.installed).toEqual([])
+  })
+
+  it("reads packets saved before selections, and queued logs with or without installed selections", () => {
+    const packet = fieldProjectPacketSchema.parse({
+      project: { id: "p1", name: "Job", projectNumber: null, address: null },
+      tasks: [],
+      logs: [],
+      documents: [],
+      channel: null,
+      messages: [],
+      dailyLogForm: { ...form, followUps: { rules, openTodos: [], clientContacts: [], assignees: [] } },
+      syncedAt: "2026-11-09T12:00:00Z",
+    })
+    expect(packet.dailyLogForm?.followUps?.installableSelections).toEqual([])
+    const payload = {
+      logDate: "2026-11-09",
+      workCompleted: "Set fixtures",
+      issues: "",
+      crewPresent: "Dan",
+      notes: "",
+      followUps: { todoUpdates: [], newTodos: [], clientContacts: [] },
+    }
+    const item = (id: string, followUps: Record<string, unknown>) => ({
+      id,
+      kind: "daily_log",
+      projectId: "p1",
+      createdAt: "2026-11-09T12:00:00Z",
+      payload: { ...payload, followUps },
+      remoteDailyLogId: null,
+      attachments: [],
+    })
+    const outbox = fieldOutboxSchema.parse(JSON.parse(JSON.stringify([
+      item("old", payload.followUps),
+      item("new", { ...payload.followUps, installedSelectionIds: ["s1"] }),
+    ])))
+    const followUpsOf = (index: number) => {
+      const entry = outbox[index]
+      return entry?.kind === "daily_log" ? entry.payload.followUps : undefined
+    }
+    expect(followUpsOf(0)?.installedSelectionIds).toBeUndefined()
+    expect(followUpsOf(1)?.installedSelectionIds).toEqual(["s1"])
   })
 })

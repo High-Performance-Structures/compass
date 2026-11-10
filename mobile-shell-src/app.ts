@@ -1384,6 +1384,8 @@ async function queueDailyLog(event: SubmitEvent): Promise<void> {
     return
   }
   const workLines = filledWorkLines(logDraft.workLines)
+  const listedSelections = new Set((setup?.installableSelections ?? []).map((selection) => selection.id))
+  const installedSelectionIds = (followUps?.installedSelectionIds ?? []).filter((id) => listedSelections.has(id))
   outbox.push({
     id: crypto.randomUUID(),
     kind: "daily_log",
@@ -1405,6 +1407,8 @@ async function queueDailyLog(event: SubmitEvent): Promise<void> {
               todoUpdates: followUps.todoUpdates.map((update) => ({ ...update })),
               newTodos: followUps.newTodos.map((todo) => ({ ...todo })),
               clientContacts: followUps.clientContacts.map((contact) => ({ ...contact })),
+              // Only selections still on the phone's list; left off when none, like older builds.
+              ...(installedSelectionIds.length > 0 ? { installedSelectionIds } : {}),
             },
           }
         : {}),
