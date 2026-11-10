@@ -24,8 +24,9 @@ export function DailyLogNewForm({
   readonly isPending: boolean
 }): React.ReactElement {
   const { newLog, isWeatherPending, prefillWeather } = forms
-  // Today's site forecast fills the weather when the form opens and when the
-  // date changes, until someone types weather in.
+  // The site's weather for the date (forecast, or recorded for a past date)
+  // fills in when the form opens and when the date changes, until someone
+  // types weather in.
   const prefill = React.useRef(prefillWeather)
   prefill.current = prefillWeather
   React.useEffect(() => {
@@ -60,8 +61,8 @@ export function DailyLogNewForm({
           <div>
             <p className="text-sm font-medium">Weather reference</p>
             <p className="text-xs text-muted-foreground">
-              Filled from the job site's forecast when there is one. Fill weather
-              looks it up again for the selected date.
+              Filled from the job site's forecast, or the recorded weather for a
+              past date. Fill weather looks it up again for the selected date.
             </p>
           </div>
           <Button

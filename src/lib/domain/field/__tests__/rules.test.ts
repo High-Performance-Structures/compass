@@ -7,7 +7,6 @@ import {
   dailyLogIdsInPeriod,
   fahrenheitFromCelsius,
   inchesFromMeters,
-  inchesText,
   isPhotoInOwnerUpdateScope,
   isTodayOrFuture,
   latestPhotoOrder,
@@ -91,8 +90,6 @@ describe("weather", () => {
     expect(inchesFromMeters(0)).toBeNull()
     expect(inchesFromMeters(0.001)).toBe("0.04 in last hour")
     expect(inchesFromMeters(0.01)).toBe("0.4 in last hour")
-    expect(inchesText(0.05, "rain")).toBe("0.05 in rain")
-    expect(inchesText(1.25, "snow")).toBe("1.3 in snow")
     expect(weatherCodeLabel(0)).toBe("Clear")
     expect(weatherCodeLabel(81)).toBe("Rain showers")
     expect(weatherCodeLabel(null)).toBe("Historical weather")

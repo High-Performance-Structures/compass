@@ -198,11 +198,6 @@ export function weatherCodeLabel(value: number | null): string {
   }
 }
 
-export function inchesText(value: number | null, label: string): string | null {
-  if (value === null || value <= 0) return null
-  return `${value.toFixed(value < 0.1 ? 2 : 1)} in ${label}`
-}
-
 /** Both are YYYY-MM-DD; today and later use live observations. */
 export function isTodayOrFuture(logDate: string, today: string): boolean {
   return logDate >= today
