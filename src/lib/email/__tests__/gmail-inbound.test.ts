@@ -70,6 +70,19 @@ describe("candidateFromMessage attachments", () => {
     )
   })
 
+  it("finds a project alias on the Cc line", () => {
+    const result = candidateFromMessage({
+      id: "message-with-cc-project-alias",
+      payload: { headers: [
+        { name: "To", value: "Client <client@example.com>" },
+        { name: "Cc", value: "jarvis+project-proj-o-138@hps-colorado.com" },
+        { name: "Delivered-To", value: "jarvis@hps-colorado.com" },
+        { name: "Subject", value: "Fw: Inspection received" },
+      ] },
+    })
+    expect(result.toAddress).toBe("jarvis+project-proj-o-138@hps-colorado.com")
+  })
+
   it("keeps a tracked reply address when forwarding rewrites X-Original-To", () => {
     const result = candidateFromMessage({
       id: "tracked-reply",

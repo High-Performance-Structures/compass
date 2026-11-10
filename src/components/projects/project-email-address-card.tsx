@@ -79,6 +79,7 @@ function ProjectMessageRoutingHint(): React.ReactElement {
       to save a message for an internal teammate and notify them in Compass.
       For a shared first name, use <span className="font-mono text-foreground">@&quot;First Last&quot;</span>.
       Without a mention, messages go to assigned internal project staff.
+      Email to or Cc this address with no tag is saved as a project message.
       Unmatched names and messages with attachments go to staff for review.
     </p>
   )

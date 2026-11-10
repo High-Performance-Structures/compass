@@ -222,8 +222,12 @@ export function candidateFromMessage(message: GmailMessage): InboundCandidate {
   // For tracked replies, prefer the header that actually carries the token.
   const tokenDestination = [headers.get("x-original-to"), headers.get("to"), headers.get("delivered-to")]
     .find((address) => token && address?.toLowerCase().includes(`+${token.toLowerCase()}@`))
+  // A project inbox on the Cc line counts as much as one on the To line.
+  const projectDestination = [headers.get("x-original-to"), headers.get("to"), headers.get("cc"), headers.get("delivered-to")]
+    .find((address) => address && /\+project-proj-/i.test(address))
   const routedTo =
     tokenDestination ??
+    projectDestination ??
     headers.get("x-original-to") ??
     headers.get("to") ??
     headers.get("delivered-to") ??
