@@ -17,6 +17,11 @@ export const SAGE_BRIDGE_HEARTBEAT_IDS = [
   "estimate-writer",
   "ar-invoice-writer",
   "prime-change-order-reader",
+  "cost-code-reader",
+  // Not a process: when Compass last applied Sage's cost code list, and when
+  // someone last asked for a refresh. Same id-and-time shape as a heartbeat.
+  "cost-code-sync",
+  "cost-code-refresh-request",
 ] as const
 
 export type SageBridgeHeartbeatId = (typeof SAGE_BRIDGE_HEARTBEAT_IDS)[number]

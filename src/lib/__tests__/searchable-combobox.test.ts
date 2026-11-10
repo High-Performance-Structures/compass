@@ -3,7 +3,7 @@ import { renderToStaticMarkup } from "react-dom/server"
 import { describe, expect, it } from "vitest"
 
 import { SearchableCombobox } from "@/components/searchable-combobox"
-import { creatableComboboxText, reconcileSearchableComboboxValue } from "@/lib/searchable-combobox"
+import { creatableComboboxText, listedComboboxOptions, reconcileSearchableComboboxValue } from "@/lib/searchable-combobox"
 
 describe("reconcileSearchableComboboxValue", () => {
   const options = [
@@ -84,5 +84,27 @@ describe("SearchableCombobox creatable", () => {
     const html = renderToStaticMarkup(createElement(SearchableCombobox, { ...props, value: "Mudroom" }))
     expect(html).toContain("Choose or type a room")
     expect(html).not.toContain("Mudroom")
+  })
+})
+
+describe("SearchableCombobox unlisted options", () => {
+  // An old Sage name and its numbered twin: one Sage record, offered once.
+  const options = [
+    { value: "03 11 20.60", label: "03 11 20.60 Fox-S800" },
+    { value: "Fox-S800", label: "Fox-S800", unlisted: true },
+    { value: "ICF Shipping", label: "ICF Shipping" },
+  ]
+
+  it("offers only listed options", () => {
+    expect(listedComboboxOptions(options).map((option) => option.value)).toEqual(["03 11 20.60", "ICF Shipping"])
+  })
+
+  it("still shows a saved unlisted value instead of clearing it", () => {
+    expect(reconcileSearchableComboboxValue(options, "Fox-S800")).toBe("Fox-S800")
+    const html = renderToStaticMarkup(
+      createElement(SearchableCombobox, { options, value: "Fox-S800", onValueChange: (): void => undefined, ariaLabel: "Cost code", placeholder: "Choose a cost code" })
+    )
+    expect(html).toContain("Fox-S800")
+    expect(html).not.toContain("Choose a cost code")
   })
 })

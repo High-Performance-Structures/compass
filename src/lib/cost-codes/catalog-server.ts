@@ -74,7 +74,7 @@ export async function loadProjectCostCodeChoices(db: ReturnType<typeof getDb>, p
     const code = row.costCode.trim()
     // A budget fee line coded "99 10 00" is offered under its canonical name.
     if (!code || choices.has(code) || isLegacyFeeCostCode(code)) continue
-    choices.set(code, { code, sourceCostCode: code, description: row.description, displayLabel: `${code} ${row.description}`, divisionCode: row.divisionCode, divisionDescription: row.divisionName, divisionDisplayLabel: `${row.divisionCode} · ${row.divisionName}`, sageMapped: false, onBudget: budgetCodes.has(code) })
+    choices.set(code, { code, sourceCostCode: code, description: row.description, displayLabel: `${code} ${row.description}`, divisionCode: row.divisionCode, divisionDescription: row.divisionName, divisionDisplayLabel: `${row.divisionCode} · ${row.divisionName}`, sageMapped: false, listed: true, onBudget: budgetCodes.has(code) })
   }
   return [...choices.values()]
 }

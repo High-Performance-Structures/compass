@@ -71,6 +71,8 @@ export type ProjectSelectionOption = {
 
 export type ProjectSelectionCostCodeOption = {
   readonly onBudget?: boolean
+  /** An old Sage name with a numbered twin: shown for saved values, never offered. */
+  readonly unlisted?: boolean
   readonly value: string
   readonly label: string
   readonly description: string

@@ -471,7 +471,7 @@ export async function getProjectChangeOrderFormOptions(
       onBudget: row.onBudget,
       label: row.displayLabel,
       description: row.sageMapped ? row.description : `${row.description} · Needs Sage mapping review`,
-      divisionCode: row.divisionCode,
+      divisionCode: row.divisionCode, unlisted: !row.listed,
     })
   }
 

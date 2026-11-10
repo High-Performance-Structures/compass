@@ -16,7 +16,8 @@ export type ShopTicketProject = {
   readonly address: string | null
 }
 
-export type ShopTicketCostCodeOption = { readonly code: string; readonly description: string }
+/** `listed` is false for an old Sage name with a numbered twin: shown for saved lines, never offered. */
+export type ShopTicketCostCodeOption = { readonly code: string; readonly description: string; readonly listed?: boolean }
 
 export type ShopTicketPayApplicationOption = {
   readonly id: string

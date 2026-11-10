@@ -151,7 +151,7 @@ describe("grouping", () => {
   ]
 
   it("lists distinct divisions sorted by code", () => {
-    const option = { label: "", description: "", divisionName: "", sageMapped: true }
+    const option = { label: "", description: "", divisionName: "", sageMapped: true, unlisted: false }
     expect(estimateDivisions([
       { ...option, value: "09-1", divisionCode: "09", divisionLabel: "09 Finishes" },
       { ...option, value: "03-1", divisionCode: "03", divisionLabel: "03 Concrete" },

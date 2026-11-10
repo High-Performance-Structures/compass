@@ -85,7 +85,7 @@ export async function dailyLogCostCodeList(
     const fieldCodes = await loadFieldCostCodeList(db, organizationId, { id: projectId, ...project }, dailyLogSettings, settings)
     const company = await loadProjectCostCodeCatalog(db)
     const dutyCodes = new Set(duties.map((option) => option.code))
-    const companyOptions = company.filter((row) => !dutyCodes.has(row.code)).map((row) => ({ code: row.code, name: row.description, label: row.displayLabel, group: ALL_CODES_GROUP }))
+    const companyOptions = company.filter((row) => !dutyCodes.has(row.code)).map((row) => ({ code: row.code, name: row.description, label: row.displayLabel, group: ALL_CODES_GROUP, unlisted: !row.listed }))
     return {
       source: "duties",
       options: [...duties, ...companyOptions],
@@ -97,6 +97,7 @@ export async function dailyLogCostCodeList(
   const fieldCodes = await loadFieldCostCodeList(db, organizationId, { id: projectId, ...project }, dailyLogSettings)
   const companyCodes = await loadProjectCostCodeChoices(db, projectId)
   const companyLabels = new Map(companyCodes.map((row) => [row.code, row.description]))
+  const unlistedCodes = new Set(companyCodes.filter((row) => !row.listed).map((row) => row.code))
   // Keep company-added labor choices available without restricting the catalog.
   for (const row of laborCodes) {
     if (!companyLabels.has(row.code)) companyLabels.set(row.code, row.name)
@@ -108,11 +109,11 @@ export async function dailyLogCostCodeList(
   const options = [
     ...[...budget.entries()]
       .sort(([a], [b]) => a.localeCompare(b, undefined, { numeric: true }))
-      .map(([code, description]) => ({ code, name: description, label: `${code} ${description}`.trim(), group: ON_BUDGET_GROUP })),
+      .map(([code, description]) => ({ code, name: description, label: `${code} ${description}`.trim(), group: ON_BUDGET_GROUP, unlisted: unlistedCodes.has(code) })),
     ...[...companyLabels.entries()]
       .filter(([code]) => !budget.has(code))
       .sort(([a], [b]) => a.localeCompare(b, undefined, { numeric: true }))
-      .map(([code, description]) => ({ code, name: description, label: `${code} ${description}`.trim(), group: ALL_CODES_GROUP })),
+      .map(([code, description]) => ({ code, name: description, label: `${code} ${description}`.trim(), group: ALL_CODES_GROUP, unlisted: unlistedCodes.has(code) })),
   ]
   return {
     source: "company",

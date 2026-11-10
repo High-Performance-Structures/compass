@@ -117,6 +117,7 @@ export function ShopTicketEditor({
         onBudget: budget?.has(option.code) ?? false,
         label: `${option.code} ${option.description}`,
         keywords: option.description,
+        unlisted: option.listed === false,
       })),
     [workspace.costCodes, budget],
   )

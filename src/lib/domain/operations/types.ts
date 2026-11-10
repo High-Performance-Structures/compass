@@ -83,6 +83,8 @@ export type ProjectPurchaseOrderPhaseOption = {
 
 export type ProjectPurchaseOrderCostCodeOption = {
   readonly onBudget?: boolean
+  /** An old Sage name with a numbered twin: shown for saved lines, never offered. */
+  readonly unlisted?: boolean
   readonly value: string
   readonly label: string
   readonly description: string
@@ -105,6 +107,8 @@ export type ProjectRfqScopeLineItem = {
 
 export type ProjectRfqCostCodeOption = {
   readonly onBudget?: boolean
+  /** An old Sage name with a numbered twin: shown for saved lines, never offered. */
+  readonly unlisted?: boolean
   readonly value: string
   readonly label: string
   readonly description: string

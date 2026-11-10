@@ -62,6 +62,8 @@ describe("project estimate cost-code catalog", () => {
     const catalog = projectEstimateCostCodeCatalog(
       [
         {
+          sourceSystem: "sage_xlsx",
+          sourceRecordId: null,
           code: "03 31 00",
           description: "Sage concrete",
           displayLabel: "03 31 00 Sage concrete",
@@ -115,6 +117,8 @@ describe("project estimate cost-code catalog", () => {
   it("replaces a workbook name match with its active Sage item ID", () => {
     const catalog = projectEstimateCostCodeCatalog([
       {
+        sourceSystem: "sage_xlsx",
+        sourceRecordId: null,
         code: "1000034",
         description: "Company Overhead",
         displayLabel: "1000034 Company Overhead",

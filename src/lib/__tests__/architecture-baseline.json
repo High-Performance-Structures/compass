@@ -716,6 +716,9 @@
     "sageChangeOrderExports": [
       "src/lib/domain/sage-bridge/change-order-store.ts"
     ],
+    "sageCostCodes": [
+      "src/lib/domain/sage-bridge/cost-code-store.ts"
+    ],
     "sageClientDirectoryEntries": [
       "src/lib/domain/sage-bridge/store.ts"
     ],

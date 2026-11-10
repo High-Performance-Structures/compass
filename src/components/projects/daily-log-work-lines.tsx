@@ -65,6 +65,7 @@ export function DailyLogWorkLines({
         label: option.label,
         description: option.group || undefined,
         keywords: `${option.code} ${option.name}`,
+        unlisted: option.unlisted,
       })),
     [costCodes],
   )

@@ -238,6 +238,7 @@ export async function loadProjectContactSageOptions(db: Db, projectId: string): 
       description,
       divisionCode: row.divisionCode,
       divisionName: row.divisionDescription,
+      unlisted: !row.listed,
     })
   }
 

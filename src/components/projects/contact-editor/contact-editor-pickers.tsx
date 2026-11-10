@@ -118,7 +118,8 @@ export function CostCodePicker({
   const [open, setOpen] = useState(false)
   const [search, setSearch] = useState("")
   const hasBudgetCodes = options.some((option) => option.onBudget)
-  const visibleOptions = search.trim() || !hasBudgetCodes ? options : options.filter((option) => option.onBudget)
+  const listedOptions = options.filter((option) => !option.unlisted)
+  const visibleOptions = search.trim() || !hasBudgetCodes ? listedOptions : listedOptions.filter((option) => option.onBudget)
   const selected = options.find((option) => option.value === value) ?? null
 
   return (

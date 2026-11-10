@@ -85,7 +85,7 @@ async function companyView(ctx: Awaited<ReturnType<typeof context>>): Promise<Fi
   const legacy = uniqueChoices(...legacyLists)
   const codes = settings.defaultCodes ?? legacy
   const labor = daily.laborCostCodes.filter((code) => code.active).map(({ code, name }) => ({ code, name }))
-  return { codes, inherited: [], choices: ctx.canEdit ? uniqueChoices(catalog.map((code) => ({ code: code.code, name: code.description })), labor, codes) : [], canEdit: ctx.canEdit, customized: settings.defaultCodes !== null, combinesDepartmentLists }
+  return { codes, inherited: [], choices: ctx.canEdit ? uniqueChoices(catalog.filter((code) => code.listed).map((code) => ({ code: code.code, name: code.description })), labor, codes) : [], canEdit: ctx.canEdit, customized: settings.defaultCodes !== null, combinesDepartmentLists }
 }
 export async function getCompanyFieldCostCodes(): Promise<Result<FieldCostCodeEditorView>> {
   try { return { success: true, data: await companyView(await context()) } }
@@ -127,7 +127,7 @@ export async function getProjectFieldCostCodes(projectId: string): Promise<Resul
       ctx.canEdit ? loadProjectCostCodeChoices(ctx.db, projectId) : Promise.resolve([]),
     ])
     const list = await loadFieldCostCodeList(ctx.db, ctx.organizationId, project, daily)
-    return { success: true, data: { codes: list.additions, inherited: list.defaults, choices: ctx.canEdit ? uniqueChoices(catalog.map((code) => ({ code: code.code, name: code.description })), daily.laborCostCodes.filter((code) => code.active).map(({ code, name }) => ({ code, name })), list.defaults, list.additions) : [], canEdit: ctx.canEdit, customized: list.additions.length > 0, combinesDepartmentLists: false } }
+    return { success: true, data: { codes: list.additions, inherited: list.defaults, choices: ctx.canEdit ? uniqueChoices(catalog.filter((code) => code.listed).map((code) => ({ code: code.code, name: code.description })), daily.laborCostCodes.filter((code) => code.active).map(({ code, name }) => ({ code, name })), list.defaults, list.additions) : [], canEdit: ctx.canEdit, customized: list.additions.length > 0, combinesDepartmentLists: false } }
   } catch (error) { return { success: false, error: errorMessage(error) } }
 }
 export async function saveProjectFieldCostCodes(projectId: string, raw: unknown): Promise<SaveResult> {

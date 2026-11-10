@@ -95,7 +95,8 @@ export type ProjectInvoiceEditor = {
   readonly actions: SimpleInvoiceActions
   readonly estimate: { readonly id: string; readonly label: string; readonly lines: readonly EstimateLineForInvoice[] } | null
   readonly catalog: readonly CatalogProductOption[]
-  readonly costCodes: readonly { readonly value: string; readonly label: string }[]
+  /** `unlisted`: an old Sage name with a numbered twin, shown for saved lines but never offered. */
+  readonly costCodes: readonly { readonly value: string; readonly label: string; readonly unlisted: boolean }[]
   readonly taxDistricts: readonly TaxDistrictOption[]
   readonly customers: readonly CustomerOption[]
   readonly square: SquareEligibility & { readonly connected: boolean }
@@ -147,7 +148,7 @@ export async function getProjectInvoiceEditor(projectId: string, invoiceId: stri
         ? { id: estimate.estimate.id, label: `${estimate.estimate.estimateNumber} v${estimate.estimate.versionNumber} · ${estimate.estimate.title}`, lines: estimate.lines }
         : null,
       catalog,
-      costCodes: costCodes.map((choice) => ({ value: choice.code, label: choice.displayLabel })),
+      costCodes: costCodes.map((choice) => ({ value: choice.code, label: choice.displayLabel, unlisted: !choice.listed })),
       taxDistricts,
       customers: customerOptions,
       square: {

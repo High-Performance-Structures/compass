@@ -205,7 +205,7 @@ export function DailyLogLineTodos({
 }): React.ReactElement | null {
   const lines = followUpLines(text)
   const codeOptions = React.useMemo(
-    () => costCodes.map((option) => ({ value: option.code, browseGroup: option.group, onBudget: option.group === ON_BUDGET_GROUP || option.group === INTERNAL_CODES_GROUP, label: option.label, keywords: `${option.code} ${option.name}` })),
+    () => costCodes.map((option) => ({ value: option.code, browseGroup: option.group, onBudget: option.group === ON_BUDGET_GROUP || option.group === INTERNAL_CODES_GROUP, label: option.label, keywords: `${option.code} ${option.name}`, unlisted: option.unlisted })),
     [costCodes],
   )
   if (rules.todoMode === "off" || rules.todoTypes.length === 0 || lines.length === 0) return null

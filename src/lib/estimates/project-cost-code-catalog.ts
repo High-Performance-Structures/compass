@@ -1,3 +1,4 @@
+import { SAGE_COST_CODE_SOURCE } from "@/lib/domain/sage-bridge/cost-code-sync-rules"
 import { BUILDER_FEE_NAMES, canonicalFeeLabel, isLegacyFeeCostCode } from "@/lib/domain/financials/builder-fee-codes"
 import { CSI_PROJECT_TOTALS_FALLBACK_COST_CODES } from "@/lib/estimates/csi-project-totals-catalog"
 import {
@@ -6,6 +7,10 @@ import {
 } from "@/lib/estimates/sage-estimate-cost-code-catalog"
 
 export type EstimateSageCostCode = {
+  /** "sage" for rows read from Sage by the cost code sync; older rows came from a spreadsheet. */
+  readonly sourceSystem: string
+  /** Sage's cost code record number for synced rows. */
+  readonly sourceRecordId: string | null
   readonly code: string
   readonly description: string
   readonly displayLabel: string
@@ -30,14 +35,22 @@ export type ProjectEstimateCostCodeCatalogItem = {
   readonly divisionDescription: string
   readonly divisionDisplayLabel: string
   readonly sageMapped: boolean
+  /**
+   * False for a Sage name kept only so older records and imports resolve
+   * ("Fox-S800" when Sage's "03 11 20.60 Fox-S800" is the same record).
+   * Pickers keep it for a saved value but never offer it.
+   */
+  readonly listed: boolean
 }
+
+type CatalogEntry = Omit<ProjectEstimateCostCodeCatalogItem, "listed">
 
 const CSI_CODE_FROM_NAME =
   /^\s*(\d{2})\s+(\d{2})\s+(\d{2})(\.\d{2})?(?:\s*[-–—]\s*|\s+)?(.*)$/
 
 function catalogItemFromWorkbook(
   row: SageEstimateCatalogRow
-): ProjectEstimateCostCodeCatalogItem {
+): CatalogEntry {
   const [name, , divisionCode, divisionDescription] = row
   const match = CSI_CODE_FROM_NAME.exec(name)
   const matchedDivision = match?.[1]
@@ -101,7 +114,7 @@ function sageRecordNumbersByCode(namedSageRows: readonly EstimateSageNamedCostCo
 
 function sageCodeFromName(
   row: EstimateSageNamedCostCode
-): ProjectEstimateCostCodeCatalogItem | null {
+): CatalogEntry | null {
   if (!row.sourceSystem.toLowerCase().startsWith("sage")) return null
 
   const match = CSI_CODE_FROM_NAME.exec(row.description)
@@ -127,31 +140,52 @@ function sageCodeFromName(
   }
 }
 
+function syncedRecordNumber(row: EstimateSageCostCode): string | null {
+  const recordNumber = row.sourceRecordId?.trim() ?? ""
+  return row.sourceSystem === SAGE_COST_CODE_SOURCE && /^\d+$/.test(recordNumber) ? recordNumber : null
+}
+
+function namedKey(divisionCode: string, name: string): string {
+  return `${divisionCode}|${name.trim().replaceAll(/\s+/g, " ").toLowerCase()}`
+}
+
 export function projectEstimateCostCodeCatalog(
   sageRows: readonly EstimateSageCostCode[],
   namedSageRows: readonly EstimateSageNamedCostCode[],
   workbookRows: readonly SageEstimateCatalogRow[] =
     SAGE_ESTIMATE_COST_CODE_CATALOG
 ): readonly ProjectEstimateCostCodeCatalogItem[] {
-  const catalog = new Map<string, ProjectEstimateCostCodeCatalogItem>()
+  const catalog = new Map<string, CatalogEntry>()
 
   for (const row of workbookRows) {
     const item = catalogItemFromWorkbook(row)
     catalog.set(item.code, item)
   }
 
+  // Bare Sage names ("Fox-S800") by division, for the synced rows: the
+  // workbook's named codes keep resolving and take the exact Sage record.
+  const syncedRecordsByName = new Map<string, Set<string>>()
   for (const row of sageRows) {
-    for (const [code, item] of catalog) {
-      if (
-        item.sourceCostCode === row.description &&
-        item.divisionCode === row.divisionCode
-      ) {
-        catalog.delete(code)
+    const recordNumber = syncedRecordNumber(row)
+    if (recordNumber) {
+      const key = namedKey(row.divisionCode, row.description)
+      const set = syncedRecordsByName.get(key) ?? new Set<string>()
+      set.add(recordNumber)
+      syncedRecordsByName.set(key, set)
+    } else {
+      // A spreadsheet-imported row replaces the workbook entry it came from.
+      for (const [code, item] of catalog) {
+        if (
+          item.sourceCostCode === row.description &&
+          item.divisionCode === row.divisionCode
+        ) {
+          catalog.delete(code)
+        }
       }
     }
     catalog.set(row.code, {
       code: row.code,
-      sourceCostCode: row.code,
+      sourceCostCode: recordNumber ?? row.code,
       description: row.description,
       displayLabel: row.displayLabel,
       divisionCode: row.divisionCode,
@@ -159,6 +193,15 @@ export function projectEstimateCostCodeCatalog(
       divisionDisplayLabel: row.divisionDisplayLabel,
       sageMapped: true,
     })
+  }
+
+  // A workbook name ("Fox-S800", "ICF Shipping") stays a choice so older
+  // records keep resolving, addressed to the one Sage record with that name.
+  for (const [code, item] of catalog) {
+    if (CSI_CODE_FROM_NAME.test(code) || SAGE_RECORD_NUMBER.test(item.sourceCostCode.trim())) continue
+    const records = syncedRecordsByName.get(namedKey(item.divisionCode, item.description))
+    const [only] = records ?? []
+    if (records?.size === 1 && only) catalog.set(code, { ...item, sourceCostCode: only })
   }
 
   for (const row of namedSageRows) {
@@ -191,7 +234,18 @@ export function projectEstimateCostCodeCatalog(
 
   // The retired Division 99 fee codes are never offered; builder fees go by
   // their canonical names.
-  return [...catalog.values()].filter((row) => !isLegacyFeeCostCode(row.code)).sort((left, right) => {
+  // One choice per Sage record: a name whose record also has a numbered
+  // code is unlisted; a name with no numbered twin stays a choice.
+  const numberedRecords = new Set(
+    [...catalog.values()]
+      .filter((row) => row.sageMapped && CSI_CODE_FROM_NAME.test(row.code) && SAGE_RECORD_NUMBER.test(row.sourceCostCode.trim()))
+      .map((row) => String(Number(row.sourceCostCode.trim())))
+  )
+  const listed = (row: CatalogEntry): boolean => {
+    const recordNumber = row.sourceCostCode.trim()
+    return CSI_CODE_FROM_NAME.test(row.code) || !SAGE_RECORD_NUMBER.test(recordNumber) || !numberedRecords.has(String(Number(recordNumber)))
+  }
+  return [...catalog.values()].filter((row) => !isLegacyFeeCostCode(row.code)).map((row) => ({ ...row, listed: listed(row) })).sort((left, right) => {
     const divisionOrder = left.divisionCode.localeCompare(right.divisionCode)
     return divisionOrder || left.displayLabel.localeCompare(right.displayLabel)
   })

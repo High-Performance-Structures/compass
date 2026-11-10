@@ -167,6 +167,8 @@ export type ProjectEstimateCostCodeOption = {
   readonly divisionName: string
   readonly divisionLabel: string
   readonly sageMapped: boolean
+  /** An old Sage name with a numbered twin: shown for saved lines, never offered. */
+  readonly unlisted: boolean
 }
 
 export type ProjectEstimateTaxOption = {

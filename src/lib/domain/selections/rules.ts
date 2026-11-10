@@ -349,6 +349,8 @@ export type SelectionOptionSources = {
     readonly divisionDisplayLabel: string
     readonly onBudget: boolean
     readonly sageMapped: boolean
+    /** False for an old Sage name with a numbered twin. */
+    readonly listed?: boolean
   }[]
   readonly contacts: readonly {
     readonly companyName: string | null
@@ -385,7 +387,8 @@ export function buildSelectionOptions(sources: SelectionOptionSources): Omit<Pro
       divisionCode: row.divisionCode,
       divisionLabel: row.divisionDisplayLabel,
       source: row.onBudget && !row.sageMapped ? "project_budget" : row.sageMapped ? "sage" : "company",
-      needsSageReview: !row.sageMapped
+      needsSageReview: !row.sageMapped,
+      unlisted: row.listed === false
     })
   }
 

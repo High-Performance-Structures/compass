@@ -46,6 +46,8 @@ export type DailyLogCostCodeOption = {
   readonly label: string
   /** e.g. "On this job's budget" or "All cost codes"; empty when ungrouped. */
   readonly group: string
+  /** An old Sage name with a numbered twin: shown for saved lines, never offered. */
+  readonly unlisted?: boolean
 }
 
 /** One cost code worked on, as typed into the form (hours still text). */

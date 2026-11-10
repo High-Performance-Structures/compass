@@ -133,7 +133,7 @@ export function ProjectTodoEditDialog({
     }
   }, [open, projectId, item.id])
   const costCodeOptions = React.useMemo(
-    () => (detail?.costCodes ?? []).map((option) => ({ value: option.code, browseGroup: option.group, onBudget: option.group === ON_BUDGET_GROUP || option.group === INTERNAL_CODES_GROUP, label: option.label, keywords: `${option.code} ${option.name}` })),
+    () => (detail?.costCodes ?? []).map((option) => ({ value: option.code, browseGroup: option.group, onBudget: option.group === ON_BUDGET_GROUP || option.group === INTERNAL_CODES_GROUP, label: option.label, keywords: `${option.code} ${option.name}`, unlisted: option.unlisted })),
     [detail?.costCodes],
   )
 

@@ -61,6 +61,13 @@ export const PRIME_CHANGE_ORDER_READER: BridgeKind = {
   enabled: null,
   disabledMessage: "",
 }
+/** The read-only reader that sends Sage's cost code list (dbo.cstcde). */
+export const COST_CODE_READER: BridgeKind = {
+  secret: "reader",
+  heartbeat: "cost-code-reader",
+  enabled: null,
+  disabledMessage: "",
+}
 
 function failure(status: number, error: string): SageChangeOrderBridge {
   return { success: false, response: Response.json({ error }, { status }) }

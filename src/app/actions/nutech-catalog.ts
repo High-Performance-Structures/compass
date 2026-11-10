@@ -84,7 +84,8 @@ export type NuTechCatalogWorkspace = {
     readonly displayLabel: string
   }[]
   /** Named company cost codes (e.g. "ICF Shipping") that aren't numbered Sage codes. */
-  readonly namedCostCodes: readonly { readonly name: string; readonly label: string }[]
+  /** `unlisted`: an old Sage name with a numbered twin, shown for a saved mapping but never offered. */
+  readonly namedCostCodes: readonly { readonly name: string; readonly label: string; readonly unlisted: boolean }[]
 }
 
 /** A price-list item's Sage cost code: a numbered code, a named company code, or none. */
@@ -164,6 +165,8 @@ export async function getNuTechCatalogWorkspace(): Promise<NuTechCatalogWorkspac
       db
         .select({
           id: sageCostCodes.id,
+          sourceSystem: sageCostCodes.sourceSystem,
+          sourceRecordId: sageCostCodes.sourceRecordId,
           code: sageCostCodes.code,
           description: sageCostCodes.description,
           displayLabel: sageCostCodes.displayLabel,
@@ -233,7 +236,7 @@ export async function getNuTechCatalogWorkspace(): Promise<NuTechCatalogWorkspac
     sageCostCodes: sageRows.map((row) => ({ id: row.id, code: row.code, description: row.description, displayLabel: row.displayLabel })),
     namedCostCodes: projectEstimateCostCodeCatalog(sageRows, [])
       .filter((item) => !sageCodes.has(item.code))
-      .map((item) => ({ name: item.code, label: item.displayLabel })),
+      .map((item) => ({ name: item.code, label: item.displayLabel, unlisted: !item.listed })),
   }
 }
 

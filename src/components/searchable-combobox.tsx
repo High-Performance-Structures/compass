@@ -17,7 +17,7 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover"
-import { creatableComboboxText, reconcileSearchableComboboxValue } from "@/lib/searchable-combobox"
+import { creatableComboboxText, listedComboboxOptions, reconcileSearchableComboboxValue } from "@/lib/searchable-combobox"
 import { cn } from "@/lib/utils"
 
 export type SearchableComboboxOption = {
@@ -28,6 +28,8 @@ export type SearchableComboboxOption = {
   readonly selectedLabel?: string
   readonly description?: string
   readonly keywords?: string
+  /** Shown when it is the saved value but never offered (an old name kept so saved records still read). */
+  readonly unlisted?: boolean
 }
 
 export type SearchableComboboxProps = {
@@ -86,7 +88,8 @@ export function SearchableCombobox({
   const browsing = search.trim().length === 0 && (browseValues !== undefined || budgetBrowsing)
   const browseSet = React.useMemo(() => new Set(browseValues ?? budgetValues), [browseValues, budgetValues])
   const effectiveHint = searchHint ?? (budgetBrowsing ? "Type to search the full company cost-code list." : undefined)
-  const visibleOptions = browsing ? options.filter((option) => browseSet.has(option.value)) : options
+  const listedOptions = React.useMemo(() => listedComboboxOptions(options), [options])
+  const visibleOptions = browsing ? listedOptions.filter((option) => browseSet.has(option.value)) : listedOptions
   const selectedOption =
     options.find((option) => option.value === value) ?? null
   // A creatable field may hold a typed value that is not an option; show it as is.
