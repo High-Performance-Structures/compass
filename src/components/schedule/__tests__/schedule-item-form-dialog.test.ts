@@ -102,15 +102,9 @@ vi.mock("@/components/schedule/schedule-template-import-options-client", () => (
   ]),
 }))
 
-vi.mock("@/components/ui/dialog", () => ({
-  Dialog: ({ open, children }: { open: boolean; children: React.ReactNode }) =>
-    open ? React.createElement(React.Fragment, null, children) : null,
-  DialogContent: ({ children }: { children: React.ReactNode }) =>
-    React.createElement("section", null, children),
-  DialogHeader: ({ children }: { children: React.ReactNode }) =>
-    React.createElement(React.Fragment, null, children),
-  DialogTitle: ({ children }: { children: React.ReactNode }) =>
-    React.createElement("h1", null, children),
+vi.mock("@/components/record-drawer", () => ({
+  RecordDrawer: ({ open, title, children }: { open: boolean; title: React.ReactNode; children: React.ReactNode }) =>
+    open ? React.createElement("section", null, React.createElement("h1", null, title), children) : null,
 }))
 
 vi.mock("@/components/ui/form", () => {

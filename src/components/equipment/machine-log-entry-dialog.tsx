@@ -7,7 +7,7 @@ import { toast } from "sonner"
 import { getMachineCostCodeOptions, saveMachineLogEntry, type EquipmentWorkspace, type MachineLogEntryView, type MachineCostCodeOption } from "@/app/actions/equipment"
 import { SearchableCombobox } from "@/components/searchable-combobox"
 import { Button } from "@/components/ui/button"
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import { RecordDrawer } from "@/components/record-drawer"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
@@ -155,14 +155,12 @@ export function MachineLogEntryDialog({
   const required = <span className="ml-1 text-xs font-normal text-destructive">Required</span>
 
   return (
-    <Dialog open onOpenChange={(next) => (next ? null : onClose())}>
-      <DialogContent className="max-h-[92vh] overflow-y-auto sm:max-w-2xl">
-        <DialogHeader>
-          <DialogTitle>
-            {entry ? "Change machine log entry" : "Log machine time or cost"}
-          </DialogTitle>
-          <DialogDescription>Entries wait for approval before they go to Sage.</DialogDescription>
-        </DialogHeader>
+    <RecordDrawer
+      open
+      onOpenChange={(next) => (next ? null : onClose())}
+      title={entry ? "Change machine log entry" : "Log machine time or cost"}
+      description="Entries wait for approval before they go to Sage."
+    >
         <form onSubmit={submit} className="grid gap-4" noValidate>
           <fieldset className="grid gap-2">
             <legend className="mb-1 text-sm font-medium">What are you logging?</legend>
@@ -366,16 +364,15 @@ export function MachineLogEntryDialog({
               {errors.size === 1 ? "1 item needs attention." : `${errors.size} items need attention.`}
             </p>
           ) : null}
-          <DialogFooter>
+          <div className="flex flex-wrap justify-end gap-2 border-t pt-4">
             <Button type="button" variant="ghost" onClick={onClose}>
               Cancel
             </Button>
             <Button type="submit" disabled={pending}>
               {pending ? "Saving..." : entry ? "Save changes" : "Log it"}
             </Button>
-          </DialogFooter>
+          </div>
         </form>
-      </DialogContent>
-    </Dialog>
+    </RecordDrawer>
   )
 }

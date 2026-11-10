@@ -46,13 +46,7 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog"
 import { Button } from "@/components/ui/button"
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog"
+import { RecordDrawer } from "@/components/record-drawer"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
@@ -224,30 +218,28 @@ export function ProjectTodoEditDialog({
   }
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl">
-        <form onSubmit={save} className="space-y-5">
-          <DialogHeader>
-            <DialogTitle>
-              Edit to-do{" "}
-              {item.sourceSystem === "buildertrend" && <SourceTag source="buildertrend" />}
-            </DialogTitle>
-            <DialogDescription>
-              {developerModeEnabled ? (
-                <>
-                  {sourceLabel(item)}
-                  {item.sourceRecordNumber
-                    ? ` · ${item.sourceRecordNumber}`
-                    : ""}
-                  . Original source identifiers remain preserved when this record
-                  is updated in Compass.
-                </>
-              ) : (
-                "Update assignment, dates, status, and notes."
-              )}
-            </DialogDescription>
-          </DialogHeader>
-
+    <RecordDrawer
+      open={open}
+      onOpenChange={onOpenChange}
+      title={
+        <>
+          Edit to-do{" "}
+          {item.sourceSystem === "buildertrend" && <SourceTag source="buildertrend" />}
+        </>
+      }
+      description={
+        developerModeEnabled ? (
+          <>
+            {sourceLabel(item)}
+            {item.sourceRecordNumber ? ` · ${item.sourceRecordNumber}` : ""}. Original source identifiers remain
+            preserved when this record is updated in Compass.
+          </>
+        ) : (
+          "Update assignment, dates, status, and notes."
+        )
+      }
+    >
+      <form onSubmit={save} className="space-y-5">
           <div className="space-y-2">
             <Label htmlFor={`todo-title-${item.id}`}>To-do</Label>
             <Input
@@ -512,7 +504,6 @@ export function ProjectTodoEditDialog({
             </p>
           )}
         </form>
-      </DialogContent>
-    </Dialog>
+    </RecordDrawer>
   )
 }

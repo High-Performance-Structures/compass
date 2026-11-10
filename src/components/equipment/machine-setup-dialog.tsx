@@ -27,7 +27,7 @@ import {
 } from "@/components/ui/alert-dialog"
 import { SearchableCombobox } from "@/components/searchable-combobox"
 import { Button } from "@/components/ui/button"
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import { RecordDrawer } from "@/components/record-drawer"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Switch } from "@/components/ui/switch"
@@ -133,12 +133,16 @@ export function MachineSetupDialog({
 
   return (
     <>
-      <Dialog open={open} onOpenChange={onOpenChange}>
-        <DialogContent className="max-h-[92vh] overflow-y-auto sm:max-w-2xl">
-          <DialogHeader>
-            <DialogTitle>{machine ? `Set up ${machine.name}` : "Add a machine"}</DialogTitle>
-            <DialogDescription>Its running rate comes from the rate book, the same rate shop tickets bill.</DialogDescription>
-          </DialogHeader>
+      <RecordDrawer
+        open={open}
+        onOpenChange={onOpenChange}
+        title={
+          <>
+            {machine ? `Set up ${machine.name}` : "Add a machine"}
+          </>
+        }
+        description="Its running rate comes from the rate book, the same rate shop tickets bill."
+      >
           <form onSubmit={save} className="grid gap-4">
             <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_10rem]">
               <div className="grid gap-1.5">
@@ -186,7 +190,7 @@ export function MachineSetupDialog({
               <Switch checked={input.active} onCheckedChange={(active) => setInput({ ...input, active })} />
               Active (offered when logging)
             </label>
-            <DialogFooter className="sm:justify-between">
+            <div className="flex flex-wrap justify-end gap-2 border-t pt-4">
               {machine ? (
                 <Button type="button" variant="ghost" className="text-destructive hover:text-destructive" disabled={pending} onClick={() => setConfirmDelete(true)}>
                   <IconTrash className="size-4" />
@@ -198,7 +202,7 @@ export function MachineSetupDialog({
               <Button type="submit" disabled={pending}>
                 {pending ? "Saving..." : machine ? "Save machine" : "Add machine"}
               </Button>
-            </DialogFooter>
+            </div>
           </form>
 
           {machine ? (
@@ -252,8 +256,7 @@ export function MachineSetupDialog({
               </div>
             </section>
           ) : null}
-        </DialogContent>
-      </Dialog>
+      </RecordDrawer>
       <AlertDialog open={confirmDelete} onOpenChange={setConfirmDelete}>
         <AlertDialogContent>
           <AlertDialogHeader>
