@@ -137,7 +137,8 @@ export function PayApplicationClientReport({
   return (
     <>
       <style>{`
-        @page { size: letter landscape; margin: 0; }
+        /* The bottom margin holds the PDF's "Page X of N" footer, clear of the document. */
+        @page { size: letter landscape; margin: 0.3in 0 0.4in; }
         .pay-app-report {
           --muted-foreground: var(--report-secondary);
           --border: var(--report-rule);
@@ -175,7 +176,11 @@ export function PayApplicationClientReport({
         @media print {
           body { background: white !important; }
           .document-report-actions { display: none !important; }
-          .pay-app-page { margin: 0; border: 0; break-after: page; }
+          /* Printed a little smaller so the G702 fits one page; width and padding undo the scale. */
+          .pay-app-page {
+            zoom: 0.82; width: calc(11in / 0.82); min-height: 0; padding: calc(0.15in / 0.82) calc(0.5in / 0.82) 0;
+            margin: 0; border: 0; break-after: page;
+          }
           .pay-app-page:last-child { break-after: auto; }
           .pay-app-g703 thead { display: table-header-group; }
           .pay-app-g703 tr { break-inside: avoid; }
@@ -252,23 +257,6 @@ export function PayApplicationClientReport({
                   <tr><td>10</td><td>Balance to finish, including retainage (line 3 − 6)</td><td className="num">{money(draft.balanceToFinish)}</td></tr>
                 </tbody>
               </table>
-              <h2 className="mb-1 mt-4 text-sm font-semibold">Change summary</h2>
-              <ChangeSummaryTable
-                label="Change orders"
-                summary={changes.changeOrders}
-                plusLabel="Additions"
-                minusLabel="Deductions"
-                netLabel="Net change by change orders"
-                lineLabel="2a"
-              />
-              <ChangeSummaryTable
-                label="Variances"
-                summary={changes.variances}
-                plusLabel="Increases"
-                minusLabel="Decreases"
-                netLabel="Net change by variances"
-                lineLabel="2b"
-              />
             </div>
             <div className="grid content-start gap-4">
               <section className="pay-app-cert">
@@ -293,7 +281,30 @@ export function PayApplicationClientReport({
               </section>
             </div>
           </div>
-          <p className="mt-3 text-right text-xs text-report-secondary">G702 · Application and certificate</p>
+          <section className="mt-4">
+            <div className="mb-1 flex items-baseline justify-between gap-4">
+              <h2 className="text-sm font-semibold">Change summary</h2>
+              <p className="text-xs text-report-secondary">G702 · Application and certificate</p>
+            </div>
+            <div className="grid grid-cols-2 items-start gap-6">
+              <ChangeSummaryTable
+                label="Change orders"
+                summary={changes.changeOrders}
+                plusLabel="Additions"
+                minusLabel="Deductions"
+                netLabel="Net change by change orders"
+                lineLabel="2a"
+              />
+              <ChangeSummaryTable
+                label="Variances"
+                summary={changes.variances}
+                plusLabel="Increases"
+                minusLabel="Decreases"
+                netLabel="Net change by variances"
+                lineLabel="2b"
+              />
+            </div>
+          </section>
         </article>
 
         <article className="pay-app-page pay-app-g703-page bg-report-paper" aria-label="G703 continuation sheet">
