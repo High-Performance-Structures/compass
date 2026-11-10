@@ -60,7 +60,7 @@ export default async function ProjectSelectionsPage({
   searchParams,
 }: {
   readonly params: Promise<{ readonly id: string }>
-  readonly searchParams: Promise<{ readonly status?: string }>
+  readonly searchParams: Promise<{ readonly status?: string; readonly selection?: string }>
 }): Promise<React.ReactElement> {
   const { id: rawProjectId } = await params
   const query = await searchParams
@@ -145,6 +145,7 @@ export default async function ProjectSelectionsPage({
         rounds={sheet.rounds}
         statusLabels={sheet.statusLabels}
         initialFilter={parseSelectionListFilter(query.status ?? (await listSheetStartFilter("selections.job")))}
+        initialOpenId={typeof query.selection === "string" ? query.selection : null}
       />
       <div className="mt-8 border-t pt-6">
         <h2 className="text-lg font-semibold">Publish to the owner</h2>

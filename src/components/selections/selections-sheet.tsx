@@ -146,6 +146,7 @@ export function SelectionsSheet({
   rounds,
   statusLabels,
   initialFilter,
+  initialOpenId = null,
 }: {
   readonly projectId: string
   readonly rows: readonly SelectionSheetRow[]
@@ -154,11 +155,13 @@ export function SelectionsSheet({
   /** The company's status names (Settings › Selections › Status names). */
   readonly statusLabels: SelectionStatusLabels
   readonly initialFilter: SelectionListFilter
+  /** A selection to open on arrival (for example from "Save to Compass"). */
+  readonly initialOpenId?: string | null
 }): React.ReactElement {
   const router = useRouter()
   const [filter, setFilter] = React.useState<SelectionListFilter>(initialFilter)
   const [query, setQuery] = React.useState("")
-  const [openId, setOpenId] = React.useState<string | null>(null)
+  const [openId, setOpenId] = React.useState<string | null>(() => (initialOpenId && rows.some((row) => row.id === initialOpenId) ? initialOpenId : null))
   // A round key, "" for selections in no round, or null for every round.
   const [round, setRound] = React.useState<string | null>(null)
   const inRound = React.useMemo(
