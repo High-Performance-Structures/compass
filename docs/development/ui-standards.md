@@ -525,6 +525,10 @@ Activity entry for each send, reply, and outside response.
 - Consequential deletion requires clear confirmation, authorization,
   dependency handling, and audit or recovery safeguards appropriate to the
   record.
+- A one-record "Delete" button on a project page uses
+  `ConfirmDeleteButton` (`src/components/shared/confirm-delete-button.tsx`):
+  it supplies the wording and the server action; the shared button handles
+  the confirmation, "Deleting...", the error message and the refresh.
 
 ## Release review
 

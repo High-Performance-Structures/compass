@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
 
 import { ALL, filtersWithDivision, selectionStatusLabel } from "./rfq-draft"
-import type { RfqSelectionsState } from "./use-rfq-create-draft"
+import type { RfqSelectionsState } from "./use-rfq-scope-draft"
 
 /** "Import finish selections": filter room selections and pull them in as rows. */
 export function RfqSelectionImport({
