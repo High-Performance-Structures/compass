@@ -383,6 +383,27 @@ export async function deleteSelectionLink(projectId: string, selectionId: string
   }
 }
 
+/**
+ * "Save to Compass" from a supplier's product page: adds a new choice and
+ * attaches the page as its supplier link, the same two steps as adding a
+ * choice and then a link by hand. When the link cannot be saved the new
+ * choice is removed again, so a failed save leaves nothing behind.
+ */
+export async function saveChoiceFromLink(
+  projectId: string,
+  selectionId: string,
+  input: SelectionChoiceInput,
+  rawUrl: string,
+): Promise<Done> {
+  if (!normalizeSupplierUrl(rawUrl)) return { success: false, error: "Enter a web address that starts with http:// or https://." }
+  const choice = await saveSelectionChoice(projectId, selectionId, null, input)
+  if (!choice.success) return choice
+  const link = await addSelectionLink(projectId, selectionId, choice.data.id, rawUrl, "staff")
+  if (link.success) return choice
+  await deleteSelectionChoice(projectId, choice.data.id)
+  return link
+}
+
 // ---- photos (staff)
 
 /** Links existing project photos to the selection, or to one of its choices. */

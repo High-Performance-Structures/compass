@@ -4,13 +4,14 @@
  * Settings > Workflows > Selections: the company's selection rounds (name,
  * the schedule item that sets the due date, days before it), default lead
  * times by category, the owner-price markup, and the variance-to-change-
- * order threshold.
+ * order threshold. Also offers the "Save to Compass" bookmarks-bar button.
  */
 import * as React from "react"
 import { IconArrowDown, IconArrowUp, IconPlus, IconTrash } from "@tabler/icons-react"
 import { toast } from "sonner"
 
 import { getFeatureSettingsForEditor, resetFeatureSettings, saveFeatureSettings } from "@/app/actions/feature-settings"
+import { SaveToCompassBookmarklet } from "@/components/selections/save-to-compass-bookmarklet"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -116,6 +117,7 @@ export function SelectionSettingsSection(): React.ReactElement {
         <h2 id="selection-settings" className="text-base font-semibold">{GROUP.label}</h2>
         <p className="text-sm text-muted-foreground">{GROUP.description}</p>
       </div>
+      <SaveToCompassBookmarklet />
       {error ? <p className="text-sm text-destructive">{error}</p> : null}
       {!loaded && !error ? <p className="text-sm text-muted-foreground">Loading…</p> : null}
       {loaded ? (
