@@ -1,6 +1,7 @@
-import { describe, expect, it } from "vitest"
+import { afterEach, describe, expect, it, vi } from "vitest"
 
-import { forecastLogWeather } from "@/lib/weather/daily-log-line"
+import { forecastLogWeather, recordedLogWeather } from "@/lib/weather/daily-log-line"
+import { fetchRecordedWeatherDay } from "@/lib/weather/daily-log-server"
 import type { SiteWeatherDay } from "@/lib/weather/schedule-risk-server"
 
 const day = (patch: Partial<SiteWeatherDay>): SiteWeatherDay => ({
@@ -50,5 +51,51 @@ describe("forecastLogWeather", () => {
   it("keeps a missing temperature empty", () => {
     expect(forecastLogWeather(day({ highF: null, lowF: null }), []).tempF).toBeNull()
     expect(forecastLogWeather(day({ highF: null, lowF: null }), []).conditions).toBe("Dry")
+  })
+})
+
+describe("recordedLogWeather", () => {
+  it("writes a past day in the forecast line's shape, as recorded", () => {
+    expect(recordedLogWeather({ sky: "Drizzle", highF: 54, lowF: 33, rainIn: 0.13, snowIn: 0, gustMph: 25 })).toEqual({
+      tempF: 54,
+      conditions: "Drizzle, low 33F, gusts 25 mph",
+      precipitation: "0.13 in rain recorded",
+    })
+    expect(recordedLogWeather({ sky: "Clear", highF: 68, lowF: 39, rainIn: 0, snowIn: 0, gustMph: 9 })).toEqual({
+      tempF: 68,
+      conditions: "Clear, low 39F",
+      precipitation: "None recorded",
+    })
+  })
+})
+
+describe("fetchRecordedWeatherDay", () => {
+  afterEach(() => vi.unstubAllGlobals())
+
+  const respond = (daily: unknown) => {
+    const fetchMock = vi.fn<(input: URL | string) => Promise<Response>>(async () => new Response(JSON.stringify({ daily })))
+    vi.stubGlobal("fetch", fetchMock)
+    return fetchMock
+  }
+
+  it("reads the day's high, low, rain, snow and gusts in the company's time zone", async () => {
+    const fetchMock = respond({
+      weather_code: [53],
+      temperature_2m_max: [54.1],
+      temperature_2m_min: [32.6],
+      rain_sum: [0.126],
+      snowfall_sum: [0.04],
+      wind_gusts_10m_max: [24.8],
+    })
+    const day = await fetchRecordedWeatherDay({ lat: 38.83, lon: -104.8 }, "2026-11-04", "America/Chicago")
+    expect(day).toEqual({ sky: "Drizzle", highF: 54, lowF: 33, rainIn: 0.13, snowIn: 0, gustMph: 25 })
+    const url = new URL(String(fetchMock.mock.calls[0]?.[0]))
+    expect(url.searchParams.get("timezone")).toBe("America/Chicago")
+    expect(url.searchParams.get("start_date")).toBe("2026-11-04")
+  })
+
+  it("treats a day the archive hasn't filled in as missing", async () => {
+    respond({ weather_code: [null], temperature_2m_max: [null], temperature_2m_min: [null] })
+    expect(await fetchRecordedWeatherDay({ lat: 38.83, lon: -104.8 }, "2026-11-09", "America/Denver")).toBeNull()
   })
 })

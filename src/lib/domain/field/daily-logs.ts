@@ -17,7 +17,7 @@ import {
 } from "@/lib/daily-logs/log-followups-server"
 import { normalizeDailyLogNotes } from "@/lib/daily-logs/notes"
 import type { Db } from "@/lib/server/action-context"
-import { siteForecastLogWeather } from "@/lib/weather/daily-log-server"
+import { siteLogWeather } from "@/lib/weather/daily-log-server"
 
 import {
   dailyLogFormValues,
@@ -106,19 +106,20 @@ function hasWeather(input: CreateDailyLogInput): boolean {
 }
 
 /**
- * A new log saved without weather gets the job site's forecast for its date.
- * A forecast that can't be read never stops the log from saving.
+ * A new log saved without weather gets the job site's weather for its date:
+ * the forecast, or what was recorded for a past date. Weather that can't be
+ * read never stops the log from saving.
  */
-async function forecastWeatherColumns(db: Db, orgId: string, projectId: string, logDate: string, input: CreateDailyLogInput) {
+async function siteWeatherColumns(db: Db, orgId: string, projectId: string, logDate: string, input: CreateDailyLogInput) {
   if (hasWeather(input)) return {}
-  const weather = await siteForecastLogWeather(db, orgId, projectId, logDate, Date.now()).catch(() => null)
-  if (!weather) return {}
+  const found = await siteLogWeather(db, orgId, projectId, logDate, Date.now()).catch(() => null)
+  if (!found) return {}
   return {
-    weatherTempF: weather.tempF,
-    weatherConditions: weather.conditions,
-    weatherPrecipitation: weather.precipitation,
-    weatherSource: "site_forecast",
-  } as const
+    weatherTempF: found.weather.tempF,
+    weatherConditions: found.weather.conditions,
+    weatherPrecipitation: found.weather.precipitation,
+    weatherSource: found.source,
+  }
 }
 
 /**
@@ -174,7 +175,7 @@ export async function createDailyLog(
   const lines = checked?.ok
     ? linkedWorkLines(checked.lines, new Set(followUps?.ok ? followUps.todos.keys() : []))
     : []
-  const forecastWeather = await forecastWeatherColumns(db, orgId, projectId, logDate, input)
+  const siteWeather = await siteWeatherColumns(db, orgId, projectId, logDate, input)
 
   await insertDailyLog(db, {
     id: dailyLogId,
@@ -184,7 +185,7 @@ export async function createDailyLog(
     sourceExternalId: null,
     logDate,
     ...dailyLogContent(input, workCompleted, checked?.ok ? checked.lines : null),
-    ...forecastWeather,
+    ...siteWeather,
     tags: null,
     createdAt: now,
     updatedAt: now,

@@ -4,7 +4,7 @@ import * as React from "react"
 
 import {
   createProjectDailyLog,
-  getProjectForecastLogWeather,
+  getProjectLogWeather,
   getProjectWeatherSnapshot,
   updateProjectDailyLog,
 } from "@/app/actions/project-field"
@@ -71,7 +71,7 @@ export type DailyLogForms = {
   readonly submitDailyLog: (event: React.FormEvent<HTMLFormElement>) => void
   readonly submitDailyLogEdit: (event: React.FormEvent<HTMLFormElement>, log: ProjectDailyLogItem) => void
   readonly fillWeather: () => void
-  /** Fills blank weather from the site forecast; quiet when there is none. */
+  /** Fills blank weather from the site forecast or recorded weather; quiet when there is none. */
   readonly prefillWeather: () => void
 }
 
@@ -306,7 +306,7 @@ export function useDailyLogForms({
   function prefillWeather(): void {
     const logDate = draft.logDate
     if (draft.weatherTempF || draft.weatherConditions || draft.weatherPrecipitation) return
-    void getProjectForecastLogWeather(workspace.project.id, logDate).then((result) => {
+    void getProjectLogWeather(workspace.project.id, logDate).then((result) => {
       if (!result.success || !result.weather) return
       const { weather } = result
       // Leaves anything typed or a changed date alone while this was loading.

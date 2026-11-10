@@ -1,7 +1,8 @@
 /**
  * Weather for a daily log: the job site's stored forecast for today and the
- * next two days, else live National Weather Service observations for today
- * and the Open-Meteo archive for past dates.
+ * next two days or its recorded weather for past dates, else (no located
+ * site) the same lookups from the project address: live National Weather
+ * Service observations for today and recorded weather for past dates.
  */
 import { eq } from "drizzle-orm"
 
@@ -13,16 +14,17 @@ import { readPortfolioMapRules } from "@/lib/portfolio-map/rules-server"
 import { DEFAULT_MAP_STATE } from "@/lib/portfolio-map/states"
 import type { Db } from "@/lib/server/action-context"
 import { isRecord } from "@/lib/shared/guards"
-import { siteForecastLogWeather } from "@/lib/weather/daily-log-server"
+import { recordedLogWeather } from "@/lib/weather/daily-log-line"
+import { fetchRecordedWeatherDay, siteLogWeather } from "@/lib/weather/daily-log-server"
+import { DEFAULT_TIME_ZONE, organizationTimeZone } from "@/lib/weather/schedule-risk-server"
+import { dateKeyInTimeZone } from "@/lib/work-calendar"
 
 import {
   fahrenheitFromCelsius,
   inchesFromMeters,
-  inchesText,
   isTodayOrFuture,
   normalizedLogDate,
   optionalText,
-  weatherCodeLabel,
 } from "./rules"
 
 type ProjectWeatherSnapshot = {
@@ -60,13 +62,6 @@ function stringValue(value: JsonRecord, key: string): string | null {
 function numberValue(value: JsonRecord, key: string): number | null {
   const child = value[key]
   return typeof child === "number" && Number.isFinite(child) ? child : null
-}
-
-function firstNumber(value: JsonRecord, key: string): number | null {
-  const child = value[key]
-  if (!Array.isArray(child)) return null
-  const first: unknown = child[0]
-  return typeof first === "number" && Number.isFinite(first) ? first : null
 }
 
 async function fetchProjectWeather(
@@ -141,60 +136,16 @@ async function fetchProjectWeather(
 
 async function fetchHistoricalProjectWeather(
   coordinates: CoordinatePair,
-  logDate: string
+  logDate: string,
+  timeZone: string
 ): Promise<ProjectWeatherSnapshot | null> {
-  const url = new URL("https://archive-api.open-meteo.com/v1/archive")
-  url.searchParams.set("latitude", coordinates.latitude.toFixed(4))
-  url.searchParams.set("longitude", coordinates.longitude.toFixed(4))
-  url.searchParams.set("start_date", logDate)
-  url.searchParams.set("end_date", logDate)
-  url.searchParams.set(
-    "daily",
-    [
-      "weather_code",
-      "temperature_2m_mean",
-      "precipitation_sum",
-      "rain_sum",
-      "snowfall_sum",
-    ].join(",")
-  )
-  url.searchParams.set("temperature_unit", "fahrenheit")
-  url.searchParams.set("precipitation_unit", "inch")
-  url.searchParams.set("timezone", "America/Denver")
-
-  const response = await fetch(url, {
-    headers: {
-      Accept: "application/json",
-      "User-Agent": "Compass project management weather lookup",
-    },
-  })
-  if (!response.ok) return null
-
-  const parsed: unknown = await response.json()
-  if (!isRecord(parsed)) return null
-
-  const daily = recordValue(parsed, "daily")
-  if (!daily) return null
-
-  const tempF = firstNumber(daily, "temperature_2m_mean")
-  const precipitation = firstNumber(daily, "precipitation_sum")
-  const rain = firstNumber(daily, "rain_sum")
-  const snow = firstNumber(daily, "snowfall_sum")
-  const weatherCode = firstNumber(daily, "weather_code")
-  const precipitationParts = [
-    inchesText(precipitation, "precipitation"),
-    inchesText(rain, "rain"),
-    inchesText(snow, "snow"),
-  ].filter((part): part is string => part !== null)
-
+  const day = await fetchRecordedWeatherDay({ lat: coordinates.latitude, lon: coordinates.longitude }, logDate, timeZone)
+  if (!day) return null
   return {
-    tempF: tempF === null ? null : Math.round(tempF),
-    conditions: weatherCodeLabel(weatherCode),
-    precipitation:
-      precipitationParts.length > 0 ? precipitationParts.join(", ") : "None recorded",
+    ...recordedLogWeather(day),
     station: null,
     locationLabel: coordinates.label ?? coordinates.query,
-    source: "Open-Meteo historical archive",
+    source: "recorded weather",
   }
 }
 
@@ -222,18 +173,24 @@ export async function projectWeatherSnapshot(
     return { success: false, error: "Project not found." }
   }
 
-  const today = new Date().toISOString().slice(0, 10)
+  const timeZone = project.organizationId ? await organizationTimeZone(db, project.organizationId) : DEFAULT_TIME_ZONE
+  const today = dateKeyInTimeZone(new Date(), timeZone)
   const logDate =
     requestedLogDate && requestedLogDate.trim().length > 0
       ? normalizedLogDate(requestedLogDate)
       : today
-  const forecast = project.organizationId
-    ? await siteForecastLogWeather(db, project.organizationId, projectId, logDate, Date.now())
+  const site = project.organizationId
+    ? await siteLogWeather(db, project.organizationId, projectId, logDate, Date.now())
     : null
-  if (forecast) {
+  if (site) {
     return {
       success: true,
-      weather: { ...forecast, station: null, locationLabel: null, source: "the job site's forecast" },
+      weather: {
+        ...site.weather,
+        station: null,
+        locationLabel: null,
+        source: site.source === "site_forecast" ? "the job site's forecast" : "the job site's recorded weather",
+      },
     }
   }
 
@@ -268,7 +225,7 @@ export async function projectWeatherSnapshot(
 
   const weather = isTodayOrFuture(logDate, today)
     ? await fetchProjectWeather(coordinates)
-    : await fetchHistoricalProjectWeather(coordinates, logDate)
+    : await fetchHistoricalProjectWeather(coordinates, logDate, timeZone)
   if (!weather) {
     return {
       success: false,

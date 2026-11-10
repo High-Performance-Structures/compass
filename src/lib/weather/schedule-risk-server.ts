@@ -14,12 +14,13 @@ import { HISTORY_STEPS, SERIES_STEPS, STEP_MS, type CellSeries } from "@/lib/wea
 
 type Db = ReturnType<typeof getDb>
 
-const DEFAULT_TIME_ZONE = "America/Denver"
+export const DEFAULT_TIME_ZONE = "America/Denver"
 /** Items starting within this many days are checked (the forecast is good for about a week). */
 const RISK_HORIZON_DAYS = 5
 const SWEEP_PROJECTS_PER_RUN = 60
 
-async function organizationTimeZone(db: Db, organizationId: string): Promise<string> {
+/** The company's time zone (Settings → Calendar), Mountain time when unset. */
+export async function organizationTimeZone(db: Db, organizationId: string): Promise<string> {
   const row = await db
     .select({ timeZone: organizationCalendarSettings.timeZone })
     .from(organizationCalendarSettings)
