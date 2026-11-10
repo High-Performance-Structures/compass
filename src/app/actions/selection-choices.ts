@@ -35,6 +35,8 @@ import {
   selectionPublishedToOwner,
   type SelectionChoicesPanel,
 } from "@/lib/domain/selections/choices-read"
+import { loadLeadTimeContext, loadSelectionLeadTimeWarnings } from "@/lib/domain/selections/lead-time-read"
+import type { SelectionLeadTimeWarning } from "@/lib/domain/selections/lead-time-rules"
 import { loadOwnerChoiceBoard, type OwnerBoardSelection } from "@/lib/domain/selections/owner-board-read"
 import { selectionPickIsSigned } from "@/lib/domain/selections/round-signing"
 import { checkRoundsReady, loadRoundCards, type RoundCard } from "@/lib/domain/selections/rounds-server"
@@ -528,6 +530,8 @@ export type SelectionSheetData = {
   readonly rounds: readonly RoundCard[]
   /** The company's selection status names, with defaults filled in. */
   readonly statusLabels: SelectionStatusLabels
+  /** Selections at risk of arriving late because of a choice's lead time (Settings > Selections window). */
+  readonly leadTimeWarnings: readonly SelectionLeadTimeWarning[]
 }
 
 /** The staff Selections sheet: every selection on the job plus the supplier list. Throws the access errors. */
@@ -538,7 +542,13 @@ export async function getSelectionSheet(projectId: string): Promise<SelectionShe
     loadSupplierOptions(db, organizationId),
     readSelectionStatusLabels(db, organizationId),
   ])
-  return { rows, suppliers, rounds: await loadRoundCards(db, projectId, organizationId, rows), statusLabels }
+  const rounds = await loadRoundCards(db, projectId, organizationId, rows)
+  const leadTimeContext = await loadLeadTimeContext(db, {
+    projectId,
+    organizationId,
+    phaseDueDates: new Map(rounds.map((round) => [round.key, round.dueDate])),
+  })
+  return { rows, suppliers, rounds, statusLabels, leadTimeWarnings: await loadSelectionLeadTimeWarnings(db, projectId, leadTimeContext) }
 }
 
 /** The owner's choosing view (staff may preview it). Throws the access errors. */

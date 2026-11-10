@@ -4,11 +4,14 @@
  * A job's Selections sheet (registry sheet "selections.job"): status filter
  * buttons, search, and a sortable sheet whose default order keeps each room
  * together with follow-up selections indented under the selection that
- * opens them. Clicking a row opens its detail panel beside the sheet.
+ * opens them, and a "Late risk" filter for selections whose lead time puts
+ * them at risk of arriving late. Clicking a row opens its detail panel
+ * beside the sheet.
  */
 import * as React from "react"
 import { useRouter } from "next/navigation"
 import type { ColumnDef } from "@tanstack/react-table"
+import { IconAlertTriangle } from "@tabler/icons-react"
 
 import { useListSheetFilterLabel } from "@/components/list-sheets/use-list-sheet"
 import { RecordSearchInput, RecordTable, useRecordTable } from "@/components/record-table"
@@ -19,6 +22,8 @@ import { SelectionDetailPanel } from "@/components/selections/selection-detail-p
 import { SelectionRoundCards } from "@/components/selections/selection-round-cards"
 import { SourceTag } from "@/components/shared/source-tag"
 import { StatusFilterBar } from "@/components/status-filter-bar"
+import { Button } from "@/components/ui/button"
+import { leadTimeLabel, type SelectionLeadTimeWarning } from "@/lib/domain/selections/lead-time-rules"
 import type { RoundCard } from "@/lib/domain/selections/rounds-server"
 import { selectionStatusLabel, type SelectionStatusLabels } from "@/lib/domain/selections/status-labels"
 import type { SupplierOption } from "@/lib/domain/selections/selection-sheet-read"
@@ -46,10 +51,22 @@ const GROUP_COLOR: Readonly<Record<ReturnType<typeof selectionStatusGroup>, Reco
 
 const rowId = (row: SelectionSheetRow): string => row.id
 
+/** The short lead-time flag under a selection's name in the sheet. */
+function LeadTimeFlag({ warning }: { readonly warning: SelectionLeadTimeWarning | undefined }): React.ReactElement | null {
+  if (!warning) return null
+  return (
+    <p className={cn("text-xs font-medium", warning.level === "late" ? "text-destructive" : "text-warning")}>
+      {leadTimeLabel(warning.leadTimeDays)} ·{" "}
+      {warning.level === "late" ? `won't arrive by ${formatDate(warning.neededByDate, "short")}` : `order by ${formatDate(warning.orderByDate, "short")}`}
+    </p>
+  )
+}
+
 /** The Selections sheet's columns (registry sheet "selections.job"). */
 export function selectionColumns(
   roundNames: ReadonlyMap<string, string> = new Map(),
   statusLabels?: SelectionStatusLabels,
+  leadTimes: ReadonlyMap<string, SelectionLeadTimeWarning> = new Map(),
 ): ColumnDef<SelectionSheetRow>[] {
   const roundName = (row: SelectionSheetRow): string | undefined => (row.roundKey ? roundNames.get(row.roundKey) : undefined)
   return [
@@ -70,6 +87,7 @@ export function selectionColumns(
               Opens {original.followUpCount} follow-up{original.followUpCount === 1 ? "" : "s"}
             </p>
           )}
+          <LeadTimeFlag warning={leadTimes.get(original.id)} />
         </div>
       ),
     },
@@ -145,6 +163,7 @@ export function SelectionsSheet({
   suppliers,
   rounds,
   statusLabels,
+  leadTimeWarnings,
   initialFilter,
   initialOpenId = null,
 }: {
@@ -154,6 +173,8 @@ export function SelectionsSheet({
   readonly rounds: readonly RoundCard[]
   /** The company's status names (Settings › Selections › Status names). */
   readonly statusLabels: SelectionStatusLabels
+  /** Selections at risk of arriving late because of a lead time, from the server. */
+  readonly leadTimeWarnings: readonly SelectionLeadTimeWarning[]
   readonly initialFilter: SelectionListFilter
   /** A selection to open on arrival (for example from "Save to Compass"). */
   readonly initialOpenId?: string | null
@@ -168,18 +189,24 @@ export function SelectionsSheet({
     () => (round === null ? rows : rows.filter((row) => (row.roundKey ?? "") === round)),
     [rows, round],
   )
+  const leadTimes = React.useMemo(() => new Map(leadTimeWarnings.map((warning) => [warning.selectionId, warning])), [leadTimeWarnings])
+  const [lateRiskOnly, setLateRiskOnly] = React.useState(false)
+  const lateRiskCount = inRound.filter((row) => leadTimes.has(row.id)).length
   const visible = React.useMemo(
-    () => inRound.filter((row) => selectionMatchesFilter(row, filter) && selectionMatchesSearch(row, query)),
-    [inRound, filter, query],
+    () =>
+      inRound.filter(
+        (row) => selectionMatchesFilter(row, filter) && selectionMatchesSearch(row, query) && (!lateRiskOnly || leadTimes.has(row.id)),
+      ),
+    [inRound, filter, query, lateRiskOnly, leadTimes],
   )
   const roundNames = React.useMemo(() => new Map(rounds.map((item) => [item.key, item.name])), [rounds])
-  const columns = React.useMemo(() => selectionColumns(roundNames, statusLabels), [roundNames, statusLabels])
+  const columns = React.useMemo(() => selectionColumns(roundNames, statusLabels, leadTimes), [roundNames, statusLabels, leadTimes])
   const filterLabel = useListSheetFilterLabel("selections.job")
   const table = useRecordTable({
     data: visible,
     columns,
     getRowId: rowId,
-    resetKey: `${filter}:${query}:${round ?? "*"}`,
+    resetKey: `${filter}:${query}:${round ?? "*"}:${lateRiskOnly ? "late" : ""}`,
     sheetId: "selections.job",
   })
   const open = rows.find((row) => row.id === openId) ?? null
@@ -198,18 +225,34 @@ export function SelectionsSheet({
         unassigned={rows.filter((row) => !row.roundKey || !roundNames.has(row.roundKey)).length}
       />
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <StatusFilterBar
-          kind="button"
-          label="Filter selections by status"
-          options={selectionListFilters(statusLabels).map((option) => ({
-            ...option,
-            label: filterLabel(option.value, option.label),
-            count: inRound.filter((row) => selectionMatchesFilter(row, option.value)).length,
-            pinned: option.value === "open" || option.value === "all",
-          }))}
-          selected={filter}
-          onSelect={setFilter}
-        />
+        <div className="flex flex-wrap items-center gap-1">
+          <StatusFilterBar
+            kind="button"
+            label="Filter selections by status"
+            options={selectionListFilters(statusLabels).map((option) => ({
+              ...option,
+              label: filterLabel(option.value, option.label),
+              count: inRound.filter((row) => selectionMatchesFilter(row, option.value)).length,
+              pinned: option.value === "open" || option.value === "all",
+            }))}
+            selected={filter}
+            onSelect={setFilter}
+          />
+          {(lateRiskCount > 0 || lateRiskOnly) && (
+            <Button
+              type="button"
+              size="sm"
+              variant={lateRiskOnly ? "secondary" : "ghost"}
+              aria-pressed={lateRiskOnly}
+              title="Selections whose lead time means they must be ordered soon, or may not arrive in time"
+              onClick={() => setLateRiskOnly((value) => !value)}
+            >
+              <IconAlertTriangle className="size-4 text-warning" />
+              Late risk
+              <span className="tabular-nums text-muted-foreground">{lateRiskCount}</span>
+            </Button>
+          )}
+        </div>
         <RecordSearchInput
           value={query}
           onChange={setQuery}
@@ -231,7 +274,17 @@ export function SelectionsSheet({
         </div>
         {open && (
           <div className="min-w-0 flex-[1_1_400px]">
-            <SelectionDetailPanel key={open.id} projectId={projectId} row={open} rows={rows} rounds={rounds} suppliers={suppliers} statusLabels={statusLabels} onChanged={refresh} />
+            <SelectionDetailPanel
+              key={open.id}
+              projectId={projectId}
+              row={open}
+              rows={rows}
+              rounds={rounds}
+              suppliers={suppliers}
+              statusLabels={statusLabels}
+              leadTimeWarning={leadTimes.get(open.id) ?? null}
+              onChanged={refresh}
+            />
           </div>
         )}
       </div>

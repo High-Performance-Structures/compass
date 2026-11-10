@@ -3,9 +3,10 @@ import { z } from "zod/v4"
 /*
  * Settings > Workflows > Selections: the company's selection rounds (which
  * schedule item sets each round's due date), default lead times by
- * selection category, the markup that prefills a choice's owner price from
- * the supplier price, and the over-budget percent at which a variance is
- * treated as a change order. Pure and client-safe.
+ * selection category, how many days ahead a long lead time is flagged, the
+ * markup that prefills a choice's owner price from the supplier price, and
+ * the over-budget percent at which a variance is treated as a change order.
+ * Pure and client-safe.
  */
 
 const roundSchema = z.object({
@@ -26,6 +27,11 @@ export const selectionSettingsSchema = z.object({
   rounds: z.array(roundSchema).max(20),
   /** Default lead time in days for a selection category (e.g. "Tile": 21); a choice's own lead time wins. */
   leadTimeDays: z.record(z.string().trim().min(1).max(80), z.number().int().min(0).max(730)),
+  /**
+   * Warn this many days before a choice's order-by date (the selection's due
+   * date minus the choice's lead time); a to-do goes to the project manager then.
+   */
+  leadTimeWarningDays: z.number().int().min(0).max(90),
   /** Owner price = supplier price plus this percent, when staff leave the owner price blank. Null: no prefill. */
   ownerMarkupPercent: z.number().min(0).max(1000).nullable(),
   /** A variance this far over budget is handled as a change order needing the owner's signature. */
@@ -41,6 +47,7 @@ const DEFAULT_SELECTION_SETTINGS: SelectionSettings = {
     { id: "finishes", name: "Finishes", scheduleItem: "Drywall", bufferDays: 21 },
   ],
   leadTimeDays: {},
+  leadTimeWarningDays: 7,
   ownerMarkupPercent: null,
   changeOrderThresholdPercent: 10,
 }
@@ -48,7 +55,7 @@ const DEFAULT_SELECTION_SETTINGS: SelectionSettings = {
 export const SELECTION_SETTINGS_GROUP = {
   label: "Selections",
   description:
-    "Selection Phases and the schedule items that set their due dates, default lead times by category, the markup that fills in owner prices, and when a variance becomes a change order.",
+    "Selection Phases and the schedule items that set their due dates, default lead times by category and how early a long lead time is flagged, the markup that fills in owner prices, and when a variance becomes a change order.",
   defaults: DEFAULT_SELECTION_SETTINGS,
   schema: selectionSettingsSchema,
 }

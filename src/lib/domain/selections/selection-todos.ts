@@ -21,7 +21,7 @@ import type { Db } from "@/lib/server/action-context"
 
 /** The selection steps that make a to-do. */
 
-export type SelectionTodoStep = "price_choices" | "order" | "owner_question"
+export type SelectionTodoStep = "price_choices" | "order" | "owner_question" | "order_lead_time"
 
 const STEP_TEXT: Readonly<Record<SelectionTodoStep, { readonly title: string; readonly description: string; readonly priority: string }>> = {
   price_choices: {
@@ -37,6 +37,11 @@ const STEP_TEXT: Readonly<Record<SelectionTodoStep, { readonly title: string; re
   owner_question: {
     title: "Answer owner question on",
     description: "The owner commented on this selection. Reply in the selection's comments.",
+    priority: "high",
+  },
+  order_lead_time: {
+    title: "Place long-lead order for",
+    description: "This selection has a long lead time. Order it soon so it arrives in time.",
     priority: "high",
   },
 }
@@ -92,6 +97,10 @@ export async function loadSelectionTodos(db: Db, projectId: string, selectionId:
  * Creates the step's to-do for the selection unless one is still open.
  * Assigned to the project manager named on the job. Returns the new to-do's
  * id, or null when an open one already exists.
+ *
+ * `onceKey` makes it once only: no new to-do while any to-do for the step
+ * (open or finished) carries the same key. Scheduled checks use it so a
+ * finished to-do is not made again on the next run.
  */
 export async function ensureSelectionTodo(
   db: Db,
@@ -102,11 +111,19 @@ export async function ensureSelectionTodo(
     readonly step: SelectionTodoStep
     readonly actorId: string | null
     readonly now: string
+    readonly onceKey?: string
+    readonly dueDate?: string | null
+    /** Replaces the step's standard description. */
+    readonly description?: string
   },
 ): Promise<string | null> {
   const statuses = await loadRecordStatusListForProject(db, input.projectId, "todo")
   const open = await db
-    .select({ id: projectOperations.id, status: projectOperations.status })
+    .select({
+      id: projectOperations.id,
+      status: projectOperations.status,
+      onceKey: sql<string | null>`json_extract(${projectOperations.sagePayloadJson}, '$.selectionStepKey')`,
+    })
     .from(projectOperations)
     .where(
       and(
@@ -117,6 +134,7 @@ export async function ensureSelectionTodo(
       ),
     )
   if (open.some((row) => !isCompletedTodoStatus(statuses, row.status) && !isArchivedTodoStatus(statuses, row.status))) return null
+  if (input.onceKey !== undefined && open.some((row) => row.onceKey === input.onceKey)) return null
 
   const [project, taskCount] = await Promise.all([
     db
@@ -144,11 +162,12 @@ export async function ensureSelectionTodo(
     sourceRecordId: input.selectionId,
     sourceRecordNumber: projectTaskNumberFor(taskCount),
     title,
-    description: text.description,
+    description: input.description ?? text.description,
     status: "open",
     priority: text.priority,
     assigneeType: "internal",
     assigneeName: project.projectManager,
+    dueDate: input.dueDate ?? null,
     sageJobId: project.sageJobId,
     sageJobNumber: project.sageJobNumber,
     sageWriteStatus: "not_ready",
@@ -156,6 +175,7 @@ export async function ensureSelectionTodo(
       source: "compass_finish_selection",
       selectionId: input.selectionId,
       selectionStep: input.step,
+      ...(input.onceKey !== undefined ? { selectionStepKey: input.onceKey } : {}),
       taskType: "staff_task",
       title,
     }),
