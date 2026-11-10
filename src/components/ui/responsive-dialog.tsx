@@ -3,13 +3,7 @@
 import * as React from "react"
 import { useIsMobile } from "@/hooks/use-mobile"
 import { CarouselPages } from "@/components/ui/carousel-pages"
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog"
+import { RecordDrawer } from "@/components/record-drawer"
 import {
   Sheet,
   SheetContent,
@@ -34,14 +28,9 @@ interface ResponsiveDialogProps {
 }
 
 /**
- * A responsive dialog component based on the account modal pattern.
- * Provides consistent mobile and desktop experience with proper scrolling.
- *
- * Key features:
- * - Max height 90vh with scrollable content
- * - Optimized padding: p-4 on mobile, p-6 on desktop
- * - Consistent text sizing: title is text-base, description is text-xs
- * - Content spacing: space-y-3 with py-1
+ * A record form in the standard record drawer (see
+ * docs/development/ui-standards.md, "Record drawer"). With useSheetOnMobile,
+ * phones get a bottom sheet instead.
  *
  * @example
  * ```tsx
@@ -101,31 +90,18 @@ export function ResponsiveDialog({
     )
   }
 
+  // Records open in the standard record drawer (720px, right side); the
+  // caller's dialog width class is ignored so every drawer is the same size.
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent
-        className={cn(
-          "w-[calc(100%-2rem)] max-w-md max-h-[calc(100dvh-2rem)] flex flex-col overflow-hidden p-4 sm:p-6",
-          className
-        )}
-      >
-        {(title || description) && (
-          <DialogHeader className="space-y-1 shrink-0">
-            {title && (
-              <DialogTitle className="text-base">
-                {title}
-              </DialogTitle>
-            )}
-            {description && (
-              <DialogDescription className="text-xs">
-                {description}
-              </DialogDescription>
-            )}
-          </DialogHeader>
-        )}
-        {children}
-      </DialogContent>
-    </Dialog>
+    <RecordDrawer
+      open={open}
+      onOpenChange={onOpenChange}
+      title={title ?? ""}
+      description={description}
+      hideHeader={!title}
+    >
+      <div className="flex flex-col gap-2">{children}</div>
+    </RecordDrawer>
   )
 }
 
@@ -187,7 +163,7 @@ export function ResponsiveDialogFooter({
   return (
     <div
       className={cn(
-        "flex flex-col-reverse sm:flex-row sm:justify-end gap-2 pt-3 shrink-0",
+        "flex flex-col-reverse sm:flex-row sm:justify-end gap-2 border-t pt-4 mt-2 shrink-0",
         className
       )}
     >
