@@ -8,6 +8,7 @@
  */
 
 import * as React from "react"
+import { useRouter } from "next/navigation"
 
 import {
   Sheet,
@@ -94,4 +95,30 @@ export function useRecordDrawerItem(
     window.history.replaceState(null, "", url)
   }, [])
   return [itemId, open, close] as const
+}
+
+/**
+ * A record drawer for pages that read the open record from `?item=` on the
+ * server (RFIs, RFQs, purchase orders): the page renders it open with the
+ * record inside, and closing replaces the URL with `closeHref` (the list
+ * without `item`), keeping the scroll position.
+ */
+export function RouteRecordDrawer({
+  closeHref,
+  ...props
+}: Omit<React.ComponentProps<typeof RecordDrawer>, "open" | "onOpenChange"> & {
+  readonly closeHref: string
+}): React.ReactElement {
+  const router = useRouter()
+  const [open, setOpen] = React.useState(true)
+  return (
+    <RecordDrawer
+      {...props}
+      open={open}
+      onOpenChange={(next) => {
+        setOpen(next)
+        if (!next) router.replace(closeHref, { scroll: false })
+      }}
+    />
+  )
 }

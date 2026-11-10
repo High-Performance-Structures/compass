@@ -1,4 +1,5 @@
 import { currentDepartmentProfiles } from "@/lib/department-profiles-server"
+import { RouteRecordDrawer } from "@/components/record-drawer"
 import { getNuTechManufacturerName, getNuTechManufacturerRecipients, getNuTechOrderFormLinks, getNuTechPurchaseOrderCatalog, getNuTechShippingCostCodeOption } from "@/app/actions/nutech-airlite-po"
 import type { PurchaseOrderCatalogItem } from "@/lib/purchase-orders/catalog-item"
 import { NuTechManufacturerPoButton } from "@/components/nutech/nutech-manufacturer-po-button"
@@ -584,53 +585,64 @@ export default async function ProjectPurchaseOrdersPage({
           }
         />
 
+        {/* The opened record shows in the record drawer, over the list. */}
         {selectedPurchaseOrders.length > 0 ? (
-          selectedPurchaseOrders.map((order) => (
-            <PurchaseOrderCard
-              key={order.id}
-              brand={brand}
-              order={order}
-              projectId={id}
-              projectLabel={
-                `${project?.projectNumber ? `${project.projectNumber} - ` : ""}${
-                  project?.name ?? "Project"
-                }`
-              }
-              isCreated={order.id === createdPurchaseOrderId}
-              isFocused={order.id === focusedPurchaseOrderId}
-              emailReplies={emailReplies.filter((reply) => reply.recordId === order.id)}
-              statuses={statuses}
-              taskAssigneeOptions={taskAssignees}
-              siteContactOptions={siteContactOptions}
-              emailRecipientOptions={emailRecipientOptions}
-              jobsiteAddress={purchaseOrderCodingOptions.jobsiteAddress}
-              phaseOptions={purchaseOrderCodingOptions.phases}
-              costCodeOptions={
-                manufacturerName !== "" && order.companyName?.trim() === manufacturerName
-                  ? manufacturerCostCodes
-                  : purchaseOrderCodingOptions.costCodes
-              }
-              developerModeEnabled={developerModeEnabled}
-              paperTrail={paperTrail.enabled ? paperTrail.records[order.id] ?? null : undefined}
-              // Only the manufacturer's own POs pick lines from its price list.
-              catalogItems={
-                manufacturerName !== "" && order.companyName?.trim() === manufacturerName ? manufacturerCatalog : undefined
-              }
-              orderForm={(() => {
-                // Each Nu-Tech order has its own manufacturer PO and order form.
-                const link = orderFormLinks.find((candidate) => candidate.purchaseOrderId === order.id)
-                return link ? { ...link, needsDriveFolder: orderFormNeedsDriveFolder } : undefined
-              })()}
-              // The manufacturer's POs go to the order desk set in Settings.
-              supplierRecipients={
-                manufacturerRecipients.to !== "" &&
-                ((manufacturerName !== "" && order.companyName?.trim() === manufacturerName) ||
-                  orderFormLinks.some((candidate) => candidate.purchaseOrderId === order.id))
-                  ? manufacturerRecipients
-                  : undefined
-              }
-            />
-          ))
+          <RouteRecordDrawer
+            key={selectedPurchaseOrderId ?? "open"}
+            closeHref={`/dashboard/projects/${id}/purchase-orders?status=${statusFilter}`}
+            title={"Purchase order"}
+            hideHeader
+            className="w-[min(96vw,1180px)]"
+          >
+            <div className="grid gap-4">
+              {selectedPurchaseOrders.map((order) => (
+              <PurchaseOrderCard
+                key={order.id}
+                brand={brand}
+                order={order}
+                projectId={id}
+                projectLabel={
+                  `${project?.projectNumber ? `${project.projectNumber} - ` : ""}${
+                    project?.name ?? "Project"
+                  }`
+                }
+                isCreated={order.id === createdPurchaseOrderId}
+                isFocused={order.id === focusedPurchaseOrderId}
+                emailReplies={emailReplies.filter((reply) => reply.recordId === order.id)}
+                statuses={statuses}
+                taskAssigneeOptions={taskAssignees}
+                siteContactOptions={siteContactOptions}
+                emailRecipientOptions={emailRecipientOptions}
+                jobsiteAddress={purchaseOrderCodingOptions.jobsiteAddress}
+                phaseOptions={purchaseOrderCodingOptions.phases}
+                costCodeOptions={
+                  manufacturerName !== "" && order.companyName?.trim() === manufacturerName
+                    ? manufacturerCostCodes
+                    : purchaseOrderCodingOptions.costCodes
+                }
+                developerModeEnabled={developerModeEnabled}
+                paperTrail={paperTrail.enabled ? paperTrail.records[order.id] ?? null : undefined}
+                // Only the manufacturer's own POs pick lines from its price list.
+                catalogItems={
+                  manufacturerName !== "" && order.companyName?.trim() === manufacturerName ? manufacturerCatalog : undefined
+                }
+                orderForm={(() => {
+                  // Each Nu-Tech order has its own manufacturer PO and order form.
+                  const link = orderFormLinks.find((candidate) => candidate.purchaseOrderId === order.id)
+                  return link ? { ...link, needsDriveFolder: orderFormNeedsDriveFolder } : undefined
+                })()}
+                // The manufacturer's POs go to the order desk set in Settings.
+                supplierRecipients={
+                  manufacturerRecipients.to !== "" &&
+                  ((manufacturerName !== "" && order.companyName?.trim() === manufacturerName) ||
+                    orderFormLinks.some((candidate) => candidate.purchaseOrderId === order.id))
+                    ? manufacturerRecipients
+                    : undefined
+                }
+              />
+              ))}
+            </div>
+          </RouteRecordDrawer>
         ) : purchaseOrders.length > 0 ? (
           <p className="text-sm text-muted-foreground print:hidden">
             Select a purchase order to see its details, lines, email and print options.

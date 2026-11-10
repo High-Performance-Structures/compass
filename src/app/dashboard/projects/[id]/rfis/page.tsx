@@ -1,4 +1,5 @@
 import { decodeProjectRouteId } from "@/lib/project-route-id"
+import { RouteRecordDrawer } from "@/components/record-drawer"
 import type * as React from "react"
 import { IconMessageQuestion } from "@tabler/icons-react"
 
@@ -427,21 +428,31 @@ export default async function ProjectRfisPage({
           }
         />
 
+        {/* The opened record shows in the record drawer, over the list. */}
         {selectedRfis.length > 0 ? (
-          selectedRfis.map((rfi) => (
-            <RfiCard
-              key={rfi.id}
-              projectId={id}
-              rfi={rfi}
-              isCreated={rfi.id === createdRfiId}
-              taskAssignees={taskAssignees}
-              contacts={contacts}
-              paperTrail={paperTrail}
-              inboundEmails={inboundEmailsByRfi.get(rfi.id) ?? []}
-              vendorOptions={vendorOptions}
-              statuses={statuses}
-            />
-          ))
+          <RouteRecordDrawer
+            key={selectedRfiId ?? "open"}
+            closeHref={`/dashboard/projects/${id}/rfis?status=${statusFilter}`}
+            title={`RFI ${selectedRfis[0]?.rfiNumber ?? ""}`}
+            hideHeader
+          >
+            <div className="grid gap-4">
+              {selectedRfis.map((rfi) => (
+              <RfiCard
+                key={rfi.id}
+                projectId={id}
+                rfi={rfi}
+                isCreated={rfi.id === createdRfiId}
+                taskAssignees={taskAssignees}
+                contacts={contacts}
+                paperTrail={paperTrail}
+                inboundEmails={inboundEmailsByRfi.get(rfi.id) ?? []}
+                vendorOptions={vendorOptions}
+                statuses={statuses}
+              />
+              ))}
+            </div>
+          </RouteRecordDrawer>
         ) : rfis.length > 0 ? (
           <p className="text-sm text-muted-foreground print:hidden">
             Select an RFI to see its question, attachments, replies and response tools.
