@@ -1,6 +1,7 @@
 /** Finish selection read models and action inputs, shared by the actions, the domain module and components. */
 
 import type { ProjectSelectionStatus } from "./statuses"
+import type { SelectionStatusLabels } from "./status-labels"
 
 export type { ProjectSelectionStatus }
 
@@ -84,6 +85,8 @@ export type ProjectSelectionOptions = {
   readonly manufacturers: readonly ProjectSelectionOption[]
   readonly divisions: readonly ProjectSelectionOption[]
   readonly costCodes: readonly ProjectSelectionCostCodeOption[]
+  /** The company's selection status names (Settings › Selections › Status names). */
+  readonly statusLabels: SelectionStatusLabels
 }
 
 export type CreateProjectSelectionInput = {

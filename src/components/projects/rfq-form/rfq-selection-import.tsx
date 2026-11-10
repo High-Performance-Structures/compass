@@ -187,7 +187,7 @@ export function RfqSelectionImport({
                         {selection.costCode ?? "No code"}
                       </span>
                       <span className="truncate text-xs text-muted-foreground">
-                        {selectionStatusLabel(selection.status)}
+                        {selectionStatusLabel(selection.status, selectionOptions.statusLabels)}
                       </span>
                     </label>
                   ))

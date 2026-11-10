@@ -16,6 +16,7 @@ import { buildProjectTemplateContentApplication } from "@/lib/templates/project-
 import { parseTemplateChoiceOptions } from "@/lib/templates/template-creation-import"
 
 import { buildSelectionOptions, summarizeSelections, toSelectionItem } from "./rules"
+import { readProjectSelectionStatusLabels } from "./status-labels-server"
 import type { ProjectSelectionOptions, ProjectSelectionsSummary } from "./types"
 
 export async function loadProjectSelections(
@@ -55,7 +56,7 @@ export async function loadProjectSelectionOptions(
   db: Db,
   projectId: string
 ): Promise<ProjectSelectionOptions> {
-  const [costCodes, contacts, selections] = await Promise.all([
+  const [costCodes, contacts, selections, statusLabels] = await Promise.all([
     loadProjectCostCodeChoices(db, projectId),
     db
       .select({
@@ -77,9 +78,10 @@ export async function loadProjectSelectionOptions(
         category: projectFinishSelections.category
       })
       .from(projectFinishSelections)
-      .where(eq(projectFinishSelections.projectId, projectId))
+      .where(eq(projectFinishSelections.projectId, projectId)),
+    readProjectSelectionStatusLabels(db, projectId)
   ])
-  return buildSelectionOptions({ costCodes, contacts, selections })
+  return { ...buildSelectionOptions({ costCodes, contacts, selections }), statusLabels }
 }
 
 export type PublishedTemplateSelection = {

@@ -9,6 +9,7 @@ import { ProjectAudiencePreviewShell } from "@/components/projects/project-audie
 import { QuickAddProvider } from "@/components/quick-add-menu"
 import { dashboardFixture } from "./project-audience-dashboard"
 import { quickAddHref } from "@/lib/quick-add"
+import { DEFAULT_SELECTION_STATUS_LABELS } from "@/lib/domain/selections/status-labels"
 
 const spec = {
   roomName: "Kitchen",
@@ -74,6 +75,7 @@ const workspace: SelectionWorkspace = {
   projectId: "cedar",
   audience: staff ? "staff" : partner ? "sub_vendor" : "owner",
   canWrite: !partner && !preview,
+  statusLabels: DEFAULT_SELECTION_STATUS_LABELS,
   items: params.has("empty")
     ? []
     : [

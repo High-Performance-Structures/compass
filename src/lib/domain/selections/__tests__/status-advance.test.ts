@@ -89,6 +89,18 @@ describe("automatic status moves", () => {
     expect(activity).toEqual([{ entity_id: "tile", action: "selection_status_advanced", summary: "Backsplash moved from Needed to With owner: published to the owner." }])
   })
 
+  it("writes the company's status names into new Activity text; metadata keeps the keys", async () => {
+    sqlite.exec(`INSERT INTO organization_feature_settings (organization_id, feature_key, value, updated_at) VALUES ('org-1', 'selection-status-names', '{"names":{"owner_review":"Client review"}}', '${NOW}')`)
+    const db = drizzleOverSqlite(sqlite)
+    expect(await advanceSelectionStatus(db, { projectId: "p1", selectionIds: ["tile"], target: "owner_review", reason: { kind: "published" }, actor })).toEqual(["tile"])
+    expect(statuses()).toMatchObject({ tile: "owner_review" })
+    const activity = sqlite.prepare("SELECT summary, metadata FROM activity_events").all()
+    expect(activity).toMatchObject([{ summary: "Backsplash moved from Needed to Client review: published to the owner." }])
+    const [row] = activity
+    const metadata: unknown = typeof row === "object" && row !== null ? JSON.parse(String(Reflect.get(row, "metadata"))) : null
+    expect(metadata).toMatchObject({ from: "needed", to: "owner_review" })
+  })
+
   it("moves a purchase order's selections to Ordered once the PO is sent, never back from Installed", async () => {
     const db = drizzleOverSqlite(sqlite)
     expect(await advanceSelectionsForPurchaseOrder(db, { projectId: "p1", purchaseOrderId: "po1", purchaseOrderNumber: "PO-001", status: "draft", actor })).toEqual([])

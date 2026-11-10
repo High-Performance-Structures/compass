@@ -26,6 +26,7 @@ import type {
   SelectionDecisionItem,
   SelectionWorkspace,
 } from "@/lib/selections/types"
+import { readProjectSelectionStatusLabels } from "@/lib/domain/selections/status-labels-server"
 
 export async function getSelectionWorkspace(
   projectId: string,
@@ -40,6 +41,7 @@ export async function getSelectionWorkspace(
     changes,
     operations,
     approvalHistory,
+    statusLabels,
   ] = await Promise.all([
     db
       .select()
@@ -105,6 +107,8 @@ export async function getSelectionWorkspace(
             )
           )
           .orderBy(asc(projectSelectionDecisionEvents.createdAt)),
+    // The job's company names its statuses, also for owners and partners.
+    readProjectSelectionStatusLabels(db, projectId),
   ])
   // Reuse the portal's recipient checks; a link never grants a supplier new access.
   const partnerPreview =
@@ -244,6 +248,7 @@ export async function getSelectionWorkspace(
   return {
     projectId,
     audience,
+    statusLabels,
     canWrite:
       audience === "staff"
         ? await canFeature(user, "finish-selections", "update")

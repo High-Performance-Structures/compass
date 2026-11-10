@@ -3,7 +3,6 @@
  * recipient/category matching and finish-selection filters.
  */
 
-import { PROJECT_SELECTION_STATUS_LABELS } from "@/lib/domain/selections/statuses"
 import type {
   CreateRfqDocumentLinkInput,
   CreateRfqScopeLineInput,
@@ -172,9 +171,8 @@ export function contactTypeLabel(value: string): string {
   return value
 }
 
-export function selectionStatusLabel(status: ProjectSelectionItem["status"]): string {
-  return PROJECT_SELECTION_STATUS_LABELS[status]
-}
+/** The shared label helper: pass the company's labels (`selectionOptions.statusLabels`). */
+export { selectionStatusLabel } from "@/lib/domain/selections/status-labels"
 
 export function flattenSelections(
   summary: ProjectSelectionsSummary

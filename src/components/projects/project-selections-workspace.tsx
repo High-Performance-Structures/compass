@@ -1,6 +1,6 @@
 "use client"
 
-import { PROJECT_SELECTION_STATUS_LABELS } from "@/lib/domain/selections/statuses"
+import { selectionStatusLabel } from "@/lib/domain/selections/status-labels"
 import * as React from "react"
 import { useRouter } from "next/navigation"
 import {
@@ -60,10 +60,6 @@ function sourceLabel(selection: ProjectSelectionItem): string {
   if (selection.sourceSystem === "google_sheets") return "Sheet"
   if (selection.sourceSystem === "compass") return "Compass"
   return selection.sourceSystem
-}
-
-function selectionStatusLabel(status: ProjectSelectionItem["status"]): string {
-  return PROJECT_SELECTION_STATUS_LABELS[status]
 }
 
 function buildCostCodeMap(
@@ -362,6 +358,7 @@ function SelectionRow({
           projectId={projectId}
           selectionId={selection.id}
           status={selection.status}
+          labels={options.statusLabels}
         />
         {selection.rfqOperationId ? (
           <Badge variant="secondary" className="gap-1">
@@ -370,7 +367,7 @@ function SelectionRow({
           </Badge>
         ) : (
           <p className="text-xs text-muted-foreground">
-            {selectionStatusLabel(selection.status)}
+            {selectionStatusLabel(selection.status, options.statusLabels)}
           </p>
         )}
         {selection.costCode && costCode?.needsSageReview && (

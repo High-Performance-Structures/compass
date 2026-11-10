@@ -1,6 +1,6 @@
 "use client"
 
-import { PROJECT_SELECTION_STATUS_OPTIONS } from "@/lib/domain/selections/statuses"
+import { selectionStatusOptions } from "@/lib/domain/selections/status-labels"
 import * as React from "react"
 import { useRouter } from "next/navigation"
 import { IconCheck, IconPencil, IconPalette } from "@tabler/icons-react"
@@ -32,8 +32,6 @@ type FormState =
   | { readonly kind: "saving" }
   | { readonly kind: "saved" }
   | { readonly kind: "error"; readonly message: string }
-
-const STATUS_OPTIONS = PROJECT_SELECTION_STATUS_OPTIONS
 
 const DOCUMENT_INPUT_CLASS =
   "rounded-none border-x-0 border-t-0 px-0 shadow-none focus-visible:border-foreground focus-visible:ring-0"
@@ -90,6 +88,8 @@ export function ProjectSelectionEditForm({
   readonly projectId: string
   readonly selection: ProjectSelectionItem
 }): React.ReactElement {
+  // Company status names (Settings › Selections › Status names); keys never change.
+  const statusOptions = selectionStatusOptions(options.statusLabels)
   const router = useRouter()
   const [open, setOpen] = React.useState(false)
   const [status, setStatus] = React.useState<FormState>({ kind: "idle" })
@@ -211,10 +211,10 @@ export function ProjectSelectionEditForm({
                   className={DOCUMENT_SELECT_CLASS}
                   value={selectionStatus}
                   onValueChange={(value) => {
-                    const next = STATUS_OPTIONS.find((option) => option.value === value)
+                    const next = statusOptions.find((option) => option.value === value)
                     if (next) setSelectionStatus(next.value)
                   }}
-                  options={STATUS_OPTIONS}
+                  options={statusOptions}
                   ariaLabel="Selection status"
                   placeholder="Choose status"
                   searchPlaceholder="Search statuses..."

@@ -365,7 +365,7 @@ export type SelectionOptionSources = {
   }[]
 }
 
-export function buildSelectionOptions(sources: SelectionOptionSources): ProjectSelectionOptions {
+export function buildSelectionOptions(sources: SelectionOptionSources): Omit<ProjectSelectionOptions, "statusLabels"> {
   const divisionMap = new Map<string, ProjectSelectionOption>()
   const costCodeMap = new Map<string, ProjectSelectionCostCodeOption>()
 
