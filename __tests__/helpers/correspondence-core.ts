@@ -249,6 +249,42 @@ export function addDirectoryPeopleSchema(sqlite: Sqlite): void {
     CREATE TABLE IF NOT EXISTS customer_contacts (id TEXT PRIMARY KEY, customer_id TEXT, user_id TEXT, name TEXT, email TEXT, active INTEGER NOT NULL DEFAULT 1);
     CREATE TABLE IF NOT EXISTS vendor_contacts (id TEXT PRIMARY KEY, vendor_id TEXT, user_id TEXT, name TEXT, email TEXT, active INTEGER NOT NULL DEFAULT 1);
   `)
+  addContactDirectorySchema(sqlite)
+}
+
+/**
+ * Every directory table and column the project-contact resolver joins
+ * (src/lib/domain/contacts/resolved-columns.ts): job contacts read their
+ * name, company, email, phone and address from the directory record.
+ * Idempotent, and it never replaces a table a test already created.
+ */
+export function addContactDirectorySchema(sqlite: Sqlite): void {
+  const columns = (table: string): ReadonlySet<string> =>
+    new Set(sqlite.prepare(`PRAGMA table_info(${table})`).all().flatMap((row) => {
+      const name: unknown = row !== null && typeof row === "object" ? Reflect.get(row, "name") : null
+      return typeof name === "string" ? [name] : []
+    }))
+  const wanted: Readonly<Record<string, readonly string[]>> = {
+    projects: ["id", "organization_id"],
+    users: ["id", "email", "phone"],
+    organization_members: ["id", "organization_id", "user_id"],
+    project_contacts: ["id", "project_id", "contact_type", "source_entity_type", "source_entity_id", "display_name", "company_name", "email", "phone", "address", "customer_id", "customer_contact_id", "vendor_id", "vendor_contact_id", "internal_contact_id"],
+    customers: ["id", "organization_id", "name", "company", "email", "phone", "address"],
+    customer_contacts: ["id", "customer_id", "user_id", "name", "email", "phone", "active"],
+    vendors: ["id", "organization_id", "name", "email", "phone", "address"],
+    vendor_contacts: ["id", "vendor_id", "user_id", "name", "email", "phone", "active"],
+    internal_contacts: ["id", "organization_id", "user_id", "name", "email", "phone", "active"],
+  }
+  for (const [table, wantedColumns] of Object.entries(wanted)) {
+    const existing = columns(table)
+    if (existing.size === 0) {
+      sqlite.exec(`CREATE TABLE ${table} (${wantedColumns.map((column) => (column === "id" ? "id TEXT PRIMARY KEY" : column === "active" ? "active INTEGER NOT NULL DEFAULT 1" : `${column} TEXT`)).join(", ")})`)
+      continue
+    }
+    for (const column of wantedColumns) {
+      if (!existing.has(column)) sqlite.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${column === "active" ? "INTEGER NOT NULL DEFAULT 1" : "TEXT"}`)
+    }
+  }
 }
 
 /** A Drizzle handle over any better-sqlite3 database (for example one built from every migration). */

@@ -22,6 +22,7 @@ import { isBuildertrendArchiveChannelId } from "@/lib/conversations/channel-acce
 import { projectNumberAndName } from "@/lib/project-display-name"
 import { requireUserContext } from "@/lib/server/action-context"
 import { notArchivedPersonContact } from "@/lib/domain/contacts/person-status"
+import { resolvedContactColumns, withContactDirectory } from "@/lib/domain/contacts/resolved-columns"
 
 export type ProjectMessageRecipient =
   | { readonly kind: "channel" }
@@ -206,13 +207,13 @@ export async function sendProjectMessage(input: {
       return { success: false, error: "Message was sent but not returned" }
     }
 
-    const rawContacts = await db
+    const rawContacts = await withContactDirectory(db
       .select({
         id: projectContacts.id,
         contactType: projectContacts.contactType,
-        displayName: projectContacts.displayName,
-        companyName: projectContacts.companyName,
-        email: projectContacts.email,
+        displayName: resolvedContactColumns.displayName,
+        companyName: resolvedContactColumns.companyName,
+        email: resolvedContactColumns.email,
       })
       .from(projectContacts)
       .where(
@@ -221,7 +222,7 @@ export async function sendProjectMessage(input: {
           eq(projectContacts.active, true),
           notArchivedPersonContact()
         )
-      )
+      ).$dynamic(), organizationId)
 
     const contacts = rawContacts.map((contact) => ({
         id: contact.id,

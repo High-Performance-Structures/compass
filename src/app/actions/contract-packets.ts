@@ -62,6 +62,7 @@ import {
 import { isInternalStaffRole } from "@/lib/user-roles"
 import { contractEstimateConditions } from "@/lib/estimates/estimate-family"
 import { notArchivedPersonContact } from "@/lib/domain/contacts/person-status"
+import { resolvedContactColumns, withContactDirectory } from "@/lib/domain/contacts/resolved-columns"
 
 export type { ProjectContractPacketDocumentItem } from "@/lib/contracts/packet-types"
 
@@ -398,20 +399,19 @@ export async function getProjectContractPacketWorkspace(
       // Contract packets are for the contract estimate, not change orders.
       .where(and(eq(projectEstimates.projectId, projectId), ...contractEstimateConditions()))
       .orderBy(desc(projectEstimates.versionNumber)),
-    access.db
-      .select({
+    withContactDirectory(access.db.select({
         id: projectContacts.id,
-        name: projectContacts.displayName,
+        name: resolvedContactColumns.displayName,
         title: projectContacts.role,
-        companyName: projectContacts.companyName,
-        email: projectContacts.email,
+        companyName: resolvedContactColumns.companyName,
+        email: resolvedContactColumns.email,
         contactType: projectContacts.contactType,
       })
       .from(projectContacts)
       .where(
         and(eq(projectContacts.projectId, projectId), eq(projectContacts.active, true), notArchivedPersonContact())
       )
-      .orderBy(desc(projectContacts.primaryContact), asc(projectContacts.sortOrder)),
+      .orderBy(desc(projectContacts.primaryContact), asc(projectContacts.sortOrder)).$dynamic(), access.organizationId),
   ])
   const active = packetRows.find((row) => row.id === packetId) ?? packetRows[0] ?? null
   const documents = active

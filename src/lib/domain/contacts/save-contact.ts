@@ -47,6 +47,7 @@ import {
   writeProjectIdentityToDirectory,
 } from "./store"
 import type { ProjectContactMutationInput, ProjectContactType } from "./types"
+import { resolvedContactColumns, withContactDirectory } from "./resolved-columns"
 
 type LinkState = {
   readonly sourceSystem: string
@@ -566,12 +567,12 @@ async function planExistingContactUpdate(
   baseValues: ContactValues
 ): Promise<{ readonly link: LinkState; readonly values: ContactValues; readonly managed: boolean; readonly pendingInvitations: readonly PendingInvitation[] } | ActionFailure> {
   const { db, organizationId: orgId } = scope
-  const [existing] = await db
+  const [existing] = await withContactDirectory(db
     .select({
       id: projectContacts.id,
-      email: projectContacts.email,
-      phone: projectContacts.phone,
-      address: projectContacts.address,
+      email: resolvedContactColumns.email,
+      phone: resolvedContactColumns.phone,
+      address: resolvedContactColumns.address,
       sourceEntityType: projectContacts.sourceEntityType,
       sourceEntityId: projectContacts.sourceEntityId,
       sourceSystem: projectContacts.sourceSystem,
@@ -585,7 +586,7 @@ async function planExistingContactUpdate(
     })
     .from(projectContacts)
     .where(and(eq(projectContacts.id, contactId), eq(projectContacts.projectId, input.projectId)))
-    .limit(1)
+    .limit(1).$dynamic(), orgId)
   if (!existing) return fail("Project contact not found")
 
   const keepExistingLink = !input.directorySourceType

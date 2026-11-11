@@ -38,7 +38,7 @@ import {
   projectContactAccessStatus,
   projectContactNeedsPersonForInvitation,
 } from "@/lib/project-contact-access-status"
-import { resolveProjectContactIdentity } from "@/lib/project-contact-directory-identity"
+import { resolvedContactColumns, withContactDirectory } from "@/lib/domain/contacts/resolved-columns"
 import { updateProjectContactById } from "@/lib/domain/contacts/store"
 import { insertProjectMember, updateProjectMembers } from "@/lib/domain/project/store"
 import { projectContactAddress } from "@/lib/project-contact-privacy"
@@ -157,9 +157,10 @@ export async function sendProjectAccessInvitation(
     const { env } = await getCloudflareContext()
     if (!env?.DB) return { success: false, error: "Database not available." }
     const db = getDb(env.DB)
-    const row = await db
+    const row = await withContactDirectory(db
       .select({
         contact: projectContacts,
+        resolved: resolvedContactColumns,
         projectName: projects.name,
         projectNumber: projects.projectNumber,
         organizationId: projects.organizationId,
@@ -237,6 +238,7 @@ export async function sendProjectAccessInvitation(
           eq(projects.organizationId, currentUser.organizationId)
         )
       )
+      .$dynamic(), currentUser.organizationId)
       .get()
 
     if (!row || !row.organizationId) {
@@ -274,49 +276,13 @@ export async function sendProjectAccessInvitation(
             ? row.contact.sourceEntityId
             : null
 
-    const directoryIdentity =
-      row.contact.vendorContactId
-        ? {
-            email: row.vendorContact?.email ?? null,
-            phone: row.vendorContact?.phone ?? null,
-            address: null,
-          }
-        : row.contact.customerContactId
-          ? {
-              email: row.customerContact?.email ?? null,
-              phone: row.customerContact?.phone ?? null,
-              address: row.customer?.address ?? null,
-            }
-        : row.contact.sourceEntityType === "customer"
-        ? row.customer
-        : row.contact.sourceEntityType === "vendor"
-          ? row.vendor
-          : row.contact.internalContactId
-            ? row.internalPerson
-              ? { ...row.internalPerson, address: null }
-              : null
-          : row.contact.sourceEntityType === "user"
-            ? row.teamMember
-              ? { ...row.teamMember, address: null }
-              : null
-            : null
-    const canonicalLink = Boolean(
-      row.contact.customerContactId ||
-      row.contact.vendorContactId ||
-      row.contact.internalContactId ||
-      row.contact.customerId ||
-      row.contact.vendorId ||
-      directoryIdentity
-    )
-    const identity = resolveProjectContactIdentity(
-      {
-        email: row.contact.email,
-        phone: row.contact.phone,
-        address: projectContactAddress(row.contact.contactType, row.contact.address),
-      },
-      directoryIdentity,
-      canonicalLink
-    )
+    // The identity the job's Contacts panel shows: the directory record's
+    // (resolved-columns.ts); the copy only for an unlinked or unreachable row.
+    const identity = {
+      email: row.resolved.email,
+      phone: row.resolved.phone,
+      address: projectContactAddress(row.contact.contactType, row.resolved.address),
+    }
     const target = projectContactInvitationTarget({
       linkedUserId,
       directoryEmail: identity.email,
@@ -597,7 +563,8 @@ export async function sendProjectAccessInvitation(
     const additionalProjects = welcomeOnly ? 0 : await grantPriorProjectAccess(db, {
       organizationId: row.organizationId,
       sourceProjectId: parsed.data.projectId,
-      source: row.contact,
+      // The new job's contact starts from the directory's current values.
+      source: { ...row.contact, ...row.resolved },
       requestedProjectIds: parsed.data.additionalProjectIds,
       email: inviteEmail,
       role: membershipRole,
@@ -623,9 +590,9 @@ export async function sendProjectAccessInvitation(
       entityType: "project_access_invitation",
       entityId: row.contact.id,
       summary:
-        welcomeOnly ? `Requested a replacement Compass welcome email for ${row.contact.displayName}.` : accessStatus === "access_granted"
-          ? `Granted ${row.contact.displayName} access to ${projectLabel}.`
-          : `Prepared a Compass invitation for ${row.contact.displayName} for ${projectLabel}.`,
+        welcomeOnly ? `Requested a replacement Compass welcome email for ${row.resolved.displayName}.` : accessStatus === "access_granted"
+          ? `Granted ${row.resolved.displayName} access to ${projectLabel}.`
+          : `Prepared a Compass invitation for ${row.resolved.displayName} for ${projectLabel}.`,
     })
 
     revalidatePath(`/dashboard/projects/${parsed.data.projectId}/contacts`)
@@ -665,8 +632,8 @@ export async function listPriorBuildertrendProjects(input: {
     if (currentUser.organizationType !== "internal" || !organizationId || !isInternalStaffRole(currentUser.role)) {
       return { success: false, error: "Only authorized staff can invite project contacts." }
     }
-    const row = await db
-      .select({ contact: projectContacts, vendorEmail: vendorContacts.email, customerEmail: customerContacts.email })
+    const row = await withContactDirectory(db
+      .select({ contact: projectContacts, contactEmail: resolvedContactColumns.email, vendorEmail: vendorContacts.email, customerEmail: customerContacts.email })
       .from(projectContacts)
       .innerJoin(projects, eq(projects.id, projectContacts.projectId))
       .leftJoin(vendorContacts, eq(vendorContacts.id, projectContacts.vendorContactId))
@@ -677,13 +644,14 @@ export async function listPriorBuildertrendProjects(input: {
         eq(projectContacts.active, true),
         eq(projects.organizationId, organizationId),
       ))
+      .$dynamic(), organizationId)
       .get()
     if (!row || row.contact.contactType === "internal") return { success: true, projects: [] }
     const projectsList = await priorBuildertrendProjects(db, {
       organizationId,
       projectId: input.projectId,
       contactId: row.contact.id,
-      emails: [row.contact.email ?? "", row.vendorEmail ?? "", row.customerEmail ?? ""],
+      emails: [row.contactEmail ?? "", row.vendorEmail ?? "", row.customerEmail ?? ""],
       vendorId: row.contact.vendorId,
     })
     return { success: true, projects: projectsList }

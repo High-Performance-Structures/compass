@@ -19,6 +19,7 @@ import { buildSelectionOptions, summarizeSelections, toSelectionItem } from "./r
 import { mergeRoomNames, ROOM_OPTION_LIMIT } from "./room-options"
 import { readProjectSelectionStatusLabels } from "./status-labels-server"
 import type { ProjectSelectionOptions, ProjectSelectionsSummary } from "./types"
+import { resolvedContactColumns, withContactDirectory } from "@/lib/domain/contacts/resolved-columns"
 
 export async function loadProjectSelections(
   db: Db,
@@ -60,10 +61,10 @@ export async function loadProjectSelectionOptions(
 ): Promise<ProjectSelectionOptions> {
   const [costCodes, contacts, selections, statusLabels, rooms] = await Promise.all([
     loadProjectCostCodeChoices(db, projectId),
-    db
+    withContactDirectory(db
       .select({
-        companyName: projectContacts.companyName,
-        displayName: projectContacts.displayName,
+        companyName: resolvedContactColumns.companyName,
+        displayName: resolvedContactColumns.displayName,
         contactType: projectContacts.contactType,
         csiDivision: projectContacts.csiDivision,
         csiDivisionName: projectContacts.csiDivisionName,
@@ -71,7 +72,7 @@ export async function loadProjectSelectionOptions(
       })
       .from(projectContacts)
       .where(and(eq(projectContacts.projectId, projectId), eq(projectContacts.active, true)))
-      .orderBy(asc(projectContacts.companyName), asc(projectContacts.displayName)),
+      .orderBy(asc(resolvedContactColumns.companyName), asc(resolvedContactColumns.displayName)).$dynamic(), organizationId),
     db
       .select({
         manufacturer: projectFinishSelections.manufacturer,

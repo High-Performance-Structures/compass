@@ -24,6 +24,7 @@ import { printPdfHref } from "@/lib/print/print-documents"
 import { isInternalStaffRole } from "@/lib/user-roles"
 import { projectOwnerPortalUsers, type OwnerPortalUser } from "@/lib/owner-portal/recipients"
 import { requireUserContext } from "@/lib/server/action-context"
+import { resolvedContactColumns, withContactDirectory } from "@/lib/domain/contacts/resolved-columns"
 
 /*
  * After a pay application is approved for billing or a deposit is requested,
@@ -112,10 +113,10 @@ function ownerPortalUsers(ctx: NoticeContext): Promise<readonly OwnerPortalUser[
 
 /** Owner contacts on the project, then owner portal users, without repeats. */
 async function ownerEmailAddresses(ctx: NoticeContext): Promise<readonly string[]> {
-  const contacts = await ctx.db
-    .select({ email: projectContacts.email })
+  const contacts = await withContactDirectory(ctx.db
+    .select({ email: resolvedContactColumns.email })
     .from(projectContacts)
-    .where(and(eq(projectContacts.projectId, ctx.project.id), eq(projectContacts.contactType, "owner"), eq(projectContacts.active, true)))
+    .where(and(eq(projectContacts.projectId, ctx.project.id), eq(projectContacts.contactType, "owner"), eq(projectContacts.active, true))).$dynamic(), ctx.organizationId)
   const portal = await ownerPortalUsers(ctx)
   const addresses = [...contacts.map((row) => row.email ?? ""), ...portal.map((person) => person.email)].map(normalizeRecipientEmail)
   return [...new Set(addresses.filter(isValidRecipientEmail))].slice(0, 20)

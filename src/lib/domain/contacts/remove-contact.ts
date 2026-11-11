@@ -4,6 +4,7 @@ import { internalContacts, organizationMembers, projectAccessInvitations, projec
 import type { Db } from "@/lib/server/action-context"
 
 import { normalizeEmailKey } from "./rules"
+import { resolvedContactColumns, withContactDirectory } from "./resolved-columns"
 
 type Scope = { readonly db: Db; readonly organizationId: string; readonly projectId: string }
 
@@ -19,17 +20,17 @@ export async function loadProjectContactRemoval(
   { db, organizationId, projectId }: Scope,
   contactId: string
 ): Promise<ProjectContactRemoval | null> {
-  const [contact] = await db
+  const [contact] = await withContactDirectory(db
     .select({
       id: projectContacts.id,
       sourceEntityType: projectContacts.sourceEntityType,
       sourceEntityId: projectContacts.sourceEntityId,
       internalContactId: projectContacts.internalContactId,
-      email: projectContacts.email,
+      email: resolvedContactColumns.email,
     })
     .from(projectContacts)
     .where(and(eq(projectContacts.id, contactId), eq(projectContacts.projectId, projectId), eq(projectContacts.active, true)))
-    .limit(1)
+    .limit(1).$dynamic(), organizationId)
   if (!contact) return null
 
   const [invitationRows, linkedPerson, organizationUsers] = await Promise.all([
@@ -79,19 +80,19 @@ export async function removableProjectMemberIds(
 ): Promise<readonly string[]> {
   if (removal.memberUserIds.length === 0) return []
   const [remainingContacts, remainingInvitations] = await Promise.all([
-    db
+    withContactDirectory(db
       .select({
         sourceEntityType: projectContacts.sourceEntityType,
         sourceEntityId: projectContacts.sourceEntityId,
         linkedUserId: internalContacts.userId,
-        email: projectContacts.email,
+        email: resolvedContactColumns.email,
       })
       .from(projectContacts)
       .leftJoin(
         internalContacts,
         and(eq(projectContacts.internalContactId, internalContacts.id), eq(internalContacts.organizationId, organizationId))
       )
-      .where(and(eq(projectContacts.projectId, projectId), eq(projectContacts.active, true))),
+      .where(and(eq(projectContacts.projectId, projectId), eq(projectContacts.active, true))).$dynamic(), organizationId),
     db
       .select({
         acceptedBy: projectAccessInvitations.acceptedBy,

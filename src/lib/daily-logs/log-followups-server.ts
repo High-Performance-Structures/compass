@@ -42,6 +42,7 @@ import { recordStatusColor, recordStatusLabel } from "@/lib/domain/record-status
 import { loadRecordStatusListForProject } from "@/lib/domain/record-statuses/store"
 import { isInternalStaffRole } from "@/lib/user-roles"
 import { instantForLocalDateTime } from "@/lib/work-calendar"
+import { resolvedContactColumns, withContactDirectory } from "@/lib/domain/contacts/resolved-columns"
 
 type Db = ReturnType<typeof getDb>
 
@@ -140,11 +141,11 @@ export async function loadOpenDailyLogTodos(db: Db, projectId: string): Promise<
 
 /** Active client (owner) contacts on the project. */
 async function loadDailyLogClientContacts(db: Db, projectId: string): Promise<readonly DailyLogClientContactOption[]> {
-  const rows = await db
-    .select({ id: projectContacts.id, name: projectContacts.displayName, role: projectContacts.role })
+  const rows = await withContactDirectory(db
+    .select({ id: projectContacts.id, name: resolvedContactColumns.displayName, role: projectContacts.role })
     .from(projectContacts)
     .where(and(eq(projectContacts.projectId, projectId), eq(projectContacts.contactType, "owner"), eq(projectContacts.active, true)))
-    .orderBy(asc(projectContacts.displayName))
+    .orderBy(asc(resolvedContactColumns.displayName)).$dynamic())
   return rows.map((row) => ({ id: row.id, name: row.name, role: row.role?.trim() || null }))
 }
 
@@ -159,10 +160,10 @@ async function loadDailyLogAssignees(db: Db, organizationId: string, projectId: 
       .from(organizationMembers)
       .innerJoin(users, eq(users.id, organizationMembers.userId))
       .where(and(eq(organizationMembers.organizationId, organizationId), eq(users.isActive, true))),
-    db
-      .select({ contactType: projectContacts.contactType, name: projectContacts.displayName, companyName: projectContacts.companyName })
+    withContactDirectory(db
+      .select({ contactType: projectContacts.contactType, name: resolvedContactColumns.displayName, companyName: resolvedContactColumns.companyName })
       .from(projectContacts)
-      .where(and(eq(projectContacts.projectId, projectId), eq(projectContacts.active, true))),
+      .where(and(eq(projectContacts.projectId, projectId), eq(projectContacts.active, true))).$dynamic(), organizationId),
   ])
   const options: DailyLogAssigneeOption[] = []
   const seen = new Set<string>()

@@ -68,6 +68,7 @@ import {
   portalRfqMatchesRecipient,
 } from "@/lib/rfqs/portal-response"
 import { requireUserContext } from "@/lib/server/action-context"
+import { resolvedContactColumns, withContactDirectory } from "@/lib/domain/contacts/resolved-columns"
 
 export type { ProjectAudience } from "@/lib/project-audience-access"
 export type {
@@ -683,12 +684,11 @@ export async function getProjectAudiencePreview(
   }))
   const externalContactRows =
     audience === "sub_vendor"
-      ? await db
-          .select({
+      ? await withContactDirectory(db.select({
             id: projectContacts.id,
-            displayName: projectContacts.displayName,
-            companyName: projectContacts.companyName,
-            email: projectContacts.email,
+            displayName: resolvedContactColumns.displayName,
+            companyName: resolvedContactColumns.companyName,
+            email: resolvedContactColumns.email,
           })
           .from(projectContacts)
           .where(
@@ -700,7 +700,7 @@ export async function getProjectAudiencePreview(
                 eq(projectContacts.contactType, "subcontractor")
               )
             )
-          )
+          ).$dynamic(), organizationId)
       : []
   const ownerScheduleView =
     audience === "owner" && isOwnerScheduleView(project.ownerScheduleView)

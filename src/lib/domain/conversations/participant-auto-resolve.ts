@@ -43,6 +43,7 @@ import {
   type MatchType,
   type ParticipantIdentity,
 } from "./participant-matching"
+import { resolvedContactColumns, withContactDirectory } from "@/lib/domain/contacts/resolved-columns"
 
 /*
  * Resolves unresolved imported participants a whole identity at a time
@@ -158,12 +159,12 @@ export async function loadMatchDirectory(db: Db, organizationId: string, withCli
     db.select({ id: customerContacts.id, customerId: customerContacts.customerId, customerName: sql<string>`COALESCE(NULLIF(trim(${customers.company}), ''), ${customers.name})`, name: customerContacts.name, email: customerContacts.email, userId: customerContacts.userId, active: customerContacts.active, phone: customerContacts.phone })
       .from(customerContacts).innerJoin(customers, eq(customers.id, customerContacts.customerId))
       .where(and(eq(customers.organizationId, organizationId), isNull(customers.mergedIntoCustomerId), isNull(customerContacts.mergedIntoPersonId))),
-    db.select({
-      id: projectContacts.id, projectId: projectContacts.projectId, name: projectContacts.displayName, email: projectContacts.email, phone: projectContacts.phone,
+    withContactDirectory(db.select({
+      id: projectContacts.id, projectId: projectContacts.projectId, name: resolvedContactColumns.displayName, email: resolvedContactColumns.email, phone: resolvedContactColumns.phone,
       contactType: projectContacts.contactType, vendorId: projectContacts.vendorId, customerId: projectContacts.customerId,
       vendorContactId: projectContacts.vendorContactId, customerContactId: projectContacts.customerContactId, internalContactId: projectContacts.internalContactId,
       sourceEntityType: projectContacts.sourceEntityType, sourceEntityId: projectContacts.sourceEntityId, active: projectContacts.active,
-    }).from(projectContacts).innerJoin(projects, eq(projects.id, projectContacts.projectId)).where(eq(projects.organizationId, organizationId)),
+    }).from(projectContacts).innerJoin(projects, eq(projects.id, projectContacts.projectId)).where(eq(projects.organizationId, organizationId)).$dynamic(), organizationId),
     readFeatureSettings(db, organizationId, "company-email-domains"),
     withClients
       ? db.select({ id: customers.id, name: sql<string>`COALESCE(NULLIF(trim(${customers.company}), ''), ${customers.name})`, email: customers.email })

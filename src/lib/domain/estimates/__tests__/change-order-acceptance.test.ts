@@ -1,7 +1,7 @@
 import { getTableConfig, type SQLiteTable } from "drizzle-orm/sqlite-core"
 import { beforeEach, describe, expect, it, vi } from "vitest"
 
-import { projectChangeOrderHistory, projectChangeOrderLines, projectChangeOrders, projectContacts, projects, users } from "@/db/schema"
+import { customerContacts, customers, internalContacts, organizationMembers, projectChangeOrderHistory, projectChangeOrderLines, projectChangeOrders, projectContacts, projects, users, vendorContacts, vendors } from "@/db/schema"
 import type { AuthUser } from "@/lib/auth"
 import type { ChangeOrderAcceptanceSettings } from "@/lib/feature-settings/contract-settings"
 import { sqliteDb } from "@/lib/domain/__tests__/sqlite-d1"
@@ -52,7 +52,7 @@ const user: AuthUser = {
 
 function setUp(changeOrder: { readonly kind: string | null; readonly amountCents: number | null; readonly status?: string }) {
   const { sqlite, db } = sqliteDb(
-    [projectChangeOrders, projectChangeOrderLines, projectChangeOrderHistory, projectContacts, projects, users].map(createTable).join("\n")
+    [projectChangeOrders, projectChangeOrderLines, projectChangeOrderHistory, projectContacts, projects, users, customers, customerContacts, vendors, vendorContacts, internalContacts, organizationMembers].map(createTable).join("\n")
   )
   sqlite
     .prepare(

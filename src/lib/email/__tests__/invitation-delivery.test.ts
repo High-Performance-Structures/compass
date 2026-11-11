@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
-import { openCorrespondenceTestDatabase, type CorrespondenceTestDatabase } from "../../../../__tests__/helpers/correspondence-core"
+import { openCorrespondenceTestDatabase, type CorrespondenceTestDatabase, addContactDirectorySchema } from "../../../../__tests__/helpers/correspondence-core"
 import { cancelObsoleteInvitationEmails, deliverInvitationEmail, retryInvitationEmails } from "../invitation-delivery"
 import { deferMailbox } from "../mailbox-state"
 
@@ -23,6 +23,7 @@ beforeEach(() => {
   db = openCorrespondenceTestDatabase()
   db.sqlite.exec("ALTER TABLE project_contacts ADD COLUMN customer_id TEXT; ALTER TABLE project_contacts ADD COLUMN customer_contact_id TEXT; ALTER TABLE project_contacts ADD COLUMN vendor_id TEXT; ALTER TABLE project_contacts ADD COLUMN vendor_contact_id TEXT")
   for (const file of ["0069_project_access_invitations.sql", "0074_activity_events.sql", "0261_invitation_email_recovery.sql"]) db.sqlite.exec(readFileSync(`drizzle/${file}`,"utf8"))
+  addContactDirectorySchema(db.sqlite)
   mocks.send.mockResolvedValue({ status: "sent", provider: "gmail", providerMessageId: "message", error: null })
   mocks.invitation.mockResolvedValue({ email: "owner-a@example.test", state: "pending", expiresAt: "2026-11-10T00:00:00.000Z", acceptInvitationUrl: "https://auth.example.test/secure-invite" })
   mocks.notify.mockResolvedValue(undefined)
@@ -113,7 +114,7 @@ describe("durable invitation welcome delivery", () => {
     expect(db.sqlite.prepare("SELECT count(*) AS n FROM project_access_invitations WHERE status='sent'").get()).toEqual({ n: 0 })
   })
   it.each(["email", "active"])("rechecks a linked vendor person's changed %s before delivery", async (field) => {
-    db.sqlite.exec("CREATE TABLE vendors(id TEXT,organization_id TEXT); CREATE TABLE vendor_contacts(id TEXT,vendor_id TEXT,email TEXT,user_id TEXT,active INTEGER); INSERT INTO vendors VALUES('vendor','org-a'); INSERT INTO vendor_contacts VALUES('person','vendor','owner-a@example.test',NULL,1); UPDATE project_contacts SET contact_type='supplier',vendor_id='vendor',vendor_contact_id='person'; UPDATE project_access_invitations SET role='supplier'")
+    db.sqlite.exec("INSERT INTO vendors(id,organization_id) VALUES('vendor','org-a'); INSERT INTO vendor_contacts(id,vendor_id,email,user_id,active) VALUES('person','vendor','owner-a@example.test',NULL,1); UPDATE project_contacts SET contact_type='supplier',vendor_id='vendor',vendor_contact_id='person'; UPDATE project_access_invitations SET role='supplier'")
     if (field === "email") db.sqlite.exec("UPDATE vendor_contacts SET email='new@example.test'")
     else db.sqlite.exec("UPDATE vendor_contacts SET active=0")
     expect((await deliverInvitationEmail({ db: db.db, env, invitationId: "invite" })).status).toBe("cancelled")

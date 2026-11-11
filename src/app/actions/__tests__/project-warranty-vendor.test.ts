@@ -13,7 +13,7 @@ vi.mock("@/lib/notifications/events", () => ({ notifyWarrantyClaimUpdated: vi.fn
 vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }))
 
 import { getVendorWarrantyWorkspace, updateVendorWarrantyClaim } from "../project-warranty-vendor"
-import { openCorrespondenceTestDatabase, type CorrespondenceTestDatabase } from "../../../../__tests__/helpers/correspondence-core"
+import { openCorrespondenceTestDatabase, type CorrespondenceTestDatabase, addContactDirectorySchema } from "../../../../__tests__/helpers/correspondence-core"
 
 let database: CorrespondenceTestDatabase | null = null
 afterEach(() => {
@@ -56,6 +56,16 @@ function open(): CorrespondenceTestDatabase {
       ('w-none','org-a','project-a','A-1-W-003','Door sticks','Carpentry','Front door','Ted Shultz',NULL,NULL,NULL,NULL,'${now}','${now}','${now}');
   `)
   mocks.getCloudflareContext.mockResolvedValue({ env: { DB: db.d1 } })
+  addContactDirectorySchema(db.sqlite)
+  // Each job contact names its directory person; the person's email is the
+  // one Compass reads (the copy on project_contacts is history only).
+  db.sqlite.exec(`
+    INSERT INTO vendor_contacts (id,vendor_id,name,email,active) VALUES
+      ('vc-ted','v-ted','Ted P','ted@tedsplumbing.test',1),
+      ('vc-ann','v-ted','Ann T','ann@tedsplumbing.test',1),
+      ('vc-bob','v-bob','Bob E','bob@otherelectric.test',1);
+    UPDATE project_contacts SET vendor_contact_id = 'vc-' || substr(id, 4);
+  `)
   return db
 }
 

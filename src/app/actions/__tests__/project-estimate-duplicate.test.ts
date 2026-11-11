@@ -120,6 +120,7 @@ function configureDb(
       where: vi.fn(),
       orderBy: vi.fn(),
       limit: vi.fn(),
+      $dynamic: vi.fn(),
     }
     query.from.mockReturnValue(query)
     const selectingAssemblies = selectIndex === (changingPhase ? 9 : 5)
@@ -129,7 +130,13 @@ function configureDb(
       query.where.mockReturnValue(query)
     }
     if (selectingContacts) {
-      query.orderBy.mockResolvedValue(selectedRows)
+      // Signer contacts add the directory joins (resolved names and emails).
+      const joined = {
+        leftJoin: vi.fn(() => joined),
+        then: (resolve: (rows: unknown) => unknown, reject: (error: unknown) => unknown) => Promise.resolve(selectedRows).then(resolve, reject),
+      }
+      query.orderBy.mockReturnValue(query)
+      query.$dynamic.mockReturnValue(joined)
     } else {
       query.orderBy.mockReturnValue(query)
     }

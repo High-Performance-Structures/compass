@@ -1,6 +1,7 @@
 import { and, eq } from "drizzle-orm"
 import type { getDb } from "@/db"
 import { projectContacts, vendorContacts, vendors } from "@/db/schema"
+import { resolvedContactColumns, withContactDirectory } from "@/lib/domain/contacts/resolved-columns"
 
 type Db = ReturnType<typeof getDb>
 
@@ -37,15 +38,15 @@ export async function resolveWarrantyAssignee(
   }
 
   if (key.startsWith("project:")) {
-    const contact = await db
+    const contact = await withContactDirectory(db
       .select({
         id: projectContacts.id,
-        displayName: projectContacts.displayName,
+        displayName: resolvedContactColumns.displayName,
         vendorId: projectContacts.vendorId,
       })
       .from(projectContacts)
       .where(and(eq(projectContacts.id, key.slice("project:".length)), eq(projectContacts.projectId, input.projectId)))
-      .limit(1)
+      .limit(1).$dynamic(), input.organizationId)
       .then((rows) => rows[0])
     if (!contact) return { error: "That contact is no longer on this project." }
     return { assignedName: contact.displayName, assignedProjectContactId: contact.id, assignedVendorId: contact.vendorId }

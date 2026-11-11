@@ -17,6 +17,7 @@ import { contactsProjectContext } from "./access"
 import { projectContactPersonStatusSql } from "./person-status"
 
 import { buildCsiGroups, buildGroups, normalizeEmailKey, toContactItem } from "./rules"
+import { resolvedContactColumns, resolvedContactValueOf } from "./resolved-columns"
 import { resolvedProjectContacts } from "./resolved-project-contacts"
 import type {
   ProjectContactAudience,
@@ -77,8 +78,8 @@ const historicalWhere = and(
           and active_contact.source_entity_id = ${projectContacts.sourceEntityId}
         )
         or (
-          trim(coalesce(${projectContacts.email}, '')) <> ''
-          and lower(trim(active_contact.email)) = lower(trim(${projectContacts.email}))
+          ${resolvedContactColumns.email} is not null
+          and lower(${resolvedContactValueOf("email", sql`active_contact.id`)}) = lower(${resolvedContactColumns.email})
         )
       )
   )`

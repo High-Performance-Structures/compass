@@ -50,6 +50,7 @@ import {
 } from "./rules"
 import { decideAccessRequest, insertAccessRequest, reopenAccessRequest, setAccessRequestProjectCount } from "./store"
 import type { AccessRequestKind } from "./statuses"
+import { resolvedContactColumns, withContactDirectory } from "@/lib/domain/contacts/resolved-columns"
 
 type Failure = { readonly success: false; readonly error: string }
 type Result<T> = { readonly success: true; readonly data: T } | Failure
@@ -356,10 +357,11 @@ function plainEmail(value: string | null | undefined): string | null {
 /**
  * Every active job contact for this directory person, with what the grant
  * needs. For a client this also includes owner job contacts that name no
- * directory person yet but sit under a client record (merged or not) and carry
- * the requester's own sign-in email, on the job contact or its client record.
- * Most owners imported from Buildertrend look like that. Read-only: no job
- * contact or directory row is changed to make the match.
+ * directory person yet but sit under a client record (merged or not) whose
+ * email is the requester's own sign-in email. The job contact's email is the
+ * one Compass shows (resolved from that record); the copy saved on the job
+ * contact is history and never matched. Read-only: no job contact or
+ * directory row is changed to make the match.
  */
 async function personJobs(
   db: Db,
@@ -380,8 +382,10 @@ async function personJobs(
   const email = plainEmail(requesterEmail)
   if (!email) return linked
   const like = `%${email}%`
-  const unpersoned = await db
-    .select({ ...jobColumns, contactEmail: projectContacts.email, customerEmail: customers.email })
+  // The job contact's email is its directory record's (resolved), never the
+  // copy saved on the job contact when it was added.
+  const unpersoned = await withContactDirectory(db
+    .select({ ...jobColumns, contactEmail: resolvedContactColumns.email, customerEmail: customers.email })
     .from(projectContacts)
     .innerJoin(projects, eq(projects.id, projectContacts.projectId))
     .innerJoin(customers, eq(customers.id, projectContacts.customerId))
@@ -389,8 +393,8 @@ async function personJobs(
       base,
       isNull(projectContacts.customerContactId),
       eq(customers.organizationId, organizationId),
-      or(sql`lower(${projectContacts.email}) LIKE ${like}`, sql`lower(${customers.email}) LIKE ${like}`),
-    ))
+      or(sql`lower(${resolvedContactColumns.email}) LIKE ${like}`, sql`lower(${customers.email}) LIKE ${like}`),
+    )).$dynamic(), organizationId)
   const seen = new Set(linked.map((job) => job.contactId))
   const matched = unpersoned
     .filter((job) => plainEmail(job.contactEmail) === email || plainEmail(job.customerEmail) === email)

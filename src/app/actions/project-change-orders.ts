@@ -96,6 +96,7 @@ import type {
   ProjectChangeOrderFormOptions,
   ProjectChangeOrderItem,
 } from "@/lib/change-orders/types"
+import { resolvedContactColumns, withContactDirectory } from "@/lib/domain/contacts/resolved-columns"
 
 export type {
   ChangeOrderDocumentInput,
@@ -436,10 +437,9 @@ export async function getProjectChangeOrderFormOptions(
   }
   const [sageRows, contactRows, estimateRows] = await Promise.all([
     loadProjectCostCodeChoices(context.db, projectId),
-    context.db
-      .select({
-        displayName: projectContacts.displayName,
-        companyName: projectContacts.companyName,
+    withContactDirectory(context.db.select({
+        displayName: resolvedContactColumns.displayName,
+        companyName: resolvedContactColumns.companyName,
         contactType: projectContacts.contactType,
       })
       .from(projectContacts)
@@ -449,7 +449,7 @@ export async function getProjectChangeOrderFormOptions(
           eq(projectContacts.active, true)
         )
       )
-      .orderBy(asc(projectContacts.companyName), asc(projectContacts.displayName)),
+      .orderBy(asc(resolvedContactColumns.companyName), asc(resolvedContactColumns.displayName)).$dynamic()),
     context.db
       .select()
       .from(projectEstimates)

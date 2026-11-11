@@ -13,6 +13,7 @@ import {
 } from "@/db/schema"
 import type { Db } from "@/lib/server/action-context"
 import { isInternalStaffRole } from "@/lib/user-roles"
+import { resolvedContactColumns, withContactDirectory } from "./resolved-columns"
 
 /*
  * One person anywhere in an organization's directory, found by a bounded,
@@ -79,7 +80,7 @@ function digits(term: string): string | null {
 }
 
 /** Name, email or phone contains the term (exact: the full name or email equals it). */
-function matches(match: Match, name: AnyColumn, email: AnyColumn, phones: readonly AnyColumn[]): SQL {
+function matches(match: Match, name: AnyColumn | SQL, email: AnyColumn | SQL, phones: readonly (AnyColumn | SQL)[]): SQL {
   if (match.mode === "exact") {
     return or(
       sql`lower(trim(${name})) = ${match.term}`,
@@ -143,8 +144,8 @@ async function readPeople(db: Db, organizationId: string, projectId: string, mat
         filter("customer_contact", customerContacts.id, (m) => and(eq(customerContacts.active, true), matches(m, customerContacts.name, customerContacts.email, [customerContacts.phone, customerContacts.cellPhone])) ?? sql`0`),
       ))
       .limit(limit) : [],
-    want("project_contact") ? db
-      .select({ id: projectContacts.id, name: projectContacts.displayName, email: projectContacts.email, phone: projectContacts.phone, projectId: projectContacts.projectId, projectName: projects.name, contactType: projectContacts.contactType, sourceEntityType: projectContacts.sourceEntityType, sourceEntityId: projectContacts.sourceEntityId, active: projectContacts.active })
+    want("project_contact") ? withContactDirectory(db
+      .select({ id: projectContacts.id, name: resolvedContactColumns.displayName, email: resolvedContactColumns.email, phone: resolvedContactColumns.phone, projectId: projectContacts.projectId, projectName: projects.name, contactType: projectContacts.contactType, sourceEntityType: projectContacts.sourceEntityType, sourceEntityId: projectContacts.sourceEntityId, active: projectContacts.active })
       .from(projectContacts)
       .innerJoin(projects, eq(projects.id, projectContacts.projectId))
       .where(and(
@@ -154,9 +155,9 @@ async function readPeople(db: Db, organizationId: string, projectId: string, mat
         ne(projectContacts.sourceEntityType, "user"),
         // Only this project's own contacts: an unlinked contact is never copied to another project.
         eq(projectContacts.projectId, projectId),
-        filter("project_contact", projectContacts.id, (m) => and(eq(projectContacts.active, true), matches(m, projectContacts.displayName, projectContacts.email, [projectContacts.phone])) ?? sql`0`),
+        filter("project_contact", projectContacts.id, (m) => and(eq(projectContacts.active, true), matches(m, resolvedContactColumns.displayName, resolvedContactColumns.email, [resolvedContactColumns.phone])) ?? sql`0`),
       ))
-      .limit(limit) : [],
+      .limit(limit).$dynamic(), organizationId) : [],
   ])
 
   const people: DirectoryPerson[] = []

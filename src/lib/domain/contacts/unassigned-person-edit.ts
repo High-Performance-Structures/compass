@@ -23,6 +23,7 @@ import { stalePendingInvitationCount, stalePendingInvitationWarning } from "./pe
 import { normalizeEmailKey } from "./rules"
 import { deactivateProjectContact, updateUnassignedPersonRows } from "./store"
 import { unassignedIdentityWhere, unassignedPersonWhere } from "./unassigned-people"
+import { resolvedContactColumns, withContactDirectory } from "./resolved-columns"
 
 export type UnassignedPersonInput = {
   readonly name: string
@@ -45,14 +46,14 @@ type Row = {
 }
 
 async function personRows(db: Db, organizationId: string, identity: string): Promise<readonly Row[]> {
-  return db
+  return withContactDirectory(db
     .select({
       id: projectContacts.id,
       projectId: projectContacts.projectId,
-      displayName: projectContacts.displayName,
-      email: projectContacts.email,
-      phone: projectContacts.phone,
-      companyName: projectContacts.companyName,
+      displayName: resolvedContactColumns.displayName,
+      email: resolvedContactColumns.email,
+      phone: resolvedContactColumns.phone,
+      companyName: resolvedContactColumns.companyName,
     })
     .from(projectContacts)
     .where(
@@ -61,7 +62,7 @@ async function personRows(db: Db, organizationId: string, identity: string): Pro
         unassignedIdentityWhere(identity)
       )
     )
-    .limit(200)
+    .limit(200).$dynamic(), organizationId)
 }
 
 /**

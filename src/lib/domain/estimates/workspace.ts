@@ -44,6 +44,7 @@ import { estimateFamilyKey } from "@/lib/estimates/estimate-family"
 import { readEstimateMode } from "@/lib/estimates/numbering"
 import { compareEstimateVersions } from "@/lib/estimates/version-comparison"
 import { isInternalStaffRole } from "@/lib/user-roles"
+import { resolvedContactColumns, withContactDirectory } from "@/lib/domain/contacts/resolved-columns"
 
 /** Reads the estimate workspace and the version comparison. No writes. */
 
@@ -176,13 +177,13 @@ export async function loadProjectEstimateWorkspace(
             .where(eq(projectEstimateAcknowledgements.estimateId, selected.id))
             .orderBy(asc(projectEstimateAcknowledgements.sortOrder))
         : Promise.resolve([]),
-      access.db
+      withContactDirectory(access.db
         .select({
           id: projectContacts.id,
-          name: projectContacts.displayName,
+          name: resolvedContactColumns.displayName,
           title: projectContacts.role,
-          companyName: projectContacts.companyName,
-          email: projectContacts.email,
+          companyName: resolvedContactColumns.companyName,
+          email: resolvedContactColumns.email,
           contactType: projectContacts.contactType,
           primaryContact: projectContacts.primaryContact,
           sortOrder: projectContacts.sortOrder,
@@ -197,8 +198,8 @@ export async function loadProjectEstimateWorkspace(
         .orderBy(
           desc(projectContacts.primaryContact),
           asc(projectContacts.sortOrder),
-          asc(projectContacts.displayName)
-        ),
+          asc(resolvedContactColumns.displayName)
+        ).$dynamic(), access.organizationId ?? undefined),
       access.db
         .select({
           id: projectDocuments.id,

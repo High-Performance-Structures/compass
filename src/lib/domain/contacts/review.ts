@@ -25,6 +25,7 @@ import {
 } from "./store"
 import { resolvedProjectContacts } from "./resolved-project-contacts"
 import type { ContactMatchResult, ProjectContactMatchReview, ProjectContactType } from "./types"
+import { resolvedContactColumns, withContactDirectory } from "./resolved-columns"
 
 type Scope = { readonly organizationId: string; readonly projectId: string }
 
@@ -234,8 +235,8 @@ export async function changeContactTypeFromReview(
 ): Promise<ContactMatchResult> {
   const now = new Date().toISOString()
   const isExternal = isExternalContactType(input.contactType)
-  const [contact] = await db
-    .select({ id: projectContacts.id, displayName: projectContacts.displayName })
+  const [contact] = await withContactDirectory(db
+    .select({ id: projectContacts.id, displayName: resolvedContactColumns.displayName })
     .from(projectContacts)
     .where(
       and(
@@ -244,7 +245,7 @@ export async function changeContactTypeFromReview(
         eq(projectContacts.active, true)
       )
     )
-    .limit(1)
+    .limit(1).$dynamic())
   if (!contact) return { success: false, error: "Contact not found" }
 
   await updateProjectContactById(db, {

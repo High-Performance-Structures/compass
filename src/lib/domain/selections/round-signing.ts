@@ -60,6 +60,7 @@ import { pickedByLabel } from "./choice-rules"
 import { loadChoicePanels } from "./choices-read"
 import { insertRoundSignatureStatements, updateRoundSignature, updateRoundSignatureStatement } from "./round-signature-store"
 import { updateFinishSelectionsStatement } from "./store"
+import { resolvedContactColumns, withContactDirectory } from "@/lib/domain/contacts/resolved-columns"
 
 type SignatureRow = typeof projectSelectionRoundSignatures.$inferSelect
 
@@ -142,11 +143,11 @@ export async function loadRoundSigningView(db: Db, projectId: string, organizati
       .leftJoin(projectSelectionDecisions, eq(projectSelectionDecisions.selectionId, projectFinishSelections.id))
       .where(and(eq(projectFinishSelections.projectId, projectId), eq(projectFinishSelections.roundKey, roundKey)))
       .orderBy(asc(projectFinishSelections.roomName), asc(projectFinishSelections.sortOrder), asc(projectFinishSelections.name)),
-    db
-      .select({ name: projectContacts.displayName, email: projectContacts.email })
+    withContactDirectory(db
+      .select({ name: resolvedContactColumns.displayName, email: resolvedContactColumns.email })
       .from(projectContacts)
       .where(and(eq(projectContacts.projectId, projectId), eq(projectContacts.contactType, "owner"), eq(projectContacts.active, true)))
-      .orderBy(desc(projectContacts.primaryContact), asc(projectContacts.sortOrder)),
+      .orderBy(desc(projectContacts.primaryContact), asc(projectContacts.sortOrder)).$dynamic(), organizationId),
     db
       .select({ signature: projectSelectionRoundSignatures, changeOrderNumber: projectChangeOrders.changeOrderNumber })
       .from(projectSelectionRoundSignatures)

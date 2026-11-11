@@ -26,6 +26,7 @@ import {
 } from "@/lib/nutech/email-templates"
 import { requireFeaturePermission } from "@/lib/permission-enforcement"
 import { isInternalStaffRole } from "@/lib/user-roles"
+import { resolvedContactColumns, withContactDirectory } from "@/lib/domain/contacts/resolved-columns"
 
 export type NuTechEmailDraft = {
   readonly templateId: string
@@ -74,11 +75,11 @@ async function nuTechEmailContext(projectId: string, action: "read" | "update", 
   const [settings, profiles, contacts, order] = await Promise.all([
     readFeatureSettings(db, organizationId, "nutech-emails"),
     readDepartmentProfiles(db, organizationId),
-    db
-      .select({ id: projectContacts.id, displayName: projectContacts.displayName, email: projectContacts.email })
+    withContactDirectory(db
+      .select({ id: projectContacts.id, displayName: resolvedContactColumns.displayName, email: resolvedContactColumns.email })
       .from(projectContacts)
       .where(and(eq(projectContacts.projectId, projectId), eq(projectContacts.contactType, "owner"), eq(projectContacts.active, true)))
-      .orderBy(asc(projectContacts.displayName)),
+      .orderBy(asc(resolvedContactColumns.displayName)).$dynamic(), organizationId),
     findNuTechOrder(db, projectId, orderId),
   ])
   const purchaseOrder = order?.airlitePurchaseOrderOperationId

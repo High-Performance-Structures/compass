@@ -20,6 +20,7 @@ import { readFeatureSettings } from "@/lib/feature-settings/server"
 import { rebuildProjectContractBudget } from "@/lib/financials/contract-budget-store"
 import type { Db } from "@/lib/server/action-context"
 import { canManageUserAccessRole } from "@/lib/user-roles"
+import { resolvedContactColumns, withContactDirectory } from "@/lib/domain/contacts/resolved-columns"
 
 /*
  * Recording an owner's acceptance of a change order by written approval or a
@@ -123,8 +124,8 @@ export async function changeOrderAcceptanceView(input: {
   ])
   if (!availability) return { acceptance, manualAcceptance: null }
   const [contacts, project] = await Promise.all([
-    db
-      .select({ id: projectContacts.id, name: projectContacts.displayName, company: projectContacts.companyName })
+    withContactDirectory(db
+      .select({ id: projectContacts.id, name: resolvedContactColumns.displayName, company: resolvedContactColumns.companyName })
       .from(projectContacts)
       .where(
         and(
@@ -133,7 +134,7 @@ export async function changeOrderAcceptanceView(input: {
           eq(projectContacts.active, true)
         )
       )
-      .orderBy(asc(projectContacts.displayName)),
+      .orderBy(asc(resolvedContactColumns.displayName)).$dynamic()),
     db.select({ clientName: projects.clientName }).from(projects).where(eq(projects.id, row.projectId)).get(),
   ])
   const kind = isChangeOrderKind(row.changeOrderKind) ? row.changeOrderKind : null
@@ -192,10 +193,10 @@ export async function recordChangeOrderManualAcceptance(input: {
 
   let approverName = accepted.acceptedByName
   if (accepted.acceptedByContactId) {
-    const contact = await db
-      .select({ name: projectContacts.displayName })
+    const contact = await withContactDirectory(db
+      .select({ name: resolvedContactColumns.displayName })
       .from(projectContacts)
-      .where(and(eq(projectContacts.id, accepted.acceptedByContactId), eq(projectContacts.projectId, projectId)))
+      .where(and(eq(projectContacts.id, accepted.acceptedByContactId), eq(projectContacts.projectId, projectId))).$dynamic())
       .get()
     if (!contact) return { success: false, error: "Choose an owner contact on this project." }
     approverName = contact.name

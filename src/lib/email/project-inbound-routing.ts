@@ -50,6 +50,7 @@ import {
 } from "@/lib/videos/youtube-audit"
 import { routeInboundProjectMessage } from "@/lib/email/project-message-routing"
 import { PROJECT_TODO_RECORD_TYPES } from "@/lib/project-todos"
+import { resolvedContactColumns, withContactDirectory } from "@/lib/domain/contacts/resolved-columns"
 
 type Db = ReturnType<typeof getDb>
 
@@ -131,18 +132,17 @@ async function recordVerifiedInboundClientInteraction(input: {
   readonly source: ProjectInboundSource
 }): Promise<void> {
   const title = projectEmailTitle(input.candidate.subject) || input.candidate.subject
-  const [contact] = await input.db
-    .select({ id: projectContacts.id })
+  const [contact] = await withContactDirectory(input.db.select({ id: projectContacts.id })
     .from(projectContacts)
     .where(
       and(
         eq(projectContacts.projectId, input.projectId),
         eq(projectContacts.contactType, "owner"),
         eq(projectContacts.active, true),
-        sql`lower(${projectContacts.email}) = ${input.candidate.fromAddress.trim().toLowerCase()}`,
+        sql`lower(${resolvedContactColumns.email}) = ${input.candidate.fromAddress.trim().toLowerCase()}`,
       ),
     )
-    .limit(1)
+    .limit(1).$dynamic(), input.organizationId)
   if (!contact) return
   const interactionType = input.source.kind === "email" ? "email" : "sms"
   if (!isMeaningfulClientInteraction({
@@ -228,17 +228,17 @@ async function senderCanEmailProject(input: {
   const email = input.senderEmail.trim().toLowerCase()
   if (email.length === 0) return false
 
-  const [contact] = await input.db
+  const [contact] = await withContactDirectory(input.db
     .select({ id: projectContacts.id })
     .from(projectContacts)
     .where(
       and(
         eq(projectContacts.projectId, input.projectId),
         eq(projectContacts.active, true),
-        sql`lower(${projectContacts.email}) = ${email}`
+        sql`lower(${resolvedContactColumns.email}) = ${email}`
       )
     )
-    .limit(1)
+    .limit(1).$dynamic(), input.organizationId)
   if (contact) return true
 
   const [member] = await input.db
@@ -940,11 +940,11 @@ async function verifiedSmsSender(input: {
     return { email: member.email, name }
   }
 
-  const contacts = await input.db
+  const contacts = await withContactDirectory(input.db
     .select({
-      email: projectContacts.email,
-      displayName: projectContacts.displayName,
-      phone: projectContacts.phone,
+      email: resolvedContactColumns.email,
+      displayName: resolvedContactColumns.displayName,
+      phone: resolvedContactColumns.phone,
     })
     .from(projectContacts)
     .where(
@@ -952,7 +952,7 @@ async function verifiedSmsSender(input: {
         eq(projectContacts.projectId, input.projectId),
         eq(projectContacts.active, true)
       )
-    )
+    ).$dynamic(), input.organizationId)
   const contact = contacts.find(
     (item) => item.phone !== null && normalizedPhone(item.phone) === senderPhone
   )

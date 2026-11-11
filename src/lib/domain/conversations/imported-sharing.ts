@@ -10,6 +10,7 @@ import {
 } from "@/lib/domain/conversations/store"
 import type { Db } from "@/lib/server/action-context"
 import { isInternalStaffRole } from "@/lib/user-roles"
+import { resolvedContactColumns, withContactDirectory } from "@/lib/domain/contacts/resolved-columns"
 
 /*
  * Imported (Buildertrend) threads whose people could not all be identified
@@ -68,12 +69,12 @@ export async function planImportedThreadShare(input: {
   if (channel.staffOnlyProject) return { ok: false, error: "This project keeps imported conversations staff-only." }
   if (channel.audience !== "staff") return { ok: false, error: "This conversation is already shared." }
 
-  const rows = await input.db
+  const rows = await withContactDirectory(input.db
     .select({
       role: projectSourceRecordParticipants.participantRole,
       userId: projectSourceRecordParticipants.userId,
       projectContactId: projectSourceRecordParticipants.projectContactId,
-      contactName: projectContacts.displayName,
+      contactName: resolvedContactColumns.displayName,
       userName: users.displayName,
       sourceName: projectSourceRecordParticipants.sourceContactName,
     })
@@ -88,7 +89,7 @@ export async function planImportedThreadShare(input: {
         eq(projectSourceRecordParticipants.sourceRecordId, channel.sourceThreadId),
         eq(projectSourceRecordParticipants.active, true),
       )
-    )
+    ).$dynamic(), input.organizationId)
   const roles = new Set(rows.map((row) => row.role))
   // A thread with both owners and vendors stays internal (owner decision).
   if (roles.has("owner") && roles.has("vendor")) return { ok: false, error: "This conversation includes both owners and vendors, so it stays internal." }

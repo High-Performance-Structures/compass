@@ -4,6 +4,7 @@ import {
   context,
   openCorrespondenceTestDatabase,
   type CorrespondenceTestDatabase,
+  addContactDirectorySchema,
 } from "./helpers/correspondence-core"
 import {
   projectContacts,
@@ -51,6 +52,7 @@ beforeEach(() => {
   for (const table of [projectContacts, vendors, projectOperations, projectTodoEvents, projectPurchaseOrderLines, scheduleTasks]) {
     createTable(table)
   }
+  addContactDirectorySchema(testDb.sqlite)
   const insertTask = testDb.sqlite.prepare(
     "INSERT INTO schedule_tasks (id, project_id, title) VALUES (?, 'project-a', ?)"
   )

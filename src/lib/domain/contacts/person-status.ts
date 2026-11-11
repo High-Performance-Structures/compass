@@ -23,6 +23,8 @@ import { projectContacts } from "@/db/schema"
 import { USER_ROLES } from "@/lib/domain/identity/statuses"
 import { isInternalStaffRole } from "@/lib/user-roles"
 
+import { contactDirectoryRecordReachable } from "./resolved-columns"
+
 export type ProjectContactPersonStatus = "current_staff" | "archived_person"
 
 // Company types whose staff run jobs (`isStaffOrganizationType`): a demo
@@ -36,7 +38,12 @@ function sqlList(values: readonly string[]): SQL {
   )
 }
 
-/** Users rows matching the current project_contacts row (correlated, alias u). */
+/**
+ * Users rows matching the current project_contacts row (correlated, alias u).
+ * The email copied onto the job contact counts only when the row names no
+ * reachable directory record; otherwise the record's own email does (see
+ * resolved-columns.ts).
+ */
 function matchedAccountWhere(): SQL {
   return sql`(
     (${projectContacts.sourceEntityType} = 'user' and u.id = ${projectContacts.sourceEntityId})
@@ -46,10 +53,19 @@ function matchedAccountWhere(): SQL {
     or (
       trim(coalesce(${projectContacts.email}, '')) <> ''
       and lower(trim(u.email)) = lower(trim(${projectContacts.email}))
+      and not ${contactDirectoryRecordReachable()}
     )
     or lower(trim(u.email)) = (
       select lower(trim(ic.email)) from internal_contacts ic
       where ic.id = ${projectContacts.internalContactId} and trim(coalesce(ic.email, '')) <> ''
+    )
+    or lower(trim(u.email)) = (
+      select lower(trim(cc.email)) from customer_contacts cc
+      where cc.id = ${projectContacts.customerContactId} and trim(coalesce(cc.email, '')) <> ''
+    )
+    or lower(trim(u.email)) = (
+      select lower(trim(vc.email)) from vendor_contacts vc
+      where vc.id = ${projectContacts.vendorContactId} and trim(coalesce(vc.email, '')) <> ''
     )
   )`
 }

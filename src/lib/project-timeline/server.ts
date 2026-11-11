@@ -27,6 +27,7 @@ import {
   type ProjectTimelineItem,
   type ProjectTimelineKind,
 } from "./model"
+import { resolvedContactColumns, withContactDirectory } from "@/lib/domain/contacts/resolved-columns"
 
 type Db = ReturnType<typeof getDb>
 
@@ -190,7 +191,7 @@ export async function loadProjectTimeline(
           .where(and(eq(projectTodoEvents.projectId, input.projectId), gte(projectTodoEvents.createdAt, fromIso), lte(projectTodoEvents.createdAt, toIso)))
       : Promise.resolve([]),
     shows("contact")
-      ? db
+      ? withContactDirectory(db
           .select({
             id: projectInteractions.id,
             interactionType: projectInteractions.interactionType,
@@ -198,7 +199,7 @@ export async function loadProjectTimeline(
             summary: projectInteractions.summary,
             occurredAt: projectInteractions.occurredAt,
             dailyLogId: projectInteractions.dailyLogId,
-            contactName: projectContacts.displayName,
+            contactName: resolvedContactColumns.displayName,
             displayName: users.displayName,
             firstName: users.firstName,
             lastName: users.lastName,
@@ -213,7 +214,7 @@ export async function loadProjectTimeline(
               gte(projectInteractions.occurredAt, fromIso),
               lte(projectInteractions.occurredAt, toIso),
             ),
-          )
+          ).$dynamic())
       : Promise.resolve([]),
     shows("duty")
       ? db

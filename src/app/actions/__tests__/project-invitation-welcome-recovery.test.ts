@@ -50,10 +50,15 @@ describe("welcome-only project invitation recovery", () => {
     expect(mocks.workos).not.toHaveBeenCalled()
     expect(mocks.conversation).not.toHaveBeenCalled()
   })
-  it("does not rewrite a stale identity snapshot to make welcome-only contact binding pass", async () => {
+  it("binds the welcome by the directory email: a stale copy neither blocks it nor is rewritten", async () => {
     database.sqlite.exec("UPDATE project_contacts SET email='old-owner@example.test' WHERE id='contact'")
-    expect(await sendProjectAccessInvitation(input)).toMatchObject({ success: false, error: expect.stringContaining("current project contact") })
+    expect(await sendProjectAccessInvitation(input)).toMatchObject({ success: true })
     expect(database.sqlite.prepare("SELECT email FROM project_contacts WHERE id='contact'").get()).toEqual({ email: "old-owner@example.test" })
+  })
+  it("does not make welcome-only contact binding pass when the directory email belongs to someone else", async () => {
+    database.sqlite.exec("UPDATE customer_contacts SET email='new-owner@example.test' WHERE id='person'")
+    expect(await sendProjectAccessInvitation(input)).toMatchObject({ success: false, error: expect.stringContaining("current project contact") })
+    expect(database.sqlite.prepare("SELECT email FROM project_contacts WHERE id='contact'").get()).toEqual({ email: "owner-a@example.test" })
     expect(database.sqlite.prepare("SELECT count(*) AS n FROM project_access_invitations").get()).toEqual({ n: 0 })
     expect(mocks.deliver).not.toHaveBeenCalled()
   })

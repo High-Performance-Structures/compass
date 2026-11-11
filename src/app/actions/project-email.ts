@@ -1,6 +1,6 @@
 "use server"
 
-import { and, eq, isNull, or, sql, type AnyColumn } from "drizzle-orm"
+import { and, eq, isNull, or, sql, type AnyColumn, type SQL } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 
 import { customerContacts, customers, emailReplyThreads, internalContacts, projectContacts, vendors, vendorContacts } from "@/db/schema"
@@ -21,6 +21,7 @@ import { isValidRecipientEmail, normalizeRecipientEmail, type EmailRecipientCate
 import { replyThreadInsertStatement } from "@/lib/domain/correspondence/email-store"
 import { notArchivedPersonContact } from "@/lib/domain/contacts/person-status"
 import { attachToMessageStatement, conversationInsertStatement, messageInsertStatement, outboxInsertStatement, participantInsertStatement, recipientInsertStatement } from "@/lib/domain/correspondence/store"
+import { resolvedContactColumns, withContactDirectory } from "@/lib/domain/contacts/resolved-columns"
 
 type RecipientScope = "project" | "directory"
 type SearchResult = { readonly success: true; readonly data: readonly EmailRecipientOption[] } | { readonly success: false; readonly error: string }
@@ -44,11 +45,11 @@ export async function searchProjectEmailRecipients(projectId: string, scope: Rec
     if (scope !== "project" && scope !== "directory") return { success: false, error: "Choose a contact list." }
     const term = query.trim().slice(0, 100)
     if (scope === "directory" && term.length < 2) return { success: true, data: [] }
-    const contains = (column: AnyColumn) => sql`instr(lower(${column}), lower(${term})) > 0`
+    const contains = (column: AnyColumn | SQL) => sql`instr(lower(${column}), lower(${term})) > 0`
     const options: EmailRecipientOption[] = []
     if (scope === "project") {
-      const rows = await ctx.db.select({ id: projectContacts.id, type: projectContacts.contactType, name: projectContacts.displayName, company: projectContacts.companyName, email: projectContacts.email })
-        .from(projectContacts).where(and(eq(projectContacts.projectId, projectId), eq(projectContacts.active, true), notArchivedPersonContact(), term ? or(contains(projectContacts.displayName), contains(projectContacts.companyName), contains(projectContacts.email)) : undefined)).limit(60)
+      const rows = await withContactDirectory(ctx.db.select({ id: projectContacts.id, type: projectContacts.contactType, name: resolvedContactColumns.displayName, company: resolvedContactColumns.companyName, email: resolvedContactColumns.email })
+        .from(projectContacts).where(and(eq(projectContacts.projectId, projectId), eq(projectContacts.active, true), notArchivedPersonContact(), term ? or(contains(resolvedContactColumns.displayName), contains(resolvedContactColumns.companyName), contains(resolvedContactColumns.email)) : undefined)).limit(60).$dynamic())
       for (const row of rows) {
         const category: EmailRecipientCategory = row.type === "internal" ? "internal" : row.type === "owner" ? "client" : "vendor"
         const option = searchOption(row.id, row.email, row.name, row.company, category)

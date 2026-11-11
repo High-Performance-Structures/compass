@@ -1,4 +1,5 @@
 import Database from "better-sqlite3"
+import { addContactDirectorySchema } from "../../../__tests__/helpers/correspondence-core"
 import { afterEach, describe, expect, it, vi } from "vitest"
 
 const mocks = vi.hoisted(() => ({
@@ -135,6 +136,7 @@ function openDatabase(): InstanceType<typeof Database> {
     );
     INSERT INTO organization_members VALUES ('om-1', 'org-hps', 'user_staff', 'office', '2026-01-01');
   `)
+  addContactDirectorySchema(sqlite)
   return sqlite
 }
 

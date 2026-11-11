@@ -9,6 +9,7 @@ import {
 } from "@/db/schema"
 import type { ProjectAudience } from "@/lib/project-audience-access"
 import { isVisibleAudienceTeamMember } from "@/lib/project-audience-team"
+import { resolvedContactColumns, withContactDirectory } from "@/lib/domain/contacts/resolved-columns"
 
 export type ProjectAudienceStaffMember = {
   readonly contactId: string
@@ -41,20 +42,20 @@ export async function getProjectAudienceStaff(
     input.audience === "owner"
       ? eq(projectContacts.ownerPortalVisible, true)
       : eq(projectContacts.subVendorPortalVisible, true)
-  const rows = await db
+  const rows = await withContactDirectory(db
     .select({
       contactId: projectContacts.id,
       userId: users.id,
-      contactDisplayName: projectContacts.displayName,
+      contactDisplayName: resolvedContactColumns.displayName,
       userDisplayName: users.displayName,
       email: users.email,
-      companyName: projectContacts.companyName,
+      companyName: resolvedContactColumns.companyName,
       contactRole: projectContacts.role,
       organizationRole: organizationMembers.role,
       trade: projectContacts.trade,
       csiDivision: projectContacts.csiDivision,
       csiDivisionName: projectContacts.csiDivisionName,
-      phone: projectContacts.phone,
+      phone: resolvedContactColumns.phone,
       primaryContact: projectContacts.primaryContact,
     })
     .from(projectContacts)
@@ -94,9 +95,9 @@ export async function getProjectAudienceStaff(
     )
     .orderBy(
       asc(projectContacts.sortOrder),
-      asc(projectContacts.displayName),
+      asc(resolvedContactColumns.displayName),
       asc(users.email)
-    )
+    ).$dynamic(), input.organizationId)
 
   return rows
     .filter((row) =>

@@ -19,6 +19,7 @@ import {
   type ProjectInteractionTypeOption,
 } from "@/lib/project-profile"
 import { cleanText } from "@/lib/shared/guards"
+import { resolvedContactColumns, withContactDirectory } from "@/lib/domain/contacts/resolved-columns"
 
 /** Active client contacts a contact can be logged against, for quick logging from the map. */
 export type ProjectInteractionFormOptions = {
@@ -30,11 +31,11 @@ export type ProjectInteractionFormOptions = {
 export async function loadProjectInteractionFormOptions(projectId: string): Promise<ProjectInteractionFormOptions> {
   const { db, organizationId } = await projectProfileContext(projectId, "read")
   const [contacts, customTypes, rules] = await Promise.all([
-    db
-      .select({ id: projectContacts.id, displayName: projectContacts.displayName })
+    withContactDirectory(db
+      .select({ id: projectContacts.id, displayName: resolvedContactColumns.displayName })
       .from(projectContacts)
       .where(and(eq(projectContacts.projectId, projectId), eq(projectContacts.contactType, "owner"), eq(projectContacts.active, true)))
-      .orderBy(asc(projectContacts.displayName)),
+      .orderBy(asc(resolvedContactColumns.displayName)).$dynamic(), organizationId),
     db
       .selectDistinct({ interactionType: projectInteractions.interactionType })
       .from(projectInteractions)

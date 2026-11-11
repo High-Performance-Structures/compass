@@ -55,6 +55,7 @@ import {
 } from "@/lib/project-profile"
 import { cleanText } from "@/lib/shared/guards"
 import { validatePublicProjectIdentity } from "@/lib/social/privacy"
+import { resolvedContactColumns, withContactDirectory } from "@/lib/domain/contacts/resolved-columns"
 
 type ProjectProfileNote = {
   readonly id: string
@@ -254,8 +255,8 @@ export async function loadProjectInformation(projectId: string): Promise<Project
       .from(projectNumberAliases)
       .where(eq(projectNumberAliases.projectId, projectId))
       .orderBy(desc(projectNumberAliases.createdAt)),
-    db
-      .select({ id: projectContacts.id, displayName: projectContacts.displayName })
+    withContactDirectory(db
+      .select({ id: projectContacts.id, displayName: resolvedContactColumns.displayName })
       .from(projectContacts)
       .where(
         and(
@@ -264,7 +265,7 @@ export async function loadProjectInformation(projectId: string): Promise<Project
           eq(projectContacts.active, true),
         ),
       )
-      .orderBy(desc(projectContacts.primaryContact), asc(projectContacts.sortOrder)),
+      .orderBy(desc(projectContacts.primaryContact), asc(projectContacts.sortOrder)).$dynamic(), organizationId),
   ])
 
   return {
