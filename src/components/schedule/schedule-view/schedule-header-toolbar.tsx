@@ -26,6 +26,8 @@ import type {
 import type { OwnerScheduleView } from "@/lib/schedule/owner-visibility"
 import { ScheduleScopeSwitcher } from "../schedule-scope-switcher"
 import { OwnerScheduleVisibilityControl } from "../owner-schedule-visibility-control"
+import { SubScheduleVisibilityControl } from "@/components/schedule/sub-schedule-visibility-control"
+import type { SubScheduleView } from "@/lib/project-audience-schedule-visibility"
 import type { View } from "./schedule-view-rules"
 
 const VIEW_OPTIONS = [
@@ -43,6 +45,7 @@ export function ScheduleHeaderToolbar({
   allProjects,
   scheduleProjects,
   ownerScheduleView,
+  subScheduleView,
   view,
   setView,
   setTaskFormOpen,
@@ -54,6 +57,7 @@ export function ScheduleHeaderToolbar({
   readonly allProjects: readonly ProjectListItem[]
   readonly scheduleProjects: readonly ScheduleProjectData[]
   readonly ownerScheduleView: OwnerScheduleView
+  readonly subScheduleView: SubScheduleView
   readonly view: View
   readonly setView: (view: View) => void
   readonly setTaskFormOpen: (open: boolean) => void
@@ -128,6 +132,9 @@ export function ScheduleHeaderToolbar({
             projectId={projectId}
             initialValue={ownerScheduleView}
           />
+        )}
+        {projectId && (
+          <SubScheduleVisibilityControl projectId={projectId} initialValue={subScheduleView} />
         )}
 
         <DropdownMenu>

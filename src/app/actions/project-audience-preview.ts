@@ -41,7 +41,8 @@ import { loadAllRecordStatusLists } from "@/lib/domain/record-statuses/store"
 import { ensureProjectAudienceConversation } from "@/lib/project-audience-conversations"
 import { getProjectAudienceViewerContact } from "@/lib/project-audience-viewer-contact"
 import { getProjectAudienceStaff } from "@/lib/project-audience-staff"
-import { selectProjectAudienceScheduleItems } from "@/lib/project-audience-schedule-visibility"
+import { isSubScheduleView, selectProjectAudienceScheduleItems } from "@/lib/project-audience-schedule-visibility"
+import { partnerAssignedTaskIds, partnerContactIds } from "@/lib/schedule/partner-assignments"
 import { isInternalStaffRole } from "@/lib/user-roles"
 import { upcomingClientMeetingsForGuest } from "@/lib/client-meetings/guest-meetings"
 import {
@@ -229,6 +230,7 @@ export async function getProjectAudiencePreview(
       clientName: projects.clientName,
       projectManager: projects.projectManager,
       ownerScheduleView: projects.ownerScheduleView,
+      subScheduleView: projects.subScheduleView,
       schedulePublished: projects.schedulePublished,
       status: projects.status,
       jobStatusId: projects.jobStatusId,
@@ -701,10 +703,8 @@ export async function getProjectAudiencePreview(
     audience === "owner" && isOwnerScheduleView(project.ownerScheduleView)
       ? project.ownerScheduleView
       : "items"
-  const audienceScheduleRows = selectProjectAudienceScheduleItems(
-    scheduleRows,
-    audience
-  )
+  const partnerItemIds = audience === "owner" ? new Set<string>() : /* items they're responsible for */ partnerAssignedTaskIds({ viewerId: viewer.id, contactIds: await partnerContactIds(db, projectId, viewerContact), assignees: scheduleAssigneeRows, publishedTasks: publishedSnapshot?.tasks ?? null })
+  const audienceScheduleRows = selectProjectAudienceScheduleItems(scheduleRows, audience, { view: isSubScheduleView(project.subScheduleView) ? project.subScheduleView : "assigned", isViewerAssigned: (item) => partnerItemIds.has(item.id) })
   const visibleScheduleItem = (
     item: (typeof audienceScheduleRows)[number]
   ): AudienceScheduleItem => ({
