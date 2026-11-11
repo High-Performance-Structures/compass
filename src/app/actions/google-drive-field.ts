@@ -9,7 +9,7 @@ import { isDemoUser } from "@/lib/demo"
 import { readConnectionOwnerGoogleEmail, readStarredFileIds } from "@/lib/domain/documents/drive-connection-store"
 import { buildDriveClient, getOrgGoogleAuth, type OrgGoogleAuth } from "@/lib/domain/documents/drive-session"
 import { filterFieldDocumentRootFolders } from "@/lib/field/document-access"
-import { assertFieldProjectMembership } from "@/lib/field/project-access"
+import { assertFieldAppProjectAccess } from "@/lib/domain/field/field-app-access"
 import type { FileItem } from "@/lib/files-data"
 import type { DriveClient } from "@/lib/google/client/drive-client"
 import { getGoogleConfig } from "@/lib/google/config"
@@ -37,7 +37,7 @@ type FieldDrive = {
 }
 
 /**
- * Signed-in project member with document read, the job's Drive folder, and a
+ * Signed-in person with this field app job (field-app-access.ts) and document read, the job's Drive folder, and a
  * client reading as the Drive connection owner. Returns null for the demo
  * account, which sees an empty folder.
  */
@@ -46,7 +46,7 @@ async function openFieldProjectDrive(projectId: string): Promise<FieldDrive | Ac
   requirePermission(user, "document", "read")
   if (isDemoUser(user.id)) return null
 
-  await assertFieldProjectMembership(db, user.id, projectId)
+  await assertFieldAppProjectAccess(db, user, projectId)
 
   const project = await db
     .select({ folderId: projects.googleDriveFolderId })

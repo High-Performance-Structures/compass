@@ -12,7 +12,7 @@
   "permissions": ["help:read"],
   "routes": ["/dashboard/settings"],
   "owner": "Compass product team",
-  "lastReviewed": "2026-11-09"
+  "lastReviewed": "2026-11-10"
 }
 ---
 
@@ -59,6 +59,8 @@ Every sheet also has a **Columns** button above it. Anyone can use it to hide or
 **Settings → Zone charges** controls travel-charge assumptions shown on the portfolio map. Authorized staff can also make per-job adjustments to zone and mountain charges. Review the location, rate, and job adjustment before using a suggested charge in pricing. **Settings → Rate book** manages accepted estimating rates; see [Financial workflows](/dashboard/help/financial-workflows#rate-book). Neither map layers nor a settings edit independently adds an approved accounting charge.
 
 **Settings → Workflows → Portfolio map** sets the **Map state** the dashboard map shows (any of the 50 states), along with where each department's jobs appear. The map state also decides which state's weather and wildfires are gathered, which state client and trade partner maps show, and which state an address without one is looked up in. See [Navigating projects](/dashboard/help/navigating-projects#portfolio-map).
+
+**Settings → Workflows → Field app** decides which jobs appear in the field app on **Automatic** (the field app phases, using the same job status → phase mapping as the portfolio map, and the departments left out), and whether active Sage employees see every field app job without being added to each one. Below the rules, a sheet lists every job that isn't closed with its **Field app** choice (Automatic, Always show or Hide) and whether it is in the field app now. See [Offline Field Mode](/dashboard/help/offline-field-mode#which-jobs).
 
 **Settings → Workflows → Weather & fire alerts** sets when the dashboard map's Weather and Fire & smoke layers flag a job: heavy snow or rain in 24 hours, wind gusts, extreme cold or heat, how close an active wildfire must be, the smoke density (light, medium or heavy) and the air quality index (AQI; 151 is where "Unhealthy" starts) that flag a job. Each company sets its own limits. The same page holds the rules for scheduled work: which item titles each rule matches, what it checks (a low or high temperature, gusts, rain or snow), the limit, and how many days after the item to keep checking, plus whether at-risk items notify the assignee and the job's staff. See [Schedules and tasks](/dashboard/help/schedules-and-tasks#weather).
 

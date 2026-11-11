@@ -31,6 +31,7 @@ import {
   changeProjectContractType,
   changeProjectDeliveryMethod,
   changeProjectImportedConversationsStaffOnly,
+  changeProjectFieldAppVisibility,
   changeProjectMapVisibility,
   loadProjectAgingStatusRows,
   type ProjectAgingStatusRow,
@@ -185,6 +186,21 @@ export async function updateProjectMapVisibility(input: {
   } catch (error) {
     console.error("Unable to update portfolio map visibility", error)
     return { success: false, error: "Unable to update the portfolio map setting." }
+  }
+}
+
+/** Information page and Settings › Workflows › Field app: the job's field app choice. */
+export async function updateProjectFieldAppVisibility(input: {
+  readonly projectId: string
+  readonly choice: string
+}): Promise<ProjectProfileResult> {
+  try {
+    const result = await changeProjectFieldAppVisibility(input)
+    if (result.success && result.changed) revalidateProjectProfile(input.projectId)
+    return plainResult(result)
+  } catch (error) {
+    console.error("Unable to update the field app setting", error)
+    return { success: false, error: "Unable to update the field app setting." }
   }
 }
 

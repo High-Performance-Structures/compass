@@ -15,19 +15,15 @@ import {
   getProjectDailyLogWorkspace,
 } from "@/app/actions/project-field"
 import { readProjectSchedule } from "@/lib/domain/schedule/access"
-import { getDb } from "@/db"
 import {
   organizationMembers,
-  projectMembers,
   projectOperations,
-  projects,
   users,
 } from "@/db/schema"
-import { requireAuth } from "@/lib/auth"
+import { channels } from "@/db/schema-conversations"
 import { phoneDailyLogForm } from "@/lib/daily-logs/cost-code-lines"
 import { loadFieldMachines } from "@/lib/equipment/field"
 import { companyToday } from "@/lib/internal-duties/recurring-data"
-import { getCloudflareContext } from "@/lib/db"
 import type {
   FieldDailyLogDraft,
   FieldDocument,
@@ -35,7 +31,8 @@ import type {
   FieldProjectPacket,
 } from "@/lib/field/types"
 import { isTaskAssignedToFieldUser } from "@/lib/field/task-assignment"
-import { assertFieldProjectMembership } from "@/lib/field/project-access"
+import { assertFieldAppProjectAccess, FIELD_PROJECT_NOT_ASSIGNED, listFieldAppProjects } from "@/lib/domain/field/field-app-access"
+import { requireUserContext } from "@/lib/server/action-context"
 import { orderDirectConversationsByActivity } from "@/lib/field/direct-conversations"
 import {
   isInternalStaffRole,
@@ -80,55 +77,19 @@ export async function getFieldDocumentFolder(
 }
 
 export async function getActiveFieldProjects(): Promise<readonly FieldProject[]> {
-  const user = await requireAuth()
-  const { env } = await getCloudflareContext()
-  const db = getDb(env.DB)
-
-  // Field Mode is intentionally narrower than Full Compass: every user sees
-  // only jobs where they are an explicit project member.
-  return db
-    .select({
-      id: projects.id,
-      name: projects.name,
-      projectNumber: projects.projectNumber,
-      address: projects.address,
-    })
-    .from(projectMembers)
-    .innerJoin(projects, eq(projects.id, projectMembers.projectId))
-    .where(
-      and(
-        eq(projectMembers.userId, user.id),
-        eq(projects.status, "OPEN")
-      )
-    )
-    .orderBy(asc(projects.projectNumber), asc(projects.name))
+  const { db, user } = await requireUserContext()
+  // The field app lists the jobs switched on for it (Settings › Workflows ›
+  // Field app) that the person is a member of, or every such job of their
+  // company when they are an active Sage employee (field-app-access.ts).
+  return listFieldAppProjects(db, user)
 }
 
 export async function getFieldProjectPacket(
   projectId: string
 ): Promise<FieldProjectPacket> {
-  const user = await requireAuth()
-  const { env } = await getCloudflareContext()
-  const db = getDb(env.DB)
-  await assertFieldProjectMembership(db, user.id, projectId)
-
-  const project = await db
-    .select({
-      id: projects.id,
-      name: projects.name,
-      projectNumber: projects.projectNumber,
-      address: projects.address,
-      status: projects.status,
-      googleDriveFolderId: projects.googleDriveFolderId,
-    })
-    .from(projects)
-    .where(eq(projects.id, projectId))
-    .limit(1)
-    .get()
-
-  if (!project || project.status !== "OPEN") {
-    throw new Error("This project is not active.")
-  }
+  const { db, user } = await requireUserContext()
+  // Throws when the job isn't in the field app or isn't this person's.
+  const { project } = await assertFieldAppProjectAccess(db, user, projectId)
 
   const filePromise = listProjectDriveFilesForField(projectId)
   // Machines are company-wide; only staff log them.
@@ -363,11 +324,24 @@ export async function getFieldProjectPacket(
   }
 }
 
+/** The field app's single-job check, as an action result. */
+async function fieldProjectFailure(projectId: string): Promise<{ readonly success: false; readonly error: string } | null> {
+  try {
+    const { db, user } = await requireUserContext()
+    await assertFieldAppProjectAccess(db, user, projectId)
+    return null
+  } catch (error) {
+    return { success: false, error: error instanceof Error ? error.message : FIELD_PROJECT_NOT_ASSIGNED }
+  }
+}
+
 export async function submitFieldDailyLog(
   projectId: string,
   draft: FieldDailyLogDraft,
   clientSubmissionId?: string
 ): Promise<FieldDailyLogMutationResult> {
+  const refused = await fieldProjectFailure(projectId)
+  if (refused) return refused
   const result = await createProjectDailyLog(projectId, {
     clientSubmissionId,
     logDate: draft.logDate,
@@ -397,6 +371,19 @@ export async function submitFieldChatMessage(
   channelId: string,
   content: string
 ): Promise<FieldMutationResult> {
+  // A project conversation follows the job's field app access; direct
+  // conversations have no project and keep their own membership rules.
+  const { db } = await requireUserContext()
+  const channel = await db
+    .select({ projectId: channels.projectId })
+    .from(channels)
+    .where(eq(channels.id, channelId))
+    .limit(1)
+  const channelProjectId = channel[0]?.projectId ?? null
+  if (channelProjectId) {
+    const refused = await fieldProjectFailure(channelProjectId)
+    if (refused) return refused
+  }
   const result = await sendMessage({ channelId, content })
   return result.success
     ? { success: true }

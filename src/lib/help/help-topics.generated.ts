@@ -799,6 +799,11 @@ export const HELP_TOPIC_LOCATIONS: Readonly<Record<string, HelpTopicLocation>> =
     "guideSlug": "offline-field-mode",
     "sectionId": "available-work"
   },
+  "offline.which-jobs": {
+    "guideId": "offline",
+    "guideSlug": "offline-field-mode",
+    "sectionId": "which-jobs"
+  },
   "offline.create-work": {
     "guideId": "offline",
     "guideSlug": "offline-field-mode",

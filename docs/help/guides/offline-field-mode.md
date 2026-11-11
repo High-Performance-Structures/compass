@@ -12,7 +12,7 @@
   "permissions": ["help:read", "project:read"],
   "routes": ["/dashboard/field"],
   "owner": "Field operations",
-  "lastReviewed": "2026-10-28"
+  "lastReviewed": "2026-11-10"
 }
 ---
 
@@ -23,6 +23,17 @@ Before service is lost, sign in, open and refresh every active project you expec
 ## Available Field Work {#available-work}
 
 Field Mode focuses on active projects, today's work, daily logs, documents, messages, notifications, and basic settings. Administrative controls, broad financials, developer tools, and unrelated projects are intentionally excluded.
+
+## Which Jobs Appear {#which-jobs}
+
+Each job has one **Field app** choice, the same for everyone: **Automatic**, **Always show**, or **Hide**. Change it on the job's **Information** page, or for many jobs at once in **Settings → Workflows → Field app**, which lists every job that isn't closed and says whether each one is in the field app now.
+
+- **Automatic** shows a job while its job status is in one of the company's field app phases (by default **Under construction** and **Closeout**) and its department isn't left out (by default the N department, material orders). Which job statuses belong to each phase is set in **Settings → Workflows → Portfolio map**, so moving a status such as Contract Docs Signed into Under construction there brings those jobs into the field app.
+- **Always show** puts the job in the field app in any phase or department, for example a job still in preconstruction that a crew needs now.
+- **Hide** keeps the job out of the field app.
+- Closed jobs (Complete, Closed, Inactive, Bid Refused, or archived) never appear.
+
+Who sees a job: anyone added to the job sees it while it is in the field app. When **Active Sage employees see every field app job automatically** is on (the default), staff whose internal contact is active and linked to a Sage employee record see every job in the field app without being added to each one. Clients, owners, trade partners and suppliers only ever see the jobs they were added to. After a job is switched on or off, refresh the field app while online to update the list.
 
 ## Create Work Offline {#create-work}
 
