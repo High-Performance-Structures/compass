@@ -6,6 +6,7 @@ import { IconUpload } from "@tabler/icons-react"
 
 import {
   deleteProjectPhotos,
+  updateProjectPhotoCaption,
   updateProjectPhotoPhase,
   updateProjectPhotoPermissions,
   type ProjectPhotoLibrary,
@@ -244,6 +245,14 @@ export function ProjectPhotoReview({
     setMessage(null)
     startTransition(async () => {
       let updated: ProjectPhotoLibraryItem = { ...photo, ...next }
+      if (input.caption.trim() !== (photo.caption ?? "")) {
+        const captionResult = await updateProjectPhotoCaption(library.project.id, photo.id, input.caption)
+        if (!captionResult.success) {
+          setMessage(captionResult.error)
+          return
+        }
+        updated = { ...updated, caption: captionResult.caption }
+      }
       if (input.phase !== (photo.schedulePhase || NO_PHASE_VALUE)) {
         const phaseResult = await updateProjectPhotoPhase(library.project.id, photo.id, input.phase)
         if (!phaseResult.success) {

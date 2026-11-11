@@ -2,7 +2,7 @@
 
 /**
  * One photo in the record drawer (Photo Review): the photo with previous/next,
- * its type, phase and who can see it, Save, Delete and Open original. "Full
+ * its caption, type, phase and who can see it, Save, Delete and Open original. "Full
  * screen" opens the shared full-screen viewer; its "Edit details" comes back
  * here. See docs/development/ui-standards.md, "Record drawer".
  */
@@ -29,11 +29,14 @@ import { SourceTag } from "@/components/shared/source-tag"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Label } from "@/components/ui/label"
+import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { photoLinkHref, projectInternalPhotoUrl } from "@/lib/photo-sources"
-import { GALLERY_PHOTO_KINDS, NO_PHASE_VALUE, phaseLabel, sourceLabel, statusLabel } from "@/lib/photos/review"
+import { GALLERY_PHOTO_KINDS, NO_PHASE_VALUE, PHOTO_CAPTION_MAX_LENGTH, phaseLabel, sourceLabel, statusLabel } from "@/lib/photos/review"
 
 export type PhotoDetailsInput = {
+  /** Blank clears the caption, so the file name shows instead. */
+  readonly caption: string
   readonly photoKind: string
   readonly ownerVisible: boolean
   readonly subVendorVisible: boolean
@@ -162,6 +165,7 @@ function PhotoDrawerBody({
   readonly onSave: (input: PhotoDetailsInput) => void
   readonly onDelete: () => void
 }): React.ReactElement {
+  const [caption, setCaption] = React.useState(photo.caption ?? "")
   const [photoKind, setPhotoKind] = React.useState(photo.photoKind)
   const [ownerVisible, setOwnerVisible] = React.useState(photo.ownerVisible)
   const [subVendorVisible, setSubVendorVisible] = React.useState(photo.subVendorVisible)
@@ -235,6 +239,18 @@ function PhotoDrawerBody({
           )}
         </div>
       ) : null}
+
+      <div className="grid gap-2">
+        <Label htmlFor={`photo-caption-${photo.id}`}>Caption</Label>
+        <Textarea
+          id={`photo-caption-${photo.id}`}
+          value={caption}
+          onChange={(event) => setCaption(event.target.value)}
+          maxLength={PHOTO_CAPTION_MAX_LENGTH}
+          disabled={isPending}
+          placeholder={`What this photo shows. Without one, the file name (${photo.fileName}) shows.`}
+        />
+      </div>
 
       <div className="grid gap-4 sm:grid-cols-2">
         <div className="grid gap-2">
@@ -318,7 +334,7 @@ function PhotoDrawerBody({
           <Button
             type="button"
             disabled={isPending}
-            onClick={() => onSave({ photoKind, ownerVisible, subVendorVisible, publicShareable, phase })}
+            onClick={() => onSave({ caption, photoKind, ownerVisible, subVendorVisible, publicShareable, phase })}
           >
             <IconDeviceFloppy className="size-4" />
             Save

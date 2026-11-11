@@ -303,5 +303,8 @@ export function photoUploadError(result: unknown): string {
   return typeof error === "string" ? error : "Unable to upload photo."
 }
 
+/** The longest caption a photo can have. */
+export const PHOTO_CAPTION_MAX_LENGTH = 500
+
 /** One delete request takes at most this many selected photos; the page sends larger selections in parts. */
 export const PHOTO_DELETE_BATCH_LIMIT = 200
