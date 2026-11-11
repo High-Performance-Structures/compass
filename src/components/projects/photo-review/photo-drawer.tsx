@@ -31,7 +31,7 @@ import { Button } from "@/components/ui/button"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { photoLinkHref, projectInternalPhotoUrl } from "@/lib/photo-sources"
-import { NO_PHASE_VALUE, phaseLabel, sourceLabel, statusLabel } from "@/lib/photos/review"
+import { GALLERY_PHOTO_KINDS, NO_PHASE_VALUE, phaseLabel, sourceLabel, statusLabel } from "@/lib/photos/review"
 
 export type PhotoDetailsInput = {
   readonly photoKind: string
@@ -41,14 +41,6 @@ export type PhotoDetailsInput = {
   /** The phase value, or NO_PHASE_VALUE. */
   readonly phase: string
 }
-
-const PHOTO_KINDS = [
-  { value: "progress", label: "Progress" },
-  { value: "issue", label: "Issue" },
-  { value: "delivery", label: "Delivery" },
-  { value: "selection", label: "Selection" },
-  { value: "archive", label: "Archive" },
-] as const
 
 export function PhotoDrawer({
   previewPhoto,
@@ -272,13 +264,14 @@ function PhotoDrawerBody({
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              {PHOTO_KINDS.map((kind) => (
+              {GALLERY_PHOTO_KINDS.map((kind) => (
                 <SelectItem key={kind.value} value={kind.value}>
                   {kind.label}
                 </SelectItem>
               ))}
             </SelectContent>
           </Select>
+          <p className="text-xs text-muted-foreground">Selection photos are in Selections.</p>
         </div>
       </div>
 

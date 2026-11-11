@@ -37,7 +37,7 @@ In the drawer:
 - **Add choice** records an option's title, description, supplier, supplier price, owner price, lead time and status. The owner price is what the owner sees, including the builder fee; owners never see the supplier or the supplier price.
 - Drag choices (or use the arrows) to set the order the owner sees.
 - **Paste product link** adds a supplier's product page. Compass shows the page's name, picture and listed price when the page provides them, or a plain link when it doesn't.
-- From a choice's menu, attach photos from the job, mark the owner's pick, or choose the **Follow-up selections** that picking it opens (a vanity opens its hardware and top).
+- From a choice's menu, attach photos from the job, mark the owner's pick, or choose the **Follow-up selections** that picking it opens (a vanity opens its hardware and top). Selection photos (choice pictures) show only here in Selections; they stay out of the job's Photos, client updates and dashboards.
 - **Ask supplier to price** puts the chosen options on a normal RFQ draft, new or added to an unsent draft. Send it from **RFQs** as usual; the prices the supplier enters through the price link, or that you record by hand, fill in the choices' supplier prices.
 - **To-dos** lists the to-dos linked to the selection. Compass adds "Price choices for…" when an unpriced choice is added, "Order…" when the owner approves, and "Answer owner question on…" when the owner comments. Mark them done on **To-dos** when the work is finished.
 - **Comments** can be owner-visible or, with **Staff only** ticked, internal.

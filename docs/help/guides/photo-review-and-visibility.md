@@ -12,7 +12,7 @@
   "permissions": ["help:read", "project:read"],
   "routes": ["/dashboard/projects/[id]/photos"],
   "owner": "Field operations",
-  "lastReviewed": "2026-10-10"
+  "lastReviewed": "2026-11-10"
 }
 ---
 
@@ -21,6 +21,8 @@
 Open project **Photos**, choose files, confirm the date, type, caption, and phase, then upload. Originals belong in the mapped Drive location while Compass stores project relationships and display metadata. New uploads begin internal and awaiting review.
 
 Use date, phase, type, review, visibility, and sort controls to narrow the library. Filters never change permission by themselves.
+
+Selection photos (finish and fixture choices) are in **Selections**, not Photos. They never appear in the Photos library, its counts, the owner and trade-partner Photos pages, client updates, dashboards, or daily logs, and the photo types here leave out Selection.
 
 ## Review the Full Image {#review-image}
 

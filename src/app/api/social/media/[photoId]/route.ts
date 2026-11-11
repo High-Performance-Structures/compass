@@ -6,6 +6,7 @@ import { dailyLogPhotos, projects } from "@/db/schema"
 import { googleAuth } from "@/db/schema-google"
 import { decrypt } from "@/lib/crypto"
 import { getCloudflareContext } from "@/lib/db"
+import { notSelectionPhoto } from "@/lib/photos/collection-eligibility"
 import { DriveClient } from "@/lib/google/client/drive-client"
 import { getGoogleCryptoSalt, parseServiceAccountKey } from "@/lib/google/config"
 import { environmentString, getSocialConfig } from "@/lib/social/config"
@@ -68,6 +69,8 @@ export async function GET(
       eq(dailyLogPhotos.id, photoId),
       eq(dailyLogPhotos.reviewStatus, "approved"),
       eq(dailyLogPhotos.publicShareable, true),
+      // Selection photos are never shared publicly; they live in Selections.
+      notSelectionPhoto(),
     )).get()
     if (!photo?.driveFileId || !photo.mimeType || !photo.organizationId) {
       return new Response("Photo not found", { status: 404 })

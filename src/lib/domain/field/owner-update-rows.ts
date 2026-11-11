@@ -17,7 +17,7 @@ import {
   users,
 } from "@/db/schema"
 import type { AuthUser } from "@/lib/auth"
-import { dailyLogPhotoCollectionEligibility } from "@/lib/photos/collection-eligibility"
+import { dailyLogPhotoCollectionEligibility, notSelectionPhoto } from "@/lib/photos/collection-eligibility"
 import type { Db } from "@/lib/server/action-context"
 
 export type OwnerProjectUpdateReadRow = {
@@ -273,6 +273,8 @@ export async function loadOwnerUpdateAttachmentRows(
         .where(
           and(
             eq(dailyLogPhotos.projectId, projectId),
+            // Selection photos stay in Selections, even when an older update picked one.
+            notSelectionPhoto(),
             or(
               inArray(dailyLogPhotos.id, selectedPhotoIds),
               // The owner-update picker shares this query with the photo picker.
@@ -390,7 +392,8 @@ export async function loadOwnerUpdateAttachmentRows(
           and(
             eq(dailyLogPhotos.projectId, projectId),
             eq(dailyLogPhotos.reviewStatus, "approved"),
-            eq(dailyLogPhotos.ownerVisible, true)
+            eq(dailyLogPhotos.ownerVisible, true),
+            notSelectionPhoto()
           )
         )
         .orderBy(asc(dailyLogPhotos.sortOrder), asc(dailyLogPhotos.createdAt))

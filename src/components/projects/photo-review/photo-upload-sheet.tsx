@@ -22,7 +22,7 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet"
 import type { PhotoUpload } from "@/components/projects/photo-review/use-photo-upload"
-import { formatBytes, NO_PHASE_VALUE } from "@/lib/photos/review"
+import { formatBytes, GALLERY_PHOTO_KINDS, NO_PHASE_VALUE } from "@/lib/photos/review"
 
 /** Upload Project Photos: images, caption, date, type and phase for the batch. */
 export function PhotoUploadSheet({
@@ -120,11 +120,11 @@ export function PhotoUploadSheet({
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="progress">Progress</SelectItem>
-                  <SelectItem value="issue">Issue</SelectItem>
-                  <SelectItem value="delivery">Delivery</SelectItem>
-                  <SelectItem value="selection">Selection</SelectItem>
-                  <SelectItem value="archive">Archive</SelectItem>
+                  {GALLERY_PHOTO_KINDS.map((kind) => (
+                    <SelectItem key={kind.value} value={kind.value}>
+                      {kind.label}
+                    </SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             </label>

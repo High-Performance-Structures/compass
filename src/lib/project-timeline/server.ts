@@ -16,6 +16,7 @@ import { companyTimeZone } from "@/lib/daily-logs/log-followups-server"
 import { readFeatureSettings } from "@/lib/feature-settings/server"
 import { recordStatusLabel } from "@/lib/domain/record-statuses/rules"
 import { loadRecordStatusList } from "@/lib/domain/record-statuses/store"
+import { notSelectionPhoto } from "@/lib/photos/collection-eligibility"
 import { dateKeyInTimeZone } from "@/lib/work-calendar"
 import {
   hoursText,
@@ -116,7 +117,7 @@ export async function loadProjectTimeline(
             db
               .select({ dailyLogId: dailyLogPhotos.dailyLogId, count: sql<number>`count(*)` })
               .from(dailyLogPhotos)
-              .where(inArray(dailyLogPhotos.dailyLogId, logIds.slice(index * 90, index * 90 + 90)))
+              .where(and(inArray(dailyLogPhotos.dailyLogId, logIds.slice(index * 90, index * 90 + 90)), notSelectionPhoto()))
               .groupBy(dailyLogPhotos.dailyLogId),
           ),
         )

@@ -174,7 +174,7 @@ export function AttachPhotosDialog({
       <DialogContent className="sm:max-w-2xl">
         <DialogHeader>
           <DialogTitle>Photos for {targetLabel}</DialogTitle>
-          <DialogDescription>Pick photos from this job. Owners only see photos marked owner-visible in Photos.</DialogDescription>
+          <DialogDescription>Pick photos from this job. Owners only see photos marked owner-visible.</DialogDescription>
         </DialogHeader>
         {attached.length > 0 && (
           <div className="flex flex-wrap gap-2">

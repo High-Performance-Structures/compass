@@ -449,7 +449,7 @@ export async function attachSelectionPhotos(
   }
 }
 
-/** Removes the photo from the selection; the photo itself stays in the project gallery. */
+/** Removes the photo from the selection; the photo itself stays on the project. */
 export async function detachSelectionPhoto(projectId: string, photoLinkId: string): Promise<Done> {
   try {
     const { db } = await staffSelectionContext(projectId, "update")

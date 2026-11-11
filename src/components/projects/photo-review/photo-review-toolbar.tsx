@@ -16,6 +16,7 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import {
+  GALLERY_PHOTO_KINDS,
   NO_PHASE_VALUE,
   photoSortValue,
   visibilityFilterValue,
@@ -217,11 +218,11 @@ export function PhotoReviewToolbar({
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="progress">Progress</SelectItem>
-              <SelectItem value="issue">Issue</SelectItem>
-              <SelectItem value="delivery">Delivery</SelectItem>
-              <SelectItem value="selection">Selection</SelectItem>
-              <SelectItem value="archive">Archive</SelectItem>
+              {GALLERY_PHOTO_KINDS.map((kind) => (
+                <SelectItem key={kind.value} value={kind.value}>
+                  {kind.label}
+                </SelectItem>
+              ))}
             </SelectContent>
           </Select>
           <label className="inline-flex h-9 items-center gap-1.5 text-sm">

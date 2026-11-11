@@ -44,6 +44,17 @@ export function statusLabel(value: string): string {
     .join(" ")
 }
 
+/** Finish and fixture choice photos. They live in Selections, never in Photos. */
+export const SELECTION_PHOTO_KIND = "selection"
+
+/** The photo types staff can pick in Photos (upload, batch and single edit). Selection is left out. */
+export const GALLERY_PHOTO_KINDS = [
+  { value: "progress", label: "Progress" },
+  { value: "issue", label: "Issue" },
+  { value: "delivery", label: "Delivery" },
+  { value: "archive", label: "Archive" },
+] as const
+
 export function kindLabel(value: string): string {
   return statusLabel(value)
 }

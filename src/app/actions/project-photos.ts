@@ -13,7 +13,7 @@ import { getOrganizationDriveContext } from "@/lib/google/organization-drive"
 import { projectContext, type ProjectContext } from "@/lib/server/action-context"
 import { dailyLogPhotoCollectionEligibility } from "@/lib/photos/collection-eligibility"
 import { resolveProjectPhotoDate } from "@/lib/photos/date"
-import { PHOTO_DELETE_BATCH_LIMIT } from "@/lib/photos/review"
+import { PHOTO_DELETE_BATCH_LIMIT, SELECTION_PHOTO_KIND } from "@/lib/photos/review"
 import { isInternalStaffRole } from "@/lib/user-roles"
 
 export type ProjectPhotoLibraryItem = {
@@ -298,6 +298,12 @@ export async function updateProjectPhotoPermissions(
     if (photoIds.length === 0) {
       return { success: false, error: "Select at least one photo." }
     }
+    const photoKind = normalizedPhotoKind(input.photoKind)
+    // Photos never turns a photo into a selection photo: it would leave the
+    // gallery without being attached to any selection.
+    if (photoKind === SELECTION_PHOTO_KIND) {
+      return { success: false, error: "Selection photos are in Selections. Pick another photo type." }
+    }
 
     await setPhotoPermissions(db, {
       projectId,
@@ -307,7 +313,7 @@ export async function updateProjectPhotoPermissions(
         ownerVisible: input.ownerVisible,
         subVendorVisible: input.subVendorVisible,
         publicShareable: input.publicShareable,
-        photoKind: normalizedPhotoKind(input.photoKind),
+        photoKind,
         updatedAt: new Date().toISOString(),
       },
     })
