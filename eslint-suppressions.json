@@ -1,0 +1,1406 @@
+{
+  "src/app/actions/account-deletion-admin.ts": {
+    "compass-core/owned-table-import": {
+      "count": 1
+    }
+  },
+  "src/app/actions/chat-messages.ts": {
+    "compass-core/owned-table-import": {
+      "count": 2
+    }
+  },
+  "src/app/actions/cherish-pulse.ts": {
+    "compass-core/owned-table-import": {
+      "count": 2
+    }
+  },
+  "src/app/actions/cherish-recipients.ts": {
+    "compass-core/owned-table-import": {
+      "count": 2
+    }
+  },
+  "src/app/actions/client-company-join.ts": {
+    "compass-core/owned-table-import": {
+      "count": 1
+    }
+  },
+  "src/app/actions/client-follow-up.ts": {
+    "compass-core/owned-table-import": {
+      "count": 2
+    }
+  },
+  "src/app/actions/contact-account-links.ts": {
+    "compass-core/owned-table-import": {
+      "count": 6
+    },
+    "compass-core/role-literal-compare": {
+      "count": 3
+    }
+  },
+  "src/app/actions/contact-directory.ts": {
+    "compass-core/owned-table-import": {
+      "count": 2
+    }
+  },
+  "src/app/actions/contact-duplicates.ts": {
+    "compass-core/owned-table-import": {
+      "count": 5
+    }
+  },
+  "src/app/actions/contact-project-associations.ts": {
+    "compass-core/owned-table-import": {
+      "count": 3
+    }
+  },
+  "src/app/actions/contract-packets.ts": {
+    "compass-core/owned-table-import": {
+      "count": 1
+    }
+  },
+  "src/app/actions/conversations-realtime.ts": {
+    "compass-core/owned-table-import": {
+      "count": 1
+    }
+  },
+  "src/app/actions/conversations.ts": {
+    "compass-core/owned-table-import": {
+      "count": 2
+    }
+  },
+  "src/app/actions/customer-people.ts": {
+    "compass-core/owned-table-import": {
+      "count": 2
+    }
+  },
+  "src/app/actions/customers.ts": {
+    "compass-core/owned-table-import": {
+      "count": 1
+    }
+  },
+  "src/app/actions/dashboard-overview.ts": {
+    "compass-core/role-literal-compare": {
+      "count": 1
+    }
+  },
+  "src/app/actions/dashboards.ts": {
+    "compass-core/owned-table-relational-query": {
+      "count": 4
+    },
+    "compass-core/role-literal-compare": {
+      "count": 1
+    }
+  },
+  "src/app/actions/equipment.ts": {
+    "compass-core/owned-table-import": {
+      "count": 1
+    }
+  },
+  "src/app/actions/estimate-line-pricing.ts": {
+    "compass-core/owned-table-import": {
+      "count": 2
+    }
+  },
+  "src/app/actions/feedback-admin.ts": {
+    "compass-core/owned-table-import": {
+      "count": 2
+    }
+  },
+  "src/app/actions/feedback-requests.ts": {
+    "compass-core/role-literal-compare": {
+      "count": 1
+    }
+  },
+  "src/app/actions/field-cost-codes.ts": {
+    "compass-core/role-literal-compare": {
+      "count": 2
+    }
+  },
+  "src/app/actions/field-mode.ts": {
+    "compass-core/owned-table-import": {
+      "count": 2
+    }
+  },
+  "src/app/actions/google-drive.ts": {
+    "compass-core/owned-table-import": {
+      "count": 2
+    }
+  },
+  "src/app/actions/greeting-card-recipients.ts": {
+    "compass-core/owned-table-import": {
+      "count": 7
+    }
+  },
+  "src/app/actions/greeting-cards.ts": {
+    "compass-core/owned-table-import": {
+      "count": 1
+    }
+  },
+  "src/app/actions/inbound-sms-review.ts": {
+    "compass-core/owned-table-import": {
+      "count": 2
+    }
+  },
+  "src/app/actions/internal-duties.ts": {
+    "compass-core/owned-table-import": {
+      "count": 2
+    }
+  },
+  "src/app/actions/invites.ts": {
+    "compass-core/owned-table-import": {
+      "count": 3
+    }
+  },
+  "src/app/actions/job-emails.ts": {
+    "compass-core/owned-table-import": {
+      "count": 1
+    }
+  },
+  "src/app/actions/listening-playlists.ts": {
+    "compass-core/owned-table-import": {
+      "count": 1
+    }
+  },
+  "src/app/actions/listening-room.ts": {
+    "compass-core/owned-table-import": {
+      "count": 1
+    }
+  },
+  "src/app/actions/message-search.ts": {
+    "compass-core/owned-table-import": {
+      "count": 1
+    },
+    "compass-core/role-literal-compare": {
+      "count": 1
+    }
+  },
+  "src/app/actions/my-compass-calendar.ts": {
+    "compass-core/owned-table-import": {
+      "count": 2
+    }
+  },
+  "src/app/actions/my-contact-records.ts": {
+    "compass-core/owned-table-import": {
+      "count": 5
+    },
+    "compass-core/role-literal-compare": {
+      "count": 2
+    }
+  },
+  "src/app/actions/notifications.ts": {
+    "compass-core/role-literal-compare": {
+      "count": 4
+    }
+  },
+  "src/app/actions/nutech-emails.ts": {
+    "compass-core/owned-table-import": {
+      "count": 1
+    }
+  },
+  "src/app/actions/nutech-order-invoices.ts": {
+    "compass-core/owned-table-import": {
+      "count": 1
+    }
+  },
+  "src/app/actions/nutech-order-overview.ts": {
+    "compass-core/owned-table-import": {
+      "count": 1
+    }
+  },
+  "src/app/actions/office-alerts.ts": {
+    "compass-core/owned-table-import": {
+      "count": 1
+    }
+  },
+  "src/app/actions/organizations.ts": {
+    "compass-core/owned-table-import": {
+      "count": 2
+    }
+  },
+  "src/app/actions/owner-document-notices.ts": {
+    "compass-core/owned-table-import": {
+      "count": 1
+    }
+  },
+  "src/app/actions/permission-overrides.ts": {
+    "compass-core/owned-table-import": {
+      "count": 2
+    }
+  },
+  "src/app/actions/presence.ts": {
+    "compass-core/owned-table-import": {
+      "count": 2
+    }
+  },
+  "src/app/actions/project-access-invitations.ts": {
+    "compass-core/owned-table-import": {
+      "count": 11
+    },
+    "compass-core/role-literal-compare": {
+      "count": 6
+    }
+  },
+  "src/app/actions/project-audience-preview.ts": {
+    "compass-core/owned-table-import": {
+      "count": 2
+    }
+  },
+  "src/app/actions/project-audience-sub-vendor.ts": {
+    "compass-core/role-literal-compare": {
+      "count": 2
+    }
+  },
+  "src/app/actions/project-calendars.ts": {
+    "compass-core/role-literal-compare": {
+      "count": 1
+    }
+  },
+  "src/app/actions/project-change-orders.ts": {
+    "compass-core/owned-table-import": {
+      "count": 1
+    }
+  },
+  "src/app/actions/project-client-meetings.ts": {
+    "compass-core/owned-table-import": {
+      "count": 2
+    }
+  },
+  "src/app/actions/project-contacts.ts": {
+    "compass-core/owned-table-import": {
+      "count": 1
+    }
+  },
+  "src/app/actions/project-duplicates.ts": {
+    "compass-core/owned-table-import": {
+      "count": 1
+    }
+  },
+  "src/app/actions/project-email.ts": {
+    "compass-core/owned-table-import": {
+      "count": 6
+    }
+  },
+  "src/app/actions/project-invoices.ts": {
+    "compass-core/owned-table-import": {
+      "count": 1
+    }
+  },
+  "src/app/actions/project-links.ts": {
+    "compass-core/owned-table-import": {
+      "count": 1
+    }
+  },
+  "src/app/actions/project-messages.ts": {
+    "compass-core/owned-table-import": {
+      "count": 3
+    }
+  },
+  "src/app/actions/project-operations.ts": {
+    "compass-core/role-literal-compare": {
+      "count": 1
+    }
+  },
+  "src/app/actions/project-photos.ts": {
+    "compass-core/role-literal-compare": {
+      "count": 1
+    }
+  },
+  "src/app/actions/project-registry-archive.ts": {
+    "compass-core/owned-table-import": {
+      "count": 1
+    }
+  },
+  "src/app/actions/project-rfis.ts": {
+    "compass-core/role-literal-compare": {
+      "count": 4
+    }
+  },
+  "src/app/actions/project-sage-send.ts": {
+    "compass-core/owned-table-import": {
+      "count": 1
+    }
+  },
+  "src/app/actions/project-timeline.ts": {
+    "compass-core/role-literal-compare": {
+      "count": 1
+    }
+  },
+  "src/app/actions/rate-book.ts": {
+    "compass-core/owned-table-import": {
+      "count": 1
+    }
+  },
+  "src/app/actions/sage-client-directory.ts": {
+    "compass-core/owned-table-import": {
+      "count": 1
+    }
+  },
+  "src/app/actions/sage-company-names.ts": {
+    "compass-core/owned-table-import": {
+      "count": 2
+    }
+  },
+  "src/app/actions/sage-contact-changes.ts": {
+    "compass-core/owned-table-import": {
+      "count": 6
+    }
+  },
+  "src/app/actions/sage-contact-creates.ts": {
+    "compass-core/owned-table-import": {
+      "count": 2
+    }
+  },
+  "src/app/actions/sage-contact-links.ts": {
+    "compass-core/owned-table-import": {
+      "count": 5
+    },
+    "compass-core/owned-table-raw-sql": {
+      "count": 2
+    }
+  },
+  "src/app/actions/sage-directory-adds.ts": {
+    "compass-core/owned-table-import": {
+      "count": 2
+    }
+  },
+  "src/app/actions/sage-linked-edits.ts": {
+    "compass-core/owned-table-import": {
+      "count": 4
+    }
+  },
+  "src/app/actions/sage-vendor-certificates.ts": {
+    "compass-core/owned-table-import": {
+      "count": 2
+    }
+  },
+  "src/app/actions/schedule-confirmations.ts": {
+    "compass-core/owned-table-import": {
+      "count": 5
+    },
+    "compass-core/role-literal-compare": {
+      "count": 12
+    }
+  },
+  "src/app/actions/schedule-phases.ts": {
+    "compass-core/role-literal-compare": {
+      "count": 1
+    }
+  },
+  "src/app/actions/schedule-template-export.ts": {
+    "compass-core/role-literal-compare": {
+      "count": 1
+    }
+  },
+  "src/app/actions/staff-message-desk.ts": {
+    "compass-core/owned-table-import": {
+      "count": 3
+    }
+  },
+  "src/app/actions/trade-letters.ts": {
+    "compass-core/owned-table-import": {
+      "count": 1
+    }
+  },
+  "src/app/actions/users.ts": {
+    "compass-core/owned-table-import": {
+      "count": 3
+    }
+  },
+  "src/app/actions/vendor-trade-doc-import.ts": {
+    "compass-core/owned-table-import": {
+      "count": 1
+    }
+  },
+  "src/app/actions/vendor-trade-doc-requests.ts": {
+    "compass-core/owned-table-import": {
+      "count": 2
+    }
+  },
+  "src/app/actions/vendor-trade-docs.ts": {
+    "compass-core/owned-table-import": {
+      "count": 1
+    }
+  },
+  "src/app/actions/vendors.ts": {
+    "compass-core/owned-table-import": {
+      "count": 5
+    }
+  },
+  "src/app/actions/voice-sessions.ts": {
+    "compass-core/owned-table-import": {
+      "count": 1
+    }
+  },
+  "src/app/actions/work-calendar.ts": {
+    "compass-core/role-literal-compare": {
+      "count": 1
+    }
+  },
+  "src/app/api/bridge/register/route.ts": {
+    "compass-core/owned-table-import": {
+      "count": 1
+    }
+  },
+  "src/app/api/bridge/tools/route.ts": {
+    "compass-core/owned-table-import": {
+      "count": 1
+    }
+  },
+  "src/app/api/compass/query/route.ts": {
+    "compass-core/owned-table-relational-query": {
+      "count": 4
+    }
+  },
+  "src/app/api/compass/skills/route.ts": {
+    "compass-core/role-literal-compare": {
+      "count": 3
+    }
+  },
+  "src/app/api/conversations/attachments/[attachmentId]/route.ts": {
+    "compass-core/owned-table-import": {
+      "count": 1
+    }
+  },
+  "src/app/api/google/download/[fileId]/route.ts": {
+    "compass-core/owned-table-import": {
+      "count": 1
+    }
+  },
+  "src/app/api/google/project-manager-handoff/route.ts": {
+    "compass-core/owned-table-import": {
+      "count": 1
+    }
+  },
+  "src/app/api/google/script-handoff/route.ts": {
+    "compass-core/owned-table-import": {
+      "count": 1
+    }
+  },
+  "src/app/api/integrations/jarvis/replies/route.ts": {
+    "compass-core/owned-table-import": {
+      "count": 2
+    }
+  },
+  "src/app/api/integrations/sage/client-project-writes/results/route.ts": {
+    "compass-core/owned-table-import": {
+      "count": 2
+    }
+  },
+  "src/app/api/integrations/sage/contact-changes/requests/route.ts": {
+    "compass-core/owned-table-import": {
+      "count": 2
+    }
+  },
+  "src/app/api/projects/[id]/photos/[photoId]/route.ts": {
+    "compass-core/owned-table-import": {
+      "count": 1
+    }
+  },
+  "src/app/api/projects/[id]/warranty/[claimId]/attachments/[attachmentId]/download/route.ts": {
+    "compass-core/owned-table-import": {
+      "count": 1
+    }
+  },
+  "src/app/api/projects/[id]/warranty/[claimId]/attachments/route.ts": {
+    "compass-core/owned-table-import": {
+      "count": 1
+    }
+  },
+  "src/app/dashboard/page.tsx": {
+    "compass-core/role-literal-compare": {
+      "count": 3
+    }
+  },
+  "src/app/dashboard/projects/[id]/page.tsx": {
+    "compass-core/owned-table-import": {
+      "count": 2
+    },
+    "compass-core/role-literal-compare": {
+      "count": 4
+    }
+  },
+  "src/app/dashboard/projects/[id]/schedule/page.tsx": {
+    "compass-core/owned-table-import": {
+      "count": 1
+    },
+    "compass-core/role-literal-compare": {
+      "count": 5
+    }
+  },
+  "src/app/dashboard/schedule/page.tsx": {
+    "compass-core/owned-table-import": {
+      "count": 1
+    },
+    "compass-core/role-literal-compare": {
+      "count": 7
+    }
+  },
+  "src/components/people-table.tsx": {
+    "compass-core/role-literal-compare": {
+      "count": 2
+    }
+  },
+  "src/components/settings/square-alert-settings-section.tsx": {
+    "compass-core/role-literal-compare": {
+      "count": 1
+    }
+  },
+  "src/lib/agent/agent-user.ts": {
+    "compass-core/owned-table-import": {
+      "count": 3
+    }
+  },
+  "src/lib/archived-person-sql.ts": {
+    "compass-core/owned-table-raw-sql": {
+      "count": 1
+    }
+  },
+  "src/lib/auth.ts": {
+    "compass-core/owned-table-import": {
+      "count": 6
+    },
+    "compass-core/role-literal-compare": {
+      "count": 4
+    }
+  },
+  "src/lib/buildertrend/identity-reconciliation.ts": {
+    "compass-core/owned-table-raw-sql": {
+      "count": 1
+    }
+  },
+  "src/lib/change-orders/access.ts": {
+    "compass-core/role-literal-compare": {
+      "count": 3
+    }
+  },
+  "src/lib/client-meetings/guest-meetings.ts": {
+    "compass-core/owned-table-import": {
+      "count": 1
+    }
+  },
+  "src/lib/client-meetings/transcripts.ts": {
+    "compass-core/owned-table-import": {
+      "count": 1
+    }
+  },
+  "src/lib/contact-identity-ownership.ts": {
+    "compass-core/owned-table-import": {
+      "count": 3
+    }
+  },
+  "src/lib/conversations/agent-messages.ts": {
+    "compass-core/owned-table-import": {
+      "count": 1
+    }
+  },
+  "src/lib/correspondence/access.ts": {
+    "compass-core/owned-table-import": {
+      "count": 4
+    },
+    "compass-core/role-literal-compare": {
+      "count": 9
+    }
+  },
+  "src/lib/correspondence/channel-threads.ts": {
+    "compass-core/owned-table-import": {
+      "count": 3
+    },
+    "compass-core/role-literal-compare": {
+      "count": 4
+    }
+  },
+  "src/lib/correspondence/email-adapter.ts": {
+    "compass-core/owned-table-import": {
+      "count": 3
+    },
+    "compass-core/owned-table-raw-sql": {
+      "count": 1
+    },
+    "compass-core/role-literal-compare": {
+      "count": 1
+    }
+  },
+  "src/lib/correspondence/write-guard.ts": {
+    "compass-core/owned-table-raw-sql": {
+      "count": 2
+    }
+  },
+  "src/lib/daily-logs/log-followups-server.ts": {
+    "compass-core/owned-table-import": {
+      "count": 3
+    }
+  },
+  "src/lib/daily-logs/reminders-server.ts": {
+    "compass-core/owned-table-import": {
+      "count": 2
+    }
+  },
+  "src/lib/domain/access-requests/queries.ts": {
+    "compass-core/owned-table-import": {
+      "count": 7
+    },
+    "compass-core/owned-table-raw-sql": {
+      "count": 1
+    }
+  },
+  "src/lib/domain/access-requests/service.ts": {
+    "compass-core/owned-table-import": {
+      "count": 6
+    },
+    "compass-core/role-literal-compare": {
+      "count": 1
+    }
+  },
+  "src/lib/domain/buildertrend/legacy-sources.ts": {
+    "compass-core/owned-table-raw-sql": {
+      "count": 1
+    }
+  },
+  "src/lib/domain/contacts/assignees.ts": {
+    "compass-core/owned-table-import": {
+      "count": 2
+    }
+  },
+  "src/lib/domain/contacts/join-client-company.ts": {
+    "compass-core/owned-table-raw-sql": {
+      "count": 1
+    }
+  },
+  "src/lib/domain/contacts/pending-invitations.ts": {
+    "compass-core/owned-table-import": {
+      "count": 2
+    }
+  },
+  "src/lib/domain/contacts/people-search.ts": {
+    "compass-core/owned-table-import": {
+      "count": 2
+    }
+  },
+  "src/lib/domain/contacts/person-archive.ts": {
+    "compass-core/owned-table-import": {
+      "count": 4
+    }
+  },
+  "src/lib/domain/contacts/person-status.ts": {
+    "compass-core/owned-table-raw-sql": {
+      "count": 1
+    }
+  },
+  "src/lib/domain/contacts/prior-project-access.ts": {
+    "compass-core/owned-table-import": {
+      "count": 2
+    },
+    "compass-core/role-literal-compare": {
+      "count": 4
+    }
+  },
+  "src/lib/domain/contacts/remove-contact.ts": {
+    "compass-core/owned-table-import": {
+      "count": 3
+    }
+  },
+  "src/lib/domain/contacts/resolved-columns.ts": {
+    "compass-core/owned-table-import": {
+      "count": 2
+    }
+  },
+  "src/lib/domain/contacts/save-contact.ts": {
+    "compass-core/owned-table-import": {
+      "count": 4
+    }
+  },
+  "src/lib/domain/contacts/summary.ts": {
+    "compass-core/owned-table-import": {
+      "count": 3
+    }
+  },
+  "src/lib/domain/contacts/unassigned-people.ts": {
+    "compass-core/owned-table-import": {
+      "count": 2
+    }
+  },
+  "src/lib/domain/contacts/unassigned-person-edit.ts": {
+    "compass-core/owned-table-import": {
+      "count": 4
+    }
+  },
+  "src/lib/domain/conversations/imported-participant-group-resolve.ts": {
+    "compass-core/owned-table-import": {
+      "count": 1
+    },
+    "compass-core/owned-table-raw-sql": {
+      "count": 1
+    }
+  },
+  "src/lib/domain/conversations/imported-participant-resolve.ts": {
+    "compass-core/owned-table-import": {
+      "count": 1
+    }
+  },
+  "src/lib/domain/conversations/imported-sharing.ts": {
+    "compass-core/owned-table-import": {
+      "count": 2
+    }
+  },
+  "src/lib/domain/conversations/imported.ts": {
+    "compass-core/owned-table-import": {
+      "count": 1
+    },
+    "compass-core/owned-table-raw-sql": {
+      "count": 1
+    }
+  },
+  "src/lib/domain/conversations/messages.ts": {
+    "compass-core/owned-table-import": {
+      "count": 1
+    }
+  },
+  "src/lib/domain/conversations/participant-auto-resolve.ts": {
+    "compass-core/owned-table-import": {
+      "count": 8
+    }
+  },
+  "src/lib/domain/crm/follow-ups.ts": {
+    "compass-core/owned-table-import": {
+      "count": 2
+    }
+  },
+  "src/lib/domain/crm/interactions.ts": {
+    "compass-core/owned-table-import": {
+      "count": 1
+    }
+  },
+  "src/lib/domain/documents/drive-connection-store.ts": {
+    "compass-core/owned-table-import": {
+      "count": 1
+    }
+  },
+  "src/lib/domain/estimates/change-order-acceptance.ts": {
+    "compass-core/owned-table-import": {
+      "count": 2
+    }
+  },
+  "src/lib/domain/estimates/drafts.ts": {
+    "compass-core/owned-table-import": {
+      "count": 1
+    }
+  },
+  "src/lib/domain/estimates/header.ts": {
+    "compass-core/owned-table-import": {
+      "count": 1
+    }
+  },
+  "src/lib/domain/estimates/workspace.ts": {
+    "compass-core/owned-table-import": {
+      "count": 1
+    }
+  },
+  "src/lib/domain/families/activation.ts": {
+    "compass-core/owned-table-import": {
+      "count": 2
+    }
+  },
+  "src/lib/domain/field/access.ts": {
+    "compass-core/owned-table-import": {
+      "count": 2
+    }
+  },
+  "src/lib/domain/field/daily-log-workspace.ts": {
+    "compass-core/owned-table-import": {
+      "count": 1
+    }
+  },
+  "src/lib/domain/field/field-app-access.ts": {
+    "compass-core/owned-table-import": {
+      "count": 4
+    }
+  },
+  "src/lib/domain/field/field-summary.ts": {
+    "compass-core/owned-table-import": {
+      "count": 3
+    },
+    "compass-core/role-literal-compare": {
+      "count": 1
+    }
+  },
+  "src/lib/domain/field/owner-update-rows.ts": {
+    "compass-core/owned-table-import": {
+      "count": 3
+    }
+  },
+  "src/lib/domain/financials/receivables.ts": {
+    "compass-core/owned-table-import": {
+      "count": 2
+    }
+  },
+  "src/lib/domain/operations/queries.ts": {
+    "compass-core/owned-table-import": {
+      "count": 3
+    }
+  },
+  "src/lib/domain/operations/store.ts": {
+    "compass-core/owned-table-raw-sql": {
+      "count": 1
+    }
+  },
+  "src/lib/domain/project/information.ts": {
+    "compass-core/owned-table-import": {
+      "count": 4
+    }
+  },
+  "src/lib/domain/project/intake-shell.ts": {
+    "compass-core/owned-table-import": {
+      "count": 1
+    }
+  },
+  "src/lib/domain/project/intake.ts": {
+    "compass-core/owned-table-import": {
+      "count": 4
+    }
+  },
+  "src/lib/domain/project/listing.ts": {
+    "compass-core/owned-table-import": {
+      "count": 3
+    }
+  },
+  "src/lib/domain/project/profile-sync.ts": {
+    "compass-core/owned-table-import": {
+      "count": 4
+    }
+  },
+  "src/lib/domain/project/store.ts": {
+    "compass-core/owned-table-raw-sql": {
+      "count": 1
+    }
+  },
+  "src/lib/domain/schedule/access.ts": {
+    "compass-core/role-literal-compare": {
+      "count": 1
+    }
+  },
+  "src/lib/domain/schedule/assignment-notices.ts": {
+    "compass-core/owned-table-import": {
+      "count": 2
+    },
+    "compass-core/role-literal-compare": {
+      "count": 4
+    }
+  },
+  "src/lib/domain/schedule/queries.ts": {
+    "compass-core/owned-table-import": {
+      "count": 4
+    }
+  },
+  "src/lib/domain/selections/choice-rfq-server.ts": {
+    "compass-core/owned-table-import": {
+      "count": 1
+    }
+  },
+  "src/lib/domain/selections/choices-read.ts": {
+    "compass-core/owned-table-import": {
+      "count": 2
+    }
+  },
+  "src/lib/domain/selections/lead-time-todos.ts": {
+    "compass-core/owned-table-import": {
+      "count": 1
+    }
+  },
+  "src/lib/domain/selections/round-signing.ts": {
+    "compass-core/owned-table-import": {
+      "count": 2
+    }
+  },
+  "src/lib/domain/selections/selection-sheet-read.ts": {
+    "compass-core/owned-table-import": {
+      "count": 1
+    }
+  },
+  "src/lib/domain/selections/templates.ts": {
+    "compass-core/owned-table-import": {
+      "count": 1
+    }
+  },
+  "src/lib/domain/selections/workspace.ts": {
+    "compass-core/owned-table-import": {
+      "count": 1
+    }
+  },
+  "src/lib/domain/settings/saved-views.ts": {
+    "compass-core/owned-table-import": {
+      "count": 1
+    }
+  },
+  "src/lib/domain/work-calendar/assemble.ts": {
+    "compass-core/role-literal-compare": {
+      "count": 4
+    }
+  },
+  "src/lib/domain/work-calendar/loaders.ts": {
+    "compass-core/owned-table-import": {
+      "count": 3
+    }
+  },
+  "src/lib/email/gmail-inbound.ts": {
+    "compass-core/owned-table-import": {
+      "count": 2
+    }
+  },
+  "src/lib/email/invitation-delivery.ts": {
+    "compass-core/owned-table-import": {
+      "count": 5
+    },
+    "compass-core/role-literal-compare": {
+      "count": 4
+    }
+  },
+  "src/lib/email/invitation-recipient.ts": {
+    "compass-core/owned-table-import": {
+      "count": 8
+    },
+    "compass-core/role-literal-compare": {
+      "count": 3
+    }
+  },
+  "src/lib/email/project-email-participants.ts": {
+    "compass-core/owned-table-import": {
+      "count": 4
+    },
+    "compass-core/owned-table-raw-sql": {
+      "count": 1
+    },
+    "compass-core/role-literal-compare": {
+      "count": 1
+    }
+  },
+  "src/lib/email/project-inbound-routing.ts": {
+    "compass-core/owned-table-import": {
+      "count": 3
+    }
+  },
+  "src/lib/email/project-message-routing.ts": {
+    "compass-core/owned-table-import": {
+      "count": 3
+    },
+    "compass-core/owned-table-raw-sql": {
+      "count": 2
+    }
+  },
+  "src/lib/email/project-recipient-options.ts": {
+    "compass-core/owned-table-import": {
+      "count": 2
+    }
+  },
+  "src/lib/email/staff-sender.ts": {
+    "compass-core/owned-table-import": {
+      "count": 3
+    }
+  },
+  "src/lib/email/tracked-record-replies.ts": {
+    "compass-core/owned-table-import": {
+      "count": 1
+    }
+  },
+  "src/lib/financials/sage-billing-check.ts": {
+    "compass-core/owned-table-import": {
+      "count": 3
+    }
+  },
+  "src/lib/financials/sage-pay-request-sync.ts": {
+    "compass-core/owned-table-import": {
+      "count": 1
+    }
+  },
+  "src/lib/financials/simple-invoice-document.ts": {
+    "compass-core/owned-table-import": {
+      "count": 1
+    }
+  },
+  "src/lib/financials/simple-invoices-server.ts": {
+    "compass-core/owned-table-import": {
+      "count": 2
+    }
+  },
+  "src/lib/google/calendar/policy.ts": {
+    "compass-core/role-literal-compare": {
+      "count": 4
+    }
+  },
+  "src/lib/google/calendar/project-policy.ts": {
+    "compass-core/role-literal-compare": {
+      "count": 4
+    }
+  },
+  "src/lib/google/calendar/sync.ts": {
+    "compass-core/owned-table-import": {
+      "count": 1
+    }
+  },
+  "src/lib/google/mapper.ts": {
+    "compass-core/role-literal-compare": {
+      "count": 2
+    }
+  },
+  "src/lib/google/project-archive-drive.ts": {
+    "compass-core/role-literal-compare": {
+      "count": 1
+    }
+  },
+  "src/lib/google/project-document-drive.ts": {
+    "compass-core/owned-table-import": {
+      "count": 1
+    }
+  },
+  "src/lib/google/project-workspace.ts": {
+    "compass-core/owned-table-import": {
+      "count": 1
+    }
+  },
+  "src/lib/goto/inbound.ts": {
+    "compass-core/owned-table-import": {
+      "count": 3
+    }
+  },
+  "src/lib/help/index.ts": {
+    "compass-core/role-literal-compare": {
+      "count": 4
+    }
+  },
+  "src/lib/internal-contact-provisioning.ts": {
+    "compass-core/owned-table-import": {
+      "count": 2
+    }
+  },
+  "src/lib/internal-duties/recurring-data.ts": {
+    "compass-core/owned-table-import": {
+      "count": 1
+    }
+  },
+  "src/lib/jarvis/feedback-review-request.ts": {
+    "compass-core/owned-table-import": {
+      "count": 2
+    }
+  },
+  "src/lib/jarvis/feedback-status-update.ts": {
+    "compass-core/owned-table-import": {
+      "count": 2
+    }
+  },
+  "src/lib/job-workflows/server.ts": {
+    "compass-core/owned-table-import": {
+      "count": 2
+    }
+  },
+  "src/lib/listening-playlist-context.ts": {
+    "compass-core/role-literal-compare": {
+      "count": 1
+    }
+  },
+  "src/lib/mcp/tool-adapter.ts": {
+    "compass-core/owned-table-relational-query": {
+      "count": 4
+    },
+    "compass-core/role-literal-compare": {
+      "count": 4
+    }
+  },
+  "src/lib/morning-plan/server.ts": {
+    "compass-core/owned-table-import": {
+      "count": 2
+    }
+  },
+  "src/lib/my-compass-calendar/sync.ts": {
+    "compass-core/owned-table-import": {
+      "count": 3
+    }
+  },
+  "src/lib/notifications/create-event.ts": {
+    "compass-core/owned-table-import": {
+      "count": 2
+    }
+  },
+  "src/lib/notifications/events.ts": {
+    "compass-core/owned-table-import": {
+      "count": 4
+    }
+  },
+  "src/lib/owner-portal/recipients.ts": {
+    "compass-core/owned-table-import": {
+      "count": 3
+    }
+  },
+  "src/lib/owner-updates/access.ts": {
+    "compass-core/owned-table-import": {
+      "count": 1
+    }
+  },
+  "src/lib/paper-trail/record-copy-data.ts": {
+    "compass-core/owned-table-import": {
+      "count": 2
+    }
+  },
+  "src/lib/permissions.ts": {
+    "compass-core/role-literal-compare": {
+      "count": 10
+    }
+  },
+  "src/lib/project-access.ts": {
+    "compass-core/owned-table-import": {
+      "count": 2
+    }
+  },
+  "src/lib/project-archive-context.ts": {
+    "compass-core/owned-table-import": {
+      "count": 2
+    }
+  },
+  "src/lib/project-archives.ts": {
+    "compass-core/owned-table-import": {
+      "count": 4
+    },
+    "compass-core/role-literal-compare": {
+      "count": 1
+    }
+  },
+  "src/lib/project-audience-access.ts": {
+    "compass-core/role-literal-compare": {
+      "count": 4
+    }
+  },
+  "src/lib/project-audience-conversations.ts": {
+    "compass-core/owned-table-import": {
+      "count": 3
+    },
+    "compass-core/role-literal-compare": {
+      "count": 1
+    }
+  },
+  "src/lib/project-audience-staff.ts": {
+    "compass-core/owned-table-import": {
+      "count": 4
+    }
+  },
+  "src/lib/project-audience-viewer-contact.ts": {
+    "compass-core/owned-table-import": {
+      "count": 2
+    }
+  },
+  "src/lib/project-audience-viewer.ts": {
+    "compass-core/owned-table-import": {
+      "count": 6
+    }
+  },
+  "src/lib/project-calendars/sync.ts": {
+    "compass-core/owned-table-import": {
+      "count": 3
+    }
+  },
+  "src/lib/project-contact-invitation-select.ts": {
+    "compass-core/owned-table-import": {
+      "count": 6
+    }
+  },
+  "src/lib/project-external-resource-access.ts": {
+    "compass-core/owned-table-import": {
+      "count": 3
+    }
+  },
+  "src/lib/project-follow-up-reminders.ts": {
+    "compass-core/owned-table-import": {
+      "count": 1
+    }
+  },
+  "src/lib/project-member-role.ts": {
+    "compass-core/owned-table-import": {
+      "count": 2
+    }
+  },
+  "src/lib/project-timeline/server.ts": {
+    "compass-core/owned-table-import": {
+      "count": 2
+    }
+  },
+  "src/lib/project-workflow-roles.ts": {
+    "compass-core/role-literal-compare": {
+      "count": 2
+    }
+  },
+  "src/lib/projects/project-list.ts": {
+    "compass-core/owned-table-import": {
+      "count": 1
+    }
+  },
+  "src/lib/quick-add-server.ts": {
+    "compass-core/owned-table-import": {
+      "count": 5
+    },
+    "compass-core/role-literal-compare": {
+      "count": 8
+    }
+  },
+  "src/lib/rfis/vendor-assignment.ts": {
+    "compass-core/owned-table-import": {
+      "count": 1
+    }
+  },
+  "src/lib/rfis/vendor-visibility.ts": {
+    "compass-core/owned-table-import": {
+      "count": 1
+    }
+  },
+  "src/lib/sage/bridge-health.ts": {
+    "compass-core/owned-table-import": {
+      "count": 2
+    }
+  },
+  "src/lib/sage/client-directory-link.ts": {
+    "compass-core/owned-table-import": {
+      "count": 1
+    }
+  },
+  "src/lib/sage/contact-create-result.ts": {
+    "compass-core/owned-table-import": {
+      "count": 2
+    }
+  },
+  "src/lib/sage/contact-entity.ts": {
+    "compass-core/owned-table-import": {
+      "count": 5
+    }
+  },
+  "src/lib/sage/contact-proposal-service.ts": {
+    "compass-core/role-literal-compare": {
+      "count": 3
+    }
+  },
+  "src/lib/sage/directory-add-candidates.ts": {
+    "compass-core/owned-table-import": {
+      "count": 4
+    }
+  },
+  "src/lib/sage/directory-add-service.ts": {
+    "compass-core/owned-table-import": {
+      "count": 6
+    }
+  },
+  "src/lib/sage/employee-directory-sync.ts": {
+    "compass-core/owned-table-import": {
+      "count": 3
+    },
+    "compass-core/owned-table-raw-sql": {
+      "count": 1
+    }
+  },
+  "src/lib/sage/estimate-sync.ts": {
+    "compass-core/owned-table-import": {
+      "count": 1
+    }
+  },
+  "src/lib/sage/job-write-client.ts": {
+    "compass-core/owned-table-import": {
+      "count": 1
+    }
+  },
+  "src/lib/sage/sage-linked-local-apply.ts": {
+    "compass-core/owned-table-import": {
+      "count": 4
+    }
+  },
+  "src/lib/sage/square-alert-recipients.ts": {
+    "compass-core/owned-table-import": {
+      "count": 2
+    },
+    "compass-core/role-literal-compare": {
+      "count": 1
+    }
+  },
+  "src/lib/sage/square-auth-health.ts": {
+    "compass-core/owned-table-import": {
+      "count": 1
+    }
+  },
+  "src/lib/sage/square-creator-alerts.ts": {
+    "compass-core/owned-table-raw-sql": {
+      "count": 1
+    }
+  },
+  "src/lib/sage/square-payment-notifications.ts": {
+    "compass-core/owned-table-import": {
+      "count": 1
+    }
+  },
+  "src/lib/sage/square-payment.ts": {
+    "compass-core/owned-table-raw-sql": {
+      "count": 2
+    }
+  },
+  "src/lib/sage/vendor-certificates.ts": {
+    "compass-core/owned-table-import": {
+      "count": 1
+    }
+  },
+  "src/lib/schedule/confirmation.ts": {
+    "compass-core/role-literal-compare": {
+      "count": 4
+    }
+  },
+  "src/lib/schedule/partner-assignments.ts": {
+    "compass-core/owned-table-import": {
+      "count": 1
+    }
+  },
+  "src/lib/sender-identity-guard.ts": {
+    "compass-core/owned-table-import": {
+      "count": 1
+    }
+  },
+  "src/lib/staff-message-desk/stale-reminders.ts": {
+    "compass-core/owned-table-import": {
+      "count": 1
+    }
+  },
+  "src/lib/team-access-section.ts": {
+    "compass-core/role-literal-compare": {
+      "count": 4
+    }
+  },
+  "src/lib/trade-docs/email-replies.ts": {
+    "compass-core/owned-table-import": {
+      "count": 2
+    }
+  },
+  "src/lib/trade-docs/link-delivery.ts": {
+    "compass-core/owned-table-import": {
+      "count": 1
+    }
+  },
+  "src/lib/trade-docs/vendor-link-server.ts": {
+    "compass-core/owned-table-import": {
+      "count": 2
+    }
+  },
+  "src/lib/trade-letters/server.ts": {
+    "compass-core/owned-table-import": {
+      "count": 3
+    }
+  },
+  "src/lib/user-availability.ts": {
+    "compass-core/owned-table-import": {
+      "count": 1
+    }
+  },
+  "src/lib/voice-channel-access.ts": {
+    "compass-core/owned-table-import": {
+      "count": 1
+    }
+  },
+  "src/lib/warranty/assignee.ts": {
+    "compass-core/owned-table-import": {
+      "count": 3
+    }
+  },
+  "src/lib/weather/areas-server.ts": {
+    "compass-core/owned-table-import": {
+      "count": 1
+    }
+  }
+}

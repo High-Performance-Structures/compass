@@ -11,6 +11,7 @@
 		"build": "bun scripts/run-with-deployment-id.mjs next build && node scripts/dedupe-server-chunks.mjs",
 		"start": "next start",
 		"lint": "eslint .",
+		"core:check": "node scripts/check-core-suppressions.mjs",
 		"ui:check": "node scripts/check-ui-standards.mjs",
 		"knip": "knip",
 		"bundle:report": "node scripts/bundle-report.mjs",
