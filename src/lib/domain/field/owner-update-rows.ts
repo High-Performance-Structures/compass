@@ -58,6 +58,7 @@ export type OwnerUpdateLogRow = {
   readonly authorFirstName: string | null
   readonly authorLastName: string | null
   readonly authorEmail: string | null
+  readonly authorIsActive: boolean | null
 }
 
 /** `resourceType` is the owner's grant kind; null for staff, who see every file. */
@@ -209,6 +210,7 @@ export async function loadOwnerUpdateLogRows(
       authorFirstName: users.firstName,
       authorLastName: users.lastName,
       authorEmail: users.email,
+      authorIsActive: users.isActive,
     })
     .from(dailyLogs)
     .leftJoin(users, eq(dailyLogs.authorId, users.id))

@@ -6,6 +6,7 @@ import { z } from "zod/v4"
 import { actionFailure, type ActionResult } from "@/lib/action-result"
 import { recordActivityEvent } from "@/lib/activity-log"
 import { saveInternalPerson, setInternalPersonArchived } from "@/lib/domain/contacts/internal-people"
+import { directoryPersonJobCount } from "@/lib/domain/contacts/person-archive"
 import { can } from "@/lib/permissions"
 import { orgContext } from "@/lib/server/action-context"
 
@@ -65,7 +66,7 @@ export async function updateInternalDirectoryPerson(
 export async function setInternalDirectoryPersonArchived(
   personId: string,
   archived: boolean,
-): Promise<ActionResult<{ readonly name: string }>> {
+): Promise<ActionResult<{ readonly name: string; readonly jobCount: number }>> {
   try {
     const id = z.string().trim().min(1).max(200).safeParse(personId)
     if (!id.success) return actionFailure("Choose a person.")
@@ -81,13 +82,31 @@ export async function setInternalDirectoryPersonArchived(
       action: archived ? "internal_contact.archived" : "internal_contact.restored",
       entityType: "internal_contact",
       entityId: id.data,
-      summary: `${archived ? "Archived" : "Restored"} ${result.name} in the internal directory.`,
+      summary: archived
+        ? `Archived ${result.name} in the internal directory and removed them from ${result.jobCount} ${result.jobCount === 1 ? "job" : "jobs"} (kept in history).`
+        : `Restored ${result.name} in the internal directory.`,
     })
     revalidatePath("/dashboard/contacts")
     revalidatePath("/dashboard/projects", "layout")
-    return { success: true, data: { name: result.name } }
+    return { success: true, data: { name: result.name, jobCount: result.jobCount } }
   } catch (error) {
     console.error("Failed to archive internal person", error)
     return actionFailure("Could not update this person.")
+  }
+}
+
+/** How many jobs list this internal person, for the Archive confirmation. */
+export async function getInternalDirectoryPersonJobCount(personId: string): Promise<ActionResult<{ readonly jobCount: number }>> {
+  try {
+    const id = z.string().trim().min(1).max(200).safeParse(personId)
+    if (!id.success) return actionFailure("Choose a person.")
+    const context = await orgContext({ feature: "internal-directory", action: "read" })
+    if (!context.success) return context
+    const { db, organizationId } = context.data
+    const jobCount = await directoryPersonJobCount(db, { organizationId, kind: "internal_contact", personId: id.data })
+    return { success: true, data: { jobCount } }
+  } catch (error) {
+    console.error("Failed to count internal person jobs", error)
+    return actionFailure("Could not count this person's jobs.")
   }
 }

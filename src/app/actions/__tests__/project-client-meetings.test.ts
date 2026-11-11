@@ -32,6 +32,7 @@ import {
   type ScheduleProjectClientMeetingInput,
 } from "../project-client-meetings"
 import {
+  addDirectoryPeopleSchema,
   openCorrespondenceTestDatabase,
   type CorrespondenceTestDatabase,
 } from "../../../../__tests__/helpers/correspondence-core"
@@ -46,6 +47,7 @@ afterEach(() => {
 
 function open(email = "staff-a@example.test"): CorrespondenceTestDatabase {
   const opened = openCorrespondenceTestDatabase()
+  addDirectoryPeopleSchema(opened.sqlite)
   const { sqlite } = opened
   sqlite.exec("ALTER TABLE users ADD COLUMN google_email TEXT")
   sqlite.exec("ALTER TABLE projects ADD COLUMN client_name TEXT")

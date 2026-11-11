@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
-import { openCorrespondenceTestDatabase, type CorrespondenceTestDatabase } from "../../../../../__tests__/helpers/correspondence-core"
+import { addDirectoryPeopleSchema, openCorrespondenceTestDatabase, type CorrespondenceTestDatabase } from "../../../../../__tests__/helpers/correspondence-core"
 import { readChannelMessages } from "../messages"
 import type { ConversationHistoryCursor } from "@/lib/conversations/message-pagination"
 
@@ -25,6 +25,7 @@ describe("shared conversation history reader", () => {
   beforeEach(() => {
     authorized = true
     database = openCorrespondenceTestDatabase()
+    addDirectoryPeopleSchema(database.sqlite)
     database.sqlite.exec(`
       ALTER TABLE users ADD COLUMN avatar_url TEXT;
       CREATE TABLE messages (

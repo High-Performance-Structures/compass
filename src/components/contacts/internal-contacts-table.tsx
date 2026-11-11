@@ -3,7 +3,12 @@
 import * as React from "react"
 import type { ColumnDef } from "@tanstack/react-table"
 import { toast } from "sonner"
-import { setInternalDirectoryPersonArchived, updateInternalDirectoryPerson } from "@/app/actions/internal-people"
+import {
+  getInternalDirectoryPersonJobCount,
+  setInternalDirectoryPersonArchived,
+  updateInternalDirectoryPerson,
+} from "@/app/actions/internal-people"
+import { archivedPersonJobsNotice } from "@/lib/archived-person"
 import type { InternalDirectoryContact } from "@/app/actions/vendors"
 import { PersonEditDialog, type PersonEditField } from "@/components/contacts/person-edit-dialog"
 import {
@@ -236,8 +241,23 @@ export function InternalContactsTable({
   const { developerModeEnabled } = useDeveloperMode()
   const [editing, setEditing] = React.useState<InternalDirectoryContact | null>(null)
   const [archiving, setArchiving] = React.useState<InternalDirectoryContact | null>(null)
+  const [archivingJobCount, setArchivingJobCount] = React.useState<number | null>(null)
   const [busy, setBusy] = React.useState(false)
   const [search, setSearch] = React.useState("")
+
+  // The confirmation says how many jobs the person comes off.
+  const archivingId = archiving?.id ?? null
+  React.useEffect(() => {
+    setArchivingJobCount(null)
+    if (!archivingId) return
+    let current = true
+    void getInternalDirectoryPersonJobCount(archivingId).then((result) => {
+      if (current && result.success) setArchivingJobCount(result.data.jobCount)
+    })
+    return () => {
+      current = false
+    }
+  }, [archivingId])
   const hasActions = Boolean(onSageEdit || onSageLink || canEdit || canArchive)
 
   const setArchived = React.useCallback(async (contact: InternalDirectoryContact, archived: boolean): Promise<void> => {
@@ -346,8 +366,9 @@ export function InternalContactsTable({
           <AlertDialogHeader>
             <AlertDialogTitle>Archive {archiving?.name}?</AlertDialogTitle>
             <AlertDialogDescription>
-              They leave the internal directory and people pickers. Project contacts and imported messages keep their name.
-              You can restore them from Show archived people.
+              They leave the internal directory and people pickers. {archivedPersonJobsNotice(archivingJobCount)} Imported
+              messages and Activity keep their name. You can restore them from Show archived people; restoring does not put
+              them back on jobs.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

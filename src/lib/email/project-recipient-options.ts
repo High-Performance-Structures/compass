@@ -3,6 +3,7 @@ import { and, eq, inArray, or, sql } from "drizzle-orm"
 import type { getDb } from "@/db"
 import { internalContacts, projectContacts, userAlternateEmails } from "@/db/schema"
 import type { ProjectContactType } from "@/lib/domain/contacts/statuses"
+import { notArchivedPersonContact } from "@/lib/domain/contacts/person-status"
 import {
   buildProjectEmailRecipientOptions,
   withStaffAlternateEmails,
@@ -37,6 +38,7 @@ export async function projectEmailRecipientOptions(
     .where(and(
       eq(projectContacts.projectId, projectId),
       eq(projectContacts.active, true),
+      notArchivedPersonContact(),
       contactTypes ? inArray(projectContacts.contactType, contactTypes) : undefined,
     ))
   const options = buildProjectEmailRecipientOptions(
@@ -58,6 +60,7 @@ export async function projectEmailRecipientOptions(
       eq(projectContacts.projectId, projectId),
       eq(projectContacts.active, true),
       eq(projectContacts.contactType, "internal"),
+      notArchivedPersonContact(),
       // Only addresses kept by the project's own company.
       sql`${userAlternateEmails.organizationId} = (SELECT organization_id FROM projects WHERE id = ${projectId})`,
     ))

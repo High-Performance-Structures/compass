@@ -71,6 +71,18 @@ Internal staff can use this read-only preview by default; administrators can nar
 
 If the person does not appear in the invitation list, check that the contact is active, assigned to the current project, has a valid email, and that you have invitation permission.
 
+## Staff and Former Staff on a Job {#staff-on-jobs}
+
+Internal staff of your company see every company job, so they need no invitation. On a job's Contacts page an internal contact whose Compass account is active staff shows **Staff · all jobs**, with no invite button.
+
+An internal contact whose Compass account is inactive, or who is no longer in your company, is not a current contact. They are listed under **Historical internal contacts** and are left out of assignee, message, email and signer pickers. Nothing about the record is changed.
+
+## Remove a Person from Contacts {#remove-person}
+
+Removing a person from Contacts removes them from every job. **Archive** on **Contacts → Internal**, **Remove** on a client company's people, and removing a person in a vendor's people list all do the same thing. The Archive and Remove confirmations say how many jobs they come off. Their job contact rows are kept as history, and a linked Compass account loses its access to those jobs (unless it is still active staff). Restoring an archived person puts them back in the directory but not back on jobs; add them to each job again if needed.
+
+Wherever they wrote messages, emails, log entries or Activity, an archived or inactive person's name reads **Archived user – Name**.
+
 ## Correct Mistakes Safely {#correct-mistakes}
 
 Stop before inviting either record when you find a likely duplicate. Ask an administrator to reconcile identity and assignments. If access was granted to the wrong person or project, treat it as a potential data-exposure issue and contact an administrator immediately.

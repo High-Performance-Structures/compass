@@ -337,6 +337,7 @@ export async function loadProjectFieldSummary(
       authorFirstName: users.firstName,
       authorLastName: users.lastName,
       authorEmail: users.email,
+      authorIsActive: users.isActive,
     })
     .from(dailyLogs)
     .leftJoin(users, eq(dailyLogs.authorId, users.id))
@@ -397,6 +398,7 @@ export async function loadProjectFieldSummary(
           firstName: latestLog.authorFirstName,
           lastName: latestLog.authorLastName,
           email: latestLog.authorEmail,
+          isActive: latestLog.authorIsActive,
         }),
         tags: latestLog.tags,
       })

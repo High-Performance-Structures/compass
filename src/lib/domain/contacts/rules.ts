@@ -128,6 +128,7 @@ export function toContactItem(
     compassAccountStatus,
     identityManagedByActiveUser:
       accessStatus === "active" ||
+      accessStatus === "company_staff" ||
       directoryIdentityManaged ||
       isCanonicalDirectoryAssignment(row),
     sageNumber,

@@ -173,6 +173,7 @@ function mapDailyLog(row: OwnerUpdateLogRow): OwnerUpdateDailyLog {
         firstName: row.authorFirstName,
         lastName: row.authorLastName,
         email: row.authorEmail,
+        isActive: row.authorIsActive,
       }),
       tags: row.tags,
     }),

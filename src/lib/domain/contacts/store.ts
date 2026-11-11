@@ -20,6 +20,7 @@ import { checkedListFields } from "@/lib/shared/statuses"
 import { companyMoveGuard, type CompanyReferenceMove } from "./company-merge-references"
 import { insertableProjectContacts } from "./rules"
 import { PROJECT_CONTACT_LISTS, type ProjectContactType } from "./statuses"
+import { directoryPersonProjectContactsWhere, type DirectoryPersonKind } from "./person-status"
 
 type Statement = BatchItem<"sqlite">
 
@@ -473,12 +474,37 @@ export function insertVendorPersonStatement(db: Db, values: VendorContactInsert,
   return ifMissing ? db.insert(vendorContacts).values(values).onConflictDoNothing() : db.insert(vendorContacts).values(values)
 }
 
+/** Vendor people removed in the vendor editor, and their job rows (kept as history). */
 export async function deactivateVendorPeople(db: Db, input: { readonly personIds: readonly string[]; readonly now: string }): Promise<void> {
   if (input.personIds.length === 0) return
-  await db
-    .update(vendorContacts)
-    .set({ active: false, isPrimary: false, updatedAt: input.now })
-    .where(inArray(vendorContacts.id, [...input.personIds]))
+  await db.batch([
+    db
+      .update(vendorContacts)
+      .set({ active: false, isPrimary: false, updatedAt: input.now })
+      .where(inArray(vendorContacts.id, [...input.personIds])),
+    ...archivedPersonProjectContactsStatements(db, { kind: "vendor_contact", personIds: input.personIds, now: input.now }),
+  ])
+}
+
+/**
+ * A person removed from Contacts leaves every job: their project-contact rows
+ * become inactive. Rows are never deleted (messages, logs, photos and Activity
+ * point at them) and notes and links are kept, so they read as history.
+ */
+export function archivedPersonProjectContactsStatements(
+  db: Db,
+  input: { readonly kind: DirectoryPersonKind; readonly personIds: readonly string[]; readonly now: string }
+): Statement[] {
+  // Each id is bound twice (link column and provenance), so 40 ids per
+  // statement stay under D1's 100-parameter limit.
+  const chunks: string[][] = []
+  for (let index = 0; index < input.personIds.length; index += 40) chunks.push(input.personIds.slice(index, index + 40))
+  return chunks.map((ids) =>
+    db
+      .update(projectContacts)
+      .set({ active: false, primaryContact: false, updatedAt: input.now })
+      .where(and(eq(projectContacts.active, true), directoryPersonProjectContactsWhere(input.kind, ids)))
+  )
 }
 
 // ---------------------------------------------------------------------------

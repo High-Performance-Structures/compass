@@ -11,7 +11,7 @@ import { getDb } from "@/db"
 import { messages, typingSessions } from "@/db/schema-conversations"
 import { users } from "@/db/schema"
 import { getCurrentUser } from "@/lib/auth"
-import { importedMessageColumns } from "@/lib/domain/conversations/imported"
+import { importedMessageColumns, messageSenderDisplayName } from "@/lib/domain/conversations/imported"
 
 
 type TypingUser = {
@@ -61,7 +61,7 @@ const messageSelectFields = {
   ...importedMessageColumns,
   user: {
     id: users.id,
-    displayName: users.displayName,
+    displayName: messageSenderDisplayName,
     email: users.email,
     avatarUrl: users.avatarUrl,
   },

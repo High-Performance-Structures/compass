@@ -19,6 +19,7 @@ import { createReplyToken, trackedReplyAddress } from "@/lib/email/reply-trackin
 import { projectInboundEmailAddress } from "@/lib/email/project-address"
 import { isValidRecipientEmail, normalizeRecipientEmail, type EmailRecipientCategory, type EmailRecipientOption } from "@/lib/email/recipient-options"
 import { replyThreadInsertStatement } from "@/lib/domain/correspondence/email-store"
+import { notArchivedPersonContact } from "@/lib/domain/contacts/person-status"
 import { attachToMessageStatement, conversationInsertStatement, messageInsertStatement, outboxInsertStatement, participantInsertStatement, recipientInsertStatement } from "@/lib/domain/correspondence/store"
 
 type RecipientScope = "project" | "directory"
@@ -47,7 +48,7 @@ export async function searchProjectEmailRecipients(projectId: string, scope: Rec
     const options: EmailRecipientOption[] = []
     if (scope === "project") {
       const rows = await ctx.db.select({ id: projectContacts.id, type: projectContacts.contactType, name: projectContacts.displayName, company: projectContacts.companyName, email: projectContacts.email })
-        .from(projectContacts).where(and(eq(projectContacts.projectId, projectId), eq(projectContacts.active, true), term ? or(contains(projectContacts.displayName), contains(projectContacts.companyName), contains(projectContacts.email)) : undefined)).limit(60)
+        .from(projectContacts).where(and(eq(projectContacts.projectId, projectId), eq(projectContacts.active, true), notArchivedPersonContact(), term ? or(contains(projectContacts.displayName), contains(projectContacts.companyName), contains(projectContacts.email)) : undefined)).limit(60)
       for (const row of rows) {
         const category: EmailRecipientCategory = row.type === "internal" ? "internal" : row.type === "owner" ? "client" : "vendor"
         const option = searchOption(row.id, row.email, row.name, row.company, category)

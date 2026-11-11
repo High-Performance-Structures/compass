@@ -224,6 +224,16 @@ export const HELP_TOPIC_LOCATIONS: Readonly<Record<string, HelpTopicLocation>> =
     "guideSlug": "contacts-project-access-invitations",
     "sectionId": "verify-access"
   },
+  "contacts.access.staff-on-jobs": {
+    "guideId": "contacts.access",
+    "guideSlug": "contacts-project-access-invitations",
+    "sectionId": "staff-on-jobs"
+  },
+  "contacts.access.remove-person": {
+    "guideId": "contacts.access",
+    "guideSlug": "contacts-project-access-invitations",
+    "sectionId": "remove-person"
+  },
   "contacts.access.correct-mistakes": {
     "guideId": "contacts.access",
     "guideSlug": "contacts-project-access-invitations",

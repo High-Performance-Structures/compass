@@ -1,6 +1,9 @@
 import { sql } from "drizzle-orm"
 
+import { projectContacts, users } from "@/db/schema"
 import { messages } from "@/db/schema-conversations"
+import { archivedAwareNameSql } from "@/lib/archived-person-sql"
+import { projectContactPersonStatusSql } from "@/lib/domain/contacts/person-status"
 
 /*
  * Messages imported from an outside system (Buildertrend today) live in
@@ -15,8 +18,19 @@ export const importedMessageColumns = {
   sourceSystem: messages.sourceSystem,
   // The sender's directory name, else the sender exactly as the source showed
   // it when they could not be matched (0290).
-  importedSenderName: sql<string | null>`COALESCE((SELECT pc.display_name FROM project_contacts pc WHERE pc.id = ${messages.importedSenderContactId}), ${messages.sourceSenderLabelSnapshot})`,
+  // An archived sender (removed from Contacts, or former staff) reads
+  // "Archived user – Name".
+  importedSenderName: sql<string | null>`COALESCE((
+    SELECT ${archivedAwareNameSql(projectContacts.displayName, sql`${projectContactPersonStatusSql()} = 'archived_person'`)}
+    FROM project_contacts WHERE project_contacts.id = ${messages.importedSenderContactId}
+  ), ${messages.sourceSenderLabelSnapshot})`,
 }
+
+/**
+ * A native message sender's name, for the `user` object of message reads
+ * (joined on `users`). An inactive account reads "Archived user – Name".
+ */
+export const messageSenderDisplayName = archivedAwareNameSql(users.displayName, sql`${users.isActive} = 0`)
 
 /**
  * Imported messages never notify anyone: they were delivered in the source

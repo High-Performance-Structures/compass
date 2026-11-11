@@ -94,6 +94,8 @@ function accessStatusLabel(contact: ProjectContactItem): string {
   switch (contact.accessStatus) {
     case "active":
       return "Active"
+    case "company_staff":
+      return "Staff · all jobs"
     case "pending":
       return "Awaiting acceptance"
     case "expired":
@@ -123,6 +125,7 @@ function accessStatusBadgeVariant(
 
   switch (contact.accessStatus) {
     case "active":
+    case "company_staff":
       return "default"
     case "pending":
       return "secondary"
