@@ -283,3 +283,48 @@ describe("removing a person from Contacts removes them from every job", () => {
     expect(memberCount("u-staff")).toBe(1)
   })
 })
+
+describe("project contacts: vendor invites pending from another job", () => {
+  function invitation(id: string, row: Record<string, string | number | null>): void {
+    insert("project_access_invitations", {
+      id,
+      organization_id: "org-1",
+      project_id: "project-2",
+      email: "vendor@example.com",
+      role: "subcontractor",
+      status: "sent",
+      workos_expires_at: "2099-01-01T00:00:00.000Z",
+      email_status: "sent",
+      invited_at: NOW,
+      ...row,
+    })
+  }
+
+  beforeEach(() => {
+    projectContact("pc-vendor", { contact_type: "subcontractor", sub_vendor_portal_visible: 1, email: "Vendor@example.com" })
+    projectContact("pc-owner-invited", { contact_type: "owner", owner_portal_visible: 1, email: "owner2@example.com" })
+  })
+
+  it("shows invite pending on this job when the invite was sent from another job", async () => {
+    invitation("inv-1", {})
+    const summary = await getProjectContactsSummary("project-1")
+    const vendor = summary.allContacts.find((contact) => contact.id === "pc-vendor")
+    expect(vendor?.accessStatus).toBe("pending")
+    // Status only: the vendor gets no membership on this job.
+    expect(memberCount("u-vendor")).toBe(0)
+  })
+
+  it("ignores expired invites and invites from another company", async () => {
+    invitation("inv-expired", { workos_expires_at: "2020-01-01T00:00:00.000Z" })
+    insert("organizations", { id: "org-2", name: "Other Builders", slug: "other", type: "internal", is_active: 1, created_at: NOW, updated_at: NOW })
+    invitation("inv-other-org", { organization_id: "org-2" })
+    const summary = await getProjectContactsSummary("project-1")
+    expect(summary.allContacts.find((contact) => contact.id === "pc-vendor")?.accessStatus).toBe("not_invited")
+  })
+
+  it("leaves owner contacts to their own job's invites", async () => {
+    invitation("inv-owner", { email: "owner2@example.com", role: "client" })
+    const summary = await getProjectContactsSummary("project-1")
+    expect(summary.allContacts.find((contact) => contact.id === "pc-owner-invited")?.accessStatus).toBe("not_invited")
+  })
+})

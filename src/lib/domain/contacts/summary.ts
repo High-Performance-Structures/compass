@@ -1,6 +1,6 @@
 // Contacts domain: the project Contacts page summary (who is on the job, their
 // invitation and account status, where each contact came from). Read only.
-import { and, desc, eq, inArray, or, sql, type SQL } from "drizzle-orm"
+import { and, desc, eq, inArray, ne, or, sql, type SQL } from "drizzle-orm"
 
 import { customers, projectAccessInvitations, projectContacts, projectContactSourceLinks, projectMembers, users, vendors } from "@/db/schema"
 import { activeDirectoryIdentityKeys } from "@/lib/contact-identity-ownership"
@@ -159,6 +159,49 @@ async function companySageNumbers(
   return numbers
 }
 
+/** Unexpired Compass invites waiting on other jobs of the company, by email. */
+async function vendorInvitesPendingElsewhere(
+  db: ProjectContext["db"],
+  input: { readonly organizationId: string; readonly projectId: string; readonly emails: readonly string[] }
+): Promise<ReadonlyMap<string, InvitationSnapshot>> {
+  const pending = new Map<string, InvitationSnapshot>()
+  const emails = [...new Set(input.emails)]
+  if (emails.length === 0) return pending
+  const now = Date.now()
+  const chunks = await Promise.all(
+    chunkD1Values(emails).map((batch) =>
+      db
+        .select({
+          email: projectAccessInvitations.email,
+          workosExpiresAt: projectAccessInvitations.workosExpiresAt,
+        })
+        .from(projectAccessInvitations)
+        .where(
+          and(
+            eq(projectAccessInvitations.organizationId, input.organizationId),
+            ne(projectAccessInvitations.projectId, input.projectId),
+            eq(projectAccessInvitations.status, "sent"),
+            inArray(sql<string>`lower(trim(${projectAccessInvitations.email}))`, [...batch])
+          )
+        )
+    )
+  )
+  for (const invitation of chunks.flat()) {
+    const expiresAt = invitation.workosExpiresAt ? new Date(invitation.workosExpiresAt).getTime() : Number.NaN
+    if (Number.isFinite(expiresAt) && expiresAt <= now) continue
+    const email = normalizeEmailKey(invitation.email)
+    if (!pending.has(email)) {
+      pending.set(email, {
+        status: "sent",
+        workosExpiresAt: invitation.workosExpiresAt,
+        acceptedUserActive: null,
+        welcomeEmail: null,
+      })
+    }
+  }
+  return pending
+}
+
 async function loadProjectContactsSummary(
   context: ProjectContext,
   audience: ProjectContactAudience,
@@ -246,6 +289,14 @@ async function loadProjectContactsSummary(
     const email = normalizeEmailKey(invitation.email)
     if (email && !latestInvitationByEmail.has(email)) latestInvitationByEmail.set(email, snapshot)
   }
+  const pendingElsewhereByEmail = await vendorInvitesPendingElsewhere(db, {
+    organizationId,
+    projectId,
+    emails: rows
+      .filter((row) => row.active && (row.contactType === "supplier" || row.contactType === "subcontractor"))
+      .map((row) => normalizeEmailKey(row.email))
+      .filter((email) => email.length > 0 && !latestInvitationByEmail.has(email)),
+  })
   const activeProjectUserIds = new Set(activeProjectMemberRows.map((member) => member.userId))
   const activeProjectEmails = new Set(activeProjectMemberRows.map((member) => normalizeEmailKey(member.email)))
 
@@ -259,8 +310,12 @@ async function loadProjectContactsSummary(
   const toProjectContactItem = (row: ContactRow): ProjectContactItem => {
     const email = normalizeEmailKey(row.email)
     const compassAccountStatus = compassAccountStatuses.get(email) ?? "not_registered"
-    const latestInvitation =
+    const ownInvitation =
       latestInvitationByContactId.get(row.id) ?? (email ? latestInvitationByEmail.get(email) : undefined) ?? null
+    // A supplier or subcontractor with no invite from this job still reads "invite pending" when
+    // one is waiting from another job of the company. Status only: it grants nothing here.
+    const vendorRow = row.contactType === "supplier" || row.contactType === "subcontractor"
+    const latestInvitation = ownInvitation ?? (vendorRow ? pendingElsewhereByEmail.get(email) ?? null : null)
     const activeProjectMember =
       (row.sourceEntityType === "user" && row.sourceEntityId !== null && activeProjectUserIds.has(row.sourceEntityId)) ||
       (email.length > 0 && activeProjectEmails.has(email))
@@ -279,7 +334,7 @@ async function loadProjectContactsSummary(
         (row.vendorContactId !== null && directoryIdentityKeys.has(`vendor_contact:${row.vendorContactId}`)) ||
         (row.customerContactId !== null && directoryIdentityKeys.has(`customer_contact:${row.customerContactId}`)),
       compassAccountStatus,
-      latestInvitation?.welcomeEmail ?? null,
+      ownInvitation?.welcomeEmail ?? null,
       (row.vendorId ? sageNumbers.get(`vendor:${row.vendorId}`) : undefined) ??
         (row.customerId ? sageNumbers.get(`customer:${row.customerId}`) : undefined) ?? null
     )
