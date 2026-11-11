@@ -79,20 +79,14 @@ export async function insertProjectContactsIfMissing(
 }
 
 /** Only one primary contact per type on a project. */
-export async function clearProjectPrimaryContact(
-  db: Db,
-  input: { readonly projectId: string; readonly contactType: ProjectContactType; readonly now: string }
-): Promise<void> {
+export async function clearProjectPrimaryContact(db: Db, input: { readonly projectId: string; readonly contactType: ProjectContactType; readonly now: string }): Promise<void> {
   await db
     .update(projectContacts)
     .set({ primaryContact: false, updatedAt: input.now })
     .where(and(eq(projectContacts.projectId, input.projectId), eq(projectContacts.contactType, input.contactType)))
 }
 
-export async function updateProjectContact(
-  db: Db,
-  input: { readonly projectId: string; readonly contactId: string; readonly values: ProjectContactPatch }
-): Promise<void> {
+export async function updateProjectContact(db: Db, input: { readonly projectId: string; readonly contactId: string; readonly values: ProjectContactPatch }): Promise<void> {
   await db
     .update(projectContacts)
     .set(checkedListFields("project_contacts", input.values, PROJECT_CONTACT_LISTS))
@@ -100,10 +94,7 @@ export async function updateProjectContact(
 }
 
 /** Removal keeps the row for history but hides it everywhere. */
-export async function deactivateProjectContact(
-  db: Db,
-  input: { readonly projectId: string; readonly contactId: string; readonly now: string }
-): Promise<void> {
+export async function deactivateProjectContact(db: Db, input: { readonly projectId: string; readonly contactId: string; readonly now: string }): Promise<void> {
   await updateProjectContact(db, {
     projectId: input.projectId,
     contactId: input.contactId,
