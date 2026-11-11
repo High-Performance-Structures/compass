@@ -397,7 +397,8 @@ export function ProjectDocumentsWorkspacePanel({
                     </div>
                   )}
                 </div>
-                <div className="flex flex-col gap-3 lg:items-end">
+                {/* Capped so the buttons wrap instead of squeezing the title to a word per line. */}
+                <div className="flex min-w-0 flex-col gap-3 lg:max-w-md lg:items-end">
                   <div className="flex flex-wrap items-start gap-2 lg:justify-end">
                   {/* Plain anchor: Next Link would RSC-prefetch this API file
                       response and wedge the client router on large documents. */}
