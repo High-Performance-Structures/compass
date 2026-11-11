@@ -12,7 +12,7 @@
   "permissions": ["help:read"],
   "routes": ["/dashboard/settings", "/dashboard/requests"],
   "owner": "Compass product team",
-  "lastReviewed": "2026-10-25"
+  "lastReviewed": "2026-11-10"
 }
 ---
 
@@ -57,6 +57,8 @@ Staff can send feedback with **Feedback** in the right-click menu, or by asking 
 | **Ready for testing** | The fix or feature is ready to try. |
 | **Deployed** | The change is live in Compass. |
 | **Closed** | Finished, answered, or not going ahead. The last update explains which. |
+
+Feature ideas wait for a priority decision from the company's Feedback Desk admins. Jarvis can send those admins a review notice under the notification bell that opens **Manage Requests**. Your request stays **Triaged** until they decide; the next update tells you the outcome.
 
 When a guide covers the answer or the new feature, the update links to it. Select the link to open that section of Compass Help.
 
