@@ -268,11 +268,12 @@ namespace CompassSageClientProjectWriter
                 }
                 WriteLog("INFO", "Writer run started.");
                 PollOnce();
-                // Reuse the existing scheduled writer sequentially so contact
-                // polling never needs a second Sage API session or task.
+                // Contacts run after PollOnce in their own process: PollOnce has
+                // already used this process's one Sage API session, and a second
+                // one fails inside IMBXML.EnableRequests (NullReferenceException).
                 if (String.Equals(Environment.GetEnvironmentVariable("SAGE_CONTACT_BRIDGE_ENABLED"),
-                    "true", StringComparison.OrdinalIgnoreCase) && RunContactBridge() != 0)
-                    throw new InvalidOperationException("Sage contact bridge run failed.");
+                    "true", StringComparison.OrdinalIgnoreCase))
+                    RunStageInChildProcess("--contact-run", "Sage contact bridge");
                 // Square fees run last, only with SAGE_SQUARE_FEE_WRITES_ENABLED,
                 // and never fail the client/project run.
                 RunSquareFeesAfterWriterRun();
