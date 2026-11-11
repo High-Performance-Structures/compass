@@ -240,7 +240,7 @@ export function ProjectAudiencePreviewShell({
         </div>
 
         <div className="border-b border-sidebar-border p-3">
-          {projectOptions.length > 1 && !viewerIsInternal ? (
+          {projectOptions.length > 1 ? (
             <div className="grid gap-1">
               <p className="px-2 text-xs text-sidebar-foreground/60">
                 {audience === "owner" ? "Owner workspace" : "Partner workspace"} · Current project
@@ -378,7 +378,7 @@ export function ProjectAudiencePreviewShell({
             readOnly={viewerIsInternal}
             />
           </div>
-          {projectOptions.length > 1 && !viewerIsInternal && (
+          {projectOptions.length > 1 && (
             <div className="mt-2">
               <p className="sr-only">Current project</p>
               <ProjectAudienceSwitcher
