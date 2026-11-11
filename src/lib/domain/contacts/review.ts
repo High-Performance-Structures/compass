@@ -20,10 +20,10 @@ import {
 import {
   approveSourceLinks,
   insertProjectContact,
-  resolvedProjectContacts,
   setSourceLinkMatch,
   updateProjectContactById,
 } from "./store"
+import { resolvedProjectContacts } from "./resolved-project-contacts"
 import type { ContactMatchResult, ProjectContactMatchReview, ProjectContactType } from "./types"
 
 type Scope = { readonly organizationId: string; readonly projectId: string }

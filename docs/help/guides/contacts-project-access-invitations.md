@@ -81,6 +81,17 @@ Project-phase contacts remain project assignments, separate from the underlying 
 
 Authorized directory managers can select duplicate company records or use **Merge 2 people** within a company. Choose the record to keep and review linked identities, project relationships, and any conflicts before confirming. Imported directory identities can be eligible for merging, but a conflicting Sage identity must be resolved through the proper review. A merge reconciles directory records; it does not authorize an unrelated Sage write or an invitation. Use the permission-appropriate delete action only for an unnecessary record and review the displayed dependencies first.
 
+## Add a Client Person to a Client Company {#join-client-company}
+
+A client record for one person (for example someone who belongs to a society or association) can join that client company. Open the client in **Contacts**, choose **Company**, and search for the company. Only existing client companies are listed, and only a standalone client record shows this list. Compass then shows what will happen; choose **Join company** to confirm. In one step:
+
+- The person is listed under the company's people, with the record's name, email and phone. If the company already has a person with the same email, that person is used instead of adding a second one; if the record already had its own copy of this person, that copy is used or merged into it.
+- The client record is merged into the company, the same way **Merge duplicate companies** works: its jobs, invoices and history move to the company, and the merge history keeps a copy of what moved.
+- Every job contact for the record now names the company and this person. Job contacts are updated, never deleted and re-added, so imported conversations and invitations still point at them. A job contact that names another person on the record keeps that person, who also joins the company.
+- If the person has a Compass sign-in, it moves to their person at the company. Their sign-in email stays locked as before.
+
+The action is recorded in **Activity**. A client linked to Sage cannot join a company, because the merge would hide that Sage client; nothing is changed or sent in Sage. Joining cannot be undone from Contacts, and there is no **Leave company** yet.
+
 ## Review Imported Names {#needs-review}
 
 **Contacts > Needs review** lists people on imported conversations that Compass could not match to one person. Each row is one name or email across every project and conversation, with how many projects and messages it appears on; the count on the tab is the true number of names. A row such as **Name <email>** stands for every message that named that address.

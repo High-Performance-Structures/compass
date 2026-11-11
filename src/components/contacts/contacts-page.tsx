@@ -611,6 +611,10 @@ function ContactsContent({ bootstrap }: { readonly bootstrap: ContactsBootstrap 
           setPeopleCustomer(editingCustomer)
         } : undefined}
         onSageLinkedSaved={reloadLists}
+        onJoinedCompany={editingCustomer && directoryAccess?.customers.edit ? () => {
+          setCustomerDialogOpen(false)
+          void refresh()
+        } : undefined}
         canEdit={directoryAccess?.customers.edit ?? false}
         onRequestSageAdd={editingCustomer && directoryAccess?.customers.edit ? () => {
           setCustomerDialogOpen(false)

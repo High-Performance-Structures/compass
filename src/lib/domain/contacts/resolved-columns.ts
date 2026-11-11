@@ -1,7 +1,7 @@
 /**
  * The read model's directory-owned columns: a project contact linked to a
  * directory record reads its email, phone, address and names from that
- * record (see resolvedProjectContacts in store.ts). Pure SQL expressions.
+ * record (see resolved-project-contacts.ts). Pure SQL expressions.
  */
 import { sql, type SQL } from "drizzle-orm"
 

@@ -23,6 +23,7 @@ import { useDeveloperMode } from "@/components/developer-mode-provider"
 import { toast } from "sonner"
 import { requestSageLinkedCustomerChanges } from "@/app/actions/sage-linked-edits"
 import { updateCustomer } from "@/app/actions/customers"
+import { ClientCompanyJoinField } from "@/components/contacts/client-company-join-field"
 import { SageCompanyNameRow } from "@/components/contacts/sage-contact-editor-dialog"
 import { SageNumberBadge } from "@/components/sage-number-badge"
 import {
@@ -77,6 +78,8 @@ interface CustomerDialogProps {
   onSageLinkedSaved?: () => void
   /** "Request add to Sage" for a client not in Sage. */
   onRequestSageAdd?: () => void
+  /** Existing standalone clients: "Company" picks a client company to join; called once joined. */
+  onJoinedCompany?: () => void
   canEdit?: boolean
 }
 
@@ -89,6 +92,7 @@ export function CustomerDialog({
   onSageLinkCompany,
   onSageLinkedSaved,
   onRequestSageAdd,
+  onJoinedCompany,
   canEdit = true,
 }: CustomerDialogProps) {
   const { developerModeEnabled } = useDeveloperMode()
@@ -250,7 +254,7 @@ export function CustomerDialog({
                   disabled={!canEdit}
                   onChange={(e) => setCompany(e.target.value)}
                 />
-                <p className="text-xs text-muted-foreground">Compass only; Sage has no separate company field.</p>
+                <p className="text-xs text-muted-foreground">Compass only; Sage has no separate company field. A Sage-linked client can&apos;t join a client company, because that would hide its Sage client.</p>
               </div>
               <div className="space-y-1.5">
                 <Label htmlFor="cust-notes" className="text-xs">Notes</Label>
@@ -312,18 +316,23 @@ export function CustomerDialog({
                   </p>
                 )}
               </div>
-              <div className="space-y-1.5">
-                <Label htmlFor="cust-company" className="text-xs">
-                  Company
-                </Label>
-                <Input
-                  id="cust-company"
-                  className="h-9"
-                  placeholder="Company or organization"
-                  value={company}
-                  onChange={(e) => setCompany(e.target.value)}
-                />
-              </div>
+              {initialData && onJoinedCompany ? (
+                <ClientCompanyJoinField recordId={initialData.id} companyText={initialData.company ?? ""}
+                  canEdit={canEdit} onJoined={onJoinedCompany} />
+              ) : (
+                <div className="space-y-1.5">
+                  <Label htmlFor="cust-company" className="text-xs">
+                    Company
+                  </Label>
+                  <Input
+                    id="cust-company"
+                    className="h-9"
+                    placeholder="Company or organization"
+                    value={company}
+                    onChange={(e) => setCompany(e.target.value)}
+                  />
+                </div>
+              )}
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1.5">
                   <Label htmlFor="cust-email" className="text-xs">

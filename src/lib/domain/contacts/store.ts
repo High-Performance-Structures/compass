@@ -6,25 +6,23 @@
  * No auth logic lives here; callers resolve access first. `...Statement`
  * functions return an unexecuted statement for a caller's atomic `db.batch`.
  *
- * It also owns the read model `resolvedProjectContacts`: a project contact
- * reads name, company, email, phone and address from its directory record
- * (copies are a fallback). New ones must link: insertableProjectContacts.
+ * The read model `resolvedProjectContacts` lives in
+ * resolved-project-contacts.ts. New project contacts must link:
+ * insertableProjectContacts.
  */
-import { and, asc, eq, getTableColumns, inArray, isNull, ne, or, sql, type SQL } from "drizzle-orm"
+import { and, eq, inArray, isNull, ne, or } from "drizzle-orm"
 import type { BatchItem } from "drizzle-orm/batch"
 
-import { customerContacts, customers, internalContacts, organizationMembers, projectContacts, projectContactSourceLinks, users, vendorContacts, vendors } from "@/db/schema"
+import { customerContacts, customers, internalContacts, projectContacts, projectContactSourceLinks, vendorContacts, vendors } from "@/db/schema"
 import { chunkD1InsertRows } from "@/lib/d1-query"
 import type { Db } from "@/lib/server/action-context"
 import { checkedListFields } from "@/lib/shared/statuses"
 import { companyMoveGuard, type CompanyReferenceMove } from "./company-merge-references"
 import { insertableProjectContacts } from "./rules"
-import { resolvedAddress, resolvedCompanyName, resolvedDisplayName, resolvedEmail, resolvedPhone } from "./resolved-columns"
 import { PROJECT_CONTACT_LISTS, type ProjectContactType } from "./statuses"
 
 type Statement = BatchItem<"sqlite">
 
-type ProjectContactRow = typeof projectContacts.$inferSelect
 type ProjectContactInsert = typeof projectContacts.$inferInsert
 type ProjectContactPatch = Partial<Omit<ProjectContactInsert, "id" | "projectId" | "createdAt">>
 type CustomerInsert = typeof customers.$inferInsert
@@ -42,108 +40,6 @@ type IdentityPatch = {
   readonly phone: string | null
   readonly address: string | null
   readonly updatedAt: string
-}
-
-// ---------------------------------------------------------------------------
-// Read model
-// ---------------------------------------------------------------------------
-
-type ResolvedOrder = "summary" | "type_then_name" | "name"
-
-function orderBy(order: ResolvedOrder): readonly SQL[] {
-  switch (order) {
-    case "summary":
-      return [asc(projectContacts.sortOrder), asc(projectContacts.contactType), asc(projectContacts.displayName)]
-    case "type_then_name":
-      return [asc(projectContacts.contactType), asc(projectContacts.displayName)]
-    case "name":
-      return [asc(projectContacts.displayName)]
-  }
-}
-
-/**
- * Project contacts with directory-owned fields read from the linked record,
- * in one query. `where` narrows the project's rows (visibility, type,
- * active); directory joins are scoped to the organization.
- */
-export async function resolvedProjectContacts(
-  db: Db,
-  query: {
-    readonly organizationId: string
-    readonly projectId: string
-    readonly where?: SQL
-    readonly order: ResolvedOrder
-  }
-): Promise<readonly ProjectContactRow[]> {
-  const { organizationId } = query
-  return db
-    .select({
-      ...getTableColumns(projectContacts),
-      displayName: sql<string>`${resolvedDisplayName}`,
-      companyName: sql<string | null>`${resolvedCompanyName}`,
-      email: sql<string | null>`${resolvedEmail}`,
-      phone: sql<string | null>`${resolvedPhone}`,
-      address: sql<string | null>`${resolvedAddress}`,
-    })
-    .from(projectContacts)
-    .leftJoin(
-      customers,
-      and(
-        or(
-          eq(projectContacts.customerId, customers.id),
-          and(eq(projectContacts.sourceEntityType, "customer"), eq(projectContacts.sourceEntityId, customers.id))
-        ),
-        eq(customers.organizationId, organizationId)
-      )
-    )
-    .leftJoin(
-      customerContacts,
-      and(
-        eq(projectContacts.customerContactId, customerContacts.id),
-        eq(customerContacts.customerId, customers.id),
-        eq(customerContacts.active, true)
-      )
-    )
-    .leftJoin(
-      vendors,
-      and(
-        or(
-          eq(projectContacts.vendorId, vendors.id),
-          and(eq(projectContacts.sourceEntityType, "vendor"), eq(projectContacts.sourceEntityId, vendors.id))
-        ),
-        eq(vendors.organizationId, organizationId)
-      )
-    )
-    .leftJoin(
-      vendorContacts,
-      and(
-        eq(projectContacts.vendorContactId, vendorContacts.id),
-        eq(vendorContacts.vendorId, vendors.id),
-        eq(vendorContacts.active, true)
-      )
-    )
-    .leftJoin(
-      users,
-      and(
-        eq(projectContacts.sourceEntityType, "user"),
-        eq(projectContacts.sourceEntityId, users.id),
-        sql`exists (
-          select 1 from ${organizationMembers}
-          where ${organizationMembers.userId} = ${users.id}
-            and ${organizationMembers.organizationId} = ${organizationId}
-        )`
-      )
-    )
-    .leftJoin(
-      internalContacts,
-      and(
-        eq(projectContacts.internalContactId, internalContacts.id),
-        eq(internalContacts.organizationId, organizationId),
-        eq(internalContacts.active, true)
-      )
-    )
-    .where(and(eq(projectContacts.projectId, query.projectId), query.where))
-    .orderBy(...orderBy(query.order))
 }
 
 // ---------------------------------------------------------------------------
@@ -783,17 +679,66 @@ export function companyMarkMergedStatement(database: D1Database, move: CompanyRe
     .bind(move.destinationId, move.now, move.sourceId, move.organizationId)
 }
 
-/** Compare-and-set of a person's portal account, then its audit row only when that update changed one row. */
+/**
+ * Compare-and-set of a person's portal account, then its audit row only when that update changed one row.
+ * `guard` (a company move's guard) makes it part of a larger guarded batch, such as joining a client company.
+ */
 export function contactAccountLinkStatements(database: D1Database, input: {
   readonly kind: "client_person" | "vendor_person"; readonly organizationId: string; readonly personId: string
   readonly previousUserId: string | null; readonly nextUserId: string | null; readonly changedByUserId: string; readonly now: string
+  readonly guard?: MergeGuard
 }): D1PreparedStatement[] {
   const [people, parent] = input.kind === "client_person" ? ["customer_contacts", "customer"] : ["vendor_contacts", "vendor"]
   return [database.prepare(`UPDATE ${people} SET user_id = ?, updated_at = ?
-      WHERE id = ? AND user_id IS ? AND ${parent}_id IN (SELECT id FROM ${parent}s WHERE organization_id = ?)`)
-      .bind(input.nextUserId, input.now, input.personId, input.previousUserId, input.organizationId),
+      WHERE id = ? AND user_id IS ? AND ${parent}_id IN (SELECT id FROM ${parent}s WHERE organization_id = ?)${input.guard ? ` AND ${input.guard.sql}` : ""}`)
+      .bind(input.nextUserId, input.now, input.personId, input.previousUserId, input.organizationId, ...(input.guard?.binds ?? [])),
     database.prepare(`INSERT INTO contact_account_link_events (id, organization_id, person_kind, person_id, previous_user_id,
       next_user_id, changed_by_user_id, created_at) SELECT ?, ?, ?, ?, ?, ?, ?, ? WHERE changes() = 1`)
       .bind(crypto.randomUUID(), input.organizationId, input.kind, input.personId,
         input.previousUserId, input.nextUserId, input.changedByUserId, input.now)]
+}
+
+/** A client company's new person, added when a standalone client record joins it (join-client-company.ts); guarded like the join. */
+export function clientCompanyJoinPersonStatement(database: D1Database, input: {
+  readonly move: CompanyReferenceMove; readonly personId: string
+  readonly person: { readonly name: string; readonly email: string | null; readonly phone: string | null; readonly isPrimary: boolean }
+}): D1PreparedStatement {
+  const guard = companyMoveGuard(input.move)
+  const { person, move } = input
+  return database.prepare(`INSERT INTO customer_contacts (id, customer_id, name, email, phone, is_primary, active, created_at, updated_at)
+    SELECT ?, ?, ?, ?, ?, ?, 1, ?, ? WHERE ${guard.sql}`)
+    .bind(input.personId, move.destinationId, person.name, person.email, person.phone, person.isPrimary ? 1 : 0, move.now, move.now, ...guard.binds)
+}
+
+/**
+ * Joining a client company, before the company merge runs: the record's own
+ * people move to the company, and every project contact of the record is
+ * repointed to the company and its person `personId` by UPDATE (same ids, so
+ * imported messages and invitations that point at them still do). Rows that
+ * name another of the record's people keep that person; rows naming one of
+ * `samePersonIds` (the record's own copies of this person) name `personId`.
+ * Every statement is guarded: nothing happens unless the record is still
+ * standalone and the company still live.
+ */
+export function clientCompanyJoinStatements(database: D1Database, input: {
+  readonly move: CompanyReferenceMove; readonly personId: string; readonly samePersonIds: readonly string[]
+  /** The company already has a primary person, so the record's own people join as non-primary. */
+  readonly demotePrimary: boolean
+}): D1PreparedStatement[] {
+  const { move, personId, samePersonIds } = input
+  const guard = companyMoveGuard(move)
+  const { sourceId: record, destinationId: company, now } = move
+  const same = samePersonIds.length > 0 ? ` OR customer_contact_id IN (${samePersonIds.map(() => "?").join(", ")})` : ""
+  return [
+    ...(input.demotePrimary ? [database.prepare(`UPDATE customer_contacts SET is_primary = 0, updated_at = ? WHERE customer_id = ? AND is_primary = 1 AND ${guard.sql}`)
+      .bind(now, record, ...guard.binds)] : []),
+    database.prepare(`UPDATE customer_contacts SET customer_id = ?, updated_at = ? WHERE customer_id = ? AND ${guard.sql}`).bind(company, now, record, ...guard.binds),
+    // The record's own people are on the company now, so the scope trigger accepts every row here.
+    database.prepare(`UPDATE project_contacts SET customer_id = ?,
+        customer_contact_id = CASE WHEN customer_contact_id IS NULL${same} THEN ? ELSE customer_contact_id END,
+        source_entity_id = CASE WHEN source_entity_type = 'customer' AND source_entity_id = ? THEN ? ELSE source_entity_id END,
+        source_record_id = CASE WHEN source_entity_type = 'customer' AND source_record_id = ? THEN ? ELSE source_record_id END, updated_at = ?
+      WHERE (customer_id = ? OR (customer_id IS NULL AND source_entity_type = 'customer' AND source_entity_id = ?)) AND ${guard.sql}`)
+      .bind(company, ...samePersonIds, personId, record, company, record, company, now, record, record, ...guard.binds),
+  ]
 }

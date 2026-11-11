@@ -16,7 +16,7 @@ import type { ProjectContext } from "@/lib/server/action-context"
 import { contactsProjectContext } from "./access"
 
 import { buildCsiGroups, buildGroups, normalizeEmailKey, toContactItem } from "./rules"
-import { resolvedProjectContacts } from "./store"
+import { resolvedProjectContacts } from "./resolved-project-contacts"
 import type {
   ProjectContactAudience,
   ProjectContactItem,
