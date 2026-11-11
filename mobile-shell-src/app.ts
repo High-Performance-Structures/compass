@@ -449,7 +449,7 @@ function todayView(): string {
 function logView(): string {
   if (!packet) return empty("Select a project to add a daily log.")
   if (logDraftProjectId !== packet.project.id) void loadLogDraft(packet.project.id)
-  const recent = packet.logs.slice(0, 6).map((log) => `<div class="row"><span class="row-date">${escapeHtml(shortDate(log.logDate))}</span><div class="row-main"><p class="row-title">${escapeHtml(log.workCompleted)}</p><p class="row-note">${escapeHtml(log.authorName ?? "Compass")}</p></div></div>`).join("")
+  const recent = packet.logs.slice(0, 6).map((log) => `<div class="row"><span class="row-date">${escapeHtml(shortDate(log.logDate))}</span><div class="row-main"><p class="row-title">${escapeHtml(log.workCompleted)}</p><p class="row-note">${escapeHtml(log.authorName ?? "Compass")}</p>${log.completedTodos.length > 0 ? `<p class="row-note">Completed: ${escapeHtml(log.completedTodos.map((todo) => todo.title).join(", "))}</p>` : ""}</div></div>`).join("")
   const attachmentRows = draftAttachments.map((attachment) => `<div class="attachment-row"><div><strong>${escapeHtml(attachment.fileName)}</strong><span>${escapeHtml(formatBytes(attachment.fileSize))}</span></div><button type="button" data-remove-attachment="${escapeHtml(attachment.id)}" aria-label="Remove ${escapeHtml(attachment.fileName)}">Remove</button></div>`).join("")
   const savedClass = logSaveState === "idle" ? "" : " saved"
   return sectionHead("Add daily log", "Saved securely on this device until Compass can sync.") + `
@@ -1400,7 +1400,9 @@ function applyFollowUpControl(control: string, key: string, value: string): void
   const before = logDraft.followUps
   const followUps = storedFollowUpDraft(followUpAction(before, setup.rules, { control, key, value }, () => crypto.randomUUID()))
   logDraft = { ...logDraft, followUps }
-  if (control === "worked" && setup.rules.tickAddsLine) {
+  // Completed implies worked on, so either control can add or remove the to-do's line.
+  const workedChanged = before.worked.includes(key) !== followUps.worked.includes(key)
+  if ((control === "worked" || control === "completed") && workedChanged && setup.rules.tickAddsLine) {
     const todo = setup.openTodos.find((item) => item.id === key)
     // Only codes the phone has can go on a line here; the office adds others.
     const phoneCodes = new Set((packet?.dailyLogForm?.costCodes ?? []).map((option) => option.code))
@@ -1529,7 +1531,7 @@ async function queueDailyLog(event: SubmitEvent): Promise<void> {
       ...(followUps
         ? {
             followUps: {
-              todoUpdates: followUps.todoUpdates.map((update) => ({ ...update })),
+              todoUpdates: followUps.todoUpdates.map((update) => ({ ...update, completed: update.completed === true })),
               newTodos: followUps.newTodos.map((todo) => ({ ...todo })),
               clientContacts: followUps.clientContacts.map((contact) => ({ ...contact })),
               // Only selections still on the phone's list; left off when none, like older builds.

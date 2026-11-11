@@ -41,6 +41,8 @@ const fieldLogSchema = z.object({
   notes: z.string().nullable(),
   authorName: z.string().nullable(),
   syncStatus: z.string(),
+  /** To-dos marked completed on the log; missing in older packets. */
+  completedTodos: z.array(z.object({ id: z.string(), title: z.string() })).default([]),
 })
 
 export const fieldDocumentSchema = z.object({
@@ -94,6 +96,8 @@ const fieldDailyLogFollowUpSetupSchema = z.object({
     todoMode: z.enum(DAILY_LOG_TODO_MODES),
     todoTypes: z.array(z.enum(DAILY_LOG_TODO_TYPES)),
     workedMovesToInProgress: z.boolean(),
+    // Added with Completed on logs; packets saved before it allow it, the default.
+    todosCanComplete: z.boolean().default(true),
     carryBlocked: z.boolean(),
     todoCostCodes: z.boolean(),
     tickAddsLine: z.boolean(),
@@ -117,7 +121,9 @@ const fieldDailyLogFollowUpSetupSchema = z.object({
   ),
   clientContacts: z.array(z.object({ id: z.string(), name: z.string(), role: z.string().nullable() })),
   assignees: z.array(z.object({ name: z.string(), kind: z.enum(DAILY_LOG_TODO_TYPES) })),
-  /** Approved or ordered finish selections a log can mark installed; missing in older packets. */
+  /** The company's name for a finished to-do (Settings › Statuses); missing in older packets. */
+  doneStatusLabel: z.string().default("Complete"),
+  /** Finish selections not yet installed that a log can mark installed; missing in older packets. */
   installableSelections: z
     .array(z.object({ id: z.string(), name: z.string(), roomName: z.string(), status: z.string() }))
     .default([]),
@@ -202,6 +208,8 @@ const fieldDailyLogFollowUpsSchema = z.object({
   todoUpdates: z.array(z.object({
     todoId: z.string().max(80),
     worked: z.boolean(),
+    // Logs queued by builds before Completed lack it.
+    completed: z.boolean().default(false),
     blocked: z.enum(["still", "cleared"]).nullable(),
   })).max(100),
   newTodos: z.array(z.object({

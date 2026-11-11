@@ -52,6 +52,7 @@ const baseLog: ProjectDailyLogItem = {
   photos: [],
   scheduleItems: [],
   todos: [],
+  completedTodos: [],
   workLines: [],
 }
 

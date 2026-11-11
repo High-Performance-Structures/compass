@@ -9,7 +9,8 @@ import { applyDailyLogFollowUps, checkDailyLogFollowUps, dailyLogFollowUpSetup }
 import { EMPTY_DAILY_LOG_FOLLOW_UPS } from "@/lib/daily-logs/log-followups"
 import { advanceSelectionStatus, advanceSelectionsForPurchaseOrder, statusesBefore } from "@/lib/domain/selections/status-advance"
 import { PROJECT_SELECTION_STATUS_LABELS, PROJECT_SELECTION_STATUS_OPTIONS } from "@/lib/domain/selections/statuses"
-import { SELECTION_STATUS_LABELS } from "@/lib/selections/sheet"
+import { SELECTION_STATUS_LABELS, selectionMatchesFilter } from "@/lib/selections/sheet"
+import { loadSelectionSheet } from "@/lib/domain/selections/selection-sheet-read"
 
 /*
  * Automatic selection status moves (forward only, logged to Activity) and
@@ -47,7 +48,10 @@ beforeEach(() => {
     INSERT INTO project_finish_selections (id, project_id, room_name, name, status, created_at, updated_at) VALUES
       ('tile', 'p1', 'Kitchen', 'Backsplash', 'needed', '${NOW}', '${NOW}'),
       ('faucet', 'p1', 'Kitchen', 'Faucet', 'approved', '${NOW}', '${NOW}'),
-      ('vanity', 'p1', 'Bath', 'Vanity', 'installed', '${NOW}', '${NOW}');
+      ('vanity', 'p1', 'Bath', 'Vanity', 'installed', '${NOW}', '${NOW}'),
+      ('hood', 'p1', 'Kitchen', 'Range hood', 'owner_review', '${NOW}', '${NOW}'),
+      ('mirror', 'p1', 'Bath', 'Mirror', 'deferred', '${NOW}', '${NOW}'),
+      ('sconce', 'p1', 'Bath', 'Sconce', 'unavailable', '${NOW}', '${NOW}');
     INSERT INTO project_operations (id, project_id, source_system, source_record_type, source_record_number, title, status, created_at, updated_at)
       VALUES ('po1', 'p1', 'compass', 'purchase_order', 'PO-001', 'Fixtures', 'draft', '${NOW}', '${NOW}');
     INSERT INTO project_selection_procurement_links (id, project_id, selection_id, operation_id, specification_json, created_at) VALUES
@@ -110,19 +114,31 @@ describe("automatic status moves", () => {
 })
 
 describe("daily log: Selections installed", () => {
-  it("offers approved and ordered selections, and moves ticked ones to Installed on save", async () => {
+  const creator = { ...actor, avatarUrl: null, googleEmail: null, isActive: true, lastLoginAt: null, organizationId: "org-1", organizationName: "Org", organizationType: "internal", createdAt: NOW, updatedAt: NOW }
+
+  it("offers every selection not installed yet (not deferred or unavailable), approved and ordered first", async () => {
     const db = drizzleOverSqlite(sqlite)
     const setup = await dailyLogFollowUpSetup(db, "org-1", "p1")
-    expect(setup.installableSelections?.map((selection) => selection.id)).toEqual(["faucet"])
-    // Field Mode phones show the status beside each one.
-    expect(["approved", "ordered"]).toContain(setup.installableSelections?.[0]?.status)
+    expect(setup.installableSelections?.map((selection) => [selection.id, selection.status])).toEqual([
+      ["faucet", "approved"],
+      ["tile", "needed"],
+      ["hood", "owner_review"],
+    ])
+  })
+
+  it("moves ticked ones to Installed on save, with or without approval first, and logs each", async () => {
+    const db = drizzleOverSqlite(sqlite)
     // A log queued on a phone keeps the same filtering.
-    const queued = await checkDailyLogFollowUps(db, "org-1", "p1", "2026-11-09", { ...EMPTY_DAILY_LOG_FOLLOW_UPS, installedSelectionIds: ["faucet", "tile"] }, true)
+    const queued = await checkDailyLogFollowUps(db, "org-1", "p1", "2026-11-09", { ...EMPTY_DAILY_LOG_FOLLOW_UPS, installedSelectionIds: ["faucet", "mirror"] }, true)
     expect(queued.ok && queued.followUps.installedSelectionIds).toEqual(["faucet"])
 
-    const checked = await checkDailyLogFollowUps(db, "org-1", "p1", "2026-11-09", { ...EMPTY_DAILY_LOG_FOLLOW_UPS, installedSelectionIds: ["faucet", "tile", "elsewhere"] })
+    const checked = await checkDailyLogFollowUps(db, "org-1", "p1", "2026-11-09", {
+      ...EMPTY_DAILY_LOG_FOLLOW_UPS,
+      installedSelectionIds: ["faucet", "hood", "vanity", "mirror", "elsewhere"],
+    })
     if (!checked.ok) throw new Error(checked.error)
-    expect(checked.followUps.installedSelectionIds).toEqual(["faucet"])
+    // Already installed, deferred, or not on this job: dropped rather than failing the log.
+    expect(checked.followUps.installedSelectionIds).toEqual(["faucet", "hood"])
 
     sqlite.prepare("INSERT INTO daily_logs (id, project_id, log_date, work_completed, created_at, updated_at) VALUES ('log1', 'p1', '2026-11-09', 'Set fixtures', ?, ?)").run(NOW, NOW)
     await applyDailyLogFollowUps(db, {
@@ -130,13 +146,22 @@ describe("daily log: Selections installed", () => {
       projectId: "p1",
       dailyLogId: "log1",
       logDate: "2026-11-09",
-      creator: { ...actor, avatarUrl: null, googleEmail: null, isActive: true, lastLoginAt: null, organizationId: "org-1", organizationName: "Org", organizationType: "internal", createdAt: NOW, updatedAt: NOW },
+      creator,
       workCompleted: "Set fixtures",
       lines: [],
       checked,
     })
-    expect(statuses()).toMatchObject({ faucet: "installed" })
-    const activity = sqlite.prepare("SELECT entity_id, metadata FROM activity_events WHERE action = 'selection_status_advanced'").all()
-    expect(activity).toEqual([{ entity_id: "faucet", metadata: JSON.stringify({ from: "approved", to: "installed", reason: "daily_log", dailyLogId: "log1" }) }])
+    expect(statuses()).toMatchObject({ faucet: "installed", hood: "installed", tile: "needed", mirror: "deferred" })
+    const activity = sqlite.prepare("SELECT entity_id, metadata FROM activity_events WHERE action = 'selection_status_advanced' ORDER BY entity_id").all()
+    expect(activity).toEqual([
+      { entity_id: "faucet", metadata: JSON.stringify({ from: "approved", to: "installed", reason: "daily_log", dailyLogId: "log1" }) },
+      { entity_id: "hood", metadata: JSON.stringify({ from: "owner_review", to: "installed", reason: "daily_log", dailyLogId: "log1" }) },
+    ])
+    // The Selections sheet reads the same column: both show Installed there.
+    const sheet = await loadSelectionSheet(db, "p1")
+    expect(sheet.filter((row) => row.status === "installed").map((row) => row.id).toSorted()).toEqual(["faucet", "hood", "vanity"])
+    expect(sheet.filter((row) => selectionMatchesFilter(row, "installed")).map((row) => row.id).toSorted()).toEqual(["faucet", "hood", "vanity"])
+    // Installed ones leave the next log's checklist.
+    expect((await dailyLogFollowUpSetup(db, "org-1", "p1")).installableSelections?.map((selection) => selection.id)).toEqual(["tile"])
   })
 })

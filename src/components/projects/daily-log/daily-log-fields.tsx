@@ -36,6 +36,8 @@ export type DailyLogFollowUpFields = {
   readonly draft: DailyLogFollowUpDraft
   readonly onChange: (draft: DailyLogFollowUpDraft) => void
   readonly onToggleTodo: (todo: DailyLogOpenTodo) => void
+  /** Marks a to-do Completed (and worked on), or takes that back. */
+  readonly onToggleCompleted: (todo: DailyLogOpenTodo) => void
   readonly linesOnly?: boolean
   /** Lines already made into to-dos on this log, by todoTitleKey. */
   readonly madeTitles?: ReadonlySet<string>
@@ -140,7 +142,10 @@ export function DailyLogFields({
           costCodes={form.costCodes}
           rules={rules}
           worked={allFollowUps.draft.worked}
+          completed={allFollowUps.draft.completed ?? []}
+          doneLabel={allFollowUps.setup.doneStatusLabel}
           onToggle={allFollowUps.onToggleTodo}
+          onToggleCompleted={allFollowUps.onToggleCompleted}
         />
       )}
 

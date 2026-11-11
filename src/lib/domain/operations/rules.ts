@@ -136,7 +136,8 @@ export type TodoEventInput = {
   readonly organizationId: string
   readonly projectId: string
   readonly todoId: string
-  readonly kind: "created" | "worked" | "still_blocked" | "unblocked" | "status"
+  /** "completed": marked finished on a daily log (fromStatus → the done status). */
+  readonly kind: "created" | "worked" | "still_blocked" | "unblocked" | "completed" | "status"
   readonly dailyLogId: string | null
   readonly fromStatus: string | null
   readonly toStatus: string | null

@@ -1017,7 +1017,7 @@
     "src/lib/email/gmail-inbound.ts": 817,
     "src/lib/email/project-inbound-routing.ts": 1037,
     "src/lib/estimates/sage-estimate-cost-code-catalog.ts": 1182,
-    "src/lib/feature-settings/registry.ts": 981,
+    "src/lib/feature-settings/registry.ts": 938,
     "src/lib/notifications/create-event.ts": 833,
     "src/lib/notifications/events.ts": 952,
     "src/lib/permissions.ts": 806,

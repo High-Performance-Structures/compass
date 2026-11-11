@@ -54,6 +54,36 @@ describe("POST /api/field/daily-logs", () => {
     })
   })
 
+  it("passes installed selections and completed to-dos through to the save", async () => {
+    mocks.submitFieldDailyLog.mockResolvedValue({ success: true, dailyLogId: validBody.id })
+    const followUps = {
+      todoUpdates: [
+        { todoId: "t1", worked: true, completed: true, blocked: null },
+        // Queued by a build before Completed.
+        { todoId: "t2", worked: true, blocked: null },
+      ],
+      newTodos: [],
+      clientContacts: [],
+      installedSelectionIds: ["s1", "s2"],
+    }
+    const response = await POST(
+      new Request("https://compass.example/api/field/daily-logs", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ...validBody, payload: { ...validBody.payload, followUps } }),
+      })
+    )
+    expect(response.status).toBe(200)
+    const sent = mocks.submitFieldDailyLog.mock.calls[0]?.[1]
+    expect(sent?.followUps).toEqual({
+      ...followUps,
+      todoUpdates: [
+        { todoId: "t1", worked: true, completed: true, blocked: null },
+        { todoId: "t2", worked: true, completed: false, blocked: null },
+      ],
+    })
+  })
+
   it("rejects an incomplete queued log", async () => {
     const response = await POST(
       new Request("https://compass.example/api/field/daily-logs", {

@@ -24,7 +24,12 @@ import {
 } from "@/lib/daily-logs/cost-code-lines"
 import { dailyLogDeleteBlocker } from "@/lib/daily-logs/delete-rules"
 import { dailyLogAuthorName } from "@/lib/daily-logs/imported-author"
-import { dailyLogFollowUpSetup, type DailyLogFollowUpSetup } from "@/lib/daily-logs/log-followups-server"
+import {
+  dailyLogFollowUpSetup,
+  loadCompletedTodosByLog,
+  type DailyLogCompletedTodo,
+  type DailyLogFollowUpSetup,
+} from "@/lib/daily-logs/log-followups-server"
 import { normalizeDailyLogNotes } from "@/lib/daily-logs/notes"
 import { canFeature } from "@/lib/permission-enforcement"
 import { dailyLogPhotoCollectionEligibility } from "@/lib/photos/collection-eligibility"
@@ -93,6 +98,8 @@ export type ProjectDailyLogItem = {
   readonly photos: readonly ProjectDailyLogPhoto[]
   readonly scheduleItems: readonly ProjectDailyLogScheduleItem[]
   readonly todos: readonly ProjectDailyLogTodo[]
+  /** To-dos the log marked completed. */
+  readonly completedTodos: readonly DailyLogCompletedTodo[]
   /** Cost codes worked on, with time, in the order entered. */
   readonly workLines: readonly DailyLogWorkLineView[]
 }
@@ -387,10 +394,11 @@ export async function loadProjectDailyLogWorkspace(
   }
 
   const canWriteLogs = organizationId !== null && viewer.isActive && isInternalStaffRole(viewer.role)
-  const [workLinesByLogId, form, followUps] = await Promise.all([
+  const [workLinesByLogId, form, followUps, completedTodosByLogId] = await Promise.all([
     loadDailyLogWorkLines(db, logRows.map((row) => row.id)),
     organizationId ? dailyLogFormSetup(db, organizationId, projectId) : Promise.resolve(EMPTY_DAILY_LOG_FORM_SETUP),
     canWriteLogs && organizationId ? dailyLogFollowUpSetup(db, organizationId, projectId) : Promise.resolve(null),
+    logRows.length > 0 ? loadCompletedTodosByLog(db, projectId) : Promise.resolve(new Map<string, readonly DailyLogCompletedTodo[]>()),
   ])
 
   return {
@@ -435,6 +443,7 @@ export async function loadProjectDailyLogWorkspace(
       photos: photosByLogId.get(row.id) ?? [],
       scheduleItems: scheduleItemsByLogId.get(row.id) ?? [],
       todos: todosByLogId.get(row.id) ?? [],
+      completedTodos: completedTodosByLogId.get(row.id) ?? [],
       workLines: workLinesByLogId.get(row.id) ?? [],
     })),
     unattachedPhotos,

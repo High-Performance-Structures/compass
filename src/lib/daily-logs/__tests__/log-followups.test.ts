@@ -16,6 +16,7 @@ import {
   isLineFlagged,
   lineTodoKey,
   summaryCountHint,
+  toggleCompletedTodo,
   toggleLineTodo,
   toggleWorkedTodo,
   validateDailyLogFollowUps,
@@ -65,14 +66,50 @@ describe("daily log follow-ups", () => {
 
     const followUps = followUpsFromDraft(draft, { issues: "Short on subfloor\nNeighbor asked about the dumpster", notes: "" }, rules)
     expect(followUps.todoUpdates).toEqual([
-      { todoId: "t1", worked: true, blocked: null },
-      { todoId: "t9", worked: false, blocked: "still" },
+      { todoId: "t1", worked: true, completed: false, blocked: null },
+      { todoId: "t9", worked: false, completed: false, blocked: "still" },
     ])
     expect(followUps.newTodos).toEqual([
       { source: "issues", title: "Short on subfloor", recordType: "supplier_task", assigneeName: "Nu-Tech", costCode: "06 15 13" },
     ])
     expect(followUps.clientContacts).toHaveLength(1)
     expect(followUps.clientContacts[0]).not.toHaveProperty("key")
+  })
+
+  it("marks a to-do Completed, which implies worked on, and unticking reverses both", () => {
+    const completed = toggleCompletedTodo(EMPTY_DAILY_LOG_FOLLOW_UP_DRAFT, "t1")
+    expect(completed.completed).toEqual(["t1"])
+    expect(completed.worked).toEqual(["t1"])
+    // Already worked on: not added twice.
+    const both = toggleCompletedTodo(toggleWorkedTodo(EMPTY_DAILY_LOG_FOLLOW_UP_DRAFT, "t1"), "t1")
+    expect(both.worked).toEqual(["t1"])
+    const undone = toggleCompletedTodo(completed, "t1")
+    expect(undone.completed).toEqual([])
+    expect(undone.worked).toEqual([])
+    // Unticking worked on also clears Completed.
+    expect(toggleWorkedTodo(completed, "t1").completed).toEqual([])
+  })
+
+  it("sends Completed with the log, unless the company turned it off; old drafts have none", () => {
+    const draft = toggleCompletedTodo(EMPTY_DAILY_LOG_FOLLOW_UP_DRAFT, "t1")
+    const text = { issues: "", notes: "" }
+    expect(followUpsFromDraft(draft, text, rules).todoUpdates).toEqual([{ todoId: "t1", worked: true, completed: true, blocked: null }])
+    expect(followUpsFromDraft(draft, text, { ...rules, todosCanComplete: false }).todoUpdates).toEqual([{ todoId: "t1", worked: true, completed: false, blocked: null }])
+    // A draft saved before Completed existed has no list at all.
+    const old = { ...EMPTY_DAILY_LOG_FOLLOW_UP_DRAFT, worked: ["t2"] }
+    expect("completed" in old).toBe(false)
+    expect(followUpsFromDraft(old, text, rules).todoUpdates).toEqual([{ todoId: "t2", worked: true, completed: false, blocked: null }])
+  })
+
+  it("filters the checklist by Completed", () => {
+    const todos = [
+      { id: "t1", title: "A", status: "open" as const, recordType: "staff_task", assigneeName: null, companyName: null, costCode: null, changedOn: "2026-11-11" },
+      { id: "t2", title: "B", status: "open" as const, recordType: "staff_task", assigneeName: null, companyName: null, costCode: null, changedOn: "2026-11-11" },
+    ]
+    const options = dailyLogTodoFilterOptions(todos, [], ["t2"], "Done")
+    expect(options.find((option) => option.value === "completed")).toEqual({ value: "completed", label: "Done", count: 1 })
+    expect(options.find((option) => option.value === "worked")?.count).toBe(1)
+    expect(todos.filter((item) => dailyLogTodoMatchesFilter(item, "completed", [], ["t2"])).map((item) => item.id)).toEqual(["t2"])
   })
 
   it("makes every line a to-do in auto mode unless the crew skips it", () => {
@@ -154,6 +191,7 @@ describe("to-do checklist filters", () => {
       ["in_progress", "In progress", 2],
       ["blocked", "Blocked", 0],
       ["worked", "Worked on", 1],
+      ["completed", "Completed", 0],
     ])
   })
 

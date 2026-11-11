@@ -198,6 +198,8 @@ export async function createProjectDailyLog(
     if (created.followUpsApplied) {
       revalidatePath(`/dashboard/projects/${projectId}/todos`)
       revalidatePath(`/dashboard/projects/${projectId}/information`)
+      // Selections ticked installed on the log moved to Installed.
+      revalidatePath(`/dashboard/projects/${projectId}/selections`)
     }
     revalidateProjectField(projectId, ["daily-logs", "owner-updates"])
 

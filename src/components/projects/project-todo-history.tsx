@@ -22,6 +22,8 @@ function eventLabel(event: ProjectTodoHistoryItem, statuses: RecordStatusList): 
       return "Still blocked"
     case "unblocked":
       return "Cleared · back to In progress"
+    case "completed":
+      return `Completed on a daily log · ${label(event.fromStatus ?? "open")} → ${label(event.toStatus ?? "complete")}`
     case "status":
       if (event.toStatus === "complete") return "Marked finished"
       return `Status · ${label(event.fromStatus ?? "open")} → ${label(event.toStatus ?? "open")}`

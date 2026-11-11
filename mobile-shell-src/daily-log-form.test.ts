@@ -102,6 +102,7 @@ describe("Field Mode daily log to-dos and client contact", () => {
       todoMode: "ask" as const,
       todoTypes: ["staff_task" as const, "supplier_task" as const],
       workedMovesToInProgress: true,
+      todosCanComplete: true,
       carryBlocked: true,
       todoCostCodes: true,
       tickAddsLine: true,
@@ -114,6 +115,7 @@ describe("Field Mode daily log to-dos and client contact", () => {
       { id: "t1", title: "Joists <east>", status: "open" as const, recordType: "staff_task", assigneeName: "Dan", companyName: null, costCode: "01 71 13", changedOn: "2026-10-12" },
       { id: "t2", title: "Framing inspection", status: "blocked" as const, recordType: "staff_task", assigneeName: null, companyName: null, costCode: null, changedOn: "2026-10-12" },
     ],
+    doneStatusLabel: "Done",
     clientContacts: [{ id: "c1", name: "Jordan Bishop", role: "Owner" }],
     assignees: [{ name: "Nu-Tech", kind: "supplier_task" as const }],
     installableSelections: [],
@@ -151,6 +153,49 @@ describe("Field Mode daily log to-dos and client contact", () => {
     expect(draft.blocked).toEqual({})
   })
 
+  it("offers Worked on and Completed per to-do, named with the company's done status", () => {
+    let followUps = followUpAction(emptyFollowUpDraft(), setup.rules, { control: "completed", key: "t1", value: "true" }, () => "k")
+    expect(followUps.completed).toEqual(["t1"])
+    // Completed implies worked on.
+    expect(followUps.worked).toEqual(["t1"])
+    const draft = { ...emptyLogDraft("2026-10-14"), followUps: storedFollowUpDraft(followUps) }
+    const html = logFieldsHtml({ draft, form: withSetup, errors: new Map(), escape })
+    expect(html).toMatch(/checked\s+data-fu="completed" data-fu-key="t1"/)
+    expect(html).toContain("Open → Done")
+    expect(followUpsFromDraft(draft.followUps, draft, setup.rules).todoUpdates).toEqual([{ todoId: "t1", worked: true, completed: true, blocked: null }])
+    // Unticking takes it back entirely.
+    followUps = followUpAction(followUps, setup.rules, { control: "completed", key: "t1", value: "false" }, () => "k")
+    expect(followUps.completed).toEqual([])
+    expect(followUps.worked).toEqual([])
+    // Off for the company: no Completed choice.
+    const off = logFieldsHtml({ draft, form: { ...form, followUps: { ...setup, rules: { ...setup.rules, todosCanComplete: false } } }, errors: new Map(), escape })
+    expect(off).not.toContain('data-fu="completed"')
+  })
+
+  it("keeps drafts saved before Completed, and logs queued before it parse as not completed", () => {
+    const old: Record<string, unknown> = { ...emptyFollowUpDraft(), worked: ["t1"] }
+    delete old.completed
+    expect(logDraftSchema.parse({ ...emptyLogDraft("2026-10-14"), followUps: old }).followUps.completed).toEqual([])
+    const outbox = fieldOutboxSchema.parse([{
+      id: "q1",
+      kind: "daily_log",
+      projectId: "p1",
+      createdAt: "2026-10-14T12:00:00Z",
+      payload: {
+        logDate: "2026-10-14",
+        workCompleted: "Joists",
+        issues: "",
+        crewPresent: "Dan",
+        notes: "",
+        followUps: { todoUpdates: [{ todoId: "t1", worked: true, blocked: null }], newTodos: [], clientContacts: [] },
+      },
+      remoteDailyLogId: null,
+      attachments: [],
+    }])
+    const entry = outbox[0]
+    expect(entry?.kind === "daily_log" ? entry.payload.followUps?.todoUpdates : null).toEqual([{ todoId: "t1", worked: true, completed: false, blocked: null }])
+  })
+
   it("keeps drafts saved before to-dos", () => {
     const old: Record<string, unknown> = { ...emptyLogDraft("2026-10-14") }
     delete old.followUps
@@ -164,6 +209,7 @@ describe("Field Mode daily log selections installed", () => {
     todoMode: "off" as const,
     todoTypes: [],
     workedMovesToInProgress: false,
+    todosCanComplete: false,
     carryBlocked: false,
     todoCostCodes: false,
     tickAddsLine: false,
@@ -175,6 +221,7 @@ describe("Field Mode daily log selections installed", () => {
   const setup = {
     rules,
     openTodos: [],
+    doneStatusLabel: "Complete",
     clientContacts: [],
     assignees: [],
     installableSelections: [
@@ -184,7 +231,17 @@ describe("Field Mode daily log selections installed", () => {
   }
   const key = (): string => "unused"
 
-  it("is hidden when the job has no approved or ordered selections", () => {
+  it("folds selections that aren't ordered or approved under Other selections", () => {
+    const wide = { ...setup, installableSelections: [...setup.installableSelections, { id: "s3", name: "Range hood", roomName: "Kitchen", status: "owner_review" }] }
+    let html = installedSelectionsHtml(wide, emptyFollowUpDraft(), escape)
+    expect(html).toContain("Other selections (1)")
+    expect(html).not.toContain("<details open>")
+    expect(html).toContain("Kitchen · With owner")
+    html = installedSelectionsHtml(wide, followUpAction(emptyFollowUpDraft(), rules, { control: "installed", key: "s3", value: "true" }, key), escape)
+    expect(html).toContain("<details open>")
+  })
+
+  it("is hidden when the job has no selections left to install", () => {
     const html = logFieldsHtml({ draft: emptyLogDraft("2026-11-09"), form: { ...form, followUps: { ...setup, installableSelections: [] } }, errors: new Map(), escape })
     expect(html).not.toContain("Selections installed")
   })

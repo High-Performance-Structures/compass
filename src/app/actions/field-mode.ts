@@ -241,6 +241,7 @@ export async function getFieldProjectPacket(
       notes: log.notes,
       authorName: log.authorName,
       syncStatus: log.syncStatus,
+      completedTodos: log.completedTodos.map((todo) => ({ ...todo })),
     })),
     documents: fileResult.success
       ? fileResult.files.slice(0, 100).map((file) => ({
@@ -302,6 +303,7 @@ export async function getFieldProjectPacket(
         ? {
             rules: { ...dailyLogWorkspace.followUps.rules, todoTypes: [...dailyLogWorkspace.followUps.rules.todoTypes] },
             openTodos: dailyLogWorkspace.followUps.openTodos.map((todo) => ({ ...todo })),
+            doneStatusLabel: dailyLogWorkspace.followUps.doneStatusLabel,
             clientContacts: dailyLogWorkspace.followUps.clientContacts.map((contact) => ({ ...contact })),
             assignees: dailyLogWorkspace.followUps.assignees.map((person) => ({ ...person })),
             installableSelections: (dailyLogWorkspace.followUps.installableSelections ?? []).map((selection) => ({ ...selection })),
