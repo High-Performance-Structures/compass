@@ -66,13 +66,38 @@ function containsProviderCapability(value: string): boolean {
   )
 }
 
+const PROVIDER_LINK = /\S*(?:https?:)?\/\/(?:[a-z0-9-]+\.)*(?:google\.com|googleusercontent\.com|youtube\.com|youtu\.be)\S*/gi
+const TOKEN = /(?<![A-Za-z0-9_-])[A-Za-z0-9_-]{11,}(?![A-Za-z0-9_-])/g
+
+/**
+ * A word that could be a Drive or video id: 20+ characters with a digit or a
+ * capital after the first letter, or 11 characters with a digit, a capital
+ * after the first letter, - or _. Ordinary words ("Certificate") are not.
+ */
+function looksLikeProviderId(token: string): boolean {
+  const idLike = /[0-9]/.test(token) || /[A-Z]/.test(token.slice(1))
+  if (token.length >= 20) return idLike
+  return token.length === 11 && (idLike || /[_-]/.test(token))
+}
+
+/**
+ * Text an owner or vendor may read: Drive/YouTube links and id-like codes are
+ * cut out of the line, and the rest of the line stays. (Dropping whole lines
+ * lost any paragraph with an 11-letter word, such as "Certificate".)
+ */
 function safeExternalText(value: string | null): string | null {
   if (value === null) return null
   const lines = value
     .trim()
     .split("\n")
-    .map((line) => line.trim())
-    .filter((line) => line.length > 0 && !containsProviderCapability(line))
+    .map((line) =>
+      line
+        .replace(PROVIDER_LINK, "")
+        .replace(TOKEN, (token) => (looksLikeProviderId(token) ? "" : token))
+        .replace(/[ \t]{2,}/g, " ")
+        .trim()
+    )
+    .filter((line) => line.length > 0)
   const result = lines.join("\n").trim()
   return result.length > 0 ? result : null
 }
@@ -92,8 +117,11 @@ export function safeCompassId(value: string): string {
     : ""
 }
 
+/** A file name holding a link or id is replaced whole, never trimmed. */
 function safeFileName(value: string, fallback: string): string {
-  return safeExternalText(value) ?? fallback
+  const name = value.trim()
+  const holdsLink = (name.match(PROVIDER_LINK) ?? []).length > 0 || (name.match(TOKEN) ?? []).some(looksLikeProviderId)
+  return name.length > 0 && !name.includes("\n") && !holdsLink ? name : fallback
 }
 
 function safeMimeType(value: string | null): string | null {

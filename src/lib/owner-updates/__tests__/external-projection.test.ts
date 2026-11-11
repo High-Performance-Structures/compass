@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest"
 
 import {
   ownerUpdateExternalDocument,
+  ownerUpdateExternalListItem,
   ownerUpdateExternalPhoto,
 } from "@/lib/owner-updates/external-projection"
 
@@ -101,5 +102,38 @@ describe("owner update external projection", () => {
     })
     expect(JSON.stringify(result)).not.toContain("drive.google.com")
     expect(JSON.stringify(result)).not.toContain("drive-bearer-id")
+  })
+})
+
+describe("owner update text", () => {
+  const summary = [
+    "Good evening Tanis and Travis,",
+    "We will let you know soon about your Certificate of Occupancy and the installation dates.",
+    "Video: https://youtu.be/dQw4w9WgXcQ and file https://drive.google.com/file/d/1AbCdEfGhIjKlMnOpQrStUvWxYz012345/view",
+    "Loose id dQw4w9WgXcQ in a sentence.",
+    "It's been wonderful working with you!",
+  ].join("\n")
+  const update = ownerUpdateExternalListItem({
+    id: "update-1", title: "Update", updateDate: "2026-09-18", status: "published", channel: "portal", summary,
+    publishedAt: "2026-09-19T01:33:00Z", sentAt: null, createdAt: "", updatedAt: "",
+  })
+
+  it("keeps every ordinary paragraph, including 11-letter words", () => {
+    expect(update.summary).toContain("Certificate of Occupancy and the installation dates.")
+    expect(update.summary).toContain("It's been wonderful working with you!")
+  })
+
+  it("removes only the links and ids, keeping the rest of the line", () => {
+    expect(update.summary).not.toMatch(/youtu|drive\.google|dQw4w9WgXcQ|1AbCdEf/)
+    expect(update.summary).toContain("Video: and file")
+    expect(update.summary).toContain("Loose id in a sentence.")
+  })
+
+  it("keeps an ordinary file name with a long word", () => {
+    const photo = ownerUpdateExternalPhoto("project-1", {
+      id: "photo-2", sourceSystem: "compass", fileName: "Certificate of Occupancy.pdf", mimeType: "application/pdf",
+      driveFileId: null, driveUrl: null, thumbnailUrl: null, caption: null, capturedAt: null, reviewStatus: "approved", ownerVisible: true,
+    })
+    expect(photo.fileName).toBe("Certificate of Occupancy.pdf")
   })
 })
