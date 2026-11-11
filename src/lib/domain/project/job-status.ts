@@ -1,6 +1,6 @@
 /**
  * A project's job status and the other single settings changed from the
- * project hub (delivery method, portfolio map visibility), plus the
+ * project hub (delivery method, portfolio map and field app visibility), plus the
  * company's own job statuses.
  */
 import { and, asc, eq } from "drizzle-orm"
@@ -14,6 +14,7 @@ import { insertProjectJobStatus, updateProjectsStatement } from "@/lib/domain/pr
 import { canFeature } from "@/lib/permission-enforcement"
 import { canManageProjectRegistry } from "@/lib/permissions"
 import { isPortfolioMapVisibility } from "@/lib/portfolio-map/visibility"
+import { fieldAppVisibilityFor, isFieldAppChoice } from "@/lib/domain/field/field-app-rules"
 import {
   PROJECT_JOB_STATUS_DEFINITIONS,
   isBuiltInProjectJobStatusId,
@@ -51,7 +52,7 @@ export async function validJobStatus(input: {
   return custom.length === 1
 }
 
-type ProjectSetting = "jobStatusId" | "deliveryMethod" | "portfolioMapVisibility" | "importedConversationsStaffOnly" | "contractType"
+type ProjectSetting = "jobStatusId" | "deliveryMethod" | "portfolioMapVisibility" | "fieldAppVisibility" | "importedConversationsStaffOnly" | "contractType"
 
 /**
  * Reads one project setting, and when the value changes writes it with an
@@ -138,6 +139,24 @@ export async function changeProjectMapVisibility(input: {
     value: isPortfolioMapVisibility(visibility) ? visibility : null,
     eventType: "project_map_visibility_updated",
     validate: () => (isPortfolioMapVisibility(visibility) ? null : "Choose a portfolio map setting."),
+  })
+}
+
+/**
+ * The job's field app choice, the same for everyone: Automatic (null),
+ * Always show ("shown") or Hide ("hidden"). Closed jobs never show anyway.
+ */
+export async function changeProjectFieldAppVisibility(input: {
+  readonly projectId: string
+  readonly choice: string
+}): Promise<ProjectProfileResult & { readonly changed?: boolean }> {
+  const choice = input.choice
+  return changeProjectSetting({
+    projectId: input.projectId,
+    column: "fieldAppVisibility",
+    value: isFieldAppChoice(choice) ? fieldAppVisibilityFor(choice) : null,
+    eventType: "project_field_app_visibility_updated",
+    validate: () => (isFieldAppChoice(choice) ? null : "Choose Automatic, Always show or Hide."),
   })
 }
 

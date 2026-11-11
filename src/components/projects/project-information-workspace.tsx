@@ -38,6 +38,7 @@ import { type ProjectDepartment } from "@/lib/project-branding"
 import { isPortfolioMapVisibility, type PortfolioMapVisibility } from "@/lib/portfolio-map/visibility"
 import { ProjectGoogleCalendarCard } from "@/components/projects/project-google-calendar-card"
 import { ImportedConversationsSetting } from "@/components/projects/imported-conversations-setting"
+import { ProjectFieldAppSetting } from "@/components/projects/project-field-app-setting"
 import { ProjectContractTypeSetting } from "@/components/projects/project-contract-type-setting"
 import { projectNumberAndName } from "@/lib/project-display-name"
 import { PageHeader } from "@/components/page-header"
@@ -449,6 +450,13 @@ export function ProjectInformationWorkspace({
               {mapMessage ?? "By default, the dashboard map follows each department's setting in Settings → Workflows → Portfolio map."}
             </p>
           </div>
+          {information.fieldApp ? (
+            <ProjectFieldAppSetting
+              projectId={information.project.id}
+              choice={information.fieldApp.choice}
+              summary={information.fieldApp.summary}
+            />
+          ) : null}
           <ImportedConversationsSetting
             projectId={information.project.id}
             staffOnly={information.project.importedConversationsStaffOnly}

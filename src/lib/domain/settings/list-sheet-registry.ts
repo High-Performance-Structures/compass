@@ -569,6 +569,28 @@ export const LIST_SHEETS: readonly ListSheetDefinition[] = [
       renamable: true,
     },
   },
+  {
+    id: "settings.field-app-jobs",
+    label: "Field app jobs",
+    where: "Settings › Workflows › Field app",
+    columns: [
+      { id: "job", label: "Job", kind: "text", required: true },
+      { id: "department", label: "Department", kind: "text" },
+      { id: "jobStatus", label: "Job status", kind: "text" },
+      { id: "inFieldApp", label: "In field app", kind: "status" },
+      { id: "choice", label: "Field app", kind: "text" },
+    ],
+    defaultSort: { columnId: "job", desc: false },
+    startFilter: {
+      options: [
+        { value: "shown", label: "In field app" },
+        { value: "not-shown", label: "Not in field app" },
+        { value: "all", label: "All" },
+      ],
+      defaultValue: "all",
+      renamable: true,
+    },
+  },
   ...FINANCIAL_LIST_SHEETS,
   {
     id: "nutech.catalog",

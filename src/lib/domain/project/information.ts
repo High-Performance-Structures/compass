@@ -34,6 +34,8 @@ import {
   updateProjectsStatement,
 } from "@/lib/domain/project/store"
 import { PROJECT_CLIENT_STATUSES, type ProjectContractType } from "@/lib/domain/project/statuses"
+import { loadProjectFieldAppDecision } from "@/lib/domain/field/field-app-access"
+import { fieldAppDecisionSummary, type FieldAppChoice } from "@/lib/domain/field/field-app-rules"
 import { readFeatureSettings } from "@/lib/feature-settings/server"
 import type { WorkspaceKind } from "@/lib/internal-duties/model"
 import type { PortfolioMapVisibility } from "@/lib/portfolio-map/visibility"
@@ -113,6 +115,12 @@ export type ProjectInformation = {
   } | null
   /** Client follow-up aging by the company's thresholds; null when the status isn't followed up. */
   readonly followUpSignal: ProjectFollowUpSignal | null
+  /** The job's field app choice and whether it is in the field app now (Settings › Workflows › Field app). */
+  readonly fieldApp: {
+    readonly choice: FieldAppChoice
+    readonly shown: boolean
+    readonly summary: string
+  } | null
   readonly syncOperations: readonly {
     readonly id: string
     readonly operation: string
@@ -286,6 +294,18 @@ export async function loadProjectInformation(projectId: string): Promise<Project
       .then((signals) => signals.get(project.id) ?? null)
       .catch((error: unknown) => {
         console.error("Project follow-up aging unavailable", error instanceof Error ? error.message : error)
+        return null
+      }),
+    fieldApp: await loadProjectFieldAppDecision(db, organizationId, project.id)
+      .then((decision) => decision
+        ? {
+            choice: decision.choice,
+            shown: decision.shown,
+            summary: fieldAppDecisionSummary(decision, resolvedProjectDepartment(project)),
+          }
+        : null)
+      .catch((error: unknown) => {
+        console.error("Field app setting unavailable", error instanceof Error ? error.message : error)
         return null
       }),
     syncOperations: operations.map((operation) => ({

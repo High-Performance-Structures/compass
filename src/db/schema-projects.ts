@@ -21,6 +21,7 @@ import {
 
 import {
   DELIVERY_METHODS,
+  FIELD_APP_VISIBILITIES,
   PORTFOLIO_MAP_VISIBILITIES,
   PROJECT_CLIENT_STATUSES,
   PROJECT_CONTRACT_TYPES,
@@ -93,6 +94,8 @@ export const projects = sqliteTable("projects", {
   portfolioMapVisibility: text("portfolio_map_visibility", { enum: PORTFOLIO_MAP_VISIBILITIES })
     .notNull()
     .default("default"),
+  /** Field app override (0317): null is Automatic (company Settings decide), "shown" or "hidden". */
+  fieldAppVisibility: text("field_app_visibility", { enum: FIELD_APP_VISIBILITIES }),
   schedulePublished: integer("schedule_published", { mode: "boolean" })
     .notNull()
     .default(false),

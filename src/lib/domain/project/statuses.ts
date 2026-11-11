@@ -21,6 +21,14 @@ export type WorkspaceKind = (typeof WORKSPACE_KINDS)[number]
 export const PORTFOLIO_MAP_VISIBILITIES = ["default", "shown", "hidden"] as const
 export type PortfolioMapVisibility = (typeof PORTFOLIO_MAP_VISIBILITIES)[number]
 
+/**
+ * Field app override (0317). A null column means "Automatic": the company's
+ * Settings decide from the job's phase and department. Closed jobs never
+ * show, whatever the override says.
+ */
+export const FIELD_APP_VISIBILITIES = ["shown", "hidden"] as const
+export type FieldAppVisibility = (typeof FIELD_APP_VISIBILITIES)[number]
+
 /** Result of geocoding the site address. */
 export const SITE_LOCATION_STATUSES = ["found", "not_found"] as const
 
@@ -53,6 +61,7 @@ export const PROJECT_LISTS = {
   clientStatus: PROJECT_CLIENT_STATUSES,
   workspaceKind: WORKSPACE_KINDS,
   portfolioMapVisibility: PORTFOLIO_MAP_VISIBILITIES,
+  fieldAppVisibility: FIELD_APP_VISIBILITIES,
   siteLocationStatus: SITE_LOCATION_STATUSES,
   deliveryMethod: DELIVERY_METHODS,
   contractType: PROJECT_CONTRACT_TYPES,

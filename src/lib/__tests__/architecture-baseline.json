@@ -1198,7 +1198,6 @@
     "src/app/actions/equipment.ts": 1,
     "src/app/actions/feature-settings.ts": 1,
     "src/app/actions/feedback-admin.ts": 6,
-    "src/app/actions/field-mode.ts": 2,
     "src/app/actions/github.ts": 1,
     "src/app/actions/google-calendar.ts": 1,
     "src/app/actions/greeting-card-recipients.ts": 1,

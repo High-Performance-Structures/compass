@@ -12,6 +12,7 @@ import { unassignedPeopleColumns } from "@/components/contacts/unassigned-people
 import { peopleColumns } from "@/components/people-table"
 import { accountDeletionRequestColumns } from "@/components/settings/account-deletion-requests-card"
 import { accessRequestColumns } from "@/components/settings/access-requests-card"
+import { fieldAppJobColumns } from "@/components/settings/field-app-settings-section"
 import { inviteLinkColumns } from "@/components/settings/invite-links-section"
 import { customerColumns } from "@/components/financials/customers-table"
 import { billedItemColumns, receivedPaymentColumns } from "@/components/financials/received-payments-panel"
@@ -140,6 +141,7 @@ describe("list sheet standard", () => {
       "settings.invite-links": () => inviteLinkColumns({ onCopy: noop, onRevoke: noop }),
       "settings.account-deletion-requests": () => accountDeletionRequestColumns({ busyId: null, onStart: noop, onComplete: noop }),
       "settings.access-requests": () => accessRequestColumns(noop),
+      "settings.field-app-jobs": () => fieldAppJobColumns({ canEdit: true, busyId: null, onChange: noop }),
       "schedule.list": () =>
         scheduleListColumns({
           multipleProjects: true,
