@@ -17,6 +17,8 @@ export function useScheduleDisplayPalette(
   )
 
   React.useEffect(() => {
+    // Each schedule starts from the defaults so another job's colors never carry over.
+    setPalette(DEFAULT_DISPLAY_COLOR_PALETTE)
     try {
       const stored = window.localStorage.getItem(
         schedulePaletteStorageKey(projectId)

@@ -28,9 +28,14 @@ export function useGanttPalette(preferenceScopeKey: string): GanttPaletteState {
   const [displayColorLabels, setDisplayColorLabels] = useState<Record<DisplayColor, string>>(
     DEFAULT_DISPLAY_COLOR_LABELS
   )
-  const [hasLoadedPalette, setHasLoadedPalette] = useState(false)
+  // The schedule whose saved palette is in state. Saving waits until it matches the current
+  // schedule, so switching jobs never writes one job's colors under another job's key.
+  const [loadedScopeKey, setLoadedScopeKey] = useState<string | null>(null)
 
   useEffect(() => {
+    // Start each schedule from the defaults; its own saved palette replaces them below.
+    setDisplayColorPalette(DEFAULT_DISPLAY_COLOR_PALETTE)
+    setDisplayColorLabels(DEFAULT_DISPLAY_COLOR_LABELS)
     try {
       const storedPalette = window.localStorage.getItem(
         schedulePaletteStorageKey(preferenceScopeKey)
@@ -48,12 +53,12 @@ export function useGanttPalette(preferenceScopeKey: string): GanttPaletteState {
     } catch {
       // A malformed or unavailable local preference falls back to the default palette.
     } finally {
-      setHasLoadedPalette(true)
+      setLoadedScopeKey(preferenceScopeKey)
     }
   }, [preferenceScopeKey])
 
   useEffect(() => {
-    if (!hasLoadedPalette) return
+    if (loadedScopeKey !== preferenceScopeKey) return
     window.localStorage.setItem(
       schedulePaletteStorageKey(preferenceScopeKey),
       JSON.stringify(displayColorPalette)
@@ -65,7 +70,7 @@ export function useGanttPalette(preferenceScopeKey: string): GanttPaletteState {
   }, [
     displayColorLabels,
     displayColorPalette,
-    hasLoadedPalette,
+    loadedScopeKey,
     preferenceScopeKey,
   ])
 
