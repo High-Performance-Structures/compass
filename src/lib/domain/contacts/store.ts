@@ -18,6 +18,7 @@ import { chunkD1InsertRows } from "@/lib/d1-query"
 import type { Db } from "@/lib/server/action-context"
 import { checkedListFields } from "@/lib/shared/statuses"
 import { companyMoveGuard, type CompanyReferenceMove } from "./company-merge-references"
+import { MERGE_TABLE, mergeCarryOverColumns, personMergeGuard, type CarryOverWrite } from "./merge-carry-over"
 import { insertableProjectContacts } from "./rules"
 import { PROJECT_CONTACT_LISTS, type ProjectContactType } from "./statuses"
 import { directoryPersonProjectContactsWhere, type DirectoryPersonKind } from "./person-status"
@@ -673,7 +674,14 @@ export function contactMergeEventStatement(database: D1Database, input: ContactM
       input.sourceSnapshot, input.destinationSnapshot, input.peopleCount, input.projectContactCount, input.userId, input.now)
 }
 
-/** A people merge as one atomic batch: the audit event, then the moves (the project-contact scope trigger checks the child's current parent). */
+/** The kept record takes the archived one's contact fields (only columns merge-carry-over.ts allows) while `guard` sees the source live. */
+export function mergeCarryOverStatements(database: D1Database, input: CarryOverWrite): D1PreparedStatement[] {
+  const entries = Object.entries(input.values).filter(([column]) => mergeCarryOverColumns(input.kind).includes(column))
+  return entries.length === 0 ? [] : [database.prepare(`UPDATE ${MERGE_TABLE[input.kind]} SET ${entries.map(([column]) => `${column} = ?`).join(", ")}, updated_at = ? WHERE id = ? AND ${input.guard.sql}`)
+    .bind(...entries.map(([, value]) => value), input.now, input.destinationId, ...input.guard.binds)]
+}
+
+/** A people merge as one atomic batch: the audit event, the moves (the project-contact scope trigger checks the child's current parent), earlier duplicates re-pointed to the kept person (pointers stay one hop), then the archive. */
 export function contactMergeStatements(
   database: D1Database, input: ContactMergeWrite & { readonly kind: "customer_person" | "vendor_person" }
 ): D1PreparedStatement[] {
@@ -681,6 +689,7 @@ export function contactMergeStatements(
   return [contactMergeEventStatement(database, input), projectContactMoveStatement(database, `${parent}_contact_id`, `${parent}_contact`, input),
     database.prepare(`UPDATE ${people} SET is_primary = 1, updated_at = ? WHERE id = ? AND EXISTS (SELECT 1 FROM ${people} WHERE id = ? AND is_primary = 1)`)
       .bind(input.now, input.destinationId, input.sourceId),
+    database.prepare(`UPDATE ${people} SET merged_into_person_id = ?, updated_at = ? WHERE merged_into_person_id = ? AND ${personMergeGuard(input.kind, input.sourceId).sql}`).bind(input.destinationId, input.now, input.sourceId, input.sourceId),
     database.prepare(`UPDATE ${people} SET active = 0, merged_into_person_id = ?, is_primary = 0, updated_at = ? WHERE id = ? AND active = 1 AND merged_into_person_id IS NULL`)
       .bind(input.destinationId, input.now, input.sourceId)]
 }

@@ -97,6 +97,14 @@ Project-phase contacts remain project assignments, separate from the underlying 
 
 Authorized directory managers can select duplicate company records or use **Merge 2 people** within a company. Choose the record to keep and review linked identities, project relationships, and any conflicts before confirming. Imported directory identities can be eligible for merging, but a conflicting Sage identity must be resolved through the proper review. A merge reconciles directory records; it does not authorize an unrelated Sage write or an invitation. Use the permission-appropriate delete action only for an unnecessary record and review the displayed dependencies first.
 
+The merge keeps every contact detail. Under **Contact details on the kept record**, the dialog lists each field that will change:
+
+- A detail that is blank on the kept record (email, phone, cell phone, address, billing address, notes and so on) is filled from the other record.
+- Where both records have a different value, both are shown side by side; choose which to keep. The kept record's value is selected until you choose otherwise.
+- A sign-in email of someone who accepted a Compass invite never changes.
+
+When the kept record is linked to Sage, Compass shows the carried-over details at once, and the Sage fields go to Sage as a change request for review, exactly like an edit. Nothing is written to Sage directly. Values you did not use stay on the archived record and in the merge history. Job contacts of the archived record show the kept record's details.
+
 ## Add a Client Person to a Client Company {#join-client-company}
 
 A client record for one person (for example someone who belongs to a society or association) can join that client company. Open the client in **Contacts**, choose **Company**, and search for the company. Only existing client companies are listed, and only a standalone client record shows this list. Compass then shows what will happen; choose **Join company** to confirm. In one step:

@@ -783,9 +783,17 @@ function normalizeExistingVendorCategories(db) {
   return changes
 }
 
+// A duplicate is never excluded on its own: it must name the vendor that
+// survives it and go through Compass's merge (Contacts → Merge), which moves
+// every reference and carries its contact details over. The script leaves the
+// vendor active and lists it under reviewDecisions.duplicatesToMerge.
+function reviewDecisionIsDuplicate(notesValue) {
+  return text(notesValue).toLowerCase().includes("duplicate")
+}
+
 function reviewDecisionStatus(notesValue) {
   const notes = text(notesValue).toLowerCase()
-  if (notes.includes("duplicate")) return "excluded_duplicate"
+  if (reviewDecisionIsDuplicate(notes)) return ""
   if (notes.includes("not really needed") || notes.includes("not needed")) {
     return "excluded_not_needed"
   }
@@ -820,6 +828,7 @@ function applyReviewDecisions(db, reviewDecisions) {
   const now = new Date().toISOString()
   const applied = []
   const excluded = []
+  const duplicatesToMerge = []
 
   const tx = db.transaction((items) => {
     for (const row of items) {
@@ -864,6 +873,15 @@ function applyReviewDecisions(db, reviewDecisions) {
       }
       applied.push(item)
       if (directoryStatus !== "active") excluded.push(item)
+      if (reviewDecisionIsDuplicate(decision.reviewerNotes)) {
+        duplicatesToMerge.push({
+          id: row.id,
+          name: row.name,
+          // The reviewer names the vendor to keep (duplicateOf); without one, nothing can be merged yet.
+          survivor: text(decision.duplicateOf) || null,
+          notes: text(decision.reviewerNotes),
+        })
+      }
     }
   })
 
@@ -872,6 +890,7 @@ function applyReviewDecisions(db, reviewDecisions) {
     appliedCount: applied.length,
     excludedCount: excluded.length,
     excludedSample: excluded.slice(0, 50),
+    duplicatesToMerge,
     categoryChanges: applied
       .filter((row) => row.from !== row.to)
       .slice(0, 150),

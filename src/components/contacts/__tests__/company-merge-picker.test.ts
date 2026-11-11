@@ -65,6 +65,8 @@ describe("Merge with… picker", () => {
         sourceEmail: null, destinationEmail: null, peopleCount: 1, projectContactCount: 2,
         retainedIdentityNotice: null, blockers: [],
         moves: [{ category: "trade_docs", label: "Trade documents", count: 3 }],
+        fieldChanges: [{ key: "phone", label: "Phone", keptValue: null, mergedValue: "555-0100", action: "fill" }],
+        survivorSageLinked: false,
         warnings: ["Open purchase orders move with the vendor."],
       },
     })
@@ -106,6 +108,8 @@ describe("Merge with… picker", () => {
     expect(previewText).toContain("Moves to the kept record")
     expect(previewText).toContain("Trade documents: 3")
     expect(previewText).toContain("Open purchase orders move with the vendor.")
+    // Every contact detail the kept record takes is listed.
+    expect(previewText).toContain("Blank on the kept record; takes 555-0100.")
     expect(document.querySelector('[role="option"][aria-selected="true"]')?.textContent).toContain("ACME Concrete LLC")
   })
 
