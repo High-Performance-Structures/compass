@@ -269,20 +269,23 @@ export function addContactDirectorySchema(sqlite: Sqlite): void {
     users: ["id", "email", "phone"],
     organization_members: ["id", "organization_id", "user_id"],
     project_contacts: ["id", "project_id", "contact_type", "source_entity_type", "source_entity_id", "display_name", "company_name", "email", "phone", "address", "customer_id", "customer_contact_id", "vendor_id", "vendor_contact_id", "internal_contact_id"],
-    customers: ["id", "organization_id", "name", "company", "email", "phone", "address"],
-    customer_contacts: ["id", "customer_id", "user_id", "name", "email", "phone", "active"],
-    vendors: ["id", "organization_id", "name", "email", "phone", "address"],
-    vendor_contacts: ["id", "vendor_id", "user_id", "name", "email", "phone", "active"],
+    customers: ["id", "organization_id", "name", "company", "email", "phone", "address", "merged_into_customer_id"],
+    customer_contacts: ["id", "customer_id", "user_id", "name", "email", "phone", "active", "merged_into_person_id"],
+    vendors: ["id", "organization_id", "name", "email", "phone", "address", "merged_into_vendor_id", "directory_status"],
+    vendor_contacts: ["id", "vendor_id", "user_id", "name", "email", "phone", "active", "merged_into_person_id"],
     internal_contacts: ["id", "organization_id", "user_id", "name", "email", "phone", "active"],
   }
+  // Columns with the schema's defaults, so rows a test inserts without them are live records.
+  const definition = (column: string): string => column === "active" ? "INTEGER NOT NULL DEFAULT 1"
+    : column === "directory_status" ? "TEXT NOT NULL DEFAULT 'active'" : "TEXT"
   for (const [table, wantedColumns] of Object.entries(wanted)) {
     const existing = columns(table)
     if (existing.size === 0) {
-      sqlite.exec(`CREATE TABLE ${table} (${wantedColumns.map((column) => (column === "id" ? "id TEXT PRIMARY KEY" : column === "active" ? "active INTEGER NOT NULL DEFAULT 1" : `${column} TEXT`)).join(", ")})`)
+      sqlite.exec(`CREATE TABLE ${table} (${wantedColumns.map((column) => (column === "id" ? "id TEXT PRIMARY KEY" : `${column} ${definition(column)}`)).join(", ")})`)
       continue
     }
     for (const column of wantedColumns) {
-      if (!existing.has(column)) sqlite.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${column === "active" ? "INTEGER NOT NULL DEFAULT 1" : "TEXT"}`)
+      if (!existing.has(column)) sqlite.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition(column)}`)
     }
   }
 }

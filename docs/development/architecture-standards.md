@@ -110,6 +110,9 @@ The database is the source of truth, and each fact is stored once.
   company by the owning store's `companyMerge*Statements` builder, or kept on
   the archived company with a written reason.
   `company-merge-references.test.ts` fails for a column that is not listed.
+  The kept record also takes the archived record's contact details
+  (`merge-carry-over.ts`); a Sage-linked survivor's Sage fields go through
+  the reviewed Sage change request, never a direct Sage write.
 - **Link tables are unique on their pair.** A membership or link row (two
   foreign keys, plus a role or timestamps) has a unique index on the pair.
   Imported rows are unique on `(source_system, source_*_id)`, so an import can

@@ -20,15 +20,30 @@ import {
   sageClientProjectWriteOperations,
 } from "@/db/schema-sage"
 import { requireAuth } from "@/lib/auth"
+import { directoryIdentityManagedByActiveUser } from "@/lib/contact-identity-ownership"
 import { getCloudflareContext } from "@/lib/db"
 import { companyMergeStatements, inspectCompanyMerge, type CompanyMergeCount } from "@/lib/domain/contacts/company-merge"
-import { contactMergeStatements } from "@/lib/domain/contacts/store"
+import { companyMoveGuard } from "@/lib/domain/contacts/company-merge-references"
+import {
+  carryOverColumns,
+  personMergeGuard,
+  planCarryOver,
+  SAGE_EDIT_KIND,
+  splitForSage,
+  type MergeFieldChange,
+} from "@/lib/domain/contacts/merge-carry-over"
+import { contactMergeStatements, mergeCarryOverStatements } from "@/lib/domain/contacts/store"
 import { isDemoOrg, isDemoUser } from "@/lib/demo"
 import { requireOrg } from "@/lib/org-scope"
 import { requireFeaturePermission } from "@/lib/permission-enforcement"
 import { requirePermission } from "@/lib/permissions"
 import { queueProjectContactTrackerRefresh } from "@/lib/project-contact-tracker-refresh"
+import { requestSageEditFromCompass, type SageEditRequestOutcome } from "@/lib/sage/contact-proposal-service"
+import { isSageLinkedPerson } from "@/lib/sage/contact-edit-gate"
+import { SAGE_FIELD_LABELS } from "@/lib/sage/sage-linked-edit-fields"
 import { requestVendorCertificateSyncs } from "@/lib/sage/vendor-certificates"
+
+const SAGE_LABELS: Readonly<Record<string, string>> = SAGE_FIELD_LABELS
 
 const mergeKind = z.enum(["customer_company", "vendor_company", "customer_person", "vendor_person"])
 type MergeKind = z.infer<typeof mergeKind>
@@ -36,6 +51,8 @@ const mergeInput = z.object({
   kind: mergeKind,
   sourceId: z.string().min(1).max(200),
   destinationId: z.string().min(1).max(200),
+  /** Staff's pick for each field both records fill differently; unpicked fields keep the kept record's value. */
+  choices: z.record(z.string().max(40), z.enum(["kept", "merged"])).optional(),
 })
 type MergeInput = z.infer<typeof mergeInput>
 
@@ -50,6 +67,10 @@ export type ContactMergePreview = {
   readonly retainedIdentityNotice: string | null
   /** Company merges: how many rows of each kind move to the kept company. */
   readonly moves: readonly CompanyMergeCount[]
+  /** Every contact field the merge would change on the kept record (merge-carry-over.ts). */
+  readonly fieldChanges: readonly MergeFieldChange[]
+  /** The kept record is linked to Sage: its Sage fields change through a reviewed Sage change request. */
+  readonly survivorSageLinked: boolean
   readonly warnings: readonly string[]
   readonly blockers: readonly string[]
 }
@@ -76,7 +97,7 @@ async function context(kind: MergeKind, mutation: boolean) {
     requirePermission(user, kind.startsWith("customer") ? "customer" : "vendor", "delete")
   }
   const { env } = await getCloudflareContext()
-  return { user, orgId, db: getDb(env.DB), d1: env.DB }
+  return { user, orgId, db: getDb(env.DB), d1: env.DB, env }
 }
 
 async function inspect(input: MergeInput): Promise<{
@@ -85,6 +106,9 @@ async function inspect(input: MergeInput): Promise<{
   readonly destinationSnapshot: string
   readonly affectedProjectIds: readonly string[]
   readonly movesTradeDocs: boolean
+  /** New values for the kept record, by record key, after staff's choices. */
+  readonly carryOver: Readonly<Record<string, string | null>>
+  readonly survivorSageLinked: boolean
 }> {
   const { orgId, db, d1 } = await context(input.kind, false)
   const blockers: string[] = []
@@ -145,7 +169,11 @@ async function inspect(input: MergeInput): Promise<{
   }
   if (sourceCompany && customer && "mergedIntoCustomerId" in sourceCompany && sourceCompany.mergedIntoCustomerId) blockers.push("The source client is already merged.")
   if (destinationCompany && customer && "mergedIntoCustomerId" in destinationCompany && destinationCompany.mergedIntoCustomerId) blockers.push("The destination client is already merged.")
-  if (sourceCompany && !customer && "directoryStatus" in sourceCompany && sourceCompany.directoryStatus !== "active") blockers.push("The source vendor is not active.")
+  // A vendor once excluded as a duplicate (with no survivor named) may still be merged into its survivor here.
+  if (sourceCompany && !customer && "directoryStatus" in sourceCompany &&
+    !["active", "excluded_duplicate"].includes(sourceCompany.directoryStatus)) blockers.push("The source vendor is not active.")
+  if (sourceCompany && !customer && "mergedIntoVendorId" in sourceCompany && sourceCompany.mergedIntoVendorId) blockers.push("The source vendor is already merged.")
+  if (destinationCompany && !customer && "mergedIntoVendorId" in destinationCompany && destinationCompany.mergedIntoVendorId) blockers.push("The destination vendor is already merged.")
   if (destinationCompany && !customer && "directoryStatus" in destinationCompany && destinationCompany.directoryStatus !== "active") blockers.push("The destination vendor is not active.")
   // Imported directory IDs stay on the archived row, whose merge pointer preserves
   // their provenance. Accounting IDs cannot use that path: active Sage/NetSuite
@@ -267,6 +295,25 @@ async function inspect(input: MergeInput): Promise<{
     ? await inspectCompanyMerge(d1, { side: customer ? "customer" : "vendor", organizationId: orgId, sourceId: input.sourceId, destinationId: input.destinationId })
     : null
   if (details) blockers.push(...details.blockers)
+  // The archived record's contact details the kept record takes. A person who
+  // accepted a Compass invite keeps their sign-in email.
+  const keptRecord = destinationPerson ?? destinationCompany
+  const mergedRecord = sourcePerson ?? sourceCompany
+  if (!keptRecord || !mergedRecord) throw new Error("Both records must exist in this organization.")
+  const emailLocked = Boolean(destinationPerson?.userId) || await directoryIdentityManagedByActiveUser({
+    db, organizationId: orgId, entityId: input.destinationId,
+    entityType: company ? (customer ? "customer" : "vendor") : customer ? "customer_contact" : "vendor_contact",
+  })
+  const carry = planCarryOver({
+    kind: input.kind, kept: keptRecord, merged: mergedRecord, choices: input.choices, lockedKeys: emailLocked ? ["email"] : [],
+  })
+  const survivorSageLinked = destinationPerson
+    ? isSageLinkedPerson(destinationPerson)
+    : destinationCompany && "sageClientId" in destinationCompany
+      ? Boolean(destinationCompany.sageClientId || destinationCompany.sageClientNumber)
+      : destinationCompany && "sageVendorId" in destinationCompany
+        ? Boolean(destinationCompany.sageVendorId || destinationCompany.sageVendorNumber)
+        : false
   const moves = (details?.moves ?? []).flatMap((entry) => entry.category !== "trade_docs" ? [entry]
     : details && details.tradeDocs.moved.length > 0 ? [{ ...entry, count: details.tradeDocs.moved.length }] : [])
   return {
@@ -281,6 +328,8 @@ async function inspect(input: MergeInput): Promise<{
             ? "The imported person ID remains on the archived record, which points to the survivor. This does not merge records in the source system."
             : null,
       moves,
+      fieldChanges: carry.changes,
+      survivorSageLinked,
       warnings: [...(details?.warnings ?? []), ...(retiredProjectContacts.length > 0
         ? [`${new Set(retiredProjectContacts.map((row) => row.projectId)).size} project(s) list both companies. On those projects the kept company's contact stays and the archived company's duplicate is retired.`]
         : [])],
@@ -293,6 +342,8 @@ async function inspect(input: MergeInput): Promise<{
     destinationSnapshot: JSON.stringify(destination),
     affectedProjectIds: Array.from(new Set(projectRows.map((row) => row.projectId))),
     movesTradeDocs: (details?.tradeDocs.moved.length ?? 0) > 0,
+    carryOver: carry.values,
+    survivorSageLinked,
   }
 }
 
@@ -308,20 +359,43 @@ export async function previewContactMerge(raw: MergeInput): Promise<PreviewResul
 export async function mergeDuplicateContacts(raw: MergeInput): Promise<MergeResult> {
   try {
     const input = mergeInput.parse(raw)
-    const { user, orgId, d1 } = await context(input.kind, true)
-    const { preview, sourceSnapshot, destinationSnapshot, affectedProjectIds, movesTradeDocs } = await inspect(input)
+    const { user, orgId, d1, env } = await context(input.kind, true)
+    const { preview, sourceSnapshot, destinationSnapshot, affectedProjectIds, movesTradeDocs, carryOver, survivorSageLinked } = await inspect(input)
     if (preview.blockers.length > 0) return { success: false, error: preview.blockers.join(" ") }
     const now = new Date().toISOString()
+    // A Sage-linked survivor's Sage fields go to Sage review like a staff edit (below);
+    // everything else is written with the merge itself.
+    const split = survivorSageLinked ? splitForSage(input.kind, carryOver) : { sage: {}, compass: carryOver }
     const write = {
       organizationId: orgId, sourceId: input.sourceId, destinationId: input.destinationId,
       sourceSnapshot, destinationSnapshot, peopleCount: preview.peopleCount,
       projectContactCount: preview.projectContactCount, userId: user.id, now,
     }
+    // The carried-over fields lead the batch, guarded on the source still being live, so they land only with the merge.
+    const carryOverStatements = mergeCarryOverStatements(d1, {
+      kind: input.kind, destinationId: input.destinationId, now, values: carryOverColumns(input.kind, split.compass),
+      guard: input.kind === "customer_company" || input.kind === "vendor_company"
+        ? companyMoveGuard({ side: input.kind === "vendor_company" ? "vendor" : "customer", mode: "merge", organizationId: orgId, sourceId: input.sourceId, destinationId: input.destinationId, now })
+        : personMergeGuard(input.kind, input.sourceId),
+    })
     const statements = input.kind === "customer_company" || input.kind === "vendor_company"
       ? companyMergeStatements(d1, { ...write, kind: input.kind })
       : contactMergeStatements(d1, { ...write, kind: input.kind })
-    await d1.batch(statements)
+    await d1.batch([...carryOverStatements, ...statements])
     const db = getDb(d1)
+    let sageWarning: string | null = null
+    if (Object.keys(split.sage).length > 0) {
+      // Never written to Sage here: Compass shows the value now and a pending Sage change request follows review.
+      let outcome: SageEditRequestOutcome
+      try {
+        outcome = await requestSageEditFromCompass({ user, organizationId: orgId, db, env }, SAGE_EDIT_KIND[input.kind], input.destinationId, split.sage)
+      } catch (error) {
+        outcome = { status: "blocked", error: error instanceof Error ? error.message : "The Sage change request could not be created." }
+      }
+      if (outcome.status === "blocked") {
+        sageWarning = `Merged, but the Sage details (${Object.keys(split.sage).map((field) => SAGE_LABELS[field] ?? field).join(", ")}) were not carried over: ${outcome.error} They remain on the archived record.`
+      }
+    }
     // The kept vendor's trade docs changed, so its Sage certificates are refreshed (never fails the merge).
     if (input.kind === "vendor_company" && movesTradeDocs) await requestVendorCertificateSyncs(db, orgId, [input.destinationId])
     let trackerWarning = false
@@ -337,7 +411,10 @@ export async function mergeDuplicateContacts(raw: MergeInput): Promise<MergeResu
     return {
       success: true,
       keptId: input.destinationId,
-      ...(trackerWarning ? { warning: "Merged, but a project registry refresh could not be queued. Please retry the registry sync." } : {}),
+      ...(sageWarning || trackerWarning ? {
+        warning: [sageWarning, trackerWarning ? "Merged, but a project registry refresh could not be queued. Please retry the registry sync." : null]
+          .filter((text) => text !== null).join(" "),
+      } : {}),
     }
   } catch (error) {
     return { success: false, error: error instanceof Error ? error.message : "Could not merge contacts." }

@@ -183,11 +183,15 @@ describe("contacts store: duplicate merges", () => {
     expect(withoutEventId("customer_person", contactMergeStatements(d1, { ...base, kind: "customer_person" }))).toEqual([
       expectedShape("UPDATE project_contacts SET customer_contact_id = ?, source_entity_id = CASE WHEN source_entity_type = 'customer_contact' AND source_entity_id = ? THEN ? ELSE source_entity_id END, source_record_id = CASE WHEN source_entity_type = 'customer_contact' AND source_record_id = ? THEN ? ELSE source_record_id END, updated_at = ? WHERE customer_contact_id = ? OR (source_entity_type = 'customer_contact' AND source_entity_id = ?)", moveBinds),
       expectedShape("UPDATE customer_contacts SET is_primary = 1, updated_at = ? WHERE id = ? AND EXISTS (SELECT 1 FROM customer_contacts WHERE id = ? AND is_primary = 1)", [now, "d", "s"]),
+      // Earlier duplicates merged into the archived person now point at the kept one (one hop).
+      expectedShape("UPDATE customer_contacts SET merged_into_person_id = ?, updated_at = ? WHERE merged_into_person_id = ? AND EXISTS (SELECT 1 FROM customer_contacts merge_source WHERE merge_source.id = ? AND merge_source.active = 1 AND merge_source.merged_into_person_id IS NULL)", ["d", now, "s", "s"]),
       expectedShape("UPDATE customer_contacts SET active = 0, merged_into_person_id = ?, is_primary = 0, updated_at = ? WHERE id = ? AND active = 1 AND merged_into_person_id IS NULL", ["d", now, "s"]),
     ])
     expect(withoutEventId("vendor_person", contactMergeStatements(d1, { ...base, kind: "vendor_person" }))).toEqual([
       expectedShape("UPDATE project_contacts SET vendor_contact_id = ?, source_entity_id = CASE WHEN source_entity_type = 'vendor_contact' AND source_entity_id = ? THEN ? ELSE source_entity_id END, source_record_id = CASE WHEN source_entity_type = 'vendor_contact' AND source_record_id = ? THEN ? ELSE source_record_id END, updated_at = ? WHERE vendor_contact_id = ? OR (source_entity_type = 'vendor_contact' AND source_entity_id = ?)", moveBinds),
       expectedShape("UPDATE vendor_contacts SET is_primary = 1, updated_at = ? WHERE id = ? AND EXISTS (SELECT 1 FROM vendor_contacts WHERE id = ? AND is_primary = 1)", [now, "d", "s"]),
+      // Earlier duplicates merged into the archived person now point at the kept one (one hop).
+      expectedShape("UPDATE vendor_contacts SET merged_into_person_id = ?, updated_at = ? WHERE merged_into_person_id = ? AND EXISTS (SELECT 1 FROM vendor_contacts merge_source WHERE merge_source.id = ? AND merge_source.active = 1 AND merge_source.merged_into_person_id IS NULL)", ["d", now, "s", "s"]),
       expectedShape("UPDATE vendor_contacts SET active = 0, merged_into_person_id = ?, is_primary = 0, updated_at = ? WHERE id = ? AND active = 1 AND merged_into_person_id IS NULL", ["d", now, "s"]),
     ])
   })
