@@ -194,6 +194,21 @@ export async function setPhotoPhaseOverride(
     .where(and(eq(dailyLogPhotos.projectId, input.projectId), eq(dailyLogPhotos.id, input.photoId)))
 }
 
+export async function setPhotoCaption(
+  db: Db,
+  input: {
+    readonly projectId: string
+    readonly photoId: string
+    readonly caption: string | null
+    readonly now: string
+  }
+): Promise<void> {
+  await db
+    .update(dailyLogPhotos)
+    .set({ caption: input.caption, updatedAt: input.now })
+    .where(and(eq(dailyLogPhotos.projectId, input.projectId), eq(dailyLogPhotos.id, input.photoId)))
+}
+
 export async function setPhotoPermissions(
   db: Db,
   input: {

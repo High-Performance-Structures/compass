@@ -15,6 +15,7 @@ Object.defineProperty(globalThis, "IS_REACT_ACT_ENVIRONMENT", { configurable: tr
 
 vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: vi.fn() }) }))
 vi.mock("@/app/actions/project-photos", () => ({
+  updateProjectPhotoCaption: vi.fn(),
   updateProjectPhotoPhase: vi.fn(),
   updateProjectPhotoPermissions: vi.fn(),
   deleteProjectPhotos: vi.fn(),

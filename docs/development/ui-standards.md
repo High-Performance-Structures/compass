@@ -252,7 +252,7 @@ off-screen and the click looks like it did nothing.
   pay applications show **Quick look** (drawer) and **Edit** (full page) on the
   row. Estimates keep their own page, where the list and editor already share
   one screen.
-- Photos open in the drawer too (photo, previous/next, details, Save) with a
+- Photos open in the drawer too (photo, previous/next, caption and details, Save) with a
   **Full screen** button that opens `PhotoFullScreenViewer`
   (`src/components/photos/photo-full-screen-viewer.tsx`): the photo as large as
   the screen allows, a strip of nearby photos, arrow keys and swipe. Owners and

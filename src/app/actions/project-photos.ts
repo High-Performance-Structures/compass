@@ -8,12 +8,12 @@ import { errorMessage } from "@/lib/action-result"
 import { recordActivityEvent } from "@/lib/activity-log"
 import { normalizedPhotoKind, normalizedPhotoReviewStatus } from "@/lib/domain/field/rules"
 import { planPhotoDelete } from "@/lib/domain/field/photo-delete"
-import { deleteDailyLogPhotos, setPhotoPermissions, setPhotoPhaseOverride } from "@/lib/domain/field/store"
+import { deleteDailyLogPhotos, setPhotoCaption, setPhotoPermissions, setPhotoPhaseOverride } from "@/lib/domain/field/store"
 import { getOrganizationDriveContext } from "@/lib/google/organization-drive"
 import { projectContext, type ProjectContext } from "@/lib/server/action-context"
 import { dailyLogPhotoCollectionEligibility } from "@/lib/photos/collection-eligibility"
 import { resolveProjectPhotoDate } from "@/lib/photos/date"
-import { PHOTO_DELETE_BATCH_LIMIT, SELECTION_PHOTO_KIND } from "@/lib/photos/review"
+import { PHOTO_CAPTION_MAX_LENGTH, PHOTO_DELETE_BATCH_LIMIT, SELECTION_PHOTO_KIND } from "@/lib/photos/review"
 import { isInternalStaffRole } from "@/lib/user-roles"
 
 export type ProjectPhotoLibraryItem = {
@@ -275,6 +275,43 @@ export async function updateProjectPhotoPhase(
     return {
       success: false,
       error: errorMessage(error, "Unable to update photo phase"),
+    }
+  }
+}
+
+/** Sets one photo's caption; a blank caption clears it so the file name shows. */
+export async function updateProjectPhotoCaption(
+  projectId: string,
+  photoId: string,
+  caption: string
+): Promise<{ readonly success: true; readonly caption: string | null } | { readonly success: false; readonly error: string }> {
+  try {
+    const context = await projectContext(projectId, {
+      scope: "organization",
+      feature: "project-photos",
+      mutation: true,
+    })
+    if (!context.success) return context
+    const { db } = context.data
+
+    const trimmed = caption.trim()
+    if (trimmed.length > PHOTO_CAPTION_MAX_LENGTH) {
+      return { success: false, error: `Keep the caption under ${PHOTO_CAPTION_MAX_LENGTH} characters.` }
+    }
+    const next = trimmed.length > 0 ? trimmed : null
+
+    await setPhotoCaption(db, { projectId, photoId, caption: next, now: new Date().toISOString() })
+
+    revalidatePath(`/dashboard/projects/${projectId}`)
+    revalidatePath(`/dashboard/projects/${projectId}/photos`)
+    revalidatePath(`/dashboard/projects/${projectId}/preview/owner`)
+    revalidatePath(`/dashboard/projects/${projectId}/preview/sub-vendor`)
+
+    return { success: true, caption: next }
+  } catch (error) {
+    return {
+      success: false,
+      error: errorMessage(error, "Unable to update the caption"),
     }
   }
 }

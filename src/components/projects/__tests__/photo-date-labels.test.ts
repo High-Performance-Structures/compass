@@ -8,6 +8,7 @@ import { ProjectAudiencePhotoGallery } from "@/components/projects/project-audie
 
 vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: vi.fn() }) }))
 vi.mock("@/app/actions/project-photos", () => ({
+  updateProjectPhotoCaption: vi.fn(),
   updateProjectPhotoPhase: vi.fn(),
   updateProjectPhotoPermissions: vi.fn(),
 }))
