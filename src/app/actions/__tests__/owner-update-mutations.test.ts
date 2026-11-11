@@ -366,6 +366,7 @@ function createDatabase(): {
       review_status TEXT NOT NULL,
       owner_visible INTEGER NOT NULL,
       sort_order INTEGER NOT NULL DEFAULT 0,
+      photo_kind TEXT NOT NULL DEFAULT 'progress',
       updated_at TEXT NOT NULL,
       created_at TEXT NOT NULL DEFAULT '2026-07-28T12:00:00.000Z'
     );
