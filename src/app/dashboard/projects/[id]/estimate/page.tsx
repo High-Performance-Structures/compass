@@ -18,22 +18,26 @@ import { getProjectPaperTrail } from "@/app/actions/paper-trail"
 import { PaperTrailRecordStatus } from "@/components/paper-trail/paper-trail-record-status"
 import { getEstimateSageSyncState } from "@/app/actions/sage-estimates"
 import { EstimateSageSyncPanel } from "@/components/projects/estimate-sage-sync-panel"
+import { getProjectBtProposals } from "@/app/actions/project-bt-proposals"
+import { ProjectBtProposals } from "@/components/projects/project-bt-proposals"
 
 export default async function ProjectEstimatePage({
   params,
   searchParams,
 }: {
   readonly params: Promise<{ id: string }>
-  readonly searchParams: Promise<{ estimateId?: string }>
+  readonly searchParams: Promise<{ estimateId?: string; item?: string }>
 }): Promise<React.ReactElement> {
   const [{ id: rawProjectId }, query] = await Promise.all([params, searchParams])
   const id = decodeProjectRouteId(rawProjectId)
-  const [workspace, estimateTemplates, family, paperTrail, phaseProposals] = await Promise.all([
+  const [workspace, estimateTemplates, family, paperTrail, phaseProposals, btProposals] = await Promise.all([
     getProjectEstimateWorkspace(id, query.estimateId),
     getPublishedEstimateTemplateOptions(),
     getProjectFamilySummary(id),
     getProjectPaperTrail(id, "estimate"),
     getProjectPhaseProposals(id),
+    // Staff-only Buildertrend history; anyone else gets a failure and sees nothing.
+    getProjectBtProposals(id),
   ])
   const activeEstimateId = workspace.activeEstimate?.id ?? null
   const assemblyCopies = activeEstimateId ? await getEstimateAssemblyCopies(id, activeEstimateId) : []
@@ -96,6 +100,14 @@ export default async function ProjectEstimatePage({
         phaseProposals={phaseProposals}
         assemblyCopies={assemblyCopies}
       />
+      {btProposals.success && btProposals.proposals.length > 0 ? (
+        <ProjectBtProposals
+          projectId={id}
+          proposals={btProposals.proposals}
+          canCopy={workspace.canEdit}
+          initialItemId={query.item ?? null}
+        />
+      ) : null}
     </div>
   )
 }

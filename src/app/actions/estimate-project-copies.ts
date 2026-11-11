@@ -18,7 +18,7 @@ import { insertProjectLinkIfAbsentStatement } from "@/lib/domain/documents/store
 import { recordActivityEvent } from "@/lib/activity-log"
 import { estimateAccess, requireEditableEstimate, revalidateEstimate, type CompassDb } from "@/lib/domain/estimates/access"
 import { copyEstimateLines, markupBasisPoints, UNASSIGNED_ITEMS, UNASSIGNED_NAME } from "@/lib/estimates/assembly-copy"
-import { isContractEstimate } from "@/lib/estimates/estimate-family"
+import { newDraftBlockedReason } from "@/lib/estimates/estimate-family"
 import { readEstimateMode } from "@/lib/estimates/numbering"
 import { estimateCanBeEdited, estimateTotalsForLines, isEstimateStatus } from "@/lib/domain/estimates/rules"
 import {
@@ -109,14 +109,7 @@ export async function getEstimateCopyTarget(targetProjectId: string): Promise<Es
         title: estimate.title,
         kind: draftKind(estimate),
       }))
-    // One-contract-estimate jobs: a new draft would be a new version that
-    // replaces the contract, so added scope goes in the open draft or a change order.
-    const contract = estimates.filter((estimate) => isContractEstimate(estimate) && estimate.status !== "void" && estimate.status !== "superseded")
-    const newDraftBlocked = mode === "single" && contract.length > 0
-      ? contract.some((estimate) => estimate.status === "accepted")
-        ? "This job's contract estimate is accepted. Start a change order estimate on the job and copy into that."
-        : "This job already has a contract estimate. Copy into its open draft."
-      : null
+    const newDraftBlocked = newDraftBlockedReason(mode, estimates)
     return {
       projectId: targetProjectId,
       projectNumber: access.projectNumber,

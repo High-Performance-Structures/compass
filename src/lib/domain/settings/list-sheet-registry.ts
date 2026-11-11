@@ -699,6 +699,15 @@ export const LIST_SHEETS: readonly ListSheetDefinition[] = [
     },
   },
   {
+    id: "bt-proposals.estimate", label: "Buildertrend proposals", where: "A job's Estimate page (staff only)",
+    columns: [
+      { id: "title", label: "Proposal", kind: "text", required: true }, { id: "status", label: "Status", kind: "text" },
+      { id: "addedBy", label: "Added by", kind: "text" }, { id: "date", label: "Date", kind: "date" },
+      { id: "amount", label: "Owner price", kind: "number" },
+    ],
+    defaultSort: { columnId: "date", desc: true }, startFilter: null,
+  },
+  {
     id: "shop-tickets.job",
     label: "Shop tickets",
     where: "A job's Shop Tickets",

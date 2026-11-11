@@ -26,6 +26,7 @@ import {
   insertEstimateReportPhaseStatement,
   updateEstimatesStatement,
 } from "@/lib/domain/estimates/store"
+import type { BuildertrendEstimateLine } from "@/lib/estimates/buildertrend-estimate-import"
 import type {
   ProjectEstimateBuildertrendImportInput,
   ProjectEstimatePlanSwiftImportInput,
@@ -290,6 +291,41 @@ export async function importPlanSwiftLines(
 }
 
 /**
+ * What importBuildertrendExport does with a cost code that is not in the
+ * company catalog: "reject" the import (spreadsheet uploads), or "keep" the
+ * code text on the line with a note to remap it (copies of Buildertrend
+ * proposals, where staff fix codes on the new draft).
+ */
+export type BuildertrendImportOptions = { readonly unmatchedCostCodes: "reject" | "keep" }
+
+type LineCostCode = {
+  readonly divisionCode: string
+  readonly divisionName: string
+  readonly code: string
+  readonly name: string
+  /** Remap note for a code that is not in the catalog. */
+  readonly note: string | null
+}
+
+/** A code outside the catalog keeps its text; a CSI-shaped code still files under its division. */
+function unmatchedLineCostCode(
+  catalog: readonly { readonly divisionCode: string; readonly divisionDescription: string }[],
+  line: BuildertrendEstimateLine
+): LineCostCode {
+  const divisionCode = /^(\d{2})\b/.exec(line.costCode)?.[1] ?? "00"
+  const division = catalog.find((row) => row.divisionCode === divisionCode)
+  return {
+    divisionCode,
+    divisionName: division?.divisionDescription ?? (divisionCode === "00" ? "Unmatched cost codes" : `Division ${divisionCode}`),
+    code: line.costCode,
+    name: line.costCodeName,
+    note: line.costCode
+      ? `Buildertrend cost code ${line.costCode} is not in the Compass cost code catalog; remap before signature or accounting handoff.`
+      : "No Buildertrend cost code; choose one before signature or accounting handoff.",
+  }
+}
+
+/**
  * Imports a Buildertrend estimate export into a draft estimate: one line per
  * Buildertrend row, report phases from its scope packages (shown as package
  * totals with their descriptions, like the Buildertrend proposal), and the
@@ -299,7 +335,8 @@ export async function importBuildertrendExport(
   access: EstimateAccess,
   projectId: string,
   estimate: EstimateRow,
-  input: ProjectEstimateBuildertrendImportInput
+  input: ProjectEstimateBuildertrendImportInput,
+  options: BuildertrendImportOptions = { unmatchedCostCodes: "reject" }
 ): Promise<ImportCount> {
   const estimateId = estimate.id
   if (input.lines.length === 0) throw new Error("The Buildertrend export has no rows to import.")
@@ -321,8 +358,16 @@ export async function importBuildertrendExport(
   const costCodeMap = new Map(costRows.map((row) => [row.code, row]))
   // An old export's "99 10 00" fee row imports under the canonical fee code.
   const unknown = [...new Set(input.lines.map((line) => line.costCode))].filter((code) => !resolveCatalogCostCode(costCodeMap, code))
-  if (unknown.length > 0) {
+  if (unknown.length > 0 && options.unmatchedCostCodes === "reject") {
     throw new Error(`These Buildertrend cost codes aren't in the Compass cost code catalog: ${unknown.slice(0, 5).join(", ")}.`)
+  }
+  const lineCost = (line: BuildertrendEstimateLine): LineCostCode => {
+    const cost = resolveCatalogCostCode(costCodeMap, line.costCode)
+    if (cost) {
+      return { divisionCode: cost.divisionCode, divisionName: cost.divisionDescription, code: cost.code, name: cost.description, note: null }
+    }
+    if (options.unmatchedCostCodes === "reject") throw new Error(`Cost code ${line.costCode} is unavailable.`)
+    return unmatchedLineCostCode(costRows, line)
   }
 
   const existingLines = await access.db
@@ -338,7 +383,7 @@ export async function importBuildertrendExport(
   const phaseRows = input.phases.map((phase) => {
     const divisions = input.lines
       .filter((line) => line.phaseName === phase.name)
-      .map((line) => resolveCatalogCostCode(costCodeMap, line.costCode)?.divisionCode ?? "99")
+      .map((line) => lineCost(line).divisionCode)
       .sort()
     return {
       id: crypto.randomUUID(),
@@ -369,8 +414,7 @@ export async function importBuildertrendExport(
     }))
   const assemblyIdByName = new Map(assemblyRows.map((assembly) => [assembly.name, assembly.id]))
   const lineValues = input.lines.map((line, index) => {
-    const cost = resolveCatalogCostCode(costCodeMap, line.costCode)
-    if (!cost) throw new Error(`Cost code ${line.costCode} is unavailable.`)
+    const cost = lineCost(line)
     const sourceNote = `Buildertrend source: ${sourceFileName} · row ${line.rowNumber}${line.costType ? ` · ${line.costType}` : ""}`
     return {
       id: crypto.randomUUID(),
@@ -380,11 +424,11 @@ export async function importBuildertrendExport(
       assemblyId: assemblyIdByName.get(line.phaseName.slice(0, 160)) ?? null,
       reportPhaseId: phaseIdByName.get(line.phaseName) ?? null,
       divisionCode: cost.divisionCode,
-      divisionName: cost.divisionDescription,
+      divisionName: cost.divisionName,
       costCode: cost.code,
-      costCodeName: cost.description,
+      costCodeName: cost.name,
       description: requiredText(line.description.slice(0, 500), `Title on row ${line.rowNumber}`),
-      specifications: [cleanText(line.notes?.slice(0, 5_000) ?? null), sourceNote].filter(Boolean).join("\n"),
+      specifications: [cleanText(line.notes?.slice(0, 5_000) ?? null), cost.note, sourceNote].filter(Boolean).join("\n"),
       quantity: line.quantity,
       unit: cleanText(line.unit.slice(0, 40)) ?? "LS",
       unitCostCents: line.unitCostCents,
