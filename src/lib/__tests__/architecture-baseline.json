@@ -758,6 +758,9 @@
     "sageDirectoryAddRequests": [
       "src/lib/domain/sage-bridge/directory-add-store.ts"
     ],
+    "sageEmployeeDirectoryEntries": [
+      "src/lib/domain/sage-bridge/store.ts"
+    ],
     "sageEstimateExports": [
       "src/lib/domain/sage-bridge/estimate-store.ts"
     ],

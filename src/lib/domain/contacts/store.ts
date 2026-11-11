@@ -10,7 +10,7 @@
  * resolved-project-contacts.ts. New project contacts must link:
  * insertableProjectContacts.
  */
-import { and, eq, inArray, isNull, ne, or } from "drizzle-orm"
+import { and, eq, inArray, isNull, ne, or, sql } from "drizzle-orm"
 import type { BatchItem } from "drizzle-orm/batch"
 
 import { customerContacts, customers, internalContacts, projectContacts, projectContactSourceLinks, vendorContacts, vendors } from "@/db/schema"
@@ -504,6 +504,26 @@ export async function updateUnassignedPersonRows(db: Db, input: { readonly conta
 /** Provisioning is idempotent: an existing person for the user is kept. */
 export async function insertInternalContactIfMissing(db: Db, values: InternalContactInsert): Promise<void> {
   await db.insert(internalContacts).values(values).onConflictDoNothing().run()
+}
+
+/** Links a still-unlinked staff contact to a Sage employee, unless another contact already holds that employee. Returns the id when it linked. */
+export function linkInternalContactToSageEmployeeStatement(db: Db, input: { readonly organizationId: string; readonly internalContactId: string; readonly sageEmployeeId: string; readonly sageEmployeeNumber: string; readonly now: string }) {
+  const unlinked = sql`trim(coalesce(${internalContacts.sageEmployeeId}, '')) = '' AND trim(coalesce(${internalContacts.sageEmployeeNumber}, '')) = ''`
+  const free = sql`NOT EXISTS (SELECT 1 FROM internal_contacts other WHERE other.organization_id = ${input.organizationId}
+    AND (lower(other.sage_employee_id) = lower(${input.sageEmployeeId}) OR other.sage_employee_number = ${input.sageEmployeeNumber}))`
+  return db.update(internalContacts).set({ sageEmployeeId: input.sageEmployeeId, sageEmployeeNumber: input.sageEmployeeNumber, updatedAt: input.now })
+    .where(and(eq(internalContacts.id, input.internalContactId), eq(internalContacts.organizationId, input.organizationId), eq(internalContacts.active, true), unlinked, free))
+    .returning({ id: internalContacts.id })
+}
+/** Creates a staff login's internal contact already linked to its Sage employee; does nothing if the user or employee is taken meanwhile. */
+export function insertLinkedInternalContactStatement(db: Db, values: InternalContactInsert) {
+  return db.insert(internalContacts).values(values).onConflictDoNothing().returning({ id: internalContacts.id })
+}
+/** Sage's employee status decides a linked contact's active flag (a Sage read, so allowed although manual archive is refused). */
+export function setInternalContactActiveFromSageStatement(db: Db, input: { readonly organizationId: string; readonly internalContactId: string; readonly active: boolean; readonly now: string }) {
+  return db.update(internalContacts).set({ active: input.active, updatedAt: input.now })
+    .where(and(eq(internalContacts.id, input.internalContactId), eq(internalContacts.organizationId, input.organizationId), ne(internalContacts.active, input.active)))
+    .returning({ id: internalContacts.id })
 }
 
 // --- Raw D1 writes (Sage bridge, merges, account links): bound statements for the caller's fenced batch.

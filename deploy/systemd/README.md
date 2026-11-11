@@ -102,6 +102,36 @@ counts Compass applied (`inserted`, `updated`, `inactivated`, `unchanged`,
 `skipped`). Run `sage_cost_code_reader.py --once --force` under the same secret
 wrapper to read immediately.
 
+## Sage employee reader
+
+A fourth read-only reader ties staff to their Sage employee record. Every five
+minutes it asks Compass whether a read is due: an hour after the last one, or
+right away after someone presses "Read Sage employees now" (Contacts > Sage
+review). When it is, it runs one SELECT of `dbo.employ` (record number, GUID,
+first and last name, email, `status` and `inactv`; no pay, tax or address
+columns) and posts the list. Compass links an unlinked active staff member to
+the one current Sage employee with the same email, creating their internal
+contact if they have none, and sets each linked staff contact active or
+inactive to match Sage. Both steps follow Settings > Workflows > Sage contact
+review. Ambiguous matches are left for staff in Sage review; nothing is written
+to Sage. Uses the same secrets and read-only SQL account as the readers above:
+
+```bash
+install -m 0755 scripts/sage_employee_reader.py \
+  "$HOME/.local/lib/compass/sage_employee_reader.py"
+install -m 0644 deploy/systemd/compass-sage-employee-reader.service \
+  "$HOME/.config/systemd/user/"
+install -m 0644 deploy/systemd/compass-sage-employee-reader.timer \
+  "$HOME/.config/systemd/user/"
+systemctl --user daemon-reload
+systemctl --user enable --now compass-sage-employee-reader.timer
+```
+
+A healthy idle check prints `{"status": "ok", "due": false}`; a read prints the
+counts Compass applied (`employees`, `linked`, `needsLinking`, `deactivated`,
+`reactivated`). Run `sage_employee_reader.py --once --force` under the same
+secret wrapper to read immediately.
+
 ## Feedback Desk bug-delivery consumer
 
 From the Compass repository root, create or reuse the real Git checkout that
