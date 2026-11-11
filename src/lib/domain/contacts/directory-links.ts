@@ -16,7 +16,7 @@ import { chunkD1Values } from "@/lib/d1-query"
 import type { Db } from "@/lib/server/action-context"
 
 import type { DirectoryVendorPick } from "./rules"
-import { resolvedProjectContacts } from "./store"
+import { resolvedProjectContacts } from "./resolved-project-contacts"
 
 type ProjectScope = { readonly organizationId: string; readonly projectId: string }
 

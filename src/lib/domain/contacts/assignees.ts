@@ -18,7 +18,8 @@ import {
   toContactItem,
   vendorPersonToTaskAssigneeOption,
 } from "./rules"
-import { insertProjectContact, resolvedProjectContacts } from "./store"
+import { resolvedProjectContacts } from "./resolved-project-contacts"
+import { insertProjectContact } from "./store"
 import type { AddTaskAssigneeContactResult, ProjectTaskAssigneeOption, ProjectTaskAssigneeOptions } from "./types"
 
 type Scope = { readonly organizationId: string; readonly projectId: string }
