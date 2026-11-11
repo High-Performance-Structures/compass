@@ -3,7 +3,6 @@
 // legal-hold projects stay staff only.
 import { and, eq, isNull, sql, type SQL } from "drizzle-orm"
 
-import { importedVendorContactId } from "../../../../scripts/import-buildertrend-participants.mjs"
 import {
   customerContacts,
   customers,
@@ -30,6 +29,7 @@ import { cleanText, field, finiteNumber } from "@/lib/shared/guards"
 import type { Db } from "@/lib/server/action-context"
 import { isInternalStaffRole } from "@/lib/user-roles"
 
+import { importedVendorContactId } from "./bt-participant-identity"
 import { audienceOf, knownContactKey, resolvePerson, type Resolved } from "./imported-participant-resolve"
 import { REVIEW_IDENTITY_STATUSES } from "./imported-participant-review"
 import { buildMatchDirectory, type BuiltDirectory, type DirectoryRows } from "./participant-directory"
@@ -207,8 +207,7 @@ function vendorPersonFor(organizationId: string, target: Extract<IdentityTarget,
   const parsed = parseParticipantText(group.literal)
   const email = group.key.startsWith("email:") ? group.key.slice(6) : parsed.email
   const name = parsed.name ?? email ?? group.literal
-  const idValue: unknown = importedVendorContactId(organizationId, email ? `new:email:${email}` : `new:name:${name.toLowerCase()}`)
-  const id = typeof idValue === "string" ? idValue : `bt-vendor-contact-${group.key}`
+  const id = importedVendorContactId(organizationId, email ? `new:email:${email}` : `new:name:${name.toLowerCase()}`)
   return {
     person: {
       ref: `vendor_contact:${id}`, type: "vendor_contact", id, name, label: `Vendor: ${target.vendorName}`, email, phone: null, userId: null, active: true,

@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs"
+import { readdirSync, readFileSync } from "node:fs"
 import { join } from "node:path"
 import { describe, expect, it } from "vitest"
 
@@ -70,5 +70,26 @@ describe("project contact directory link", () => {
     const baseline: unknown = JSON.parse(readFileSync(join(root, "src/lib/__tests__/architecture-baseline.json"), "utf8"))
     const writers = typeof baseline === "object" && baseline !== null ? Reflect.get(Reflect.get(baseline, "tableWriters"), "projectContacts") : null
     expect(writers).toEqual(["src/lib/domain/contacts/store.ts"])
+  })
+
+  it("has no raw SQL inserts into project_contacts outside migrations and tests", () => {
+    const root = process.cwd()
+    // A local-only dev seed that writes a developer's own SQLite file, never D1.
+    const allowed = new Set(["scripts/seed-project-contacts-local.mjs"])
+    const rawInsert = /insert\s+(?:or\s+\w+\s+)?into\s+["'`]?project_contacts\b/i
+    const offenders: string[] = []
+    const walk = (dir: string): void => {
+      for (const entry of readdirSync(join(root, dir), { withFileTypes: true })) {
+        const path = `${dir}/${entry.name}`
+        if (entry.isDirectory()) {
+          if (entry.name !== "__tests__" && entry.name !== "node_modules") walk(path)
+        } else if (/\.(?:[cm]?[jt]sx?|sql)$/.test(entry.name) && !/\.test\.[jt]sx?$/.test(entry.name) && !allowed.has(path)) {
+          if (rawInsert.test(readFileSync(join(root, path), "utf8"))) offenders.push(path)
+        }
+      }
+    }
+    walk("src")
+    walk("scripts")
+    expect(offenders).toEqual([])
   })
 })

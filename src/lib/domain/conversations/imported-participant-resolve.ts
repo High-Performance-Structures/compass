@@ -1,10 +1,5 @@
 import { and, eq, inArray, sql, type AnyColumn } from "drizzle-orm"
 
-import {
-  importedContactId,
-  importedProjectContactRow,
-  participantKey,
-} from "../../../../scripts/import-buildertrend-participants.mjs"
 import { projectContacts } from "@/db/schema"
 import { projectSourceRecordParticipants } from "@/db/schema-participants"
 import type { ActionResult } from "@/lib/action-result"
@@ -16,15 +11,20 @@ import {
 } from "@/lib/domain/contacts/people-search"
 import { PROJECT_CONTACT_DIRECTORY_REQUIRED } from "@/lib/domain/contacts/rules"
 import { insertProjectContactIfMissingStatement } from "@/lib/domain/contacts/store"
-import { PROJECT_CONTACT_TYPES } from "@/lib/domain/contacts/statuses"
 import {
   insertSourceRecordParticipantIfMissingStatement,
   updateSourceRecordParticipantsStatement,
   type Statement,
 } from "@/lib/domain/documents/store"
-import { cleanText, field } from "@/lib/shared/guards"
+import { cleanText } from "@/lib/shared/guards"
 import type { Db } from "@/lib/server/action-context"
 
+import {
+  importedContactId,
+  importedContactSource,
+  participantKey,
+  type ImportedParticipantKind,
+} from "./bt-participant-identity"
 import {
   MATCHABLE_SOURCES,
   REVIEW_IDENTITY_STATUSES,
@@ -171,7 +171,21 @@ export async function reviewPeopleSearch(db: Db, organizationId: string, rowId: 
 
 // ---- Who the chosen person is on this project ----------------------------------
 
-type Entry = Readonly<Record<string, unknown>> & { readonly kind: string }
+/** A directory person as a new project contact: who they are and which directory record they link to. */
+type Entry = {
+  readonly kind: ImportedParticipantKind
+  readonly identity: string
+  readonly displayName: string
+  readonly email: string | null
+  readonly companyName: string | null
+  readonly links: {
+    readonly internalContactId?: string | null
+    readonly vendorId?: string | null
+    readonly vendorContactId?: string | null
+    readonly customerId?: string | null
+    readonly customerContactId?: string | null
+  }
+}
 
 export type Resolved = {
   /** The participant key for thread rows and split per-message rows. */
@@ -208,29 +222,27 @@ async function existingProjectContact(db: Db, projectId: string, type: ContactLi
   return row?.id ?? null
 }
 
-/** A project contact for a person new to the project, built by the importer's own row builder. */
+/** A project contact for a person new to the project, with the same id and source fields the importer used. */
 function newContact(db: Db, key: string, entry: Entry, projectId: string, now: string): { readonly id: string; readonly statement: Statement } {
-  const identityValue = cleanText(entry.identity) ?? key
-  const contactIdValue: unknown = importedContactId(projectId, identityValue)
-  const id = typeof contactIdValue === "string" ? contactIdValue : `bt-contact-${identityValue}`
-  const row: unknown = importedProjectContactRow({ key, entry }, { contactId: id, projectId, now })
-  const text = (name: string): string | null => cleanText(field(row, name))
+  const identity = cleanText(entry.identity) ?? key
+  const id = importedContactId(projectId, identity)
+  const source = importedContactSource({ kind: entry.kind, key, identity })
   return {
     id,
     statement: insertProjectContactIfMissingStatement(db, {
       id, projectId,
-      contactType: PROJECT_CONTACT_TYPES.find((type) => type === field(row, "contact_type")) ?? "subcontractor",
-      sourceSystem: text("source_system") ?? "buildertrend",
-      sourceEntityType: text("source_entity_type") ?? "buildertrend_participant",
-      sourceEntityId: text("source_entity_id"),
-      internalContactId: text("internal_contact_id"),
-      displayName: text("display_name") ?? key,
-      companyName: text("company_name"),
-      email: text("email"),
-      vendorId: text("vendor_id"), vendorContactId: text("vendor_contact_id"),
-      customerId: text("customer_id"), customerContactId: text("customer_contact_id"),
+      contactType: source.contactType,
+      sourceSystem: "buildertrend",
+      sourceEntityType: source.sourceEntityType,
+      sourceEntityId: source.sourceEntityId,
+      internalContactId: entry.links.internalContactId ?? null,
+      displayName: cleanText(entry.displayName) ?? key,
+      companyName: entry.companyName,
+      email: entry.email,
+      vendorId: entry.links.vendorId ?? null, vendorContactId: entry.links.vendorContactId ?? null,
+      customerId: entry.links.customerId ?? null, customerContactId: entry.links.customerContactId ?? null,
       ownerPortalVisible: false, subVendorPortalVisible: false, internalVisible: true,
-      active: field(row, "active") !== 0,
+      active: source.active,
       createdAt: now, updatedAt: now,
     }),
   }
@@ -409,8 +421,7 @@ export async function resolveImportedParticipant(input: ResolveInput): Promise<R
     const choice = decision.pieces[index]?.choice
     if (!choice) return fail(`Choose a person for "${piece}". ${PROJECT_CONTACT_DIRECTORY_REQUIRED}`)
     const parsed = parsePiece(piece)
-    const keyValue: unknown = participantKey({ participantId: null, namespace, email: parsed.email, displayName: parsed.displayName })
-    const key = typeof keyValue === "string" ? keyValue : `${namespace}:name:${piece.toLowerCase()}`
+    const key = participantKey({ participantId: null, namespace, email: parsed.email, displayName: parsed.displayName })
     const chosen = await findDirectoryPerson(db, organizationId, projectId, choice.ref)
     if (!chosen) return fail(`The person chosen for "${piece}" was not found in this company's directory.`)
     const resolved = await resolvePerson(db, key, chosen, projectId, now)

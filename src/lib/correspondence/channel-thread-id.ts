@@ -1,6 +1,6 @@
 /*
  * Project conversations that live in channels (for example Buildertrend
- * threads imported by scripts/import-buildertrend-messages.mjs) are listed in
+ * threads imported by the retired Buildertrend message importer) are listed in
  * the project messages inbox next to correspondence. Their inbox id carries a
  * prefix so every action can tell the two models apart without a lookup.
  * Safe for client and server code.

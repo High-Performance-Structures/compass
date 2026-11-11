@@ -1,7 +1,6 @@
 import { drizzle } from "drizzle-orm/d1"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
-import { COMPANY_NAME_SUFFIXES as SCRIPT_SUFFIXES, normalizeCompanyName as scriptNormalizeCompanyName } from "../../../../../scripts/import-buildertrend-participants.mjs"
 import { COMPANY_NAME_SUFFIXES, normalizeCompanyName } from "@/lib/domain/contacts/rules"
 import { d1Over } from "@/lib/domain/__tests__/sqlite-d1"
 import { isRecord } from "@/lib/shared/guards"
@@ -94,11 +93,13 @@ beforeEach(() => {
 afterEach(() => sqlite.close())
 
 describe("normalizeCompanyName", () => {
-  it("matches the Buildertrend importer's company comparison", () => {
-    expect([...COMPANY_NAME_SUFFIXES]).toEqual(SCRIPT_SUFFIXES)
-    for (const name of ["Acme Framing, L.L.C.", "ACME   framing inc", "Acme Co", "Co", "  ", "O'Brien Plumbing PLLC", "Smith & Sons Ltd."]) {
-      expect(normalizeCompanyName(name)).toBe(scriptNormalizeCompanyName(name))
-    }
+  it("ignores punctuation, spacing and legal-entity suffixes, nothing fuzzy", () => {
+    expect(COMPANY_NAME_SUFFIXES).toContain("llc")
+    expect(normalizeCompanyName("ACME   framing inc")).toBe("acme framing")
+    expect(normalizeCompanyName("Co")).toBe("co")
+    expect(normalizeCompanyName("  ")).toBeNull()
+    expect(normalizeCompanyName("O'Brien Plumbing PLLC")).toBe("obrien plumbing")
+    expect(normalizeCompanyName("Smith & Sons Ltd.")).toBe("smith & sons")
     expect(normalizeCompanyName("Acme Framing, L.L.C.")).toBe("acme framing")
     expect(normalizeCompanyName(null)).toBeNull()
   })
