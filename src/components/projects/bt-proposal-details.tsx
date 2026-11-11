@@ -38,10 +38,10 @@ function ItemRow({ item, indent }: { readonly item: BtProposalItem; readonly ind
       <td className="py-2 pr-2 text-right tabular-nums whitespace-nowrap">
         {item.quantity} {item.unit ?? ""}
       </td>
-      <td className="py-2 pr-2 text-right tabular-nums">{formatCents(item.unitCostCents)}</td>
-      <td className="py-2 pr-2 text-right tabular-nums">{formatCents(item.builderCostCents)}</td>
+      <td className="py-2 pr-2 text-right tabular-nums whitespace-nowrap">{formatCents(item.unitCostCents)}</td>
+      <td className="py-2 pr-2 text-right tabular-nums whitespace-nowrap">{formatCents(item.builderCostCents)}</td>
       <td className="py-2 pr-2 text-right tabular-nums whitespace-nowrap">{markupLabel(item)}</td>
-      <td className="py-2 text-right tabular-nums">{formatCents(item.ownerPriceCents)}</td>
+      <td className="py-2 text-right tabular-nums whitespace-nowrap">{formatCents(item.ownerPriceCents)}</td>
     </tr>
   )
 }
@@ -54,9 +54,9 @@ function GroupRows({ group, sub }: { readonly group: BtProposalGroupView; readon
           {group.title}
           {group.description ? <p className="whitespace-pre-line text-xs font-normal text-muted-foreground">{group.description}</p> : null}
         </td>
-        <td className="py-2 pr-2 text-right tabular-nums">{formatCents(group.builderCostCents)}</td>
+        <td className="py-2 pr-2 text-right tabular-nums whitespace-nowrap">{formatCents(group.builderCostCents)}</td>
         <td />
-        <td className="py-2 text-right font-semibold tabular-nums">{formatCents(group.ownerPriceCents)}</td>
+        <td className="py-2 text-right font-semibold tabular-nums whitespace-nowrap">{formatCents(group.ownerPriceCents)}</td>
       </tr>
       {group.items.map((item, index) => (
         <ItemRow key={`${item.title}-${index}`} item={item} indent={sub} />
@@ -108,11 +108,11 @@ export function BtProposalDetails({ proposal }: { readonly proposal: BtProposalV
             <thead>
               <tr className="border-y text-left text-xs text-muted-foreground">
                 <th className="py-2 pr-2 font-medium">Item</th>
-                <th className="py-2 pr-2 text-right font-medium">Qty</th>
-                <th className="py-2 pr-2 text-right font-medium">Unit cost</th>
-                <th className="py-2 pr-2 text-right font-medium">Builder cost</th>
-                <th className="py-2 pr-2 text-right font-medium">Markup</th>
-                <th className="py-2 text-right font-medium">Owner price</th>
+                <th className="py-2 pr-2 text-right font-medium whitespace-nowrap">Qty</th>
+                <th className="py-2 pr-2 text-right font-medium whitespace-nowrap">Unit cost</th>
+                <th className="py-2 pr-2 text-right font-medium whitespace-nowrap">Builder cost</th>
+                <th className="py-2 pr-2 text-right font-medium whitespace-nowrap">Markup</th>
+                <th className="py-2 text-right font-medium whitespace-nowrap">Owner price</th>
               </tr>
             </thead>
             <tbody>
@@ -123,9 +123,9 @@ export function BtProposalDetails({ proposal }: { readonly proposal: BtProposalV
             <tfoot>
               <tr className="border-t-2 font-semibold">
                 <td colSpan={3} className="py-2 pr-2 text-right">Total</td>
-                <td className="py-2 pr-2 text-right tabular-nums">{formatCents(proposal.builderCostTotalCents)}</td>
+                <td className="py-2 pr-2 text-right tabular-nums whitespace-nowrap">{formatCents(proposal.builderCostTotalCents)}</td>
                 <td />
-                <td className="py-2 text-right tabular-nums">{formatCents(proposal.ownerTotalCents)}</td>
+                <td className="py-2 text-right tabular-nums whitespace-nowrap">{formatCents(proposal.ownerTotalCents)}</td>
               </tr>
             </tfoot>
           </table>
