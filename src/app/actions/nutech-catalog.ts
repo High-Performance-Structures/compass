@@ -27,7 +27,8 @@ import { getOrganizationDriveContext } from "@/lib/google/organization-drive"
 import { buildNuTechCatalogImport } from "@/lib/nutech/catalog-import"
 import { isNuTechFreight } from "@/lib/nutech/freight"
 import { projectEstimateCostCodeCatalog } from "@/lib/estimates/project-cost-code-catalog"
-import { NUTECH_2026_CATALOG_SOURCES } from "@/lib/nutech/resources"
+import { readFeatureSettings } from "@/lib/feature-settings/server"
+import { nuTechCatalogSources, type NuTechCatalogSources } from "@/lib/nutech/resources"
 import { chunkD1Values } from "@/lib/d1-query"
 import {
   canFeature,
@@ -72,6 +73,8 @@ type NuTechCatalogProductItem = {
 }
 
 export type NuTechCatalogWorkspace = {
+  /** The price list the next import reads (Settings → Nu-Tech, else the 2026 sheets). */
+  readonly sources: NuTechCatalogSources
   readonly canImport: boolean
   readonly canDelete: boolean
   readonly versions: readonly NuTechCatalogVersionSummary[]
@@ -121,7 +124,7 @@ async function sourceHash(value: unknown): Promise<string> {
 export async function getNuTechCatalogWorkspace(): Promise<NuTechCatalogWorkspace> {
   const { db, user, organizationId } = await nuTechOrgContext()
   await requireFeaturePermission(user, "nutech-orders", "read")
-  const [versionRows, priceRows, sageRows, canImport, canDelete] =
+  const [versionRows, priceRows, sageRows, canImport, canDelete, priceListSettings] =
     await Promise.all([
       db
         .select()
@@ -179,6 +182,7 @@ export async function getNuTechCatalogWorkspace(): Promise<NuTechCatalogWorkspac
         .orderBy(asc(sageCostCodes.displayLabel)),
       canFeature(user, "nutech-orders", "approve"),
       canFeature(user, "nutech-orders", "delete"),
+      readFeatureSettings(db, organizationId, "nutech-emails")
     ])
   const activeVersion = versionRows.find((version) => version.status === "active")
   // Catalogs imported before Freight existed get it the first time an approver opens the page.
@@ -193,6 +197,7 @@ export async function getNuTechCatalogWorkspace(): Promise<NuTechCatalogWorkspac
   }
   const sageCodes = new Set(sageRows.map((row) => row.code))
   return {
+    sources: nuTechCatalogSources(priceListSettings),
     canImport: canImport && !isDemoUser(user.id),
     canDelete: canDelete && !isDemoUser(user.id),
     activeVersionId: activeVersion?.id ?? null,
@@ -240,11 +245,12 @@ export async function getNuTechCatalogWorkspace(): Promise<NuTechCatalogWorkspac
   }
 }
 
-export async function importNuTech2026Catalog(): Promise<NuTechCatalogActionResult> {
+export async function importNuTechCatalog(): Promise<NuTechCatalogActionResult> {
   try {
     const { db, env, user, organizationId } = await nuTechOrgContext()
     if (isDemoUser(user.id)) throw new Error("DEMO_READ_ONLY")
     await requireFeaturePermission(user, "nutech-orders", "approve")
+    const sources = nuTechCatalogSources(await readFeatureSettings(db, organizationId, "nutech-emails"))
     const { sheetsClient, userEmail } = await getOrganizationDriveContext({
       db,
       environment: env,
@@ -252,16 +258,16 @@ export async function importNuTech2026Catalog(): Promise<NuTechCatalogActionResu
       user,
     })
     const sourceIds = [
-      NUTECH_2026_CATALOG_SOURCES.newStandardSheetId,
-      NUTECH_2026_CATALOG_SOURCES.newCashSheetId,
-      NUTECH_2026_CATALOG_SOURCES.returningStandardSheetId,
-      NUTECH_2026_CATALOG_SOURCES.returningCashSheetId,
+      sources.newStandardSheetId,
+      sources.newCashSheetId,
+      sources.returningStandardSheetId,
+      sources.returningCashSheetId,
     ]
     const sourceRows = await Promise.all(
       sourceIds.map((spreadsheetId) =>
         sheetsClient.getValues(userEmail, {
           spreadsheetId,
-          range: NUTECH_2026_CATALOG_SOURCES.sourceRange,
+          range: sources.sourceRange,
           valueRenderOption: "UNFORMATTED_VALUE",
         })
       )
@@ -276,7 +282,7 @@ export async function importNuTech2026Catalog(): Promise<NuTechCatalogActionResu
       !returningStandardRows ||
       !returningCashRows
     ) {
-      throw new Error("One or more 2026 Nu-Tech price sheets could not be read.")
+      throw new Error("One or more Nu-Tech price sheets could not be read. Check them in Settings → Nu-Tech.")
     }
     const imported = buildNuTechCatalogImport({
       newStandard: newStandardRows,
@@ -308,29 +314,29 @@ export async function importNuTech2026Catalog(): Promise<NuTechCatalogActionResu
     }
     const baseDraft = existingVersions.find(
       (version) =>
-        version.name === NUTECH_2026_CATALOG_SOURCES.name &&
+        version.name === sources.name &&
         version.status === "draft"
     )
     const existingVersion = matchingVersion ?? baseDraft
     const versionName =
       existingVersion?.name ??
       (existingVersions.some(
-        (version) => version.name === NUTECH_2026_CATALOG_SOURCES.name
+        (version) => version.name === sources.name
       )
-        ? `${NUTECH_2026_CATALOG_SOURCES.name} · revision ${hash.slice(0, 8)}`
-        : NUTECH_2026_CATALOG_SOURCES.name)
+        ? `${sources.name} · revision ${hash.slice(0, 8)}`
+        : sources.name)
     const versionId = existingVersion?.id ?? crypto.randomUUID()
     await upsertNuTechCatalogVersion(db, {
       id: versionId,
       organizationId,
       name: versionName,
-      effectiveDate: NUTECH_2026_CATALOG_SOURCES.effectiveDate,
+      effectiveDate: sources.effectiveDate,
       status: existingVersion?.status ?? "draft",
-      newStandardSheetId: NUTECH_2026_CATALOG_SOURCES.newStandardSheetId,
-      newCashSheetId: NUTECH_2026_CATALOG_SOURCES.newCashSheetId,
-      returningStandardSheetId: NUTECH_2026_CATALOG_SOURCES.returningStandardSheetId,
-      returningCashSheetId: NUTECH_2026_CATALOG_SOURCES.returningCashSheetId,
-      airliteTemplateId: NUTECH_2026_CATALOG_SOURCES.airliteTemplateId,
+      newStandardSheetId: sources.newStandardSheetId,
+      newCashSheetId: sources.newCashSheetId,
+      returningStandardSheetId: sources.returningStandardSheetId,
+      returningCashSheetId: sources.returningCashSheetId,
+      airliteTemplateId: sources.airliteTemplateId,
       sourceHash: hash,
       importedAt: now,
       importedBy: user.id,
@@ -404,7 +410,7 @@ export async function importNuTech2026Catalog(): Promise<NuTechCatalogActionResu
     revalidateCatalogPaths()
     return { success: true, id: versionId, productCount: priceRows.length }
   } catch (error) {
-    return errorResult(error, "Failed to import the 2026 Nu-Tech catalog.")
+    return errorResult(error, "Failed to import the Nu-Tech catalog.")
   }
 }
 
