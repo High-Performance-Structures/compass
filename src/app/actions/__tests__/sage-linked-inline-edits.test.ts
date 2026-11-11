@@ -299,6 +299,80 @@ describe("inline edits of a Sage-linked client", () => {
   })
 })
 
+describe("a client imported with only its Sage number", () => {
+  const sageFields = {
+    addressLine1: null, addressLine2: null, city: null, state: null, postalCode: null,
+    billingAddressLine1: null, billingAddressLine2: null, billingCity: null, billingState: null, billingPostalCode: null,
+    name: "Kelly Painting", email: null, phone: null,
+  }
+  beforeEach(() => {
+    sqlite.prepare("UPDATE customers SET sage_client_id = NULL").run()
+    insert("sage_client_directory_entries", {
+      organization_id: ORG, sage_record_id: CLIENT_SAGE_ID, sage_client_number: "52", name: "Kelly Painting",
+      email: null, captured_at: NOW,
+    })
+  })
+
+  it("takes its Sage id from Sage's client directory and sends the edit to Sage", async () => {
+    snapshot("client_company", "customer-sage", CLIENT_SAGE_ID, sageFields)
+    const result = await requestSageLinkedCustomerChanges("customer-sage", {
+      sage: { name: "Kelly Painting", email: "billing@paint.example", phone: "555-0200" },
+    })
+    expect(statuses(result)).toEqual(["requested"])
+    expect(rows("SELECT sage_client_id FROM customers")).toEqual([{ sage_client_id: CLIENT_SAGE_ID }])
+    const [proposal] = rows("SELECT sage_record_id, changes_json FROM sage_contact_change_proposals")
+    expect(proposal?.sage_record_id).toBe(CLIENT_SAGE_ID)
+    expect(JSON.parse(String(proposal?.changes_json))).toEqual([
+      { field: "email", before: null, after: "billing@paint.example" },
+      { field: "phone", before: null, after: "555-0200" },
+    ])
+  })
+
+  it("picks up an edit that earlier saved in Compass only when the client is saved again", async () => {
+    // email and phone were already saved in Compass; Sage still has neither.
+    snapshot("client_company", "customer-sage", CLIENT_SAGE_ID, sageFields)
+    const result = await requestSageLinkedCustomerChanges("customer-sage", {
+      sage: { name: "Kelly Painting", email: "kelly@paint.example", phone: "555-0200" },
+    })
+    expect(statuses(result)).toEqual(["requested"])
+    const [proposal] = rows("SELECT changes_json FROM sage_contact_change_proposals")
+    expect(JSON.parse(String(proposal?.changes_json))).toEqual([
+      { field: "email", before: null, after: "kelly@paint.example" },
+      { field: "phone", before: null, after: "555-0200" },
+    ])
+  })
+
+  it("asks Sage for a read first when there is none yet", async () => {
+    const result = await requestSageLinkedCustomerChanges("customer-sage", {
+      sage: { name: "Kelly Painting", email: "billing@paint.example", phone: "555-0200" },
+    })
+    expect(statuses(result)).toEqual(["queued"])
+    expect(rows("SELECT sage_record_id FROM sage_contact_read_requests")).toEqual([{ sage_record_id: CLIENT_SAGE_ID }])
+  })
+
+  it("stays Compass-only when Sage's directory has that number under another name", async () => {
+    sqlite.prepare("UPDATE sage_client_directory_entries SET name = 'Someone Else'").run()
+    const result = await requestSageLinkedCustomerChanges("customer-sage", {
+      sage: { name: "Kelly Painting", email: "billing@paint.example", phone: "555-0200" },
+    })
+    expect(statuses(result)).toEqual(["compass_only"])
+    expect(rows("SELECT sage_client_id FROM customers")).toEqual([{ sage_client_id: null }])
+    expect(rows("SELECT count(*) AS n FROM sage_contact_change_proposals")).toEqual([{ n: 0 }])
+  })
+
+  it("never takes an id another client already holds", async () => {
+    insert("customers", {
+      id: "customer-other", organization_id: ORG, name: "Kelly Painting", sage_client_id: CLIENT_SAGE_ID.toUpperCase(),
+      sage_client_number: null, created_at: NOW, updated_at: NOW,
+    })
+    const result = await requestSageLinkedCustomerChanges("customer-sage", {
+      sage: { name: "Kelly Painting", email: "billing@paint.example", phone: "555-0200" },
+    })
+    expect(statuses(result)).toEqual(["compass_only"])
+    expect(rows("SELECT sage_client_id FROM customers WHERE id = 'customer-sage'")).toEqual([{ sage_client_id: null }])
+  })
+})
+
 describe("a confirmed Sage write reaching Compass", () => {
   it("copies name, email and phone only for fields the approved write changed", async () => {
     const identity = { sageRecordId: VENDOR_SAGE_ID, sageRecordNumber: "38", parentSageRecordId: null, linkedUserId: null }

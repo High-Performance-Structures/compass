@@ -577,6 +577,14 @@ export function sageClientWriteResultCustomerStatement(database: D1Database, inp
     .bind(input.sageClientId, input.sageClientNumber, input.sageClientStatusId, input.now, input.customerId, input.sageClientId, input.sageClientNumber)
 }
 
+/** Fills a still number-only client's Sage id from Sage's client directory unless another client holds that id or number. */
+export function sageClientIdFromDirectoryStatement(database: D1Database, input: { readonly customerId: string; readonly organizationId: string; readonly sageClientId: string; readonly sageClientNumber: string; readonly now: string }): D1PreparedStatement {
+  return database.prepare(`UPDATE customers SET sage_client_id = ?, updated_at = ? WHERE id = ? AND organization_id = ? AND merged_into_customer_id IS NULL
+    AND (sage_client_id IS NULL OR trim(sage_client_id) = '') AND trim(sage_client_number) = ? AND NOT EXISTS (SELECT 1 FROM customers other
+      WHERE other.id <> customers.id AND other.organization_id = customers.organization_id AND (upper(other.sage_client_id) = upper(?) OR trim(other.sage_client_number) = ?))`)
+    .bind(input.sageClientId, input.now, input.customerId, input.organizationId, input.sageClientNumber, input.sageClientId, input.sageClientNumber)
+}
+
 /** Applies a verified Sage snapshot's `assignments` to the still-linked directory row; `binds` follow the SQL. */
 export function sageSnapshotDirectoryUpdateStatement(
   database: D1Database, kind: SageDirectoryKind, assignments: string, binds: readonly unknown[]
