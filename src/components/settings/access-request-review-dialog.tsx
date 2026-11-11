@@ -73,29 +73,38 @@ function DirectoryLink({
   readonly onChange: (option: AccessRequestDirectoryOption | null) => void
 }): React.ReactElement {
   const [options, setOptions] = React.useState<readonly AccessRequestDirectoryOption[] | null>(null)
+  const [search, setSearch] = React.useState("")
+  const [selected, setSelected] = React.useState<AccessRequestDirectoryOption | null>(null)
   const [error, setError] = React.useState<string | null>(null)
   const isClient = request.kind === "client"
 
+  // The first page is alphabetical and capped, so typing searches the whole
+  // directory on the server instead of only filtering what loaded first.
   React.useEffect(() => {
     let cancelled = false
-    void getAccessRequestDirectoryOptions(request.id, "").then((result) => {
-      if (cancelled) return
-      if (result.success) {
-        setOptions(result.data)
-        setError(null)
-      } else {
-        setError(result.error)
-      }
-    })
+    const timer = setTimeout(() => {
+      void getAccessRequestDirectoryOptions(request.id, search.trim()).then((result) => {
+        if (cancelled) return
+        if (result.success) {
+          setOptions(result.data)
+          setError(null)
+        } else {
+          setError(result.error)
+        }
+      })
+    }, search.trim() ? 250 : 0)
     return () => {
       cancelled = true
+      clearTimeout(timer)
     }
-  }, [request.id])
+  }, [request.id, search])
 
+  // Keep the picked person listed after the search changes.
+  const listed = selected && !(options ?? []).some((option) => option.id === selected.id) ? [selected, ...(options ?? [])] : options ?? []
   const newLabel = isClient ? `Add as a new client (${request.requesterName})` : `Add as a new vendor (${request.companyName ?? request.requesterName})`
   const comboOptions: readonly SearchableComboboxOption[] = [
     { value: NEW_DIRECTORY_RECORD_OPTION, label: newLabel, description: "Nobody in Contacts matches; make a new directory record from this request" },
-    ...(options ?? []).map((option) => ({
+    ...listed.map((option) => ({
       value: option.id,
       label: option.name,
       description: [option.label, option.email, option.linkedElsewhere ? "already linked to another login" : null].filter(Boolean).join(" · "),
@@ -110,11 +119,16 @@ function DirectoryLink({
         ariaLabel={isClient ? "Client in Contacts" : "Vendor in Contacts"}
         options={comboOptions}
         value={value}
-        onValueChange={(next) => onChange(next === NEW_DIRECTORY_RECORD_OPTION ? null : (options ?? []).find((option) => option.id === next) ?? null)}
+        onValueChange={(next) => {
+          const option = next === NEW_DIRECTORY_RECORD_OPTION ? null : listed.find((candidate) => candidate.id === next) ?? null
+          setSelected(option)
+          onChange(option)
+        }}
+        onSearchChange={setSearch}
         placeholder={options === null ? "Loading Contacts…" : "Choose from Contacts"}
         searchPlaceholder={isClient ? "Search clients by name, company or email" : "Search vendors by name, company or email"}
         emptyMessage="No one in Contacts matches."
-        disabled={options === null}
+        disabled={options === null && search === ""}
       />
       <p className="text-xs text-muted-foreground">
         Pick the person or their company. Exact email matches for {request.requesterEmail} are listed first. Picking a company adds them as a person there.

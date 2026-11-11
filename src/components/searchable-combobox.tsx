@@ -59,6 +59,8 @@ export type SearchableComboboxProps = {
    * kept and shown even when it is not an option.
    */
   readonly creatable?: boolean
+  /** Called as the person types, for lists searched on the server. */
+  readonly onSearchChange?: (search: string) => void
 }
 export function SearchableCombobox({
   options,
@@ -80,6 +82,7 @@ export function SearchableCombobox({
   className,
   popoverClassName,
   creatable = false,
+  onSearchChange,
 }: SearchableComboboxProps): React.ReactElement {
   const [open, setOpen] = React.useState(false)
   const [search, setSearch] = React.useState("")
@@ -106,6 +109,7 @@ export function SearchableCombobox({
     <Popover open={open} onOpenChange={(nextOpen) => {
       setOpen(nextOpen)
       setSearch("")
+      onSearchChange?.("")
     }}>
       <PopoverTrigger asChild>
         <Button
@@ -147,7 +151,10 @@ export function SearchableCombobox({
         )}
       >
         <Command>
-          <CommandInput placeholder={searchPlaceholder} value={search} onValueChange={setSearch} />
+          <CommandInput placeholder={searchPlaceholder} value={search} onValueChange={(next) => {
+            setSearch(next)
+            onSearchChange?.(next)
+          }} />
           {effectiveHint ? <p className="border-b px-3 py-2 text-xs text-muted-foreground">{effectiveHint}</p> : null}
           <CommandList className="compass-content-scroll max-h-72">
             {createText === null && <CommandEmpty>{emptyMessage}</CommandEmpty>}
