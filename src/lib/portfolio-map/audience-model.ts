@@ -156,3 +156,45 @@ export function ownerScheduleProgress(
   }
   return weight === 0 ? null : Math.round(done / weight)
 }
+
+export type AudiencePipelineColumn = {
+  readonly id: string
+  readonly label: string
+  /** Colors the column marker; the first phase the column covers. */
+  readonly phase: PortfolioPhaseId
+  readonly jobs: readonly PortfolioMapJob[]
+}
+
+// Partners never see the office's early stages by name: intake, design,
+// estimating and negotiation read as one "Pre-construction" column.
+const PARTNER_COLUMNS: readonly { readonly id: string; readonly label: string; readonly phases: readonly PortfolioPhaseId[] }[] = [
+  { id: "precon", label: "Pre-construction", phases: ["intake", "design", "estimating", "negotiation"] },
+  { id: "permitting", label: OWNER_PHASE_LABEL.permitting, phases: ["permitting"] },
+  { id: "construction", label: OWNER_PHASE_LABEL.construction, phases: ["construction"] },
+  { id: "closeout", label: OWNER_PHASE_LABEL.closeout, phases: ["closeout"] },
+]
+
+/**
+ * The owner or partner pipeline: the same jobs as their map, grouped by
+ * audience-safe stage names (owners: the stage names their stage list uses).
+ */
+export function audiencePipelineColumns(
+  audience: "owner" | "sub_vendor",
+  jobs: readonly PortfolioMapJob[],
+): readonly AudiencePipelineColumn[] {
+  const columns = audience === "owner"
+    ? PORTFOLIO_PHASES.map((phase) => ({ id: phase.id, label: OWNER_PHASE_LABEL[phase.id], phases: [phase.id] }))
+    : PARTNER_COLUMNS
+  return columns.map((column) => ({
+    id: column.id,
+    label: column.label,
+    phase: column.phases[0] ?? "intake",
+    jobs: jobs.filter((job) => column.phases.includes(job.phase)),
+  }))
+}
+
+/** The stage name an owner or partner sees for a job; never an office status. */
+export function audienceStageLabel(audience: "owner" | "sub_vendor", phase: PortfolioPhaseId): string {
+  if (audience === "owner") return OWNER_PHASE_LABEL[phase]
+  return PARTNER_COLUMNS.find((column) => column.phases.includes(phase))?.label ?? OWNER_PHASE_LABEL[phase]
+}

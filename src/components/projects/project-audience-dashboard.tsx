@@ -33,17 +33,14 @@ export async function ProjectAudienceDashboard({
     data.audience === "owner"
       ? getSelectionWorkspace(data.project.id, "owner")
       : Promise.resolve(null),
-    // Owners: their current project. Vendors: only the jobs already in their
-    // project switcher.
-    data.audience === "owner"
-      ? getAudienceJobMap([data.project.id])
-      : getAudienceJobMap(
-          data.projectOptions.length > 0 ? data.projectOptions.map((option) => option.id) : [data.project.id],
-        ),
+    // Only the jobs already in the person's project switcher.
+    getAudienceJobMap(
+      data.projectOptions.length > 0 ? data.projectOptions.map((option) => option.id) : [data.project.id],
+    ),
   ])
   const jobs = mapJobs.status === "fulfilled" ? mapJobs.value.jobs : []
   const mapState = mapJobs.status === "fulfilled" ? mapJobs.value.mapState : DEFAULT_MAP_STATE
-  const ownerJob = data.audience === "owner" ? jobs[0] : undefined
+  const ownerJob = data.audience === "owner" ? jobs.find((job) => job.id === data.project.id) : undefined
   const date = audienceDashboardDate(new Date())
   // The owner panel shows only owner-visible work and the owner's sections.
   const ownerUpcoming = data.scheduleItems
@@ -55,6 +52,7 @@ export async function ProjectAudienceDashboard({
   const mapSection = ownerJob ? (
     <OwnerSiteRelief
       job={ownerJob}
+      ownerJobs={jobs}
       mapState={mapState}
       progress={ownerScheduleProgress(data.scheduleItems)}
       upcoming={ownerUpcoming}
