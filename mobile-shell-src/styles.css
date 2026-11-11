@@ -123,6 +123,10 @@ button { cursor: pointer; }
 .row-title { margin: 0; font-size: 15px; font-weight: 750; }
 .row-note { margin: 5px 0 0; color: var(--muted); font-size: 13px; line-height: 1.4; }
 .row-date { flex: 0 0 64px; color: var(--brand); font-size: 13px; font-weight: 800; }
+.section-head-row { display: flex; align-items: flex-start; gap: 12px; border-bottom: 1px solid var(--line); }
+.section-head-row .section-head { min-width: 0; flex: 1; border-bottom: 0; }
+.project-refresh { flex: 0 0 auto; min-height: 40px; padding-inline: 14px; }
+.project-list-status { margin: 10px 0 0; color: var(--muted); font-size: 13px; }
 .project-picker { display: grid; gap: 16px; padding-top: 18px; }
 .project-picker .field { gap: 6px; }
 .project-result-summary { display: flex; min-height: 28px; align-items: center; justify-content: space-between; gap: 12px; color: var(--muted); font-size: 12px; font-weight: 750; }

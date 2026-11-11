@@ -106,6 +106,12 @@ import {
 } from "./project-picker"
 
 import { completeFieldLogout, LOGOUT_PENDING_KEY, logoutBlockedReason } from "./logout"
+import {
+  addedFieldProjectIds,
+  fieldProjectListRefreshUrl,
+  mergeFieldProjectList,
+  shouldRefreshFieldProjectList,
+} from "./field-project-list"
 
 const LIVE_URL = "https://compass.openrangeconstruction.ltd"
 const PROJECTS_KEY = "compass_field_projects_v1"
@@ -228,6 +234,12 @@ let projectMessageDraft = ""
 let openDirectChannelId: string | null = null
 const directReplyDrafts: Record<string, string> = {}
 let lastProjectRefreshAt = 0
+// The project list is re-downloaded when Field Mode opens or resumes (at most
+// once a minute) and from the Refresh button, so new jobs appear without
+// signing out. See field-project-list.ts.
+let refreshingProjectList = false
+let lastProjectListRefreshAt = 0
+let projectListStatus = ""
 let pushStatus: PushStatus = "checking"
 let pushToken: string | null = null
 let pushSetupStarted = false
@@ -367,7 +379,7 @@ function empty(text: string): string { return `<div class="empty">${escapeHtml(t
 function projectsView(): string {
   if (projects.length === 0 || sessionExpired) {
     if (profile && !sessionExpired) {
-      return sectionHead("Active projects") + `<div class="empty auth-empty"><p>No active projects are assigned to your Compass account yet.</p><div class="auth-actions"><button id="open-live-empty" class="secondary auth-button" type="button" ${online ? "" : "disabled"}>Open Full Compass</button></div></div>`
+      return sectionHead("Active projects") + `<div class="empty auth-empty"><p>No active projects are assigned to your Compass account yet.</p>${projectListStatusLine()}<div class="auth-actions">${projectListRefreshButton("secondary auth-button")}<button id="open-live-empty" class="secondary auth-button" type="button" ${online ? "" : "disabled"}>Open Full Compass</button></div></div>`
     }
     if (authMode === "password") {
       return sectionHead("Sign in to Field Mode", "Use the email address and password connected to your Compass account.") + `<form id="native-password-form" class="form auth-form"><label class="field">Email address<input name="email" type="email" autocomplete="email" inputmode="email" value="${escapeHtml(authEmail)}" required /></label><label class="field">Password<input name="password" type="password" autocomplete="current-password" required /></label>${authError ? `<p class="auth-error" role="alert">${escapeHtml(authError)}</p>` : ""}<button class="primary" type="submit" ${signingIn ? "disabled" : ""}>${signingIn ? "Signing in" : "Sign in"}</button><button class="text-button" id="native-reset-password" type="button" ${online && !signingIn ? "" : "disabled"}>Forgot or need a password?</button><button class="text-button" data-auth-choice type="button" ${signingIn ? "disabled" : ""}>Back to sign-in choices</button></form>`
@@ -386,11 +398,21 @@ function projectsView(): string {
       : `<button id="native-sign-in" class="secondary auth-button" type="button" ${online && !signingIn ? "" : "disabled"}>${signingIn ? "Opening secure sign in" : "Sign in with Google"}</button>`
     return `<div class="auth-hero"><span class="auth-hero-mark">${compassMarkSvg()}</span><h2>Compass</h2><span class="brand-mode">Field</span></div><div class="empty auth-empty">${message}<div class="auth-actions"><button id="password-sign-in" class="primary auth-button" type="button" ${online && !signingIn ? "" : "disabled"}>Sign in with email and password</button>${googleSignIn}<button class="text-button" data-open-in-browser type="button" ${online ? "" : "disabled"}>Use Compass in your browser instead</button></div></div>`
   }
-  return sectionHead("Active projects", "Each project shows the company it belongs to.") + `${projectError ? `<p class="auth-error" role="alert">${escapeHtml(projectError)}</p>` : ""}<div class="project-picker">
+  return `<div class="section-head-row">${sectionHead("Active projects", "Each project shows the company it belongs to.")}${projectListRefreshButton("secondary project-refresh")}</div>${projectListStatusLine()}${projectError ? `<p class="auth-error" role="alert">${escapeHtml(projectError)}</p>` : ""}<div class="project-picker">
     <label class="field">Find a project<input id="project-search" type="search" inputmode="search" autocomplete="off" spellcheck="false" aria-controls="project-picker-results" placeholder="Number, name, or address" value="${escapeHtml(projectSearch)}" /></label>
     ${projectCompanyChips()}
     <div id="project-picker-results" aria-live="polite">${projectPickerResults()}</div>
   </div>`
+}
+
+function projectListRefreshButton(className: string): string {
+  return `<button id="refresh-project-list" class="${className}" type="button" aria-label="Refresh the project list" ${online && !refreshingProjectList && !signingIn ? "" : "disabled"}>${refreshingProjectList ? "Refreshing" : "Refresh"}</button>`
+}
+
+function projectListStatusLine(): string {
+  return projectListStatus
+    ? `<p class="project-list-status" role="status">${escapeHtml(projectListStatus)}</p>`
+    : ""
 }
 
 function todayView(): string {
@@ -944,6 +966,7 @@ function bindEvents(): void {
   }))
   document.querySelectorAll<HTMLButtonElement>("[data-open-in-browser]").forEach((button) => button.addEventListener("click", () => void openInBrowser()))
   document.querySelector<HTMLButtonElement>("#open-live-empty")?.addEventListener("click", openFullCompass)
+  document.querySelector<HTMLButtonElement>("#refresh-project-list")?.addEventListener("click", () => void refreshProjectList(true))
   document.querySelector<HTMLButtonElement>("#today-cherish")?.addEventListener("click", openCherish)
   document.querySelector<HTMLButtonElement>("#sync-now")?.addEventListener("click", () => void resumePendingSync())
   document.querySelector<HTMLButtonElement>("#field-notifications")?.addEventListener("click", () => {
@@ -1129,11 +1152,113 @@ async function refreshFieldDataAfterNotification(): Promise<void> {
   if (packet && online) await refreshProjectPacket(false)
 }
 
+// Re-downloads the signed-in person's project list, profile and companies.
+// Automatic calls (app open / resume) are throttled and stay silent on
+// failure; the Refresh button (force) skips the throttle and reports back.
+// Only the list changes: the open packet, cached packets, waiting work,
+// drafts and the current tab are left alone.
+async function refreshProjectList(force = false): Promise<void> {
+  const now = Date.now()
+  if (!shouldRefreshFieldProjectList({
+    online,
+    signedIn: profile !== null,
+    sessionExpired,
+    signingIn,
+    signingOut,
+    biometricLocked,
+    refreshing: refreshingProjectList,
+    lastRefreshAt: lastProjectListRefreshAt,
+    now,
+    force,
+  })) return
+  refreshingProjectList = true
+  lastProjectListRefreshAt = now
+  if (force) {
+    projectListStatus = ""
+    renderProjectListChange()
+  }
+  try {
+    const response = await fieldHttp.get({
+      url: fieldProjectListRefreshUrl(LIVE_URL, now),
+      headers: { "Cache-Control": "no-cache", Pragma: "no-cache" },
+      responseType: "json",
+    })
+    const result = nativeFieldBootstrapResponseSchema.safeParse(responseData(response.data))
+    if (!result.success || !result.data.success || !result.data.profile || !result.data.projects) {
+      throw new Error("Project list refresh failed")
+    }
+    // A sign-out, expired session or new sign-in while the request was out wins.
+    if (signingOut || sessionExpired || signingIn) return
+    const refreshedProjects = result.data.projects
+    const added = addedFieldProjectIds(projects, refreshedProjects)
+    const merge = mergeFieldProjectList(packet?.project.id ?? null, refreshedProjects)
+    projects = refreshedProjects
+    profile = result.data.profile
+    if (result.data.companies) companies = result.data.companies
+    const writes: Promise<void>[] = [
+      writeJson(PROJECTS_KEY, projects),
+      writeJson(PROFILE_KEY, profile),
+      writeJson(COMPANIES_KEY, companies),
+    ]
+    if (merge.kind === "active_removed") {
+      // Keep the open project on screen with its cached packet and waiting
+      // work so nothing in progress is lost, but stop listing it and open a
+      // listed job (or the picker) on the next launch.
+      writes.push(writeJson(ACTIVE_PROJECT_KEY, merge.nextActiveProjectId))
+      const removedLabel = packet ? projectLabel(packet.project) : "This project"
+      projectError = `${removedLabel} ${PROJECT_REMOVED_SUFFIX}`
+    } else if (projectError.endsWith(PROJECT_REMOVED_SUFFIX)) {
+      projectError = ""
+    }
+    await Promise.all(writes)
+    if (force) {
+      projectListStatus = added.length === 0
+        ? "Project list is up to date."
+        : `${added.length} new ${added.length === 1 ? "project" : "projects"} added.`
+    }
+  } catch {
+    // Automatic refreshes stay quiet and keep the saved list.
+    if (force && !sessionExpired) {
+      projectListStatus = "Compass could not refresh the project list. Showing the saved list."
+    }
+  } finally {
+    refreshingProjectList = false
+    renderProjectListChange()
+  }
+}
+
+const PROJECT_REMOVED_SUFFIX = "is no longer on your Field Mode list. It stays open on this device until you choose another project."
+
+// The list is only visible on the Projects tab. Re-rendering any other tab
+// would interrupt typing, so leave it alone; and while someone is typing a
+// project search, update just the results so the keyboard stays open.
+function renderProjectListChange(): void {
+  if (activeTab !== "projects" || biometricLocked || signingOut) return
+  const searchInput = document.querySelector<HTMLInputElement>("#project-search")
+  if (searchInput && document.activeElement === searchInput) {
+    refreshProjectPickerResults()
+    const refreshButton = document.querySelector<HTMLButtonElement>("#refresh-project-list")
+    if (refreshButton) {
+      refreshButton.disabled = !online || refreshingProjectList || signingIn
+      refreshButton.textContent = refreshingProjectList ? "Refreshing" : "Refresh"
+    }
+    return
+  }
+  render()
+}
+
+function activeProjectIsListed(): boolean {
+  const activeId = packet?.project.id
+  return activeId !== undefined && projects.some((project) => project.id === activeId)
+}
+
 async function refreshFieldDataAfterActivation(): Promise<void> {
   await refreshConnectivityAndSync()
   if (!online) return
+  await refreshProjectList()
   await Promise.all([
-    packet ? refreshProjectPacket(false) : Promise.resolve(),
+    // A project that left the list can no longer be refreshed from Compass.
+    activeProjectIsListed() ? refreshProjectPacket(false) : Promise.resolve(),
     profile ? refreshCherishRecognition() : Promise.resolve(),
   ])
 }
@@ -2367,6 +2492,7 @@ async function downloadNativeFieldState(projectId?: string): Promise<boolean> {
   }
 
   projects = result.data.projects
+  lastProjectListRefreshAt = Date.now()
   profile = result.data.profile
   packet = result.data.initialPacket ?? null
   if (result.data.companies) companies = result.data.companies
@@ -2799,6 +2925,9 @@ async function initialize(): Promise<void> {
   }
   if (online && packet && !sessionExpired) void refreshProjectPacket()
   if (online && profile && !sessionExpired) void refreshCherishRecognition(true)
+  // Cold start: pick up jobs added since the last launch. Skipped while the
+  // biometric lock is up; unlocking runs the same refresh.
+  void refreshProjectList()
   void resumePendingSync()
 
   await Network.addListener("networkStatusChange", () => void refreshConnectivityAndSync())
