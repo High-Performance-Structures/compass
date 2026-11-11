@@ -21,6 +21,7 @@ import {
   lineChoice,
   lineTodoKey,
   summaryCountHint,
+  toggleCompletedTodo,
   toggleLineTodo,
   toggleWorkedTodo,
   type DailyLogFollowUpDraft,
@@ -53,10 +54,12 @@ export const followUpDraftSchema = z.object({
   suggestionDismissed: z.boolean(),
   // Selections ticked as installed; drafts saved before this start with none.
   installed: z.array(z.string()).default([]),
+  // To-dos marked Completed; drafts saved before this start with none.
+  completed: z.array(z.string()).default([]),
 })
 
 export function emptyFollowUpDraft(): StoredFollowUpDraft {
-  return { ...EMPTY_DAILY_LOG_FOLLOW_UP_DRAFT, worked: [], blocked: {}, lineTodos: {}, skippedLines: [], contacts: [], installed: [] }
+  return { ...EMPTY_DAILY_LOG_FOLLOW_UP_DRAFT, worked: [], blocked: {}, lineTodos: {}, skippedLines: [], contacts: [], installed: [], completed: [] }
 }
 
 export type StoredFollowUpDraft = z.infer<typeof followUpDraftSchema>
@@ -71,6 +74,7 @@ export function storedFollowUpDraft(draft: DailyLogFollowUpDraft): StoredFollowU
     contacts: draft.contacts.map((row) => ({ ...row })),
     suggestionDismissed: draft.suggestionDismissed,
     installed: [...(draft.installed ?? [])],
+    completed: [...(draft.completed ?? [])],
   }
 }
 
@@ -84,6 +88,7 @@ export type FollowUpAction = {
 /** Controls whose change redraws the form (the rest are typed text). */
 export const FOLLOW_UP_REDRAW_CONTROLS: ReadonlySet<string> = new Set([
   "worked",
+  "completed",
   "installed",
   "blocked",
   "line-toggle",
@@ -120,6 +125,8 @@ export function followUpAction(
   switch (control) {
     case "worked":
       return toggleWorkedTodo(draft, key)
+    case "completed":
+      return toggleCompletedTodo(draft, key)
     case "installed": {
       // A checkbox: "true" ticks it, anything else clears it.
       const rest = (draft.installed ?? []).filter((id) => id !== key)
@@ -215,19 +222,29 @@ export function todoChecklistHtml(
   const { rules } = setup
   const todos = setup.openTodos.filter((todo) => todo.status !== "blocked" || !rules.carryBlocked)
   if (todos.length === 0) return ""
+  const canComplete = rules.todosCanComplete
   const rows = todos.map((todo) => {
-    const checked = draft.worked.includes(todo.id)
-    const status = checked && todo.status === "open" && rules.workedMovesToInProgress ? "Open → In progress" : statusLabel(todo.status)
+    const completed = canComplete && (draft.completed ?? []).includes(todo.id)
+    const checked = completed || draft.worked.includes(todo.id)
+    const status = completed
+      ? `${statusLabel(todo.status)} → ${setup.doneStatusLabel}`
+      : checked && todo.status === "open" && rules.workedMovesToInProgress ? "Open → In progress" : statusLabel(todo.status)
     const code = rules.todoCostCodes ? codeLabel(todo.costCode, costCodes) : null
-    return `<label class="followup-check">
-      <input type="checkbox" ${checked ? "checked" : ""} ${data("worked", todo.id, escape)} />
-      <span><span class="followup-title">${escape(todo.title)}</span>
-      <span class="field-hint">${escape(whoFor(todo))} · ${escape(status)}${code ? ` · ${escape(code)}` : ""}</span></span>
-    </label>`
+    return `<div class="followup-row">
+      <p class="followup-title">${escape(todo.title)}</p>
+      <p class="field-hint">${escape(whoFor(todo))} · ${escape(status)}${code ? ` · ${escape(code)}` : ""}</p>
+      <div class="followup-actions">
+        <label class="followup-check"><input type="checkbox" ${checked ? "checked" : ""} ${data("worked", todo.id, escape)} /><span>Worked on</span></label>
+        ${canComplete ? `<label class="followup-check"><input type="checkbox" ${completed ? "checked" : ""} ${data("completed", todo.id, escape)} /><span>Completed</span></label>` : ""}
+      </div>
+    </div>`
   })
+  const hint = canComplete
+    ? `Tick Worked on for what you worked on, or Completed when it's finished (it moves to ${escape(setup.doneStatusLabel)} when the log is saved).`
+    : "Tick what you worked on. Ticking never marks a to-do finished."
   return `<fieldset class="followup-list">
     <legend class="field-label">Open to-dos on this job</legend>
-    <p class="field-hint">Tick what you worked on.${rules.tickAddsLine ? " A to-do with a cost code adds a line below for its hours." : ""} Ticking never marks a to-do finished.</p>
+    <p class="field-hint">${hint}${rules.tickAddsLine ? " A to-do with a cost code adds a line below for its hours." : ""}</p>
     ${rows.join("")}
   </fieldset>`
 }
@@ -237,12 +254,21 @@ function selectionStatusLabel(status: string): string {
   return known ? PROJECT_SELECTION_STATUS_LABELS[known] : status
 }
 
-/** Approved or ordered finish selections; ticking one moves it to Installed when the log syncs. Hidden when there are none. */
+/** Ordered and approved selections are the likeliest to be going in; the rest fold away. */
+function readyToInstall(status: string): boolean {
+  return status === "ordered" || status === "approved"
+}
+
+/**
+ * The job's finish selections not installed yet; ticking one moves it to
+ * Installed when the log syncs. Ordered and approved ones show first, the
+ * rest under "Other selections". Hidden when there are none.
+ */
 export function installedSelectionsHtml(setup: FieldDailyLogFollowUpSetup, draft: DailyLogFollowUpDraft, escape: Escape): string {
   const selections = setup.installableSelections
   if (selections.length === 0) return ""
   const installed = new Set(draft.installed ?? [])
-  const rows = selections.map((selection) => {
+  const row = (selection: (typeof selections)[number]): string => {
     const checked = installed.has(selection.id)
     const status = checked ? `${selectionStatusLabel(selection.status)} → Installed` : selectionStatusLabel(selection.status)
     return `<label class="followup-check">
@@ -250,11 +276,21 @@ export function installedSelectionsHtml(setup: FieldDailyLogFollowUpSetup, draft
       <span><span class="followup-title">${escape(selection.name)}</span>
       <span class="field-hint">${selection.roomName ? `${escape(selection.roomName)} · ` : ""}${escape(status)}</span></span>
     </label>`
-  })
+  }
+  const ready = selections.filter((selection) => readyToInstall(selection.status))
+  const others = selections.filter((selection) => !readyToInstall(selection.status))
+  // Stays open after a redraw once something in it is ticked.
+  const othersOpen = ready.length === 0 || others.some((selection) => installed.has(selection.id))
+  const othersHtml = others.length === 0
+    ? ""
+    : ready.length === 0
+      ? others.map(row).join("")
+      : `<details${othersOpen ? " open" : ""}><summary class="field-hint">Other selections (${others.length})</summary>${others.map(row).join("")}</details>`
   return `<fieldset class="followup-list" id="log-selections-installed">
     <legend class="field-label">Selections installed</legend>
     <p class="field-hint">Tick the finish selections installed today. They move to Installed when the log is saved.</p>
-    ${rows.join("")}
+    ${ready.map(row).join("")}
+    ${othersHtml}
   </fieldset>`
 }
 

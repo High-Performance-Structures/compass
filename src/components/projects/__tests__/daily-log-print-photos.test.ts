@@ -37,6 +37,7 @@ describe("DailyLogPrintDocument", () => {
       syncStatus: "synced",
       scheduleItems: [],
       todos: [],
+      completedTodos: [],
       workLines: [],
       logDate: "2026-10-16",
       authorName: "Field lead",

@@ -1,8 +1,10 @@
 "use client"
 
 import * as React from "react"
+import Link from "next/link"
 import {
   IconCalendarStats,
+  IconCircleCheck,
   IconClipboardText,
   IconPencil,
   IconUpload,
@@ -92,6 +94,24 @@ export function DailyLogCard(props: DailyLogCardProps): React.ReactElement {
               </div>
             ))}
           </div>
+        </div>
+      )}
+
+      {log.completedTodos.length > 0 && (
+        <div className="mt-3 rounded-md border bg-muted/20 p-3">
+          <div className="mb-2 flex items-center gap-2 text-xs font-medium uppercase text-muted-foreground">
+            <IconCircleCheck className="size-3.5" />
+            To-dos completed on this log
+          </div>
+          <ul className="grid gap-1 text-sm md:grid-cols-2">
+            {log.completedTodos.map((todo) => (
+              <li key={todo.id}>
+                <Link href={`/dashboard/projects/${projectId}/todos?item=${encodeURIComponent(todo.id)}`} className="hover:underline">
+                  {todo.title}
+                </Link>
+              </li>
+            ))}
+          </ul>
         </div>
       )}
 

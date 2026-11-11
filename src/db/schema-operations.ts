@@ -197,7 +197,7 @@ export const projectTodoEvents = sqliteTable(
     todoId: text("todo_id")
       .notNull()
       .references(() => projectOperations.id, { onDelete: "cascade" }),
-    /** "created" | "worked" | "still_blocked" | "unblocked" | "status" */
+    /** "created" | "worked" | "still_blocked" | "unblocked" | "completed" | "status" */
     kind: text("kind").notNull(),
     dailyLogId: text("daily_log_id").references(() => dailyLogs.id, {
       onDelete: "set null",

@@ -1,6 +1,7 @@
-import { and, asc, eq, inArray } from "drizzle-orm"
+import { and, asc, eq, inArray, sql } from "drizzle-orm"
 import type { DailyLogInstallableSelection } from "@/lib/daily-logs/log-followups"
-import { advanceSelectionStatus } from "@/lib/domain/selections/status-advance"
+import { advanceSelectionStatus, statusesBefore } from "@/lib/domain/selections/status-advance"
+import { recordActivityEvents } from "@/lib/activity-log"
 import type { getDb } from "@/db"
 import {
   dailyLogs,
@@ -21,6 +22,7 @@ import { clientInteractionRecordProblem } from "@/lib/client-interactions/record
 import type { DailyLogWorkLine } from "@/lib/daily-logs/daily-log-form"
 import {
   clientContactFollowUpTitle,
+  DAILY_LOG_TODO_DONE_STATUS,
   DAILY_LOG_TODO_TYPES,
   EMPTY_DAILY_LOG_FOLLOW_UPS,
   madeTodoTitles,
@@ -38,7 +40,7 @@ import { readFeatureSettings } from "@/lib/feature-settings/server"
 import { clearOverdueFollowUpReminders } from "@/lib/notifications/clear-on-read"
 import { notifyProjectAssignment } from "@/lib/notifications/events"
 import { PROJECT_TODO_RECORD_TYPES } from "@/lib/project-todos"
-import { recordStatusColor, recordStatusLabel } from "@/lib/domain/record-statuses/rules"
+import { recordStatusColor, recordStatusLabel, type RecordStatusList } from "@/lib/domain/record-statuses/rules"
 import { loadRecordStatusListForProject } from "@/lib/domain/record-statuses/store"
 import { isInternalStaffRole } from "@/lib/user-roles"
 import { instantForLocalDateTime } from "@/lib/work-calendar"
@@ -58,6 +60,8 @@ type DailyLogAssigneeOption = {
 export type DailyLogFollowUpSetup = {
   readonly rules: DailyLogFollowUpRules
   readonly openTodos: readonly DailyLogOpenTodo[]
+  /** The company's name for a finished to-do (Settings › Statuses), shown on Completed. */
+  readonly doneStatusLabel: string
   /** The "Selections installed" checklist, on Full Compass logs and Field Mode phones. */
   readonly installableSelections?: readonly DailyLogInstallableSelection[]
   readonly clientContacts: readonly DailyLogClientContactOption[]
@@ -73,6 +77,7 @@ async function dailyLogFollowUpRules(db: Db, organizationId: string): Promise<Da
     todoMode: settings.todoMode,
     todoTypes: settings.todoTypes,
     workedMovesToInProgress: settings.workedMovesToInProgress,
+    todosCanComplete: settings.todosCanComplete,
     carryBlocked: settings.carryBlocked,
     todoCostCodes: settings.todoCostCodes,
     tickAddsLine: settings.todoCostCodes && settings.tickAddsLine,
@@ -99,8 +104,13 @@ function openStatus(value: string): DailyLogOpenTodo["status"] | null {
 }
 
 /** The project's open to-dos (not schedule items), oldest due first. */
-export async function loadOpenDailyLogTodos(db: Db, projectId: string): Promise<readonly DailyLogOpenTodo[]> {
-  const statuses = await loadRecordStatusListForProject(db, projectId, "todo")
+export async function loadOpenDailyLogTodos(
+  db: Db,
+  projectId: string,
+  /** The company's to-do statuses, when the caller already has them. */
+  knownStatuses?: RecordStatusList,
+): Promise<readonly DailyLogOpenTodo[]> {
+  const statuses = knownStatuses ?? (await loadRecordStatusListForProject(db, projectId, "todo"))
   const rows = await db
     .select({
       id: projectOperations.id,
@@ -186,14 +196,16 @@ async function loadDailyLogAssignees(db: Db, organizationId: string, projectId: 
 }
 
 export async function dailyLogFollowUpSetup(db: Db, organizationId: string, projectId: string): Promise<DailyLogFollowUpSetup> {
+  const statuses = await loadRecordStatusListForProject(db, projectId, "todo")
   const [rules, openTodos, clientContacts, assignees, installableSelections] = await Promise.all([
     dailyLogFollowUpRules(db, organizationId),
-    loadOpenDailyLogTodos(db, projectId),
+    loadOpenDailyLogTodos(db, projectId, statuses),
     loadDailyLogClientContacts(db, projectId),
     loadDailyLogAssignees(db, organizationId, projectId),
     loadInstallableSelections(db, projectId),
   ])
-  return { rules, openTodos, clientContacts, assignees, installableSelections }
+  const doneStatusLabel = recordStatusLabel(statuses, DAILY_LOG_TODO_DONE_STATUS)
+  return { rules, openTodos, doneStatusLabel, clientContacts, assignees, installableSelections }
 }
 
 /** A follow-up plan the server checked and can apply once the log is saved. */
@@ -238,7 +250,13 @@ export async function checkDailyLogFollowUps(
   const todos = new Map(openTodos.map((todo) => [todo.id, todo]))
   const contacts = new Map(contactOptions.map((contact) => [contact.id, contact]))
   const cleaned: DailyLogFollowUps = {
-    todoUpdates: followUps.todoUpdates.filter((update) => todos.has(update.todoId)),
+    // Completed implies worked on; Completed itself is dropped when the company turned it off.
+    todoUpdates: followUps.todoUpdates
+      .filter((update) => todos.has(update.todoId))
+      .map((update) => {
+        // A to-do sent as completed was at least worked on, even where completing is off.
+        return { ...update, worked: update.worked || update.completed === true, completed: rules.todosCanComplete && update.completed === true }
+      }),
     newTodos: rules.todoMode === "off" ? [] : followUps.newTodos.map((todo) => ({ ...todo, costCode: rules.crewPicksCostCode ? todo.costCode : "" })),
     clientContacts: rules.clientContact ? followUps.clientContacts : [],
     // Selections installed already, or not on this job, are dropped rather than failing the log.
@@ -305,8 +323,10 @@ function personName(user: AuthUser): string | null {
 
 /**
  * Applies a saved log's to-do updates, new to-dos and client contacts. Ticking
- * a to-do records the work and may move it to In progress; it never finishes
- * it. Returns how many to-dos were created.
+ * a to-do records the work and may move it to In progress; marking it
+ * Completed moves it to the company's done status, signed off by the person
+ * saving the log on the log's date (history and Activity). Returns how many
+ * to-dos were created.
  */
 export async function applyDailyLogFollowUps(
   db: Db,
@@ -341,6 +361,7 @@ export async function applyDailyLogFollowUps(
     if (line.description && !noteByTodo.has(line.todoId)) noteByTodo.set(line.todoId, line.description)
   }
 
+  const completedTodos: { readonly id: string; readonly title: string; readonly fromStatus: string }[] = []
   for (const update of followUps.todoUpdates) {
     const todo = checked.todos.get(update.todoId)
     if (!todo) continue
@@ -368,6 +389,21 @@ export async function applyDailyLogFollowUps(
       })
       status = next
     }
+    if (update.completed === true && rules.todosCanComplete && status !== DAILY_LOG_TODO_DONE_STATUS) {
+      await recordTodoEvent(db, {
+        organizationId,
+        projectId,
+        todoId: todo.id,
+        kind: "completed",
+        dailyLogId,
+        fromStatus: status,
+        toStatus: DAILY_LOG_TODO_DONE_STATUS,
+        note: null,
+        actorId: userId,
+      })
+      completedTodos.push({ id: todo.id, title: todo.title, fromStatus: status })
+      status = DAILY_LOG_TODO_DONE_STATUS
+    }
     if (status !== todo.status) {
       await updateOperations(db, and(eq(projectOperations.id, todo.id), eq(projectOperations.projectId, projectId)), {
         status,
@@ -375,6 +411,8 @@ export async function applyDailyLogFollowUps(
       })
     }
   }
+
+  if (completedTodos.length > 0) await logCompletedTodos(db, { organizationId, projectId, dailyLogId, logDate: input.logDate, creator, completedTodos })
 
   const authorName = personName(creator)
   const [project, existingTodos] = await Promise.all([
@@ -491,6 +529,38 @@ export async function applyDailyLogFollowUps(
   return { createdTodos: created.length }
 }
 
+/** Activity entries for to-dos a log marked Completed, in the company's status names. */
+async function logCompletedTodos(
+  db: Db,
+  input: {
+    readonly organizationId: string
+    readonly projectId: string
+    readonly dailyLogId: string
+    readonly logDate: string
+    readonly creator: AuthUser
+    readonly completedTodos: readonly { readonly id: string; readonly title: string; readonly fromStatus: string }[]
+  },
+): Promise<void> {
+  const statuses = await loadRecordStatusListForProject(db, input.projectId, "todo")
+  const done = recordStatusLabel(statuses, DAILY_LOG_TODO_DONE_STATUS)
+  const now = new Date().toISOString()
+  await recordActivityEvents(
+    db,
+    input.completedTodos.map((todo) => ({
+      organizationId: input.organizationId,
+      projectId: input.projectId,
+      actor: input.creator,
+      category: "field",
+      action: "todo_completed",
+      entityType: "project_operation",
+      entityId: todo.id,
+      summary: `${todo.title} moved from ${recordStatusLabel(statuses, todo.fromStatus)} to ${done}: marked completed on the ${input.logDate} daily log.`,
+      metadata: { from: todo.fromStatus, to: DAILY_LOG_TODO_DONE_STATUS, reason: "daily_log", dailyLogId: input.dailyLogId },
+      createdAt: now,
+    })),
+  )
+}
+
 /** History rows for a to-do, newest last, with who did each. */
 export type ProjectTodoHistoryItem = {
   readonly id: string
@@ -538,6 +608,27 @@ export async function loadProjectTodoHistory(db: Db, projectId: string, todoId: 
   }))
 }
 
+/** A to-do a daily log marked completed. */
+export type DailyLogCompletedTodo = { readonly id: string; readonly title: string }
+
+/** The to-dos each of the project's daily logs marked completed, by log id. */
+export async function loadCompletedTodosByLog(db: Db, projectId: string): Promise<ReadonlyMap<string, readonly DailyLogCompletedTodo[]>> {
+  const rows = await db
+    .select({ dailyLogId: projectTodoEvents.dailyLogId, id: projectOperations.id, title: projectOperations.title })
+    .from(projectTodoEvents)
+    .innerJoin(projectOperations, eq(projectOperations.id, projectTodoEvents.todoId))
+    .where(and(eq(projectTodoEvents.projectId, projectId), eq(projectTodoEvents.kind, "completed")))
+    .orderBy(asc(projectTodoEvents.createdAt))
+  const byLog = new Map<string, DailyLogCompletedTodo[]>()
+  for (const row of rows) {
+    if (!row.dailyLogId) continue
+    const list = byLog.get(row.dailyLogId) ?? []
+    if (!list.some((todo) => todo.id === row.id)) list.push({ id: row.id, title: row.title })
+    byLog.set(row.dailyLogId, list)
+  }
+  return byLog
+}
+
 /** Hours logged against each to-do, from daily log cost code lines. */
 export async function loadTodoHours(db: Db, projectId: string): Promise<ReadonlyMap<string, number>> {
   const rows = await db
@@ -568,7 +659,13 @@ export async function loadTodoWorkedLogCounts(db: Db, projectId: string): Promis
   return new Map([...logs].map(([todoId, set]) => [todoId, set.size]))
 }
 
-/** Approved or ordered selections on the job, which a log can mark installed. */
+/**
+ * Selections on the job a log can mark installed: every one not installed
+ * yet, except Deferred and Unavailable (nothing to install). The same
+ * statuses the automatic move to Installed may replace, so the checklist
+ * never offers one the save would skip. Ordered and approved ones come
+ * first; they are the likeliest to be going in.
+ */
 async function loadInstallableSelections(db: Db, projectId: string): Promise<readonly DailyLogInstallableSelection[]> {
   return db
     .select({
@@ -578,7 +675,11 @@ async function loadInstallableSelections(db: Db, projectId: string): Promise<rea
       status: projectFinishSelections.status,
     })
     .from(projectFinishSelections)
-    .where(and(eq(projectFinishSelections.projectId, projectId), inArray(projectFinishSelections.status, ["approved", "ordered"])))
-    .orderBy(asc(projectFinishSelections.roomName), asc(projectFinishSelections.name))
-    .limit(200)
+    .where(and(eq(projectFinishSelections.projectId, projectId), inArray(projectFinishSelections.status, [...statusesBefore("installed")])))
+    .orderBy(
+      sql`CASE ${projectFinishSelections.status} WHEN 'ordered' THEN 0 WHEN 'approved' THEN 1 ELSE 2 END`,
+      asc(projectFinishSelections.roomName),
+      asc(projectFinishSelections.name),
+    )
+    .limit(400)
 }

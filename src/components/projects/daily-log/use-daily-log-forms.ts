@@ -25,6 +25,7 @@ import {
   madeTodoTitles,
   savedLogTodoRules,
   todoTitleKey,
+  toggleCompletedTodo,
   toggleWorkedTodo,
   validateDailyLogFollowUps,
   workLinesAfterTick,
@@ -346,6 +347,16 @@ export function useDailyLogForms({
           setDraft((current) => ({ ...current, workLines: workLinesAfterTick(current.workLines, todo, ticked) }))
         }
       },
+      onToggleCompleted: (todo) => {
+        // Completed implies worked on: its cost code line comes and goes with it.
+        const wasWorked = followUpDraft.worked.includes(todo.id)
+        const next = toggleCompletedTodo(followUpDraft, todo.id)
+        const nowWorked = next.worked.includes(todo.id)
+        setFollowUpDraft(next)
+        if (workspace.followUps?.rules.tickAddsLine && wasWorked !== nowWorked) {
+          setDraft((current) => ({ ...current, workLines: workLinesAfterTick(current.workLines, todo, nowWorked) }))
+        }
+      },
     } : undefined,
   }
 
@@ -364,6 +375,7 @@ export function useDailyLogForms({
         draft: editFollowUpDraft,
         onChange: setEditFollowUpDraft,
         onToggleTodo: () => undefined,
+        onToggleCompleted: () => undefined,
         linesOnly: true,
         madeTitles: madeTodoTitles(log.todos),
       } : undefined,

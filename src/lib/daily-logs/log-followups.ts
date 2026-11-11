@@ -34,6 +34,8 @@ export type DailyLogFollowUpRules = {
   readonly todoTypes: readonly DailyLogTodoType[]
   /** Ticking an Open to-do moves it to In progress. */
   readonly workedMovesToInProgress: boolean
+  /** The crew can mark a to-do Completed on a log (it moves to the company's done status). */
+  readonly todosCanComplete: boolean
   /** Blocked to-dos ask "still blocked?" on the next log. */
   readonly carryBlocked: boolean
   /** To-dos carry a cost code. */
@@ -52,6 +54,7 @@ export const DEFAULT_DAILY_LOG_FOLLOW_UP_RULES: DailyLogFollowUpRules = {
   todoMode: "ask",
   todoTypes: [...DAILY_LOG_TODO_TYPES],
   workedMovesToInProgress: true,
+  todosCanComplete: true,
   carryBlocked: true,
   todoCostCodes: true,
   tickAddsLine: true,
@@ -79,7 +82,10 @@ export type DailyLogOpenTodo = {
 }
 
 /** Filter buttons above the daily log's to-do checklist. */
-export type DailyLogTodoFilter = "all" | "worked" | DailyLogOpenTodo["status"]
+export type DailyLogTodoFilter = "all" | "worked" | "completed" | DailyLogOpenTodo["status"]
+
+/** The built-in key of a finished to-do (Settings › Statuses can rename it, never re-key it). */
+export const DAILY_LOG_TODO_DONE_STATUS = "complete"
 
 const TODO_STATUS_ORDER: readonly DailyLogOpenTodo["status"][] = ["open", "in_progress", "blocked"]
 const BUILT_IN_TODO_STATUS_LABELS: Readonly<Record<DailyLogOpenTodo["status"], string>> = {
@@ -90,11 +96,14 @@ const BUILT_IN_TODO_STATUS_LABELS: Readonly<Record<DailyLogOpenTodo["status"], s
 
 /**
  * The checklist's filter buttons: All, each status in workflow order named
- * and colored as the company names it, then the ones ticked today.
+ * and colored as the company names it, then the ones ticked today (worked
+ * on, and completed under the company's name for done).
  */
 export function dailyLogTodoFilterOptions(
   todos: readonly DailyLogOpenTodo[],
   worked: readonly string[],
+  completed: readonly string[] = [],
+  completedLabel = "Completed",
 ): readonly { readonly value: DailyLogTodoFilter; readonly label: string; readonly count: number; readonly color?: RecordStatusColor; readonly pinned?: boolean }[] {
   return [
     { value: "all", label: "All", count: todos.length, pinned: true },
@@ -107,13 +116,20 @@ export function dailyLogTodoFilterOptions(
         color: sample?.statusColor,
       }
     }),
-    { value: "worked", label: "Worked on", count: todos.filter((todo) => worked.includes(todo.id)).length },
+    { value: "worked", label: "Worked on", count: todos.filter((todo) => worked.includes(todo.id) || completed.includes(todo.id)).length },
+    { value: "completed", label: completedLabel, count: todos.filter((todo) => completed.includes(todo.id)).length },
   ]
 }
 
-export function dailyLogTodoMatchesFilter(todo: DailyLogOpenTodo, filter: DailyLogTodoFilter, worked: readonly string[]): boolean {
+export function dailyLogTodoMatchesFilter(
+  todo: DailyLogOpenTodo,
+  filter: DailyLogTodoFilter,
+  worked: readonly string[],
+  completed: readonly string[] = [],
+): boolean {
   if (filter === "all") return true
-  if (filter === "worked") return worked.includes(todo.id)
+  if (filter === "worked") return worked.includes(todo.id) || completed.includes(todo.id)
+  if (filter === "completed") return completed.includes(todo.id)
   return todo.status === filter
 }
 
@@ -151,6 +167,8 @@ export type DailyLogNewTodoDraft = {
 type DailyLogTodoUpdateDraft = {
   readonly todoId: string
   readonly worked: boolean
+  /** Finished today: moves to the company's done status (implies worked). Absent from phones' logs queued before it existed. */
+  readonly completed?: boolean
   readonly blocked: "still" | "cleared" | null
 }
 
@@ -164,12 +182,12 @@ type DailyLogClientContactDraft = {
   readonly followUpTodo: boolean
 }
 
-/** A finish selection a log can mark installed (approved or ordered, not yet installed). */
+/** A finish selection a log can mark installed (not installed yet, and not deferred or unavailable). */
 export type DailyLogInstallableSelection = {
   readonly id: string
   readonly name: string
   readonly roomName: string
-  /** Approved or ordered (shown on the phone checklist). */
+  /** Its current status key (shown beside it on the checklist). */
   readonly status: string
 }
 
@@ -349,6 +367,8 @@ export type DailyLogFollowUpDraft = {
   readonly suggestionDismissed: boolean
   /** Selections ticked as installed. Missing on drafts saved before this existed. */
   readonly installed?: readonly string[]
+  /** To-dos marked Completed (each is also worked on). Missing on drafts saved before this existed. */
+  readonly completed?: readonly string[]
 }
 
 export const EMPTY_DAILY_LOG_FOLLOW_UP_DRAFT: DailyLogFollowUpDraft = {
@@ -394,23 +414,43 @@ export function toggleLineTodo(
   return { ...draft, lineTodos: { ...draft.lineTodos, [key]: defaultLineChoice(rules) } }
 }
 
-/** Ticks or unticks a to-do as worked on. */
+/** Ticks or unticks a to-do as worked on. Unticking also clears Completed, which implies worked on. */
 export function toggleWorkedTodo(draft: DailyLogFollowUpDraft, todoId: string): DailyLogFollowUpDraft {
   return draft.worked.includes(todoId)
-    ? { ...draft, worked: draft.worked.filter((id) => id !== todoId) }
+    ? { ...draft, worked: draft.worked.filter((id) => id !== todoId), completed: (draft.completed ?? []).filter((id) => id !== todoId) }
     : { ...draft, worked: [...draft.worked, todoId] }
+}
+
+/**
+ * Marks a to-do Completed, or takes that back. Completed implies worked on,
+ * so ticking it also ticks worked on; unticking reverses both, and the
+ * caller removes the cost code line the same way unticking worked on does.
+ */
+export function toggleCompletedTodo(draft: DailyLogFollowUpDraft, todoId: string): DailyLogFollowUpDraft {
+  const completed = draft.completed ?? []
+  if (completed.includes(todoId)) {
+    return { ...draft, completed: completed.filter((id) => id !== todoId), worked: draft.worked.filter((id) => id !== todoId) }
+  }
+  return {
+    ...draft,
+    completed: [...completed, todoId],
+    worked: draft.worked.includes(todoId) ? draft.worked : [...draft.worked, todoId],
+  }
 }
 
 /** What the form sends with the log. */
 export function followUpsFromDraft(
   draft: DailyLogFollowUpDraft,
   text: { readonly issues: string; readonly notes: string },
-  rules: Pick<DailyLogFollowUpRules, "todoMode" | "todoTypes" | "clientContact">,
+  rules: Pick<DailyLogFollowUpRules, "todoMode" | "todoTypes" | "clientContact"> & Partial<Pick<DailyLogFollowUpRules, "todosCanComplete">>,
 ): DailyLogFollowUps {
-  const todoIds = new Set([...draft.worked, ...Object.keys(draft.blocked)])
+  // Rules from packets saved before the setting existed allow completing, its default.
+  const completed = rules.todosCanComplete === false ? [] : (draft.completed ?? [])
+  const todoIds = new Set([...draft.worked, ...completed, ...Object.keys(draft.blocked)])
   const todoUpdates = [...todoIds].map((todoId) => ({
     todoId,
-    worked: draft.worked.includes(todoId),
+    worked: draft.worked.includes(todoId) || completed.includes(todoId),
+    completed: completed.includes(todoId),
     blocked: draft.blocked[todoId] ?? null,
   }))
   const newTodos: DailyLogNewTodoDraft[] = []

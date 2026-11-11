@@ -8,6 +8,7 @@ import {
   DailyLogLineTodos,
   DailyLogTodoChecklist,
 } from "@/components/projects/daily-log-followups"
+import { DailyLogSelectionsInstalled } from "@/components/projects/daily-log/daily-log-selections-installed"
 import {
   DEFAULT_DAILY_LOG_FOLLOW_UP_RULES,
   EMPTY_DAILY_LOG_FOLLOW_UP_DRAFT,
@@ -37,10 +38,36 @@ describe("daily log to-do and client contact fields", () => {
 
   it("shows a ticked to-do moving to In progress, with its cost code", () => {
     const html = renderToStaticMarkup(
-      createElement(DailyLogTodoChecklist, { idPrefix: "log", todos: todos.filter((todo) => todo.id === "t1"), costCodes, rules, worked: ["t1"], onToggle: noop }),
+      createElement(DailyLogTodoChecklist, { idPrefix: "log", todos: todos.filter((todo) => todo.id === "t1"), costCodes, rules: { ...rules, todosCanComplete: false }, worked: ["t1"], completed: [], doneLabel: "Complete", onToggle: noop, onToggleCompleted: noop }),
     )
     expect(html).toContain("Staff · Dan · Open → In progress · 06 11 00 Wood Framing")
     expect(html).toContain("It never marks a to-do finished")
+    expect(html).not.toContain("log-todo-t1-completed")
+  })
+
+  it("offers Worked on and Completed, showing the move to the company's done status", () => {
+    const html = renderToStaticMarkup(
+      createElement(DailyLogTodoChecklist, { idPrefix: "log", todos: todos.filter((todo) => todo.id === "t1"), costCodes, rules, worked: ["t1"], completed: ["t1"], doneLabel: "Done", onToggle: noop, onToggleCompleted: noop }),
+    )
+    expect(html).toContain("Worked on")
+    expect(html).toContain('id="log-todo-t1-completed"')
+    expect(html).toContain("Open → Done")
+    expect(html).toContain("1 completed")
+    expect(html).toContain("moves it to Done when the log is saved")
+  })
+
+  it("lists ordered and approved selections first and folds the rest", () => {
+    const selections = [
+      { id: "s1", name: "Faucet", roomName: "Kitchen", status: "ordered" },
+      { id: "s2", name: "Range hood", roomName: "Kitchen", status: "owner_review" },
+    ]
+    const folded = renderToStaticMarkup(createElement(DailyLogSelectionsInstalled, { idPrefix: "log", selections, draft: EMPTY_DAILY_LOG_FOLLOW_UP_DRAFT, onChange: noop }))
+    expect(folded).toContain("Faucet")
+    expect(folded).toContain("Other selections (1)")
+    expect(folded).not.toContain("Range hood")
+    // Ticked (say, from a restored draft): shown with its move.
+    const ticked = renderToStaticMarkup(createElement(DailyLogSelectionsInstalled, { idPrefix: "log", selections, draft: { ...EMPTY_DAILY_LOG_FOLLOW_UP_DRAFT, installed: ["s2"] }, onChange: noop }))
+    expect(ticked).toContain("With owner → Installed")
   })
 
   it("offers Make to-do per line, and pickers once flagged", () => {

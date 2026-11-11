@@ -8,6 +8,8 @@ import type { AuthUser } from "@/lib/auth"
 import {
   applyDailyLogFollowUps,
   checkDailyLogFollowUps,
+  dailyLogFollowUpSetup,
+  loadCompletedTodosByLog,
   loadOpenDailyLogTodos,
   loadProjectTodoHistory,
   loadTodoHours,
@@ -124,6 +126,61 @@ describe("daily log follow-ups on the server", () => {
     ])
     expect((await loadTodoHours(db, "p1")).get("t1")).toBe(20)
     expect((await loadTodoWorkedLogCounts(db, "p1")).get("t1")).toBe(1)
+  })
+
+  it("completes a to-do from the log: done status, history signed off on the log's date, Activity", async () => {
+    // The company renamed its done status.
+    sqlite.exec(`INSERT INTO organization_record_statuses (id, organization_id, record_type, status_key, label, color, status_group, sort_order, show_as_button, hidden, built_in, created_at, updated_at)
+      VALUES ('rs1', 'org-1', 'todo', 'complete', 'Signed off', 'gray', 'closed', 3, 1, 0, 1, '${NOW}', '${NOW}')`)
+    expect((await dailyLogFollowUpSetup(db, "org-1", "p1")).doneStatusLabel).toBe("Signed off")
+
+    const checked = await checkDailyLogFollowUps(db, "org-1", "p1", "2026-10-14", {
+      // Sent without worked: Completed implies it.
+      todoUpdates: [{ todoId: "t1", worked: false, completed: true, blocked: null }],
+      newTodos: [],
+      clientContacts: [],
+    })
+    if (!checked.ok) throw new Error(checked.error)
+    expect(checked.followUps.todoUpdates).toEqual([{ todoId: "t1", worked: true, completed: true, blocked: null }])
+    await applyDailyLogFollowUps(db, {
+      organizationId: "org-1",
+      projectId: "p1",
+      dailyLogId: "log-1",
+      logDate: "2026-10-14",
+      creator,
+      workCompleted: "Set joists",
+      lines: [{ costCode: "06 11 00", hours: 8, description: "Finished joists", todoId: "t1" }],
+      checked,
+    })
+
+    expect(sqlite.prepare("SELECT status FROM project_operations WHERE id = 't1'").get()).toEqual({ status: "complete" })
+    const history = await loadProjectTodoHistory(db, "p1", "t1")
+    expect(history.map((event) => [event.kind, event.fromStatus, event.toStatus, event.dailyLogId, event.logDate, event.actorName])).toEqual([
+      ["worked", "open", "in_progress", "log-1", "2026-10-14", "Dan Crew"],
+      ["completed", "in_progress", "complete", "log-1", "2026-10-14", "Dan Crew"],
+    ])
+    expect((await loadTodoWorkedLogCounts(db, "p1")).get("t1")).toBe(1)
+    const activity = sqlite.prepare("SELECT action, entity_id, actor_user_id, summary FROM activity_events WHERE action = 'todo_completed'").all()
+    expect(activity).toEqual([
+      { action: "todo_completed", entity_id: "t1", actor_user_id: "user-dan", summary: "Second-floor joists moved from In progress to Signed off: marked completed on the 2026-10-14 daily log." },
+    ])
+    expect([...(await loadCompletedTodosByLog(db, "p1"))]).toEqual([["log-1", [{ id: "t1", title: "Second-floor joists" }]]])
+    // Finished now, so it leaves the next log's checklist.
+    expect((await loadOpenDailyLogTodos(db, "p1")).map((todo) => todo.id)).toEqual(["t2"])
+  })
+
+  it("only records work when the company turned off completing to-dos on logs", async () => {
+    sqlite.exec(`INSERT INTO organization_feature_settings (organization_id, feature_key, value, updated_at) VALUES ('org-1', 'daily-log-followups', '{"todosCanComplete":false}', '${NOW}')`)
+    const checked = await checkDailyLogFollowUps(db, "org-1", "p1", "2026-10-14", {
+      todoUpdates: [{ todoId: "t1", worked: false, completed: true, blocked: null }],
+      newTodos: [],
+      clientContacts: [],
+    })
+    if (!checked.ok) throw new Error(checked.error)
+    expect(checked.followUps.todoUpdates).toEqual([{ todoId: "t1", worked: true, completed: false, blocked: null }])
+    await applyDailyLogFollowUps(db, { organizationId: "org-1", projectId: "p1", dailyLogId: "log-1", logDate: "2026-10-14", creator, workCompleted: "Set joists", lines: [], checked })
+    expect(sqlite.prepare("SELECT status FROM project_operations WHERE id = 't1'").get()).toEqual({ status: "in_progress" })
+    expect(sqlite.prepare("SELECT COUNT(*) AS n FROM project_todo_events WHERE kind = 'completed'").get()).toEqual({ n: 0 })
   })
 
   it("rejects a short client contact summary, but keeps a phone's log", async () => {

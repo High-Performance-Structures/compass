@@ -110,39 +110,56 @@ export function DailyLogBlockedTodos({
   )
 }
 
-/** The project's open to-dos; ticking one records that it was worked on today. */
+/**
+ * The project's open to-dos, each with two choices: Worked on (records the
+ * day's work) and Completed (also moves it to the company's done status when
+ * the log is saved, where the company allows it).
+ */
 export function DailyLogTodoChecklist({
   idPrefix,
   todos,
   costCodes,
   rules,
   worked,
+  completed,
+  doneLabel,
   onToggle,
+  onToggleCompleted,
 }: {
   readonly idPrefix: string
   readonly todos: readonly DailyLogOpenTodo[]
   readonly costCodes: readonly DailyLogCostCodeOption[]
   readonly rules: DailyLogFollowUpRules
   readonly worked: readonly string[]
+  readonly completed: readonly string[]
+  /** The company's name for a finished to-do. */
+  readonly doneLabel: string
   readonly onToggle: (todo: DailyLogOpenTodo) => void
+  readonly onToggleCompleted: (todo: DailyLogOpenTodo) => void
 }): React.ReactElement | null {
   const [filter, setFilter] = React.useState<DailyLogTodoFilter>("all")
   if (todos.length === 0) return null
-  const shown = todos.filter((todo) => dailyLogTodoMatchesFilter(todo, filter, worked))
+  const canComplete = rules.todosCanComplete
+  const done = canComplete ? completed : []
+  const shown = todos.filter((todo) => dailyLogTodoMatchesFilter(todo, filter, worked, done))
+  const workedCount = todos.filter((todo) => worked.includes(todo.id) || done.includes(todo.id)).length
   return (
     <fieldset className="grid gap-2">
       <div className="flex flex-wrap items-end justify-between gap-2">
         <legend className="text-sm font-medium">Open to-dos on this job</legend>
-        <p className="text-xs text-muted-foreground tabular-nums">{worked.length} worked on</p>
+        <p className="text-xs text-muted-foreground tabular-nums">
+          {workedCount} worked on{canComplete && done.length > 0 ? ` · ${done.length} completed` : ""}
+        </p>
       </div>
       <p className="text-xs text-muted-foreground">
-        Tick what was worked on today.{rules.tickAddsLine ? " A to-do with a cost code adds a line below for its hours." : ""}
+        Tick what was worked on today{canComplete ? ", or Completed when it's finished" : ""}.
+        {rules.tickAddsLine ? " A to-do with a cost code adds a line below for its hours." : ""}
       </p>
       {todos.length > 1 && (
         <StatusFilterBar
           kind="button"
           label="Filter to-dos by status"
-          options={dailyLogTodoFilterOptions(todos, worked)}
+          options={dailyLogTodoFilterOptions(todos, worked, done, "Completed")}
           selected={filter}
           onSelect={setFilter}
         />
@@ -150,31 +167,52 @@ export function DailyLogTodoChecklist({
       {shown.length === 0 && <p className="text-sm text-muted-foreground">No to-dos match this filter.</p>}
       <ul className="grid divide-y border-y empty:hidden">
         {shown.map((todo) => {
-          const checked = worked.includes(todo.id)
+          const isCompleted = done.includes(todo.id)
+          const checked = worked.includes(todo.id) || isCompleted
           const id = `${idPrefix}-todo-${todo.id}`
           const code = rules.todoCostCodes ? costCodeLabel(todo.costCode, costCodes) : null
           // The workflow moves the built-in "open" to "in_progress"; names come from the company's statuses.
           const label = todo.statusLabel ?? statusLabel(todo.status)
-          const next = checked && todo.status === "open" && rules.workedMovesToInProgress ? `${label} → In progress` : label
+          const next = isCompleted
+            ? `${label} → ${doneLabel}`
+            : checked && todo.status === "open" && rules.workedMovesToInProgress ? `${label} → In progress` : label
           return (
-            <li key={todo.id} className={cn("flex items-start gap-3 py-2", checked && "bg-accent/40")}>
-              <Checkbox id={id} checked={checked} onCheckedChange={() => onToggle(todo)} className="mt-0.5" />
-              <Label htmlFor={id} className="grid min-w-0 flex-1 gap-0.5 font-normal">
+            <li key={todo.id} className={cn("flex flex-wrap items-start gap-x-3 gap-y-1 py-2", checked && "bg-accent/40")}>
+              <div className="grid min-w-0 flex-1 basis-56 gap-0.5">
                 <span className="text-sm font-medium break-words">{todo.title}</span>
                 <span className="text-xs text-muted-foreground">
                   {whoFor(todo)}
                   {next !== label ? ` · ${next}` : ""}
                   {code ? ` · ${code}` : ""}
                 </span>
-              </Label>
-              <RecordStatusBadge label={label} color={todo.statusColor ?? "gray"} className="shrink-0" />
+              </div>
+              <div className="flex shrink-0 items-center gap-3">
+                <RecordStatusBadge label={label} color={todo.statusColor ?? "gray"} />
+                <span className="flex items-center gap-1.5">
+                  <Checkbox id={id} checked={checked} onCheckedChange={() => onToggle(todo)} aria-label={`Worked on: ${todo.title}`} />
+                  <Label htmlFor={id} className="text-xs font-normal">Worked on</Label>
+                </span>
+                {canComplete && (
+                  <span className="flex items-center gap-1.5">
+                    <Checkbox
+                      id={`${id}-completed`}
+                      checked={isCompleted}
+                      onCheckedChange={() => onToggleCompleted(todo)}
+                      aria-label={`Completed: ${todo.title}`}
+                    />
+                    <Label htmlFor={`${id}-completed`} className="text-xs font-normal">Completed</Label>
+                  </span>
+                )}
+              </div>
             </li>
           )
         })}
       </ul>
       <p className="flex items-start gap-2 text-xs text-muted-foreground">
         <IconInfoCircle className="mt-px size-4 shrink-0" aria-hidden="true" />
-        Ticking records the work{rules.workedMovesToInProgress ? " and moves an Open to-do to In progress" : ""}. It never marks a to-do finished; a person does that on the to-do.
+        {canComplete
+          ? `Worked on records the work${rules.workedMovesToInProgress ? " and moves an Open to-do to In progress" : ""}. Completed also moves it to ${doneLabel} when the log is saved, signed off on this log's date.`
+          : `Ticking records the work${rules.workedMovesToInProgress ? " and moves an Open to-do to In progress" : ""}. It never marks a to-do finished; a person does that on the to-do.`}
       </p>
     </fieldset>
   )

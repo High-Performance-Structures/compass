@@ -3,7 +3,7 @@ import { z } from "zod/v4"
 import { DAILY_LOG_OPTIONAL_FIELDS } from "@/lib/daily-logs/daily-log-form"
 import { NUTECH_PRICE_LIST_DEFAULTS, nuTechPriceListSettingsShape } from "@/lib/nutech/price-list-settings"
 import { DEFAULT_LABOR_CODE_DEPARTMENTS, DEFAULT_LABOR_COST_CODES } from "@/lib/daily-logs/labor-cost-codes"
-import { DAILY_LOG_TODO_MODES, DAILY_LOG_TODO_TYPES } from "@/lib/daily-logs/log-followups"
+import { DAILY_LOG_FOLLOW_UP_SETTINGS_GROUP, type DailyLogFollowUpSettings } from "@/lib/feature-settings/daily-log-followup-settings"
 import { PROJECT_TIMELINE_KINDS } from "@/lib/project-timeline/model"
 import { DAILY_LOG_REMINDER_AUDIENCES, TIME_PATTERN } from "@/lib/daily-logs/reminders"
 import { DEFAULT_CLIENT_FOLLOW_UP_SETTINGS, clientFollowUpSettingsSchema, type ClientFollowUpSettings } from "@/lib/client-follow-up/leaderboard"
@@ -102,7 +102,6 @@ export const squarePaymentSettingsSchema = z.object({
 })
 
 export type SquarePaymentSettings = z.infer<typeof squarePaymentSettingsSchema>
-
 
 /** One job status's client follow-up thresholds, in business days since the last client contact. */
 const projectFollowUpThresholdsSchema = z
@@ -476,32 +475,6 @@ export const dailyLogSettingsSchema = z.object({
 
 export type DailyLogSettings = z.infer<typeof dailyLogSettingsSchema>
 
-/** How daily logs create and update to-dos and record client contact. */
-export const dailyLogFollowUpSettingsSchema = z.object({
-  /** Issue and next-step lines: the crew flags them ("ask"), every line ("auto") or none ("off"). */
-  todoMode: z.enum(DAILY_LOG_TODO_MODES),
-  /** To-do kinds the crew may create from a log. */
-  todoTypes: z.array(z.enum(DAILY_LOG_TODO_TYPES)).max(DAILY_LOG_TODO_TYPES.length),
-  /** Ticking an Open to-do on a log moves it to In progress. */
-  workedMovesToInProgress: z.boolean(),
-  /** Blocked to-dos ask "still blocked?" on the next log. */
-  carryBlocked: z.boolean(),
-  /** To-dos carry a cost code. */
-  todoCostCodes: z.boolean(),
-  /** Ticking a to-do with a cost code adds a cost code line for its hours. */
-  tickAddsLine: z.boolean(),
-  /** The crew picks the cost code on a new to-do; off leaves it to the office. */
-  crewPicksCostCode: z.boolean(),
-  /** Ask "Is it finished?" once a to-do was worked on in this many logs and is still open. */
-  finishNudgeAfterLogs: z.number().int().min(1).max(30),
-  /** Show "Client contact" on daily logs. */
-  clientContact: z.boolean(),
-  /** Suggest it when Visitors names a client contact. */
-  clientContactSuggest: z.boolean(),
-})
-
-export type DailyLogFollowUpSettings = z.infer<typeof dailyLogFollowUpSettingsSchema>
-
 /** What a job's Overview timeline shows. */
 export const projectTimelineSettingsSchema = z.object({
   kinds: z.array(z.enum(PROJECT_TIMELINE_KINDS)).max(PROJECT_TIMELINE_KINDS.length),
@@ -646,23 +619,7 @@ export const FEATURE_SETTINGS: { readonly [K in FeatureSettingsKey]: FeatureSett
     },
     schema: dailyLogSettingsSchema,
   },
-  "daily-log-followups": {
-    label: "Daily log to-dos and client contact",
-    description: "How daily logs create and update to-dos and record client contact, in the browser and in Field Mode.",
-    defaults: {
-      todoMode: "ask",
-      todoTypes: [...DAILY_LOG_TODO_TYPES],
-      workedMovesToInProgress: true,
-      carryBlocked: true,
-      todoCostCodes: true,
-      tickAddsLine: true,
-      crewPicksCostCode: true,
-      finishNudgeAfterLogs: 3,
-      clientContact: true,
-      clientContactSuggest: true,
-    },
-    schema: dailyLogFollowUpSettingsSchema,
-  },
+  "daily-log-followups": DAILY_LOG_FOLLOW_UP_SETTINGS_GROUP,
   "project-timeline": {
     label: "Project timeline",
     description: "What each job's Overview shows under What's happening: daily logs, to-dos, client contact, office time, machine hours and schedule changes.",

@@ -11,11 +11,8 @@ import { Label } from "@/components/ui/label"
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
 import { Switch } from "@/components/ui/switch"
 import { DAILY_LOG_TODO_TYPE_LABELS, DAILY_LOG_TODO_TYPES, type DailyLogTodoMode } from "@/lib/daily-logs/log-followups"
-import {
-  dailyLogFollowUpSettingsSchema,
-  FEATURE_SETTINGS,
-  type DailyLogFollowUpSettings
-} from "@/lib/feature-settings/registry"
+import { dailyLogFollowUpSettingsSchema, type DailyLogFollowUpSettings } from "@/lib/feature-settings/daily-log-followup-settings"
+import { FEATURE_SETTINGS } from "@/lib/feature-settings/registry"
 
 const KEY = "daily-log-followups"
 
@@ -132,10 +129,18 @@ export function DailyLogFollowUpSettingsSection(): React.ReactElement {
           <SwitchRow
             id="daily-log-worked-progress"
             label="Move Open to-dos to In progress"
-            help="Ticking a to-do always adds the day's note to its history. Finishing a to-do is always a person's choice."
+            help="Ticking a to-do always adds the day's note to its history."
             checked={settings.workedMovesToInProgress}
             disabled={disabled}
             onChange={(workedMovesToInProgress) => update({ workedMovesToInProgress })}
+          />
+          <SwitchRow
+            id="daily-log-todos-complete"
+            label="Daily logs can complete to-dos"
+            help="Each to-do on a log can be marked Completed. It moves to your finished to-do status when the log is saved, and its history shows who signed it off on that log's date."
+            checked={settings.todosCanComplete}
+            disabled={disabled}
+            onChange={(todosCanComplete) => update({ todosCanComplete })}
           />
           <SwitchRow
             id="daily-log-carry-blocked"
