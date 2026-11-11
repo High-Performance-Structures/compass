@@ -31,6 +31,7 @@ import {
 } from "@/lib/sage/contact-proposal-service"
 import { HOLDING_SAGE_CHANGE_STATUSES, holdingSageChanges } from "@/lib/sage/sage-held-fields"
 import { SAGE_SHARED_FIELDS, sageSharedChanges, type SageLinkedEditKind } from "@/lib/sage/sage-linked-edit-fields"
+import { linkSageClientIdFromDirectory } from "@/lib/sage/client-directory-link"
 import { isSageLinkedPerson } from "@/lib/sage/contact-edit-gate"
 import { vendorCategoryFromSage } from "@/lib/sage/vendor-category-lock"
 import { requireUserContext, type Db } from "@/lib/server/action-context"
@@ -204,9 +205,12 @@ async function requestIfChanged(
   entityId: string,
   label: string,
   current: Readonly<Record<string, unknown>>,
-  submitted: Readonly<Record<string, unknown>>
+  submitted: Readonly<Record<string, unknown>>,
+  options: { readonly sendAllShared?: boolean } = {}
 ): Promise<SageEditOutcomeItem | null> {
-  const changes = sageSharedChanges(kind, current, submitted)
+  // Just linked to its Sage id: earlier edits saved in Compass only, so every
+  // Sage-shared value goes; only those that differ from Sage's read become a request.
+  const changes = sageSharedChanges(kind, options.sendAllShared ? {} : current, submitted)
   if (Object.keys(changes).length === 0) return null
   // Someone who accepted a Compass invite keeps their sign-in email; everything else is staff's to edit.
   if (Object.prototype.hasOwnProperty.call(changes, "email") && contactEmailChanged(
@@ -287,7 +291,11 @@ export async function requestSageLinkedCustomerChanges(customerId: string, input
     if (!customer.sageClientId && !customer.sageClientNumber) {
       return { success: false, error: "This client is not linked to Sage." }
     }
-    const item = await requestIfChanged(context, "client_company", customerId, customer.name, customer, parsed.data.sage)
+    // A number-only import gets its Sage id from Sage's client directory first.
+    const linkedNow = !customer.sageClientId &&
+      await linkSageClientIdFromDirectory(db, context.env.DB, organizationId, customerId)
+    const item = await requestIfChanged(context, "client_company", customerId, customer.name, customer, parsed.data.sage,
+      { sendAllShared: linkedNow })
     revalidatePath("/dashboard/contacts")
     return { success: true, data: { sage: item ? [item] : [] } }
   } catch (error) {
@@ -324,7 +332,10 @@ export async function saveSageLinkedCustomerPerson(personId: string, input: unkn
     if (!person) return { success: false, error: "Client contact not found" }
     if (!person.sageContactId) return { success: false, error: "This person is not linked to Sage." }
     await requireSageContactEditAccess(context.user, "client_person", person.userId, {})
-    const item = await requestIfChanged(context, "client_person", person.id, person.name, person, parsed.data)
+    // A Sage person is addressed through its company's Sage id (see requestSageLinkedCustomerChanges).
+    const parentLinkedNow = await linkSageClientIdFromDirectory(db, context.env.DB, organizationId, person.customerId)
+    const item = await requestIfChanged(context, "client_person", person.id, person.name, person, parsed.data,
+      { sendAllShared: parentLinkedNow })
     if (item?.outcome.status === "blocked") return { success: true, data: { sage: [item] } }
     const isPrimary = parsed.data.isPrimary
     if (isPrimary !== undefined && isPrimary !== person.isPrimary) {

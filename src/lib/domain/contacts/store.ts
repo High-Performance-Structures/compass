@@ -18,9 +18,11 @@ import { chunkD1InsertRows } from "@/lib/d1-query"
 import type { Db } from "@/lib/server/action-context"
 import { checkedListFields } from "@/lib/shared/statuses"
 import { companyMoveGuard, type CompanyReferenceMove } from "./company-merge-references"
+import { MERGE_TABLE, mergeCarryOverColumns, personMergeGuard, type CarryOverWrite } from "./merge-carry-over"
 import { insertableProjectContacts } from "./rules"
 import { PROJECT_CONTACT_LISTS, type ProjectContactType } from "./statuses"
 import { directoryPersonProjectContactsWhere, type DirectoryPersonKind } from "./person-status"
+import { SAGE_DIRECTORY, type SageDirectoryKind } from "./sage-directory"
 
 type Statement = BatchItem<"sqlite">
 
@@ -78,20 +80,14 @@ export async function insertProjectContactsIfMissing(
 }
 
 /** Only one primary contact per type on a project. */
-export async function clearProjectPrimaryContact(
-  db: Db,
-  input: { readonly projectId: string; readonly contactType: ProjectContactType; readonly now: string }
-): Promise<void> {
+export async function clearProjectPrimaryContact(db: Db, input: { readonly projectId: string; readonly contactType: ProjectContactType; readonly now: string }): Promise<void> {
   await db
     .update(projectContacts)
     .set({ primaryContact: false, updatedAt: input.now })
     .where(and(eq(projectContacts.projectId, input.projectId), eq(projectContacts.contactType, input.contactType)))
 }
 
-export async function updateProjectContact(
-  db: Db,
-  input: { readonly projectId: string; readonly contactId: string; readonly values: ProjectContactPatch }
-): Promise<void> {
+export async function updateProjectContact(db: Db, input: { readonly projectId: string; readonly contactId: string; readonly values: ProjectContactPatch }): Promise<void> {
   await db
     .update(projectContacts)
     .set(checkedListFields("project_contacts", input.values, PROJECT_CONTACT_LISTS))
@@ -99,10 +95,7 @@ export async function updateProjectContact(
 }
 
 /** Removal keeps the row for history but hides it everywhere. */
-export async function deactivateProjectContact(
-  db: Db,
-  input: { readonly projectId: string; readonly contactId: string; readonly now: string }
-): Promise<void> {
+export async function deactivateProjectContact(db: Db, input: { readonly projectId: string; readonly contactId: string; readonly now: string }): Promise<void> {
   await updateProjectContact(db, {
     projectId: input.projectId,
     contactId: input.contactId,
@@ -553,19 +546,6 @@ export function setInternalContactActiveFromSageStatement(db: Db, input: { reado
 }
 
 // --- Raw D1 writes (Sage bridge, merges, account links): bound statements for the caller's fenced batch.
-type SageDirectoryKind = "client_company" | "vendor_company" | "client_person" | "vendor_person" | "employee"
-/** Where each Sage-linked directory kind lives; people are scoped through their parent company. */
-const SAGE_DIRECTORY: Readonly<Record<SageDirectoryKind, {
-  readonly table: string; readonly sageId: string; readonly number: string; readonly synced: boolean; readonly parent?: string
-}>> = {
-  client_company: { table: "customers", sageId: "sage_client_id", number: "sage_client_number", synced: false },
-  vendor_company: { table: "vendors", sageId: "sage_vendor_id", number: "sage_vendor_number", synced: true },
-  employee: { table: "internal_contacts", sageId: "sage_employee_id", number: "sage_employee_number", synced: true },
-  client_person: { table: "customer_contacts", sageId: "sage_contact_id", number: "sage_line_number", synced: true,
-    parent: "customer_id IN (SELECT id FROM customers WHERE organization_id = ? AND sage_client_id = ?)" },
-  vendor_person: { table: "vendor_contacts", sageId: "sage_contact_id", number: "sage_line_number", synced: false,
-    parent: "vendor_id IN (SELECT id FROM vendors WHERE organization_id = ? AND sage_vendor_id = ?)" },
-}
 
 /** The Sage client the Windows writer returned for a customer; skipped while another client holds it (a duplicate to merge), since the unique index would fail the whole result batch. */
 export function sageClientWriteResultCustomerStatement(database: D1Database, input: {
@@ -575,6 +555,14 @@ export function sageClientWriteResultCustomerStatement(database: D1Database, inp
     WHERE id = ? AND NOT EXISTS (SELECT 1 FROM customers other WHERE other.id <> customers.id AND other.organization_id IS customers.organization_id
       AND (upper(other.sage_client_id) = upper(?) OR other.sage_client_number = ?))`)
     .bind(input.sageClientId, input.sageClientNumber, input.sageClientStatusId, input.now, input.customerId, input.sageClientId, input.sageClientNumber)
+}
+
+/** Fills a still number-only client's Sage id from Sage's client directory unless another client holds that id or number. */
+export function sageClientIdFromDirectoryStatement(database: D1Database, input: { readonly customerId: string; readonly organizationId: string; readonly sageClientId: string; readonly sageClientNumber: string; readonly now: string }): D1PreparedStatement {
+  return database.prepare(`UPDATE customers SET sage_client_id = ?, updated_at = ? WHERE id = ? AND organization_id = ? AND merged_into_customer_id IS NULL
+    AND (sage_client_id IS NULL OR trim(sage_client_id) = '') AND trim(sage_client_number) = ? AND NOT EXISTS (SELECT 1 FROM customers other
+      WHERE other.id <> customers.id AND other.organization_id = customers.organization_id AND (upper(other.sage_client_id) = upper(?) OR trim(other.sage_client_number) = ?))`)
+    .bind(input.sageClientId, input.now, input.customerId, input.organizationId, input.sageClientNumber, input.sageClientId, input.sageClientNumber)
 }
 
 /** Applies a verified Sage snapshot's `assignments` to the still-linked directory row; `binds` follow the SQL. */
@@ -673,7 +661,14 @@ export function contactMergeEventStatement(database: D1Database, input: ContactM
       input.sourceSnapshot, input.destinationSnapshot, input.peopleCount, input.projectContactCount, input.userId, input.now)
 }
 
-/** A people merge as one atomic batch: the audit event, then the moves (the project-contact scope trigger checks the child's current parent). */
+/** The kept record takes the archived one's contact fields (only columns merge-carry-over.ts allows) while `guard` sees the source live. */
+export function mergeCarryOverStatements(database: D1Database, input: CarryOverWrite): D1PreparedStatement[] {
+  const entries = Object.entries(input.values).filter(([column]) => mergeCarryOverColumns(input.kind).includes(column))
+  return entries.length === 0 ? [] : [database.prepare(`UPDATE ${MERGE_TABLE[input.kind]} SET ${entries.map(([column]) => `${column} = ?`).join(", ")}, updated_at = ? WHERE id = ? AND ${input.guard.sql}`)
+    .bind(...entries.map(([, value]) => value), input.now, input.destinationId, ...input.guard.binds)]
+}
+
+/** A people merge as one atomic batch: the audit event, the moves (the project-contact scope trigger checks the child's current parent), earlier duplicates re-pointed to the kept person (pointers stay one hop), then the archive. */
 export function contactMergeStatements(
   database: D1Database, input: ContactMergeWrite & { readonly kind: "customer_person" | "vendor_person" }
 ): D1PreparedStatement[] {
@@ -681,6 +676,7 @@ export function contactMergeStatements(
   return [contactMergeEventStatement(database, input), projectContactMoveStatement(database, `${parent}_contact_id`, `${parent}_contact`, input),
     database.prepare(`UPDATE ${people} SET is_primary = 1, updated_at = ? WHERE id = ? AND EXISTS (SELECT 1 FROM ${people} WHERE id = ? AND is_primary = 1)`)
       .bind(input.now, input.destinationId, input.sourceId),
+    database.prepare(`UPDATE ${people} SET merged_into_person_id = ?, updated_at = ? WHERE merged_into_person_id = ? AND ${personMergeGuard(input.kind, input.sourceId).sql}`).bind(input.destinationId, input.now, input.sourceId, input.sourceId),
     database.prepare(`UPDATE ${people} SET active = 0, merged_into_person_id = ?, is_primary = 0, updated_at = ? WHERE id = ? AND active = 1 AND merged_into_person_id IS NULL`)
       .bind(input.destinationId, input.now, input.sourceId)]
 }

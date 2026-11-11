@@ -103,7 +103,10 @@ describe("HPS Test child-contact add probe", () => {
 describe("production contact Add boundary", () => {
   it("keeps contact polling sequential and disabled unless explicitly enabled", () => {
     expect(entrypoint).toContain('Environment.GetEnvironmentVariable("SAGE_CONTACT_BRIDGE_ENABLED")')
-    expect(entrypoint.indexOf("PollOnce();")).toBeLessThan(entrypoint.indexOf("RunContactBridge() != 0"))
+    // Its own process: PollOnce already used this process's one Sage API session.
+    expect(entrypoint.indexOf("PollOnce();")).toBeLessThan(
+      entrypoint.indexOf('RunStageInChildProcess("--contact-run", "Sage contact bridge")'))
+    expect(entrypoint).not.toContain("RunContactBridge() != 0")
     expect(writer).toContain('Environment.GetEnvironmentVariable("SAGE_CONTACT_CREATES_ENABLED")')
     expect(writer).toContain('Environment.GetEnvironmentVariable("SAGE_CONTACT_WRITES_ENABLED")')
     const transport = writer.split("private static string SendContact(string method, string target, string body)")[1] ?? ""
@@ -114,14 +117,20 @@ describe("production contact Add boundary", () => {
   })
 
   it("marks an API Add attempted before submission and reads back the new child", () => {
-    const creation = writer.split("private static void ProcessContactCreate(ContactTask task)")[1]
+    const prepare = writer.split("private static PendingContactWrite PrepareContactCreate(ContactTask task)")[1]
+      ?.split("private static void SubmitContactWrites")[0] ?? ""
+    const submit = writer.split("private static void SubmitContactWrites")[1]
+      ?.split("private static void FinishContactWrite")[0] ?? ""
+    const finish = writer.split("private static void FinishContactCreate(PendingContactWrite item)")[1]
       ?.split("private static void PostContactCreateResult")[0] ?? ""
-    expect(creation).not.toBe("")
-    expect(creation).toContain("attempted = true; // An API timeout does not prove that Sage rolled back the Add.")
-    expect(creation.indexOf("using (new ApiSession(")).toBeLessThan(creation.indexOf("attempted = true;"))
-    expect(creation.indexOf("attempted = true;")).toBeLessThan(creation.indexOf("Submit(xml,"))
-    expect(creation).toContain("ReadContactChildRows(TargetCompany, task.kind, task.parentSageRecordId)")
-    expect(creation).toContain("TestChildRowsPreserved(before, after)")
-    expect(creation).toContain("QueryContact(TargetCompany, added)")
+    expect(prepare).not.toBe("")
+    expect(prepare).toContain("item.ChildRowsBefore = ReadContactChildRows(TargetCompany, task.kind, task.parentSageRecordId)")
+    expect(submit).toContain("item.Attempted = true; // An API timeout does not prove that Sage rolled back the change.")
+    expect(submit.indexOf("using (new ApiSession(")).toBeLessThan(submit.indexOf("item.Attempted = true;"))
+    expect(submit.indexOf("item.Attempted = true;")).toBeLessThan(submit.indexOf("Submit(item.Xml,"))
+    expect(finish).toContain("ReadContactChildRows(TargetCompany, task.kind, task.parentSageRecordId)")
+    expect(finish).toContain("TestChildRowsPreserved(before, after)")
+    expect(finish).toContain("QueryContact(TargetCompany, added)")
+    expect(finish).toContain("PostContactCreateResult(task, null, error.Message, item.Attempted)")
   })
 })

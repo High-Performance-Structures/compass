@@ -17,10 +17,69 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
+import { Label } from "@/components/ui/label"
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
 import { SearchableCombobox } from "@/components/searchable-combobox"
+import type { MergeFieldChange, MergeFieldChoice } from "@/lib/domain/contacts/merge-carry-over"
 
 type MergeKind = "customer_company" | "vendor_company" | "customer_person" | "vendor_person"
 type Choice = { readonly id: string; readonly name: string; readonly email: string | null }
+
+/**
+ * Every contact field the merge changes on the kept record: blanks it fills
+ * from the archived record, fields both fill differently (staff pick; the kept
+ * record's value by default), and a sign-in email that stays as it is.
+ */
+function FieldChanges({ changes, choices, onChoose, sageLinked }: {
+  readonly changes: readonly MergeFieldChange[]
+  readonly choices: Readonly<Record<string, MergeFieldChoice>>
+  readonly onChoose: (key: string, choice: MergeFieldChoice) => void
+  readonly sageLinked: boolean
+}): React.ReactElement {
+  if (changes.length === 0) {
+    return <p>Contact details: nothing to carry over. The kept record already has every detail the archived one has.</p>
+  }
+  return (
+    <div className="space-y-2">
+      <p className="font-medium">Contact details on the kept record</p>
+      <ul className="space-y-2">
+        {changes.map((change) => (
+          <li key={change.key} className="space-y-1">
+            <p className="font-medium">{change.label}</p>
+            {change.action === "fill" ? (
+              <p>Blank on the kept record; takes <span className="font-medium">{change.mergedValue}</span>.</p>
+            ) : change.action === "locked" ? (
+              <p className="text-muted-foreground">
+                Stays {change.keptValue ?? "blank"}: it is the sign-in email of someone who accepted a Compass invite. The archived record keeps {change.mergedValue}.
+              </p>
+            ) : (
+              <RadioGroup
+                value={choices[change.key] ?? "kept"}
+                className="grid gap-2 sm:grid-cols-2"
+                onValueChange={(next) => { if (next === "kept" || next === "merged") onChoose(change.key, next) }}
+              >
+                <Label htmlFor={`merge-${change.key}-kept`} className="flex items-start gap-2 font-normal">
+                  <RadioGroupItem id={`merge-${change.key}-kept`} value="kept" className="mt-0.5" />
+                  <span>Keep <span className="font-medium">{change.keptValue}</span></span>
+                </Label>
+                <Label htmlFor={`merge-${change.key}-merged`} className="flex items-start gap-2 font-normal">
+                  <RadioGroupItem id={`merge-${change.key}-merged`} value="merged" className="mt-0.5" />
+                  <span>Use <span className="font-medium">{change.mergedValue}</span></span>
+                </Label>
+              </RadioGroup>
+            )}
+          </li>
+        ))}
+      </ul>
+      {sageLinked ? (
+        <p className="text-muted-foreground">
+          The kept record is linked to Sage. Compass shows these details at once; Sage fields go to Sage as a change request for review, like any edit.
+        </p>
+      ) : null}
+      <p className="text-muted-foreground">Values not used stay on the archived record and in the merge audit.</p>
+    </div>
+  )
+}
 
 export function ContactMergeDialog({
   kind,
@@ -40,6 +99,7 @@ export function ContactMergeDialog({
   const [preview, setPreview] = React.useState<ContactMergePreview | null>(null)
   const [confirmed, setConfirmed] = React.useState(false)
   const [busy, setBusy] = React.useState(false)
+  const [fieldChoices, setFieldChoices] = React.useState<Readonly<Record<string, MergeFieldChoice>>>({})
   const source = choices?.find((choice) => choice.id !== keepId)
   const destination = choices?.find((choice) => choice.id === keepId)
 
@@ -54,6 +114,7 @@ export function ContactMergeDialog({
     let active = true
     setPreview(null)
     setConfirmed(false)
+    setFieldChoices({})
     void previewContactMerge({ kind, sourceId: source.id, destinationId: destination.id }).then((result) => {
       if (!active) return
       if (result.success) setPreview(result.preview)
@@ -66,7 +127,7 @@ export function ContactMergeDialog({
     if (!source || !destination || !preview || preview.blockers.length > 0 || !confirmed) return
     setBusy(true)
     try {
-      const result = await mergeDuplicateContacts({ kind, sourceId: source.id, destinationId: destination.id })
+      const result = await mergeDuplicateContacts({ kind, sourceId: source.id, destinationId: destination.id, choices: fieldChoices })
       if (!result.success) { toast.error(result.error); return }
       toast.success("Duplicates merged. The archived record and audit history are retained.")
       if (result.warning) toast.warning(result.warning)
@@ -79,12 +140,13 @@ export function ContactMergeDialog({
 
   return (
     <Dialog open={choices !== null || picker !== undefined} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-xl">
+      <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-xl">
         <DialogHeader>
           <DialogTitle>Merge duplicate {kind.endsWith("company") ? "companies" : "people"}</DialogTitle>
           <DialogDescription>
             Choose the record to keep. The other is archived and everything linked to it is moved.
-            This does not merge Sage records, grant Compass access, or overwrite the survivor&apos;s contact fields.
+            Blank contact details on the kept record are filled from the other; where both differ, you choose.
+            This does not merge Sage records or grant Compass access.
           </DialogDescription>
         </DialogHeader>
         {picker}
@@ -117,8 +179,15 @@ export function ContactMergeDialog({
                     </div>
                   ) : null}
                   {preview.warnings.map((warning) => <p key={warning} className="text-muted-foreground">{warning}</p>)}
-                  <p className="text-muted-foreground">Review any different phone, email, or address details before continuing; the survivor&apos;s fields stay unchanged.</p>
                   {preview.retainedIdentityNotice ? <p className="text-muted-foreground">{preview.retainedIdentityNotice}</p> : null}
+                </div>
+                <div className="border-b pb-3">
+                  <FieldChanges
+                    changes={preview.fieldChanges}
+                    choices={fieldChoices}
+                    sageLinked={preview.survivorSageLinked}
+                    onChoose={(key, choice) => setFieldChoices((current) => ({ ...current, [key]: choice }))}
+                  />
                 </div>
                 {preview.blockers.length > 0 ? (
                   <div className="space-y-1 text-destructive">
@@ -127,7 +196,7 @@ export function ContactMergeDialog({
                 ) : (
                   <label className="flex items-start gap-2">
                     <Checkbox checked={confirmed} onCheckedChange={(value) => setConfirmed(value === true)} />
-                    <span>I checked both records and want to keep {preview.destinationName}. I understand the archived details stay in the merge audit, not in the survivor&apos;s fields.</span>
+                    <span>I checked both records and want to keep {preview.destinationName}. The contact details listed above change on it as shown.</span>
                   </label>
                 )}
               </>

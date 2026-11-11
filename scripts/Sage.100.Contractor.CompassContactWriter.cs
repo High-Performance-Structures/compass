@@ -812,18 +812,29 @@ namespace CompassSageClientProjectWriter
                 ContactEnvelope envelope = Json.Deserialize<ContactEnvelope>(json);
                 if (envelope == null) throw new InvalidOperationException("Compass returned no contact queue envelope.");
                 foreach (ContactTask read in envelope.reads ?? new ContactTask[0])
-                    ProcessContactTask(read, false);
+                    ProcessContactRead(read);
                 if (envelope.writes != null && envelope.writes.Length > 0 &&
                     !String.Equals(Environment.GetEnvironmentVariable("SAGE_CONTACT_WRITES_ENABLED"), "true", StringComparison.OrdinalIgnoreCase))
                     throw new InvalidOperationException("Local Sage contact write switch is disabled.");
-                foreach (ContactTask write in envelope.writes ?? new ContactTask[0])
-                    ProcessContactTask(write, true);
                 if (envelope.creates != null && envelope.creates.Length > 0 &&
                     (!String.Equals(Environment.GetEnvironmentVariable("SAGE_CONTACT_WRITES_ENABLED"), "true", StringComparison.OrdinalIgnoreCase) ||
                      !String.Equals(Environment.GetEnvironmentVariable("SAGE_CONTACT_CREATES_ENABLED"), "true", StringComparison.OrdinalIgnoreCase)))
                     throw new InvalidOperationException("Local Sage contact create switch is disabled.");
+                List<PendingContactWrite> pending = new List<PendingContactWrite>();
+                foreach (ContactTask write in envelope.writes ?? new ContactTask[0])
+                    pending.Add(PrepareContactWrite(write));
                 foreach (ContactTask create in envelope.creates ?? new ContactTask[0])
-                    ProcessContactCreate(create);
+                    pending.Add(PrepareContactCreate(create));
+                // Sage allows ONE API session per process: a second one fails
+                // inside IMBXML.EnableRequests with "Object reference not set to
+                // an instance of an object." So every write and Add of this poll
+                // shares one session, and read-backs run after its Dispose commits.
+                SubmitContactWrites(pending);
+                foreach (PendingContactWrite item in pending)
+                {
+                    if (item.Create) FinishContactCreate(item);
+                    else FinishContactWrite(item);
+                }
                 ClientDirectoryEnvelope directory = Json.Deserialize<ClientDirectoryEnvelope>(
                     SendContact("GET", ClientDirectoryTarget, ""));
                 if (directory != null && directory.refresh != null)
@@ -889,21 +900,44 @@ namespace CompassSageClientProjectWriter
             SendContact("POST", ClientDirectoryTarget, directoryJson.Serialize(result));
         }
 
-        private static void ProcessContactTask(ContactTask task, bool write)
+        /** One approved write or Add, prepared before the shared Sage API session. */
+        private sealed class PendingContactWrite
+        {
+            public ContactTask Task;
+            public bool Create;
+            public string Xml;        // null when Sage already holds the approved values
+            public bool Attempted;    // the XML went to Sage; an error does not prove a rollback
+            public string Error;
+            public Dictionary<string, string> ChildRowsBefore; // Adds only
+        }
+
+        private static void RequireContactClaim(ContactTask task)
         {
             if (task == null || String.IsNullOrWhiteSpace(task.id) || String.IsNullOrWhiteSpace(task.claimToken))
                 throw new InvalidOperationException("Sage contact claim is incomplete.");
             if (!String.Equals(task.organizationId, Required("SAGE_CONTACT_ORGANIZATION_ID"), StringComparison.Ordinal))
                 throw new InvalidOperationException("Sage contact claim targets the wrong Compass organization.");
-            string type = write ? "write" : "read";
+        }
+
+        private static void ProcessContactRead(ContactTask task)
+        {
+            RequireContactClaim(task);
+            try { PostContactResult("read", task, QueryContact(TargetCompany, task), null); }
+            catch (Exception error)
+            {
+                WriteLog("ERROR", "Contact " + task.id + " failed: " + error.Message);
+                PostContactResult("read", task, null, error.Message);
+            }
+        }
+
+        /** Checks the approved change against a fresh Sage read; no API call yet. */
+        private static PendingContactWrite PrepareContactWrite(ContactTask task)
+        {
+            RequireContactClaim(task);
+            PendingContactWrite item = new PendingContactWrite { Task = task };
             try
             {
                 ContactSnapshot before = QueryContact(TargetCompany, task);
-                if (!write)
-                {
-                    PostContactResult(type, task, before, null);
-                    return;
-                }
                 if (task.changes == null || task.changes.Length == 0)
                     throw new InvalidOperationException("Approved proposal has no changes.");
                 if (!String.Equals(before.sageRecordId, task.sageRecordId, StringComparison.Ordinal) ||
@@ -912,7 +946,7 @@ namespace CompassSageClientProjectWriter
                 bool alreadyApplied = true;
                 foreach (ContactChange change in task.changes)
                 {
-                    if (!before.fields.ContainsKey(change.field))
+                    if (change == null || change.field == null || !before.fields.ContainsKey(change.field))
                         throw new InvalidOperationException("Approved proposal contains an unsupported field.");
                     if (!String.Equals(before.fields[change.field] ?? "", change.after ?? "", StringComparison.Ordinal))
                         alreadyApplied = false;
@@ -924,28 +958,22 @@ namespace CompassSageClientProjectWriter
                     foreach (ContactChange change in task.changes)
                         if (!String.Equals(before.fields[change.field] ?? "", change.before ?? "", StringComparison.Ordinal))
                             throw new InvalidOperationException("Approved before-value differs from Sage; no write attempted.");
-                    string xml = BuildContactXml(task.kind, Convert.ToInt32(before.sageRecordNumber),
+                    item.Xml = BuildContactXml(task.kind, Convert.ToInt32(before.sageRecordNumber),
                         ContactParentNumber(TargetCompany, task), task.changes, TargetCompany);
-                    using (new ApiSession(Required("SAGE_API_USER"), Required("SAGE_API_PASSWORD")))
-                        Submit(xml, Required("SAGE_API_PASSWORD"));
                 }
-                ContactSnapshot after = QueryContact(TargetCompany, task);
-                PostContactResult(type, task, after, null);
             }
-            catch (Exception error)
-            {
-                WriteLog("ERROR", "Contact " + task.id + " failed: " + error.Message);
-                PostContactResult(type, task, null, error.Message);
-            }
+            catch (Exception error) { item.Error = error.Message; }
+            return item;
         }
 
-        private static void ProcessContactCreate(ContactTask task)
+        /** Validates an approved Add and records the parent's current children; no API call yet. */
+        private static PendingContactWrite PrepareContactCreate(ContactTask task)
         {
             if (task == null || String.IsNullOrWhiteSpace(task.id) || String.IsNullOrWhiteSpace(task.claimToken) ||
                 String.IsNullOrWhiteSpace(task.parentSageRecordId) || String.IsNullOrWhiteSpace(task.companyId) ||
                 !String.Equals(task.organizationId, Required("SAGE_CONTACT_ORGANIZATION_ID"), StringComparison.Ordinal))
                 throw new InvalidOperationException("Sage child Add claim is incomplete or outside this organization.");
-            bool attempted = false;
+            PendingContactWrite item = new PendingContactWrite { Task = task, Create = true };
             try
             {
                 if ((task.kind != "client_person" && task.kind != "vendor_person") || task.fields == null ||
@@ -961,14 +989,69 @@ namespace CompassSageClientProjectWriter
                     proposed[index] = new ContactChange { field = field.Key, after = task.fields[field.Key] };
                 }
                 int parentNumber = ContactParentNumber(TargetCompany, task);
-                Dictionary<string, string> before = ReadContactChildRows(TargetCompany, task.kind, task.parentSageRecordId);
-                string xml = BuildContactChildAddXml(task.kind, parentNumber, proposed, TargetCompany);
-                string password = Required("SAGE_API_PASSWORD");
+                item.ChildRowsBefore = ReadContactChildRows(TargetCompany, task.kind, task.parentSageRecordId);
+                item.Xml = BuildContactChildAddXml(task.kind, parentNumber, proposed, TargetCompany);
+            }
+            catch (Exception error) { item.Error = error.Message; }
+            return item;
+        }
+
+        /**
+         * Sends every prepared write and Add through ONE Sage API session.
+         * Sage commits accepted requests when the session's Dispose completes,
+         * so no read-back happens inside it.
+         */
+        private static void SubmitContactWrites(List<PendingContactWrite> pending)
+        {
+            List<PendingContactWrite> submit = new List<PendingContactWrite>();
+            foreach (PendingContactWrite item in pending)
+                if (item.Error == null && item.Xml != null) submit.Add(item);
+            if (submit.Count == 0) return;
+            string password = Required("SAGE_API_PASSWORD");
+            try
+            {
                 using (new ApiSession(Required("SAGE_API_USER"), password))
                 {
-                    attempted = true; // An API timeout does not prove that Sage rolled back the Add.
-                    Submit(xml, password);
+                    foreach (PendingContactWrite item in submit)
+                    {
+                        item.Attempted = true; // An API timeout does not prove that Sage rolled back the change.
+                        try { Submit(item.Xml, password); }
+                        catch (Exception error) { item.Error = error.Message; }
+                    }
                 }
+            }
+            catch (Exception error)
+            {
+                // The session did not open, or its commit failed.
+                foreach (PendingContactWrite item in submit)
+                    if (item.Error == null) item.Error = "Sage API session failed: " + error.Message;
+            }
+        }
+
+        private static void FinishContactWrite(PendingContactWrite item)
+        {
+            ContactTask task = item.Task;
+            try
+            {
+                if (item.Error != null) throw new InvalidOperationException(item.Error);
+                // Compass applies only this fresh read-back after the write.
+                ContactSnapshot after = QueryContact(TargetCompany, task);
+                PostContactResult("write", task, after, null);
+            }
+            catch (Exception error)
+            {
+                WriteLog("ERROR", "Contact " + task.id + " failed: " + error.Message);
+                PostContactResult("write", task, null, error.Message);
+            }
+        }
+
+        private static void FinishContactCreate(PendingContactWrite item)
+        {
+            ContactTask task = item.Task;
+            try
+            {
+                if (item.Error != null) throw new InvalidOperationException(item.Error);
+                Dictionary<string, string> before = item.ChildRowsBefore;
                 Dictionary<string, string> after = ReadContactChildRows(TargetCompany, task.kind, task.parentSageRecordId);
                 if (after.Count != before.Count + 1 || !TestChildRowsPreserved(before, after))
                     throw new InvalidOperationException("Sage child Add did not produce exactly one new child.");
@@ -990,7 +1073,7 @@ namespace CompassSageClientProjectWriter
             catch (Exception error)
             {
                 WriteLog("ERROR", "Sage child Add " + task.id + " failed: " + error.Message);
-                PostContactCreateResult(task, null, error.Message, attempted);
+                PostContactCreateResult(task, null, error.Message, item.Attempted);
             }
         }
 

@@ -16,9 +16,13 @@
  * The directory tables are joined under their own aliases (`dir_*`), so a
  * query may also join `customers`, `vendors` or `users` for its own reasons.
  *
- * Known gap (kept on purpose for now): a vendor whose directory_status is not
- * 'active' or that was merged into another vendor (and a client merged into
- * another client) still resolves; those rows are being retargeted separately.
+ * Merges: a project contact whose client, vendor or person was merged into
+ * another reads the surviving record. The record the row names is joined as
+ * `*_linked_*`, and the directory record is that one or, when it carries a
+ * merge pointer, the record it was merged into (one hop: merges re-point
+ * earlier duplicates to the survivor and refuse a merged survivor). A
+ * merged survivor, or a vendor that is not active (excluded without a
+ * survivor), is not reachable, so the row falls back to its copy.
  */
 import { getTableName, sql, type SQL } from "drizzle-orm"
 import { alias, type AnySQLiteColumn, type SQLiteSelect, type SQLiteTable } from "drizzle-orm/sqlite-core"
@@ -48,18 +52,27 @@ type ContactRefs = Refs<
 >
 
 type DirectoryRefs = {
-  readonly customers: Refs<"id" | "organizationId" | "name" | "company" | "email" | "phone" | "address">
+  readonly linkedCustomers: Refs<"id" | "organizationId" | "mergedIntoCustomerId">
+  readonly customers: Refs<"id" | "organizationId" | "mergedIntoCustomerId" | "name" | "company" | "email" | "phone" | "address">
+  readonly linkedCustomerContacts: Refs<"id" | "mergedIntoPersonId">
   readonly customerContacts: Refs<"id" | "customerId" | "active" | "name" | "email" | "phone">
-  readonly vendors: Refs<"id" | "organizationId" | "name" | "email" | "phone" | "address">
+  readonly linkedVendors: Refs<"id" | "organizationId" | "mergedIntoVendorId">
+  readonly vendors: Refs<"id" | "organizationId" | "mergedIntoVendorId" | "directoryStatus" | "name" | "email" | "phone" | "address">
+  readonly linkedVendorContacts: Refs<"id" | "mergedIntoPersonId">
   readonly vendorContacts: Refs<"id" | "vendorId" | "active" | "name" | "email" | "phone">
   readonly internalContacts: Refs<"id" | "organizationId" | "active" | "name" | "email" | "phone">
   readonly users: Refs<"id" | "email" | "phone">
 }
 
+/** The record a row names (`linked*`) and the directory record it reads (itself, or its merge survivor). */
 const DIRECTORY_SOURCES = {
+  linkedCustomers: customers,
   customers,
+  linkedCustomerContacts: customerContacts,
   customerContacts,
+  linkedVendors: vendors,
   vendors,
+  linkedVendorContacts: vendorContacts,
   vendorContacts,
   internalContacts,
   users,
@@ -67,11 +80,15 @@ const DIRECTORY_SOURCES = {
 
 type DirectoryKey = keyof typeof DIRECTORY_SOURCES
 
-/** Join order: a person joins after its company (its ON reads the company). */
-const JOIN_ORDER: readonly DirectoryKey[] = ["customers", "customerContacts", "vendors", "vendorContacts", "users", "internalContacts"]
+/** Join order: a survivor joins after the record it follows, and a person after its company (its ON reads them). */
+const JOIN_ORDER: readonly DirectoryKey[] = [
+  "linkedCustomers", "customers", "linkedCustomerContacts", "customerContacts",
+  "linkedVendors", "vendors", "linkedVendorContacts", "vendorContacts", "users", "internalContacts",
+]
 
 function aliasName(prefix: string, key: DirectoryKey): string {
-  return `${prefix}_${getTableName(DIRECTORY_SOURCES[key])}`
+  const table = getTableName(DIRECTORY_SOURCES[key])
+  return key.startsWith("linked") ? `${prefix}_linked_${table}` : `${prefix}_${table}`
 }
 
 function trimmed(column: Ref): SQL {
@@ -175,18 +192,25 @@ function projectOrganization(pc: ContactRefs): SQL {
 
 /**
  * The directory join conditions. Records outside the organization, archived
- * people (inactive customer/vendor/internal contacts) and users who are not
- * members do not match, so the row falls back to its copy.
+ * people (inactive customer/vendor/internal contacts), merged or inactive
+ * companies and users who are not members do not match, so the row falls
+ * back to its copy. A merged record is followed one hop to its survivor.
  */
 function joinConditions(pc: ContactRefs, dir: DirectoryRefs, organization: SQL): Readonly<Record<DirectoryKey, SQL>> {
   return {
-    customers: sql`(${pc.customerId} = ${dir.customers.id} or (${pc.sourceEntityType} = 'customer' and ${pc.sourceEntityId} = ${dir.customers.id}))
-      and ${dir.customers.organizationId} = ${organization}`,
-    customerContacts: sql`${pc.customerContactId} = ${dir.customerContacts.id}
+    linkedCustomers: sql`(${pc.customerId} = ${dir.linkedCustomers.id} or (${pc.sourceEntityType} = 'customer' and ${pc.sourceEntityId} = ${dir.linkedCustomers.id}))
+      and ${dir.linkedCustomers.organizationId} = ${organization}`,
+    customers: sql`${dir.customers.id} = coalesce(${dir.linkedCustomers.mergedIntoCustomerId}, ${dir.linkedCustomers.id})
+      and ${dir.customers.organizationId} = ${organization} and ${dir.customers.mergedIntoCustomerId} is null`,
+    linkedCustomerContacts: sql`${pc.customerContactId} = ${dir.linkedCustomerContacts.id}`,
+    customerContacts: sql`${dir.customerContacts.id} = coalesce(${dir.linkedCustomerContacts.mergedIntoPersonId}, ${dir.linkedCustomerContacts.id})
       and ${dir.customerContacts.customerId} = ${dir.customers.id} and ${dir.customerContacts.active} = 1`,
-    vendors: sql`(${pc.vendorId} = ${dir.vendors.id} or (${pc.sourceEntityType} = 'vendor' and ${pc.sourceEntityId} = ${dir.vendors.id}))
-      and ${dir.vendors.organizationId} = ${organization}`,
-    vendorContacts: sql`${pc.vendorContactId} = ${dir.vendorContacts.id}
+    linkedVendors: sql`(${pc.vendorId} = ${dir.linkedVendors.id} or (${pc.sourceEntityType} = 'vendor' and ${pc.sourceEntityId} = ${dir.linkedVendors.id}))
+      and ${dir.linkedVendors.organizationId} = ${organization}`,
+    vendors: sql`${dir.vendors.id} = coalesce(${dir.linkedVendors.mergedIntoVendorId}, ${dir.linkedVendors.id})
+      and ${dir.vendors.organizationId} = ${organization} and ${dir.vendors.mergedIntoVendorId} is null and ${dir.vendors.directoryStatus} = 'active'`,
+    linkedVendorContacts: sql`${pc.vendorContactId} = ${dir.linkedVendorContacts.id}`,
+    vendorContacts: sql`${dir.vendorContacts.id} = coalesce(${dir.linkedVendorContacts.mergedIntoPersonId}, ${dir.linkedVendorContacts.id})
       and ${dir.vendorContacts.vendorId} = ${dir.vendors.id} and ${dir.vendorContacts.active} = 1`,
     users: sql`${pc.sourceEntityType} = 'user' and ${pc.sourceEntityId} = ${dir.users.id}
       and exists (select 1 from ${organizationMembers} where ${organizationMembers.userId} = ${dir.users.id} and ${organizationMembers.organizationId} = ${organization})`,
@@ -198,9 +222,13 @@ function joinConditions(pc: ContactRefs, dir: DirectoryRefs, organization: SQL):
 // ---- join form ------------------------------------------------------------
 
 const JOINED_TABLES = {
+  linkedCustomers: alias(customers, aliasName("dir", "linkedCustomers")),
   customers: alias(customers, aliasName("dir", "customers")),
+  linkedCustomerContacts: alias(customerContacts, aliasName("dir", "linkedCustomerContacts")),
   customerContacts: alias(customerContacts, aliasName("dir", "customerContacts")),
+  linkedVendors: alias(vendors, aliasName("dir", "linkedVendors")),
   vendors: alias(vendors, aliasName("dir", "vendors")),
+  linkedVendorContacts: alias(vendorContacts, aliasName("dir", "linkedVendorContacts")),
   vendorContacts: alias(vendorContacts, aliasName("dir", "vendorContacts")),
   internalContacts: alias(internalContacts, aliasName("dir", "internalContacts")),
   users: alias(users, aliasName("dir", "users")),
@@ -217,7 +245,7 @@ export const resolvedContactColumns: ResolvedColumns = buildResolvedColumns(proj
  * Add the directory left joins to a dynamic select that reads
  * project_contacts (as its FROM table or a join). Pass the organization when
  * the caller knows it; otherwise the joins are scoped to the project's own
- * organization. Six left joins on primary keys, each matching at most one
+ * organization. Ten left joins on primary keys (the named record, then its survivor), each matching at most one
  * row: no unions, no fan-out.
  */
 export function withContactDirectory<T extends SQLiteSelect>(query: T, organizationId?: string): T {
@@ -236,9 +264,13 @@ export function withContactDirectory<T extends SQLiteSelect>(query: T, organizat
 const CORRELATED_PREFIX = "rdir"
 const CORRELATED_CONTACT = alias(projectContacts, `${CORRELATED_PREFIX}_project_contact`)
 const CORRELATED_TABLES = {
+  linkedCustomers: alias(customers, aliasName(CORRELATED_PREFIX, "linkedCustomers")),
   customers: alias(customers, aliasName(CORRELATED_PREFIX, "customers")),
+  linkedCustomerContacts: alias(customerContacts, aliasName(CORRELATED_PREFIX, "linkedCustomerContacts")),
   customerContacts: alias(customerContacts, aliasName(CORRELATED_PREFIX, "customerContacts")),
+  linkedVendors: alias(vendors, aliasName(CORRELATED_PREFIX, "linkedVendors")),
   vendors: alias(vendors, aliasName(CORRELATED_PREFIX, "vendors")),
+  linkedVendorContacts: alias(vendorContacts, aliasName(CORRELATED_PREFIX, "linkedVendorContacts")),
   vendorContacts: alias(vendorContacts, aliasName(CORRELATED_PREFIX, "vendorContacts")),
   internalContacts: alias(internalContacts, aliasName(CORRELATED_PREFIX, "internalContacts")),
   users: alias(users, aliasName(CORRELATED_PREFIX, "users")),
@@ -289,10 +321,10 @@ export function contactDirectoryRecordReachable(): SQL {
     return sql`exists (select 1 from ${tables} where ${conditions})`
   }
   const condition = sql`(case
-    when ${pc.customerContactId} is not null then ${reachable("customers", "customerContacts")}
-    when ${pc.vendorContactId} is not null then ${reachable("vendors", "vendorContacts")}
-    when ${pc.customerId} is not null or ${pc.sourceEntityType} = 'customer' then ${reachable("customers")}
-    when ${pc.vendorId} is not null or ${pc.sourceEntityType} = 'vendor' then ${reachable("vendors")}
+    when ${pc.customerContactId} is not null then ${reachable("linkedCustomers", "customers", "linkedCustomerContacts", "customerContacts")}
+    when ${pc.vendorContactId} is not null then ${reachable("linkedVendors", "vendors", "linkedVendorContacts", "vendorContacts")}
+    when ${pc.customerId} is not null or ${pc.sourceEntityType} = 'customer' then ${reachable("linkedCustomers", "customers")}
+    when ${pc.vendorId} is not null or ${pc.sourceEntityType} = 'vendor' then ${reachable("linkedVendors", "vendors")}
     when ${pc.internalContactId} is not null then ${reachable("internalContacts")}
     when ${pc.sourceEntityType} = 'user' then ${reachable("users")}
     else 0
