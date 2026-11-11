@@ -1,5 +1,5 @@
 -- READ ONLY. Confirms the legacy Buildertrend archive shape that
--- scripts/import-buildertrend-messages.mjs assumes, and produces the
+-- the Buildertrend message importer (retired 2026-11-10) assumed, and produces the
 -- importer's pre-check file (see docs/plans/bt-messages-live-conversations.md):
 --   converted   `bt-message-archive-<digits>` channels holding
 --               `bt-message-<digits>-<digits>` rows

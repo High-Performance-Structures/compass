@@ -1,16 +1,16 @@
 import { sql, type SQL } from "drizzle-orm"
 
-import { isFullPersonText } from "../../../../scripts/import-buildertrend-participants.mjs"
 import { containsPattern, type RecordPage, type RecordPageQuery } from "@/lib/record-page"
 import { cleanText, field, finiteNumber, isRecord } from "@/lib/shared/guards"
 import type { Db } from "@/lib/server/action-context"
 
+import { isFullPersonText } from "./bt-participant-identity"
 import { IDENTITY_KEY_SQL } from "./participant-matching"
 
 /*
  * Imported conversation participants the importer could not resolve, for
  * staff review (Contacts → Needs review). Two kinds are stored by the
- * importer (scripts/import-buildertrend-messages.mjs, messageStatements):
+ * Buildertrend message importer (retired 2026-11-10):
  *
  * - a run-together literal: one recipient/sender string that could not be
  *   split into people safely. Stored whole on a `<role>_literal` row with

@@ -4,6 +4,8 @@ Status: approved by the owner 2026-11-01. Design plus first implementation
 (migration 0287, access rules, importer). Nothing here has been run against
 production.
 
+> Retired 2026-11-10: the importer scripts (`scripts/import-buildertrend-messages.mjs`, `scripts/import-buildertrend-participants.mjs`, `scripts/export-bt-directory-snapshot.mjs`) were deleted after the Buildertrend cutover; the keys staff review still uses live in `src/lib/domain/conversations/bt-participant-identity.ts`.
+
 ## Goal
 
 Messages from Buildertrend (BT) live in Compass as normal, replyable project
