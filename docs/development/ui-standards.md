@@ -260,6 +260,11 @@ off-screen and the click looks like it did nothing.
 - The owner and vendor workspaces follow every rule in this section, so a
   record opens the same way for staff, owners and vendors.
 - Confirmations (archive, delete) stay small centered alert dialogs.
+- A drawer shows every word of the record. A global rule in `globals.css`
+  (scoped to right-side sheets) unwraps `truncate` and `line-clamp` text and
+  lets dropdowns grow for long choices, and textareas grow to fit. Fields that
+  hold sentences (notes, descriptions, reasons) are `Textarea`, never a
+  one-line `Input` that hides the end of the text.
 
 ### Line item order (owner-approved standard)
 

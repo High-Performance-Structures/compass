@@ -415,6 +415,31 @@
   height: 0;
 }
 
+/* Side drawers show every word of a record (ui-standards.md, "Record drawer"):
+   text shortened with "…" or cut to a few lines in lists wraps in full here,
+   and dropdowns grow taller for long choices instead of cutting them off.
+   Unlayered so it wins over the truncate / line-clamp utilities. */
+[data-slot="sheet-content"][data-side="right"]
+  :is(.truncate, [class*="line-clamp-"], [data-slot="select-value"]) {
+  overflow: visible;
+  white-space: normal;
+  text-overflow: clip;
+  -webkit-line-clamp: none;
+  line-clamp: none;
+  overflow-wrap: anywhere;
+}
+[data-slot="sheet-content"][data-side="right"]
+  :is([data-slot="select-trigger"], button[role="combobox"]) {
+  height: auto;
+  min-height: 2.25rem;
+  white-space: normal;
+  text-align: left;
+}
+[data-slot="sheet-content"][data-side="right"]
+  :is(td, th, [data-slot="badge"]) {
+  overflow-wrap: anywhere;
+}
+
 /* constrain composer editor height */
 .composer-editor .ProseMirror {
   max-height: 200px;

@@ -17,6 +17,7 @@ import { RecordTable, useRecordTable } from "@/components/record-table"
 import { SearchableCombobox } from "@/components/searchable-combobox"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { Textarea } from "@/components/ui/textarea"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Switch } from "@/components/ui/switch"
@@ -244,7 +245,7 @@ function DoneDutyForm({
       </div>
       <div className="grid gap-1.5 lg:col-span-2">
         <Label htmlFor="rd-notes">Notes</Label>
-        <Input id="rd-notes" value={done.notes} onChange={(event) => onChange({ ...done, notes: event.target.value })} />
+        <Textarea id="rd-notes" rows={2} value={done.notes} onChange={(event) => onChange({ ...done, notes: event.target.value })} />
       </div>
       <div className="flex flex-wrap gap-2 lg:col-span-5">
         <Button type="submit" size="sm" disabled={pending || !done.period}>

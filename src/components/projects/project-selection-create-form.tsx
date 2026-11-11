@@ -425,7 +425,7 @@ export function ProjectSelectionCreateForm({
               />
             </Field>
             <Field label="Description">
-              <Input name="description" className={DOCUMENT_INPUT_CLASS} />
+              <Textarea name="description" rows={2} className={`min-h-16 ${DOCUMENT_TEXTAREA_CLASS}`} />
             </Field>
             <Field label="Notes">
               <Textarea name="notes" className={`min-h-24 ${DOCUMENT_TEXTAREA_CLASS}`} />

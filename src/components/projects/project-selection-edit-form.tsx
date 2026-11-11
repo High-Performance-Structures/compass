@@ -355,10 +355,11 @@ export function ProjectSelectionEditForm({
               />
             </Field>
             <Field label="Description">
-              <Input
+              <Textarea
                 name="description"
+                rows={2}
                 defaultValue={textValue(selection.description)}
-                className={DOCUMENT_INPUT_CLASS}
+                className={`min-h-16 ${DOCUMENT_TEXTAREA_CLASS}`}
               />
             </Field>
             <Field label="Notes">
