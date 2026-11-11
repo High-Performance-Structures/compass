@@ -5,7 +5,7 @@ import { revalidatePath } from "next/cache"
 import { z } from "zod/v4"
 
 import { getDb } from "@/db"
-import { customerContacts, customers, internalContacts, vendorContacts, vendors } from "@/db/schema"
+import { customerContacts, customers, internalContacts, users, vendorContacts, vendors } from "@/db/schema"
 import {
   sageContactChangeProposals,
   sageContactReadRequests,
@@ -24,17 +24,30 @@ import { requireFeaturePermission } from "@/lib/permission-enforcement"
 import { requireOrg } from "@/lib/org-scope"
 import {
   isPrivateEmployeeContactField,
-  isSageContactProposalCurrent,
   sageContactProposalFields,
   type SageContactFieldChange,
   type SageContactKind,
 } from "@/lib/sage/contact-change-proposal"
+import { prepareApprovedSageChange, replanSageChange } from "@/lib/sage/contact-change-readiness"
 import { getSageContactEntityIdentity } from "@/lib/sage/contact-entity"
+import {
+  isSageReviewListStatus,
+  plainSageProblem,
+  SAGE_REVIEW_LIST_STATUSES,
+  sageContactKindLabel,
+  sageRequesterName,
+  sageReviewState,
+  sortForSageReview,
+  type SageReviewListStatus,
+  type SageReviewState,
+} from "@/lib/sage/contact-proposal-review-list"
 import {
   advanceQueuedSageChanges,
   canAccessEmployeePrivate,
   createSageContactProposal,
   isRecentSageRead,
+  latestSageSnapshot,
+  parseSageChanges,
   recordSageChangeActivity,
   requireSageContactEditAccess,
   sageSnapshotFromRow,
@@ -43,7 +56,7 @@ import { sageContactOrganizationMatches } from "@/lib/sage/contact-bridge"
 import type { SageLinkedEditKind } from "@/lib/sage/sage-linked-edit-fields"
 import { heldSageFields } from "@/lib/sage/sage-held-fields"
 import { applySageLinkedValuesInCompass } from "@/lib/sage/sage-linked-local-apply"
-import { requireUserContext, type Db } from "@/lib/server/action-context"
+import { orgContext, requireUserContext, type Db } from "@/lib/server/action-context"
 import { sameSageRecordId } from "@/lib/sage/record-id"
 
 const kindSchema = z.enum([
@@ -61,16 +74,19 @@ type ActionResult =
 export type SageContactProposalListItem = {
   readonly id: string
   readonly kind: SageContactKind
+  /** "Client", "Vendor contact", ... */
+  readonly kindLabel: string
   readonly entityId: string
   /** The directory record's current Compass name, for the reviewer. */
   readonly entityName: string | null
-  readonly status: string
+  readonly status: SageReviewListStatus
+  readonly state: SageReviewState
   readonly changes: readonly SageContactFieldChange[]
-  readonly requestedByUserId: string
-  readonly reviewedByUserId: string | null
+  readonly requestedByName: string
   readonly requestedAt: string
   readonly reviewNote: string | null
-  readonly errorMessage: string | null
+  /** Why a request needs attention, in plain English. */
+  readonly problem: string | null
 }
 
 export type MySageContactProposalStatus = {
@@ -228,17 +244,29 @@ export async function proposeSageContactChange(
   }
 }
 
+/**
+ * The review list: requests waiting for a decision or needing attention, and
+ * approved ones on their way to Sage. Finished ones stay in Activity.
+ */
 export async function listSageContactChangeProposals(): Promise<readonly SageContactProposalListItem[]> {
   const { user, db } = await requireUserContext()
   const orgId = requireOrg(user)
   await requireFeaturePermission(user, "sage-contact-review", "read")
   const rows = await db.select().from(sageContactChangeProposals)
-    .where(eq(sageContactChangeProposals.organizationId, orgId))
+    .where(and(
+      eq(sageContactChangeProposals.organizationId, orgId),
+      inArray(sageContactChangeProposals.status, [...SAGE_REVIEW_LIST_STATUSES])
+    ))
     .orderBy(desc(sageContactChangeProposals.requestedAt)).limit(100)
   const privateAccess = await canAccessEmployeePrivate(user, null)
-  const names = await directoryNames(db, orgId, rows.map((row) => row.entityId))
+  const [names, requesters] = await Promise.all([
+    directoryNames(db, orgId, rows.map((row) => row.entityId)),
+    requesterNames(db, rows.map((row) => row.requestedByUserId)),
+  ])
   const result: SageContactProposalListItem[] = []
   for (const row of rows) {
+    const state = sageReviewState(row.status)
+    if (!state || !isSageReviewListStatus(row.status)) continue
     const kind = kindSchema.safeParse(row.kind)
     let parsed: unknown
     try { parsed = JSON.parse(row.changesJson) } catch { continue }
@@ -248,20 +276,30 @@ export async function listSageContactChangeProposals(): Promise<readonly SageCon
       isPrivateEmployeeContactField(change.field)
     )) continue
     result.push({
-      id: row.id, kind: kind.data, entityId: row.entityId,
+      id: row.id, kind: kind.data, kindLabel: sageContactKindLabel(kind.data), entityId: row.entityId,
       entityName: names.get(row.entityId) ?? null,
       status: row.status,
+      state,
       changes: changes.data.filter((change): change is SageContactFieldChange =>
         isSageContactFieldChange(change.field, kind.data)
       ),
-      requestedByUserId: row.requestedByUserId,
-      reviewedByUserId: row.reviewedByUserId,
+      requestedByName: requesters.get(row.requestedByUserId) ?? sageRequesterName(null),
       requestedAt: row.requestedAt,
       reviewNote: row.reviewNote,
-      errorMessage: row.errorMessage,
+      problem: state.stage === "fix" ? plainSageProblem(row.errorMessage) : null,
     })
   }
-  return result
+  return sortForSageReview(result)
+}
+
+/** "Requested … by <name>" names of the requesting staff, by user id. */
+async function requesterNames(db: Db, ids: readonly string[]): Promise<Map<string, string>> {
+  const unique = [...new Set(ids)]
+  if (unique.length === 0) return new Map()
+  const people = await db.select({
+    id: users.id, displayName: users.displayName, firstName: users.firstName, lastName: users.lastName, email: users.email,
+  }).from(users).where(inArray(users.id, unique))
+  return new Map(people.map((person) => [person.id, sageRequesterName(person)]))
 }
 
 /** Current Compass names of the proposals' directory records, by id. */
@@ -324,6 +362,16 @@ async function revertToSageValues(
   return applied.success
 }
 
+/** "approved" (the writer takes it next), "checking_sage" (a fresh read comes first) or "conflict". */
+async function approvedOutcome(db: Db, database: D1Database, proposalId: string): Promise<string> {
+  const approved = await db.select().from(sageContactChangeProposals).where(and(
+    eq(sageContactChangeProposals.id, proposalId), eq(sageContactChangeProposals.status, "approved")
+  )).get()
+  if (!approved) return "approved"
+  const readiness = await prepareApprovedSageChange(db, database, approved)
+  return readiness.state === "ready" || readiness.state === "gone" ? "approved" : readiness.state
+}
+
 export async function reviewSageContactChange(
   proposalId: string,
   decision: "approve" | "reject",
@@ -373,26 +421,6 @@ export async function reviewSageContactChange(
     )) {
       await requireFeaturePermission(user, "employee-contact-private", "approve")
     }
-    if (decision === "approve") {
-      const snapshotRow = await db.select().from(sageContactSnapshots).where(and(
-        eq(sageContactSnapshots.organizationId, orgId),
-        eq(sageContactSnapshots.kind, kind.data),
-        eq(sageContactSnapshots.entityId, proposal.entityId)
-      )).get()
-      const snapshot = snapshotRow ? sageSnapshotFromRow(snapshotRow) : null
-      if (!snapshotRow || !snapshot || !isRecentSageRead(snapshotRow.capturedAt) ||
-        !isSageContactProposalCurrent({
-          organizationId: orgId, kind: kind.data,
-          sageRecordId: proposal.sageRecordId,
-          parentSageRecordId: proposal.parentSageRecordId,
-          baseRevision: proposal.baseRevision,
-          changes: changes.data.filter((change): change is SageContactFieldChange =>
-            isSageContactFieldChange(change.field, kind.data)
-          ),
-        }, snapshot)) {
-        return { success: false, error: "Sage changed or the read is stale. Refresh before approval." }
-      }
-    }
     const now = new Date().toISOString()
     const status = decision === "approve" ? "approved" : "rejected"
     const noteValue = note.trim().slice(0, 1000)
@@ -418,8 +446,74 @@ export async function reviewSageContactChange(
     // A Compass edit that waited behind the rejected change now goes to review.
     if (decision === "reject") await advanceQueuedSageChanges(db, env, orgId, kind.data, proposal.entityId)
     revalidatePath("/dashboard/contacts")
-    return { success: true, id: proposalId, status }
+    if (decision === "reject") return { success: true, id: proposalId, status }
+    // Approval never waits on how old the last Sage read is: an old read
+    // queues a fresh one and the change goes to Sage once it lands (or
+    // becomes a conflict if Sage changed those fields meanwhile).
+    return { success: true, id: proposalId, status: await approvedOutcome(db, env.DB, proposalId) }
   } catch (error) {
     return { success: false, error: error instanceof Error ? error.message : "Could not review contact change" }
+  }
+}
+
+/**
+ * Sends a change that ended in conflict (or failed) to Sage again, planned
+ * over Sage's last-read values: each before-value becomes what Sage held at
+ * that read. It then goes through the same check as any approval: an old
+ * read queues a fresh one, and if Sage changed those fields again since, it
+ * comes back as a conflict naming Sage's value and the requested one.
+ */
+export async function reapplySageContactChange(proposalId: string): Promise<ActionResult> {
+  try {
+    const context = await orgContext({ feature: "sage-contact-review", action: "approve", mutation: true })
+    if (!context.success) return context
+    const { user, organizationId: orgId, db, env } = context.data
+    if (!sageContactOrganizationMatches(env, orgId)) {
+      return { success: false, error: "Sage contact sync is not configured for this organization." }
+    }
+    if (Reflect.get(env, "SAGE_CONTACT_WRITES_ENABLED") !== "true") {
+      return { success: false, error: "Sage contact writes are paused. Reapply is unavailable until the bridge is enabled." }
+    }
+    const proposal = await db.select().from(sageContactChangeProposals).where(and(
+      eq(sageContactChangeProposals.id, proposalId),
+      eq(sageContactChangeProposals.organizationId, orgId),
+      inArray(sageContactChangeProposals.status, ["conflict", "failed"])
+    )).get()
+    if (!proposal) return { success: false, error: "This change no longer needs attention." }
+    if (!sageContactReviewerAllowed(
+      await readFeatureSettings(db, orgId, "sage-contact-review"), proposal.requestedByUserId, user.id
+    )) {
+      return { success: false, error: "Your company requires another staff member to review this contact change." }
+    }
+    const kind = kindSchema.safeParse(proposal.kind)
+    const changes = parseSageChanges(proposal.changesJson)
+    if (!kind.success || !changes || changes.length === 0) return { success: false, error: "Stored proposal is invalid." }
+    if (kind.data === "employee" && changes.some((change) => isPrivateEmployeeContactField(change.field))) {
+      await requireFeaturePermission(user, "employee-contact-private", "approve")
+    }
+    const snapshotRow = await latestSageSnapshot(db, orgId, kind.data, proposal.entityId)
+    const snapshot = snapshotRow ? sageSnapshotFromRow(snapshotRow) : null
+    const base = snapshot && sameSageRecordId(snapshot.sageRecordId, proposal.sageRecordId) &&
+      sameSageRecordId(snapshot.parentSageRecordId, proposal.parentSageRecordId) ? snapshot : null
+    const rebased = base ? changes.map((change) =>
+      Object.prototype.hasOwnProperty.call(base.fields, change.field)
+        ? { ...change, before: base.fields[change.field] ?? null } : change) : changes
+    const now = new Date().toISOString()
+    // Plans are immutable: the conflict is superseded by an approved copy.
+    const id = await replanSageChange(env.DB, proposal, {
+      baseRevision: base ? base.revision : proposal.baseRevision, changes: rebased,
+      reviewedByUserId: user.id, reviewedAt: now, actorUserId: user.id, eventType: "reapplied", now,
+    })
+    if (!id) {
+      return { success: false, error: "This record has a newer change waiting, or this one was just updated. Refresh and review the newest one." }
+    }
+    await recordSageChangeActivity(db, {
+      organizationId: orgId, actor: user, kind: kind.data, entityId: proposal.entityId,
+      proposalId: id, step: "approved", changes: rebased, note: "reapplied over Sage's current values",
+    })
+    revalidatePath("/dashboard/contacts")
+    return { success: true, id, status: await approvedOutcome(db, env.DB, id) }
+  } catch (error) {
+    return { success: false, error: error instanceof Error ? error.message : "Could not reapply the Sage change" }
   }
 }

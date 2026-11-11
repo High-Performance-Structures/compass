@@ -355,6 +355,65 @@ export function reviewSageContactChangeStatements(database: D1Database, review: 
   ]
 }
 
+export type SageChangeReplan = {
+  readonly fromId: string
+  /** The status the replaced change must still have. */
+  readonly fromStatus: string
+  readonly toId: string
+  readonly organizationId: string
+  readonly baseRevision: string
+  readonly changesJson: string
+  readonly reviewedByUserId: string | null
+  readonly reviewedAt: string | null
+  readonly actorUserId: string | null
+  /** "rebased" (onto a newer Sage read) or "reapplied" (by staff after a conflict). */
+  readonly eventType: "rebased" | "reapplied"
+  readonly detailJson: string
+  readonly now: string
+}
+
+/**
+ * Re-plans an approved change against a newer Sage read. A proposal's plan
+ * is immutable (trigger in 0168), so the old row is superseded and an
+ * approved copy carrying the new base revision and before-values takes its
+ * place, keeping who asked and when. Four batch items: the fenced supersede,
+ * its event, then the copy and its event, inserted only if that supersede
+ * landed (same `updated_at` stamp).
+ */
+export function replanSageContactChangeStatements(database: D1Database, plan: SageChangeReplan): D1PreparedStatement[] {
+  return [
+    database.prepare(
+      `UPDATE sage_contact_change_proposals SET status = 'superseded', completed_at = ?, updated_at = ?
+         WHERE id = ? AND organization_id = ? AND status = ?`
+    ).bind(plan.now, plan.now, plan.fromId, plan.organizationId, plan.fromStatus),
+    database.prepare(
+      `INSERT INTO sage_contact_change_events
+         (id, proposal_id, organization_id, actor_user_id, event_type, detail_json, created_at)
+         SELECT ?, id, organization_id, ?, 'superseded', ?, ?
+         FROM sage_contact_change_proposals
+         WHERE id = ? AND organization_id = ? AND status = 'superseded' AND updated_at = ?`
+    ).bind(crypto.randomUUID(), plan.actorUserId, JSON.stringify({ supersededBy: plan.toId, reason: plan.eventType }), plan.now,
+      plan.fromId, plan.organizationId, plan.now),
+    database.prepare(
+      `INSERT INTO sage_contact_change_proposals
+         (id, organization_id, kind, entity_id, sage_record_id, parent_sage_record_id, base_revision, changes_json,
+          status, requested_by_user_id, reviewed_by_user_id, reviewed_at, review_note, attempt_count, requested_at, updated_at)
+         SELECT ?, organization_id, kind, entity_id, sage_record_id, parent_sage_record_id, ?, ?,
+          'approved', requested_by_user_id, ?, ?, review_note, 0, requested_at, ?
+         FROM sage_contact_change_proposals
+         WHERE id = ? AND organization_id = ? AND status = 'superseded' AND updated_at = ?`
+    ).bind(plan.toId, plan.baseRevision, plan.changesJson, plan.reviewedByUserId, plan.reviewedAt, plan.now,
+      plan.fromId, plan.organizationId, plan.now),
+    database.prepare(
+      `INSERT INTO sage_contact_change_events
+         (id, proposal_id, organization_id, actor_user_id, event_type, detail_json, created_at)
+         SELECT ?, id, organization_id, ?, ?, ?, ?
+         FROM sage_contact_change_proposals WHERE id = ? AND organization_id = ? AND status = 'approved'`
+    ).bind(crypto.randomUUID(), plan.actorUserId, plan.eventType, plan.detailJson, plan.now,
+      plan.toId, plan.organizationId),
+  ]
+}
+
 /** Decides a pending create proposal, then its audit event (two batch items). */
 export function reviewSageContactCreateStatements(database: D1Database, review: SageProposalReview): D1PreparedStatement[] {
   return [
