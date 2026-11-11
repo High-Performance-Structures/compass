@@ -39,7 +39,7 @@ export function FollowUpChip({ signal }: { readonly signal: ProjectFollowUpSigna
   const days = signal.businessDaysSinceLastTouch
   return (
     <span
-      className="shrink-0 border px-1 font-mono text-xs tracking-[0.08em]"
+      className="max-w-full shrink-0 break-words border px-1 font-mono text-xs tracking-[0.08em]"
       style={{ borderColor: agingColor(signal.level), color: agingColor(signal.level) }}
       title={followUpSummary(signal)}
     >

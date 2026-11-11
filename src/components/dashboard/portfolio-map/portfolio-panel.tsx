@@ -368,7 +368,7 @@ function AddToMap(): React.ReactElement {
             {matches.slice(0, ADD_RESULT_LIMIT).map((project) => (
               <li key={project.id} className="flex min-h-9 items-center justify-between gap-3 border-b border-border px-1 text-foreground">
                 <span className="flex min-w-0 flex-col">
-                  <span className="truncate">{project.name}</span>
+                  <span className="min-w-0 break-words">{project.name}</span>
                   <span className="truncate font-mono text-muted-foreground">
                     {project.projectNumber ? `${project.projectNumber} · ` : ""}{project.statusLabel}
                   </span>
@@ -405,7 +405,7 @@ function HiddenJobs({ hidden }: { readonly hidden: readonly PortfolioHiddenJob[]
       <ul className="mt-1">
         {hidden.map((job) => (
           <li key={job.id} className="flex min-h-9 items-center justify-between gap-3 border-b border-border px-1 text-foreground">
-            <span className="truncate">{job.name}</span>
+            <span className="min-w-0 break-words">{job.name}</span>
             <Button type="button" variant="ghost" size="sm" disabled={visibility.pending}
               onClick={() => visibility.change(job.id, job.restoreVisibility)}>
               Show on map
@@ -522,7 +522,7 @@ export function PortfolioPanel({
               <li key={job.id}>
                 <button type="button" className={ROW} onClick={() => onSelectJob(job.id)}>
                   <span className="flex min-w-0 flex-col">
-                    <span className="truncate">{job.name}</span>
+                    <span className="min-w-0 break-words">{job.name}</span>
                     <span className="font-mono text-xs tracking-[0.08em] text-muted-foreground">
                       {job.town ? job.town.toUpperCase() : "NO TOWN"}
                     </span>
@@ -550,7 +550,7 @@ export function PortfolioPanel({
                   href={`/dashboard/projects/${encodeURIComponent(job.id)}/information`}
                   className="flex min-h-9 items-center justify-between gap-3 border-b border-border px-1 text-foreground hover:bg-accent"
                 >
-                  <span className="truncate">{job.name}</span>
+                  <span className="min-w-0 break-words">{job.name}</span>
                   <span className="shrink-0 font-mono text-muted-foreground">{job.projectNumber ?? "Add address →"}</span>
                 </Link>
               </li>
