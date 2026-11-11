@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation"
 
 import type { AudienceProjectOption } from "@/app/actions/project-audience-preview"
 import { ProjectCombobox } from "@/components/projects/project-combobox"
+import { useAudiencePreviewHref, useAudiencePreviewReadOnly } from "@/components/projects/project-audience-preview-scope"
 import { projectAudienceActiveProjectCookieName } from "@/lib/project-audience-active-project"
 import {
   projectAudienceSectionHref,
@@ -26,12 +27,16 @@ export function ProjectAudienceSwitcher({
   readonly className?: string
 }): React.ReactElement {
   const router = useRouter()
+  const preview = useAudiencePreviewReadOnly()
+  const previewHref = useAudiencePreviewHref()
   const rememberProject = React.useCallback(
     (projectId: string): void => {
+      // Staff previewing someone keep their own last-opened job.
+      if (preview) return
       const cookieName = projectAudienceActiveProjectCookieName(audience)
       document.cookie = `${cookieName}=${encodeURIComponent(projectId)}; Path=/; Max-Age=31536000; SameSite=Lax`
     },
-    [audience]
+    [audience, preview]
   )
 
   React.useEffect(() => {
@@ -45,7 +50,11 @@ export function ProjectAudienceSwitcher({
       onValueChange={(projectId) => {
         if (projectId === currentProjectId) return
         rememberProject(projectId)
-        router.push(projectAudienceSectionHref(projectId, audience, section))
+        const href = projectAudienceSectionHref(projectId, audience, section)
+        // A full load in preview so the read-only banner and download scope
+        // switch to the new job along with the page.
+        if (preview) window.location.assign(previewHref(href))
+        else router.push(href)
       }}
       ariaLabel="Switch project"
       className={className}

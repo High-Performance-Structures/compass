@@ -34,6 +34,7 @@ import { channelMembers, channels } from "@/db/schema-conversations"
 import { scopedAudienceHref } from "@/lib/project-audience-request"
 import { inJsonList, vendorVisibleRfiSourceIds } from "@/lib/rfis/vendor-visibility"
 import { resolveProjectAudienceViewer, getProjectAudienceRequestScope } from "@/lib/project-audience-viewer"
+import { isInvitedPreviewId } from "@/lib/invited-preview"
 import { requirePermission } from "@/lib/permissions"
 import { canUseProjectAudience, type ProjectAudience } from "@/lib/project-audience-access"
 import { loadAllRecordStatusLists } from "@/lib/domain/record-statuses/store"
@@ -240,21 +241,15 @@ export async function getProjectAudiencePreview(
     throw new Error("Project not found")
   }
 
-  const projectOptions: readonly AudienceProjectOption[] = previewMode
-    ? [
-        {
-          id: project.id,
-          name: project.name,
-          projectNumber: project.projectNumber,
-          status: project.status,
-        },
-      ]
-    : await loadAudienceProjectOptions({
-        db,
-        userId: viewer.id,
-        audience,
-        organizationId,
-      })
+  // Staff previewing a person see that person's own job switcher, so they can
+  // check every job the person can open. Invited people have no account yet,
+  // so they only have the job they were invited to.
+  const personOptions = !previewMode || (viewer.id && !isInvitedPreviewId(viewer.id))
+    ? await loadAudienceProjectOptions({ db, userId: viewer.id, audience, organizationId })
+    : []
+  const projectOptions: readonly AudienceProjectOption[] = !previewMode || personOptions.some((option) => option.id === project.id)
+    ? personOptions
+    : [{ id: project.id, name: project.name, projectNumber: project.projectNumber, status: project.status }, ...personOptions]
 
   const resolvedViewerContact =
     !viewerIsInternal
