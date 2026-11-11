@@ -366,9 +366,10 @@ export function ProjectChangeOrderEditForm({
           </div>
           <div className="space-y-2">
             <Label htmlFor="change-order-internal-notes">Internal notes</Label>
-            <Input
+            <Textarea
               id="change-order-internal-notes"
               name="internalNotes"
+              rows={2}
               defaultValue={item.internalNotes ?? ""}
               disabled={!item.canEdit}
             />
@@ -518,9 +519,10 @@ export function ProjectChangeOrderEditForm({
           <Label htmlFor="change-order-transition-note">
             Update / transition note
           </Label>
-          <Input
+          <Textarea
             id="change-order-transition-note"
             name="transitionNote"
+            rows={2}
             placeholder="Explain the decision or information supplied."
           />
         </div>
