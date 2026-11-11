@@ -1,6 +1,7 @@
 import { fieldCostCodeSettingsSchema, type FieldCostCodeSettings } from "@/lib/field/cost-code-settings"
 import { z } from "zod/v4"
 import { DAILY_LOG_OPTIONAL_FIELDS } from "@/lib/daily-logs/daily-log-form"
+import { NUTECH_PRICE_LIST_DEFAULTS, nuTechPriceListSettingsShape } from "@/lib/nutech/price-list-settings"
 import { DEFAULT_LABOR_CODE_DEPARTMENTS, DEFAULT_LABOR_COST_CODES } from "@/lib/daily-logs/labor-cost-codes"
 import { DAILY_LOG_TODO_MODES, DAILY_LOG_TODO_TYPES } from "@/lib/daily-logs/log-followups"
 import { PROJECT_TIMELINE_KINDS } from "@/lib/project-timeline/model"
@@ -165,6 +166,7 @@ export const nuTechEmailSettingsSchema = z.object({
   shippingCostCode: z.string().max(20),
   /** The manufacturer's order form (Google Drive link or file ID, Sheet or .xlsx) the PO workbook is filled from. */
   orderFormFile: z.string().max(300),
+  ...nuTechPriceListSettingsShape,
   /** FOB wording on the order form for deliveries and for customer pickups. */
   fobDelivery: z.string().max(80),
   fobPickup: z.string().max(80),
@@ -780,11 +782,9 @@ export const FEATURE_SETTINGS: { readonly [K in FeatureSettingsKey]: FeatureSett
     defaults: {
       manufacturerName: "",
       manufacturerVendorId: "",
-      manufacturerOrdersEmail: "",
-      manufacturerCcEmail: "",
+      manufacturerOrdersEmail: "", manufacturerCcEmail: "",
       dealerAccountNumber: "",
-      warehouseName: "",
-      warehouseAddress: "",
+      warehouseName: "", warehouseAddress: "",
       warehousePhone: "",
       warehouseEmail: "",
       warehouseDockHours: "",
@@ -792,8 +792,8 @@ export const FEATURE_SETTINGS: { readonly [K in FeatureSettingsKey]: FeatureSett
       productCostCode: "",
       shippingCostCode: "",
       orderFormFile: "",
-      fobDelivery: "",
-      fobPickup: "",
+      ...NUTECH_PRICE_LIST_DEFAULTS,
+      fobDelivery: "", fobPickup: "",
       nextPurchaseOrderNumber: "",
       templates: {},
     },

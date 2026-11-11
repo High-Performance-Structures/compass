@@ -34,6 +34,13 @@ const DETAIL_FIELDS: readonly { readonly key: DetailKey; readonly label: string;
   { key: "dealerAccountNumber", label: "Dealer account number", placeholder: "123456" },
   { key: "nextPurchaseOrderNumber", label: "Next manufacturer PO number", placeholder: "e.g. 1860 (follows the project number)" },
   { key: "orderFormFile", label: "Manufacturer order form", placeholder: "Blank order form (Sheet or .xlsx)" },
+  { key: "priceListName", label: "Price list name", placeholder: "e.g. 2027 Fox Blocks pricing (blank = 2026)" },
+  { key: "priceListEffectiveDate", label: "Price list effective date", placeholder: "YYYY-MM-DD" },
+  { key: "newStandardPriceSheet", label: "Price sheet: new client – standard", placeholder: "Google Sheet (blank = 2026 sheet)" },
+  { key: "newCashPriceSheet", label: "Price sheet: new client – cash", placeholder: "Google Sheet (blank = 2026 sheet)" },
+  { key: "returningStandardPriceSheet", label: "Price sheet: returning – standard", placeholder: "Google Sheet (blank = 2026 sheet)" },
+  { key: "returningCashPriceSheet", label: "Price sheet: returning – cash", placeholder: "Google Sheet (blank = 2026 sheet)" },
+  { key: "priceSheetRange", label: "Price tab and cells", placeholder: "'2027 Cost & Margin'!A1:H100" },
   { key: "fobDelivery", label: "FOB on deliveries", placeholder: "e.g. the manufacturer's plant city" },
   { key: "fobPickup", label: "FOB on customer pickups", placeholder: "e.g. the warehouse dock" },
   { key: "warehouseName", label: "Pickup warehouse", placeholder: "Warehouse name" },
@@ -42,6 +49,15 @@ const DETAIL_FIELDS: readonly { readonly key: DetailKey; readonly label: string;
   { key: "warehouseEmail", label: "Warehouse shipping email", placeholder: "shipping@warehouse.com", type: "email" },
   { key: "warehouseDockHours", label: "Dock appointment hours", placeholder: "8 am – 3 pm" },
 ]
+
+/** Settings that point at a Drive file; they use Browse rather than a pasted link. */
+const DRIVE_FILE_KEYS: ReadonlySet<DetailKey> = new Set<DetailKey>([
+  "orderFormFile",
+  "newStandardPriceSheet",
+  "newCashPriceSheet",
+  "returningStandardPriceSheet",
+  "returningCashPriceSheet",
+])
 
 type TemplateText = { readonly subject: string; readonly body: string }
 
@@ -145,11 +161,11 @@ export function NuTechEmailSettingsSection(): React.ReactElement {
             {DETAIL_FIELDS.map((field) => (
               <div key={field.key} className="space-y-1.5">
                 <Label htmlFor={`nutech-setting-${field.key}`}>{field.label}</Label>
-                {field.key === "orderFormFile" ? (
+                {DRIVE_FILE_KEYS.has(field.key) ? (
                   <DriveItemField
                     id={`nutech-setting-${field.key}`}
-                    ariaLabel="blank manufacturer order form"
-                    browseTitle="Blank manufacturer order form"
+                    ariaLabel={field.label}
+                    browseTitle={field.label}
                     value={details[field.key]}
                     disabled={disabled}
                     onChange={(next) => setDetails((current) => ({ ...current, [field.key]: next }))}
