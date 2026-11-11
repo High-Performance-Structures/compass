@@ -33,15 +33,15 @@ function GroupRows({ group, depth }: { readonly group: BtProposalGroupView; read
           {group.title}
           {group.description ? <p className="whitespace-pre-line font-normal">{group.description}</p> : null}
         </td>
-        <td className="pt-3 pb-1 text-right font-semibold tabular-nums">{formatCents(group.ownerPriceCents)}</td>
+        <td className="pt-3 pb-1 text-right font-semibold tabular-nums whitespace-nowrap">{formatCents(group.ownerPriceCents)}</td>
       </tr>
       {group.items.map((item, index) => (
         <tr key={`${item.title}-${index}`} className="border-b border-black/40 align-top">
           <td className={depth === 0 ? "py-1 pr-2 pl-3" : "py-1 pr-2 pl-6"}>{item.title}</td>
           <td className="py-1 pr-2 whitespace-pre-line">{item.description ?? ""}</td>
-          <td className="py-1 text-right tabular-nums">{item.quantity}</td>
+          <td className="py-1 text-right tabular-nums whitespace-nowrap">{item.quantity}</td>
           <td className="py-1 pl-2">{item.unit ?? ""}</td>
-          <td className="py-1 text-right tabular-nums">{formatCents(item.ownerPriceCents)}</td>
+          <td className="py-1 text-right tabular-nums whitespace-nowrap">{formatCents(item.ownerPriceCents)}</td>
         </tr>
       ))}
       {group.subGroups.map((sub, index) => (
@@ -113,7 +113,7 @@ export function BtProposalDocument({
             <th className="py-2">Description</th>
             <th className="py-2 text-right">Qty</th>
             <th className="py-2 pl-2">Unit</th>
-            <th className="py-2 text-right">Price</th>
+            <th className="py-2 text-right whitespace-nowrap">Price</th>
           </tr>
         </thead>
         <tbody>
@@ -124,7 +124,7 @@ export function BtProposalDocument({
         <tfoot>
           <tr className="border-t-2 border-black">
             <td colSpan={4} className="pt-3 text-right font-bold">Total</td>
-            <td className="pt-3 text-right font-bold tabular-nums">{formatCents(proposal.ownerTotalCents)}</td>
+            <td className="pt-3 text-right font-bold tabular-nums whitespace-nowrap">{formatCents(proposal.ownerTotalCents)}</td>
           </tr>
         </tfoot>
       </table>
