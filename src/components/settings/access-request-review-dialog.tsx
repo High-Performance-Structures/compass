@@ -1,14 +1,14 @@
 "use client"
 
 /*
- * Reviewing one access request. A client or vendor request must be linked
- * to that person in the directory (Contacts) before it can be approved; the
- * approval then opens every job that directory person is on. An employee
+ * Reviewing one access request. A client or vendor request is linked to
+ * someone picked from the whole directory (Contacts), or approved as a new
+ * client or vendor when nobody matches; the approval then opens every job
+ * that directory person is on. An employee
  * request is approved with a staff role. Declining emails a short, polite
  * note and shares nothing.
  */
 import * as React from "react"
-import Link from "next/link"
 import { toast } from "sonner"
 
 import {
@@ -29,19 +29,19 @@ import {
 } from "@/components/ui/alert-dialog"
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
-import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { SearchableCombobox, type SearchableComboboxOption } from "@/components/searchable-combobox"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import type { AccessRequestDirectoryOption, CompanyAccessRequest } from "@/lib/domain/access-requests/queries"
 import {
   ACCESS_REQUEST_KIND_LABELS,
   ACCESS_REQUEST_STAFF_ROLES,
   ACCESS_REQUEST_VENDOR_ROLES,
+  NEW_DIRECTORY_RECORD_OPTION,
   type AccessRequestVendorRole,
   type ApproveAccessRequestInput,
 } from "@/lib/domain/access-requests/rules"
 import { userRoleLabel } from "@/lib/user-roles"
-import { cn } from "@/lib/utils"
 
 function isVendorRole(value: string): value is AccessRequestVendorRole {
   return ACCESS_REQUEST_VENDOR_ROLES.some((role) => role === value)
@@ -57,92 +57,69 @@ function Detail({ label, value }: { readonly label: string; readonly value: stri
   )
 }
 
-/** Search the directory and pick the one person this request is. */
+/**
+ * Pick who this request is from the whole directory: every client person and
+ * client record (or vendor person and vendor company), searchable, with exact
+ * email matches first. Leaving it on "Add as new" approves the request as a
+ * new client or vendor made from what the person entered.
+ */
 function DirectoryLink({
   request,
-  selectedId,
-  onSelect,
+  value,
+  onChange,
 }: {
   readonly request: CompanyAccessRequest
-  readonly selectedId: string | null
-  readonly onSelect: (option: AccessRequestDirectoryOption) => void
+  readonly value: string
+  readonly onChange: (option: AccessRequestDirectoryOption | null) => void
 }): React.ReactElement {
-  const [search, setSearch] = React.useState("")
   const [options, setOptions] = React.useState<readonly AccessRequestDirectoryOption[] | null>(null)
   const [error, setError] = React.useState<string | null>(null)
   const isClient = request.kind === "client"
 
   React.useEffect(() => {
     let cancelled = false
-    // Debounced so typing doesn't search on every key.
-    const timer = setTimeout(() => {
-      void getAccessRequestDirectoryOptions(request.id, search).then((result) => {
-        if (cancelled) return
-        if (result.success) {
-          setOptions(result.data)
-          setError(null)
-        } else {
-          setError(result.error)
-        }
-      })
-    }, search ? 250 : 0)
+    void getAccessRequestDirectoryOptions(request.id, "").then((result) => {
+      if (cancelled) return
+      if (result.success) {
+        setOptions(result.data)
+        setError(null)
+      } else {
+        setError(result.error)
+      }
+    })
     return () => {
       cancelled = true
-      clearTimeout(timer)
     }
-  }, [request.id, search])
+  }, [request.id])
 
-  const directoryHref = `/dashboard/contacts?tab=${isClient ? "customers" : "vendors"}`
+  const newLabel = isClient ? `Add as a new client (${request.requesterName})` : `Add as a new vendor (${request.companyName ?? request.requesterName})`
+  const comboOptions: readonly SearchableComboboxOption[] = [
+    { value: NEW_DIRECTORY_RECORD_OPTION, label: newLabel, description: "Nobody in Contacts matches; make a new directory record from this request" },
+    ...(options ?? []).map((option) => ({
+      value: option.id,
+      label: option.name,
+      description: [option.label, option.email, option.linkedElsewhere ? "already linked to another login" : null].filter(Boolean).join(" · "),
+      keywords: [option.label, option.email].filter(Boolean).join(" "),
+    })),
+  ]
   return (
     <div className="space-y-2">
-      <Label htmlFor="access-request-directory-search">{isClient ? "Client contact" : "Vendor contact"}</Label>
-      <Input
-        id="access-request-directory-search"
-        value={search}
-        onChange={(event) => setSearch(event.target.value)}
-        placeholder={isClient ? "Search clients by name, email or phone" : "Search vendor people by name, email or phone"}
-        autoComplete="off"
+      <Label htmlFor="access-request-directory">{isClient ? "Who is this client?" : "Who is this vendor?"}</Label>
+      <SearchableCombobox
+        id="access-request-directory"
+        ariaLabel={isClient ? "Client in Contacts" : "Vendor in Contacts"}
+        options={comboOptions}
+        value={value}
+        onValueChange={(next) => onChange(next === NEW_DIRECTORY_RECORD_OPTION ? null : (options ?? []).find((option) => option.id === next) ?? null)}
+        placeholder={options === null ? "Loading Contacts…" : "Choose from Contacts"}
+        searchPlaceholder={isClient ? "Search clients by name, company or email" : "Search vendors by name, company or email"}
+        emptyMessage="No one in Contacts matches."
+        disabled={options === null}
       />
       <p className="text-xs text-muted-foreground">
-        {search.trim().length >= 2 ? "Matching people in your directory." : `People whose email matches ${request.requesterEmail}.`}
+        Pick the person or their company. Exact email matches for {request.requesterEmail} are listed first. Picking a company adds them as a person there.
       </p>
       {error ? <p className="text-sm text-destructive">{error}</p> : null}
-      {options === null && !error ? <p className="text-sm text-muted-foreground">Searching…</p> : null}
-      {options !== null && options.length === 0 ? (
-        <p className="text-sm text-muted-foreground">
-          No one found. Search another name, or{" "}
-          <Link href={directoryHref} target="_blank" rel="noreferrer" className="underline underline-offset-2">
-            add them in Contacts
-          </Link>{" "}
-          and search again.
-        </p>
-      ) : null}
-      {options !== null && options.length > 0 ? (
-        <ul className="max-h-56 divide-y overflow-y-auto rounded-lg border" role="listbox" aria-label="Directory people">
-          {options.map((option) => (
-            <li key={option.id}>
-              <button
-                type="button"
-                role="option"
-                aria-selected={selectedId === option.id}
-                disabled={option.linkedElsewhere}
-                onClick={() => onSelect(option)}
-                className={cn(
-                  "flex w-full flex-col items-start px-3 py-2 text-left text-sm hover:bg-muted disabled:cursor-not-allowed disabled:opacity-60",
-                  selectedId === option.id && "bg-muted",
-                )}
-              >
-                <span className="font-medium">{option.name}</span>
-                <span className="text-xs text-muted-foreground">
-                  {option.label}
-                  {option.email ? ` · ${option.email}` : ""}
-                  {option.linkedElsewhere ? " · already linked to another login" : ""}
-                </span>
-              </button>
-            </li>
-          ))}
-        </ul>
-      ) : null}
     </div>
   )
 }
@@ -187,8 +164,10 @@ export function AccessRequestReviewDialog({
   }, [request?.id])
 
   function approvalInput(current: CompanyAccessRequest): ApproveAccessRequestInput | null {
-    if (current.kind === "client") return linked ? { kind: "client", requestId: current.id, customerContactId: linked.id } : null
-    if (current.kind === "vendor") return linked ? { kind: "vendor", requestId: current.id, vendorContactId: linked.id, role: vendorRole } : null
+    // Nothing picked is never a dead end: it approves them as a new client or vendor.
+    const picked = linked?.id ?? NEW_DIRECTORY_RECORD_OPTION
+    if (current.kind === "client") return { kind: "client", requestId: current.id, customerContactId: picked }
+    if (current.kind === "vendor") return { kind: "vendor", requestId: current.id, vendorContactId: picked, role: vendorRole }
     return staffRole ? { kind: "employee", requestId: current.id, role: staffRole } : null
   }
 
@@ -224,7 +203,7 @@ export function AccessRequestReviewDialog({
               <DialogDescription>
                 {current.kind === "employee"
                   ? "Choose their staff role to approve. Only approve people who work for your company."
-                  : "Link this request to the person in your directory. Approving opens every job that contact is on."}
+                  : "Choose who they are in Contacts, or approve them as new. Approving opens every job they are on."}
               </DialogDescription>
             </DialogHeader>
             <dl className="space-y-1">
@@ -248,7 +227,7 @@ export function AccessRequestReviewDialog({
               </div>
             ) : (
               <>
-                <DirectoryLink request={current} selectedId={linked?.id ?? null} onSelect={setLinked} />
+                <DirectoryLink request={current} value={linked?.id ?? NEW_DIRECTORY_RECORD_OPTION} onChange={setLinked} />
                 {current.kind === "vendor" ? (
                   <div className="space-y-1">
                     <Label htmlFor="access-request-vendor-role">Compass role</Label>
@@ -267,7 +246,13 @@ export function AccessRequestReviewDialog({
                 Decline
               </Button>
               <Button type="button" disabled={pending || !ready} onClick={() => void approve(current)}>
-                {pending ? "Saving…" : linked ? `Approve and link to ${linked.name}` : "Approve"}
+                {pending
+                  ? "Saving…"
+                  : current.kind === "employee"
+                    ? "Approve"
+                    : linked
+                      ? `Approve and link to ${linked.name}`
+                      : `Approve as a new ${current.kind === "client" ? "client" : "vendor"}`}
               </Button>
             </DialogFooter>
             <AlertDialog open={confirmDecline} onOpenChange={setConfirmDecline}>

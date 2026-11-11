@@ -53,7 +53,7 @@ Someone who signs up for Compass without an invitation can ask to join a company
 
 Admins are notified of each request and review it in **Settings > People > Access requests**. Choose **Review**, then:
 
-1. For a client or vendor, search the directory and select the exact person. People whose email matches the requester's are suggested, but nothing is linked until you select one. If they are not in the directory yet, add them in **Contacts** first, then search again. For a vendor, also choose **Subcontractor** or **Supplier**.
+1. For a client or vendor, open **Who is this client?** (or **Who is this vendor?**) and choose them from the full list of Contacts: a person, or their client record or vendor company. Exact email matches are listed first. Picking a company adds them as a person there. If nobody matches, leave it on **Add as a new client** (or vendor) and Compass makes a new directory record from what they entered. For a vendor, also choose **Subcontractor** or **Supplier**.
 2. For an employee, choose their staff role. Administrator access is never given from a request.
 3. Select **Approve**. Compass links the directory person to their login, adds them to the company with that role, and opens every job that directory person is on, the same way **Grant project access** does. For a client it also opens jobs whose owner contact names no directory person yet (common for owners imported from Buildertrend) when that job contact or its client record has the requester's own sign-in email. Jobs kept staff-only are not opened; invite them from the job if they should see it. The person gets an email from you saying they're approved.
 
