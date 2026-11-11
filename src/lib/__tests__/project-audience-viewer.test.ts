@@ -178,8 +178,11 @@ describe("preview request isolation", () => {
     expect(scopedAudienceHref("/dashboard", current)).toBe("/dashboard")
     expect(scopedAudienceHref("https://outside.test/file", current)).toBe("https://outside.test/file")
   })
-  it("rejects malformed scope and does not propagate identity across projects", () => {
+  it("rejects malformed scope and does not propagate identity across workspaces", () => {
     expect(() => parseAudienceScope('{"audience":"staff"}')).toThrow()
-    expect(scopedAudienceHref("/preview/projects/project-b/owner", { projectId: "project-a", audience: "owner", targetUserId: "owner-a" })).not.toContain("previewAs")
+    expect(scopedAudienceHref("/preview/projects/project-a/sub-vendor", { projectId: "project-a", audience: "owner", targetUserId: "owner-a" })).not.toContain("previewAs")
+  })
+  it("keeps the previewed person when switching to another of their jobs", () => {
+    expect(scopedAudienceHref("/preview/projects/project-b/owner/schedule", { projectId: "project-a", audience: "owner", targetUserId: "owner-a" })).toBe("/preview/projects/project-b/owner/schedule?previewAs=owner-a")
   })
 })

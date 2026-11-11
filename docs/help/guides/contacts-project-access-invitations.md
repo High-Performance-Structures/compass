@@ -12,7 +12,7 @@
   "permissions": ["help:read", "vendor:read"],
   "routes": ["/dashboard/contacts", "/dashboard/projects/[id]/contacts"],
   "owner": "Compass product team",
-  "lastReviewed": "2026-11-10"
+  "lastReviewed": "2026-11-11"
 }
 ---
 
@@ -65,7 +65,7 @@ Select **Decline** to send a short, polite email instead; nothing is shared. Eac
 
 ## Verify Access {#verify-access}
 
-After inviting, confirm Compass reports success, the person appears on the correct project, and the role and feature permissions fit their work. Open **Owner preview** or **Vendor preview**, then choose the exact assigned person in **Preview as**. The preview follows that person's project records, emails, and files. With no person selected, private records stay hidden. People who haven't accepted their invitation yet are listed as **(invited)**; previewing one shows the workspace they will have once they accept, matched to their project contact by email.
+After inviting, confirm Compass reports success, the person appears on the correct project, and the role and feature permissions fit their work. Open **Owner preview** or **Vendor preview**, then choose the exact assigned person in **Preview as**. The preview follows that person's project records, emails, and files. With no person selected, private records stay hidden. People who haven't accepted their invitation yet are listed as **(invited)**; previewing one shows the workspace they will have once they accept, matched to their project contact by email. When the person you're previewing is on more than one job, their own job list appears in the workspace, just as they see it. The preview opens on the job you started from; pick another of their jobs to check it without leaving the preview. A vendor's map shows every job they're on.
 
 Internal staff can use this read-only preview by default; administrators can narrow **External person preview** in **Settings > Permissions**. Preview visits do not send messages, save drafts, confirm work, mark messages read, or change the person's notification settings. Return to the staff workspace to make changes.
 

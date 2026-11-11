@@ -47,8 +47,11 @@ export function scopedAudienceHref(href: string, scope: ProjectAudienceRequestSc
   const url = new URL(href, "https://compass.invalid")
   if (url.origin !== "https://compass.invalid") return href
   if (url.pathname.startsWith("/preview/projects/")) {
+    // The previewed person follows staff to another of their jobs (the job
+    // switcher and vendor map). The server re-checks that the person is
+    // assigned to that job before showing anything.
     const nextScope = audienceScopeFromUrl(url)
-    if (!nextScope || nextScope.projectId !== scope.projectId || nextScope.audience !== scope.audience) return href
+    if (!nextScope || nextScope.audience !== scope.audience) return href
   } else if (url.pathname.startsWith("/api/") || url.pathname.startsWith("/print/")) {
     url.searchParams.set("previewProject", scope.projectId)
     url.searchParams.set("previewAudience", scope.audience)
