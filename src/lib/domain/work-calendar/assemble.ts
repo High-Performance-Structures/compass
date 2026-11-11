@@ -5,7 +5,7 @@
  */
 import { calendarDetailLevel } from "@/lib/google/calendar/sync-policy"
 import { projectAudienceSectionHref } from "@/lib/project-audience-preview-routes"
-import { selectProjectAudienceScheduleItems } from "@/lib/project-audience-schedule-visibility"
+import { isSubScheduleView, selectProjectAudienceScheduleItems } from "@/lib/project-audience-schedule-visibility"
 import { isProjectTodoRecordType } from "@/lib/project-todos"
 import { linkedScheduleTaskId, linkedTodoSourceLabel } from "@/lib/schedule/linked-todos"
 import { summarizeOwnerScheduleByPhase } from "@/lib/schedule/owner-visibility"
@@ -80,9 +80,14 @@ function publishedScheduleRows(
   project: CalendarProjectRow,
   audience: ProjectAudience | null,
   snapshotData: string | null,
+  viewerUserId: string,
 ): readonly ScheduleRow[] {
   const snapshot = activePublishedScheduleSnapshot(project.schedulePublished, snapshotData)
-  const publishedItems = snapshot && audience ? selectProjectAudienceScheduleItems(snapshot.tasks, audience) : []
+  // Partners also get items assigned to them by name (company assignments show on their Schedule page).
+  const publishedItems = snapshot && audience ? selectProjectAudienceScheduleItems(snapshot.tasks, audience, {
+    view: isSubScheduleView(project.subScheduleView) ? project.subScheduleView : "assigned",
+    isViewerAssigned: (item) => item.assignedUserId === viewerUserId,
+  }) : []
   return audience === "owner" && project.ownerScheduleView === "phases"
     ? summarizeOwnerScheduleByPhase(
         publishedItems.map((item) => ({ ...item, endDate: item.endDateCalculated })),
@@ -237,7 +242,7 @@ export function projectSourceEntries(
     const audience = projectAudience(rows.projectRoles.get(project.id))
     const taskRows: readonly ScheduleRow[] = viewer.canViewWorkingSchedule
       ? workingTasksByProject.get(project.id) ?? []
-      : publishedScheduleRows(project, audience, rows.publishedSnapshots.get(project.id) ?? null)
+      : publishedScheduleRows(project, audience, rows.publishedSnapshots.get(project.id) ?? null, viewer.userId)
     const scheduleTaskById = new Map(taskRows.map((scheduleTask) => [scheduleTask.id, scheduleTask]))
 
     for (const task of taskRows) {

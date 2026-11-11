@@ -34,6 +34,7 @@ import type {
   ScheduleBaselineData,
 } from "@/lib/schedule/types"
 import type { OwnerScheduleView } from "@/lib/schedule/owner-visibility"
+import type { SubScheduleView } from "@/lib/project-audience-schedule-visibility"
 import type { GanttScrollMode } from "@/lib/schedule/gantt-interaction-mode"
 import { projectBrandFor } from "@/lib/project-branding"
 import type { SchedulePublicationStatus } from "@/app/actions/schedule-publications"
@@ -71,6 +72,7 @@ interface ScheduleViewProps {
   readonly focusTaskId?: string | null
   readonly globalMode?: boolean
   readonly ownerScheduleView?: OwnerScheduleView
+  readonly subScheduleView?: SubScheduleView
   readonly savedViews?: readonly SavedScheduleViewData[]
   readonly ganttScrollMode?: GanttScrollMode
   readonly currentUserAssigneeTerms?: readonly string[]
@@ -98,6 +100,7 @@ export function ScheduleView({
   focusTaskId = null,
   globalMode = false,
   ownerScheduleView = "items",
+  subScheduleView = "assigned",
   savedViews: initialSavedViews = [],
   ganttScrollMode = "default",
   currentUserAssigneeTerms = [],
@@ -262,6 +265,7 @@ export function ScheduleView({
         allProjects={allProjects}
         scheduleProjects={scheduleProjects}
         ownerScheduleView={ownerScheduleView}
+        subScheduleView={subScheduleView}
         view={view}
         setView={setView}
         setTaskFormOpen={setTaskFormOpen}

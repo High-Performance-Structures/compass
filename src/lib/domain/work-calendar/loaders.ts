@@ -68,6 +68,7 @@ const calendarProjectColumns = {
   projectNumber: projects.projectNumber,
   schedulePublished: projects.schedulePublished,
   ownerScheduleView: projects.ownerScheduleView,
+  subScheduleView: projects.subScheduleView,
 }
 
 /** Staff see every company project; everyone else sees their memberships. */

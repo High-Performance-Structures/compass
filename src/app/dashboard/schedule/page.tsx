@@ -6,6 +6,7 @@ import {
   getOwnerScheduleView,
   getScopedSchedule,
 } from "@/app/actions/schedule"
+import { getSubScheduleView } from "@/app/actions/schedule-sub-visibility"
 import {
   WorkCalendar,
   type WorkCalendarView,
@@ -221,6 +222,10 @@ export default async function SchedulePage({
       scope.kind === "project" && primaryProject
         ? await getOwnerScheduleView(primaryProject.id)
         : "items"
+    const subScheduleView =
+      scope.kind === "project" && primaryProject
+        ? await getSubScheduleView(primaryProject.id)
+        : "assigned"
     const publicationStatus =
       scope.kind === "project" && primaryProject
         ? await getSchedulePublicationStatus(primaryProject.id)
@@ -248,6 +253,7 @@ export default async function SchedulePage({
           initialView={initialView}
           globalMode
           ownerScheduleView={ownerScheduleView}
+          subScheduleView={subScheduleView}
           savedViews={savedViews}
           ganttScrollMode={schedulePreferences.ganttScrollMode}
           currentUserAssigneeTerms={scheduleAssigneeTerms(currentUser)}

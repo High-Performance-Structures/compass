@@ -157,6 +157,7 @@ export type PersonNameRow = {
 export type CalendarProjectRow = ProjectRow & {
   readonly schedulePublished: boolean
   readonly ownerScheduleView: string
+  readonly subScheduleView: string
 }
 
 export type DestinationRow = {

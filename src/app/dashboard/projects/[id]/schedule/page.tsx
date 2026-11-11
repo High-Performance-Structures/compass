@@ -17,6 +17,7 @@ import type { ProjectTaskAssigneeOption } from "@/lib/domain/contacts/types"
 import { ScheduleView } from "@/components/schedule/schedule-view"
 import type { ScheduleData, ScheduleBaselineData } from "@/lib/schedule/types"
 import type { OwnerScheduleView } from "@/lib/schedule/owner-visibility"
+import { isSubScheduleView, type SubScheduleView } from "@/lib/project-audience-schedule-visibility"
 import { getScheduleSavedViews } from "@/app/actions/schedule-saved-views"
 import { getUserSchedulePreferences } from "@/app/actions/user-schedule-preferences"
 import {
@@ -69,6 +70,7 @@ export default async function SchedulePage({
   let allProjects: ProjectListItem[] = []
   let assigneeOptions: ProjectTaskAssigneeOption[] = []
   let ownerScheduleView: OwnerScheduleView = "items"
+  let subScheduleView: SubScheduleView = "assigned"
   let publicationStatus: SchedulePublicationStatus | null = null
   const currentUser = await getCurrentUser()
 
@@ -110,6 +112,7 @@ export default async function SchedulePage({
     projectName = project.projectNumber ?? project.name
     ownerScheduleView =
       project.ownerScheduleView === "phases" ? "phases" : "items"
+    subScheduleView = isSubScheduleView(project.subScheduleView) ? project.subScheduleView : "assigned"
     const [
       loadedSchedule,
       loadedBaselines,
@@ -152,6 +155,7 @@ export default async function SchedulePage({
         initialView={focusTaskId ? "list" : initialView}
         focusTaskId={focusTaskId}
         ownerScheduleView={ownerScheduleView}
+        subScheduleView={subScheduleView}
         savedViews={savedViews}
         ganttScrollMode={schedulePreferences.ganttScrollMode}
         currentUserAssigneeTerms={scheduleAssigneeTerms(currentUser)}

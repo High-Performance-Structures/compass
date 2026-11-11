@@ -44,3 +44,28 @@ describe("project audience schedule visibility", () => {
     ).toEqual(["owner-and-partner", "owner-only"])
   })
 })
+
+describe("partner schedule rules", () => {
+  const items = [
+    { id: "marked", ownerVisible: true, subVendorVisible: true },
+    { id: "theirs", ownerVisible: true, subVendorVisible: false },
+    { id: "other", ownerVisible: true, subVendorVisible: false },
+  ]
+
+  it("shows a partner the items they're responsible for even when unmarked", () => {
+    expect(
+      selectProjectAudienceScheduleItems(items, "sub_vendor", { isViewerAssigned: (item) => item.id === "theirs" }).map((item) => item.id)
+    ).toEqual(["marked", "theirs"])
+  })
+
+  it("shows every item when the job shows subs the full schedule", () => {
+    expect(selectProjectAudienceScheduleItems(items, "sub_vendor", { view: "full" }).map((item) => item.id)).toEqual(["marked", "theirs", "other"])
+  })
+
+  it("never widens what owners see", () => {
+    const ownerItems = items.map((item) => ({ ...item, ownerVisible: item.id !== "other" }))
+    expect(
+      selectProjectAudienceScheduleItems(ownerItems, "owner", { view: "full", isViewerAssigned: () => true }).map((item) => item.id)
+    ).toEqual(["marked", "theirs"])
+  })
+})

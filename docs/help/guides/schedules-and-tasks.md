@@ -12,7 +12,7 @@
   "permissions": ["help:read", "schedule:read"],
   "routes": ["/dashboard/schedule", "/dashboard/projects/[id]/schedule"],
   "owner": "Scheduling operations",
-  "lastReviewed": "2026-11-10"
+  "lastReviewed": "2026-11-11"
 }
 ---
 
@@ -58,6 +58,8 @@ The first **Publish schedule** makes selected visible items available in owner a
 A schedule that has never been published is a draft: edit dates, predecessors, and workday exceptions freely, with no shift reason. Once a schedule has been published, including one later moved back to draft, any change that moves dates asks for a **Schedule shift reason**, which is saved in the schedule's activity history.
 
 Authorized staff can choose **Move to draft** to hide the schedule from owners and subcontractors while retaining the internal tasks and publication history. Confirm the action and coordinate any commitments affected. Publish again when the schedule is ready. Item-level visibility changes also reach external workspaces only after publication.
+
+**What subs and suppliers see.** Each sub or supplier sees the published items they are responsible for, whether they were assigned by name or through their company, plus any item with **Subs can view** turned on. To show every sub and supplier on the job the whole published schedule, choose **Full schedule** under **Subs see** on the schedule toolbar; **Their items** goes back to the default. The choice is per job and takes effect right away; item changes still need publishing.
 
 If a schedule was published by mistake or is being rebuilt from scratch, a manager can move it to draft and then choose **Treat as never published**. Compass stops asking for shift reasons, and the next **Publish schedule** counts as the first publication. Earlier publications stay in the history.
 
