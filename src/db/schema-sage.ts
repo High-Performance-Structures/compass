@@ -202,6 +202,34 @@ export const sageVendorDirectoryEntries = sqliteTable("sage_vendor_directory_ent
   index("sage_vendor_directory_org_name_idx").on(table.organizationId, table.name),
 ])
 
+/**
+ * Read-only copy of Sage's employee list (dbo.employ), sent by the read-only
+ * Sage employee reader and replaced whole on each read. Compass uses it to
+ * link staff to their Sage employee by email and to follow each linked
+ * employee's current/inactive status. Names are shown to admins choosing a
+ * link by hand; they are never used to link on their own.
+ */
+export const sageEmployeeDirectoryEntries = sqliteTable("sage_employee_directory_entries", {
+  organizationId: text("organization_id").notNull().references(() => organizations.id, { onDelete: "cascade" }),
+  /** dbo.employ._idnum, lower case (internal_contacts.sage_employee_id). */
+  sageRecordId: text("sage_record_id").notNull(),
+  /** dbo.employ.recnum (internal_contacts.sage_employee_number). */
+  sageEmployeeNumber: text("sage_employee_number").notNull(),
+  firstName: text("first_name"),
+  lastName: text("last_name"),
+  /** dbo.employ.e_mail, trimmed and lower case. */
+  email: text("email"),
+  /** dbo.employ.status as Sage holds it; 1 is a current employee. */
+  sageStatusCode: integer("sage_status_code"),
+  /** dbo.employ.inactv. */
+  inactive: integer("inactive", { mode: "boolean" }).notNull().default(false),
+  capturedAt: text("captured_at").notNull(),
+}, (table) => [
+  uniqueIndex("sage_employee_directory_org_id_unique").on(table.organizationId, table.sageRecordId),
+  uniqueIndex("sage_employee_directory_org_number_unique").on(table.organizationId, table.sageEmployeeNumber),
+  index("sage_employee_directory_org_email_idx").on(table.organizationId, table.email),
+])
+
 /** Immutable record of deliberate Sage identity link decisions. */
 export const sageContactLinkEvents = sqliteTable(
   "sage_contact_link_events",

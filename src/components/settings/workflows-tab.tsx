@@ -242,7 +242,7 @@ const WORKFLOW_AREAS = [
   { value: "simple-invoices", label: "Simple invoices", description: "The mailbox invoices are emailed from, which departments invoice from the job's estimate, and when Square may be used." },
   { value: "sage-export", label: "Sage export", description: "Where pay requests are created, invoice number formats, and billed pay requests sent to Sage as AR invoices." },
   { value: "sage-estimates", label: "Sage estimates", description: "Whether accepted estimates go to Sage automatically as the job's proposal, and with the job budget." },
-  { value: "sage-contact-review", label: "Sage contact review", description: "Whether the person who makes a Sage contact change may approve it themselves, or a second person must." },
+  { value: "sage-contact-review", label: "Sage contact review", description: "Who approves Sage contact changes, and whether staff link to and follow their Sage employee record." },
   { value: "sage-add-requests", label: "Adding to Sage", description: "Who approves staff requests to add a new vendor, client, or contact to Sage." },
   { value: "sage-change-orders", label: "Sage change orders", description: "How executed change orders and variances are numbered, described and coded when staff send them to Sage." },
   { value: "change-order-acceptance", label: "Change-order acceptance", description: "Who may record an owner's verbal approval as a staff sign-off, and whether priced change orders need written approval." },

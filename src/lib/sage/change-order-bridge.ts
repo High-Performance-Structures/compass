@@ -69,6 +69,14 @@ export const COST_CODE_READER: BridgeKind = {
   disabledMessage: "",
 }
 
+/** The read-only reader that sends Sage's employee list (dbo.employ). */
+export const EMPLOYEE_READER: BridgeKind = {
+  secret: "reader",
+  heartbeat: "employee-reader",
+  enabled: null,
+  disabledMessage: "",
+}
+
 function failure(status: number, error: string): SageChangeOrderBridge {
   return { success: false, response: Response.json({ error }, { status }) }
 }

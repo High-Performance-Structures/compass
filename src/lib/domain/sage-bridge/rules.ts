@@ -22,6 +22,11 @@ export const SAGE_BRIDGE_HEARTBEAT_IDS = [
   // someone last asked for a refresh. Same id-and-time shape as a heartbeat.
   "cost-code-sync",
   "cost-code-refresh-request",
+  // The read-only reader that sends Sage's employee list, when Compass last
+  // applied it, and when someone last asked for a fresh read.
+  "employee-reader",
+  "employee-sync",
+  "employee-refresh-request",
 ] as const
 
 export type SageBridgeHeartbeatId = (typeof SAGE_BRIDGE_HEARTBEAT_IDS)[number]

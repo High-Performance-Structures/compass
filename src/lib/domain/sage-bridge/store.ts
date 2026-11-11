@@ -20,6 +20,7 @@ import {
   sageBridgeRequestNonces,
   sageClientDirectoryRefreshes,
   sageClientProjectWriteOperations,
+  sageEmployeeDirectoryEntries,
   sagePayApplicationSyncRuns,
   sageVendorCertificateSyncs,
   sageVendorDirectoryEntries,
@@ -447,4 +448,23 @@ export async function replaceSageVendorDirectory(db: Db, organizationId: string,
     db.insert(sageVendorDirectoryEntries).values(chunk)
   )
   await db.batch([db.delete(sageVendorDirectoryEntries).where(eq(sageVendorDirectoryEntries.organizationId, organizationId)), ...inserts])
+}
+
+export type SageEmployeeDirectoryRow = {
+  /** Lower case, as Compass stores Sage GUIDs. */
+  readonly sageRecordId: string
+  readonly sageEmployeeNumber: string
+  readonly firstName: string | null
+  readonly lastName: string | null
+  /** Trimmed and lower case. */
+  readonly email: string | null
+  readonly sageStatusCode: number | null
+  readonly inactive: boolean
+}
+
+/** Replaces the organization's copy of Sage's employees in one atomic batch. */
+export async function replaceSageEmployeeDirectory(db: Db, organizationId: string, rows: readonly SageEmployeeDirectoryRow[], now: string): Promise<void> {
+  const values = rows.map((row) => ({ organizationId, ...row, capturedAt: now }))
+  const inserts = chunkD1Rows(values).map((chunk) => db.insert(sageEmployeeDirectoryEntries).values(chunk))
+  await db.batch([db.delete(sageEmployeeDirectoryEntries).where(eq(sageEmployeeDirectoryEntries.organizationId, organizationId)), ...inserts])
 }

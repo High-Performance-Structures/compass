@@ -5,7 +5,7 @@ import { sageContactReviewerAllowed } from "@/lib/feature-settings/sage-contact-
 describe("Sage contact review settings", () => {
   it("lets the requester approve their own change by default", () => {
     const settings = parseFeatureSettings("sage-contact-review", null)
-    expect(settings).toEqual({ requireSecondApprover: false })
+    expect(settings).toEqual({ requireSecondApprover: false, autoLinkEmployeesByEmail: true, employeeStatusFollowsSage: true })
     expect(sageContactReviewerAllowed(settings, "staff-1", "staff-1")).toBe(true)
   })
 
@@ -13,5 +13,11 @@ describe("Sage contact review settings", () => {
     const settings = parseFeatureSettings("sage-contact-review", JSON.stringify({ requireSecondApprover: true }))
     expect(sageContactReviewerAllowed(settings, "staff-1", "staff-1")).toBe(false)
     expect(sageContactReviewerAllowed(settings, "staff-1", "reviewer-1")).toBe(true)
+  })
+
+  it("keeps employee linking and status on for a company that saved only the approver rule", () => {
+    const settings = parseFeatureSettings("sage-contact-review", JSON.stringify({ requireSecondApprover: true }))
+    expect(settings.autoLinkEmployeesByEmail).toBe(true)
+    expect(settings.employeeStatusFollowsSage).toBe(true)
   })
 })

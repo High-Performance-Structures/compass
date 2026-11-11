@@ -30,6 +30,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 import { Textarea } from "@/components/ui/textarea"
+import { StaffSageLinksSection } from "@/components/contacts/staff-sage-links-section"
 
 export function SageContactReviewDialog({
   open,
@@ -128,6 +129,7 @@ export function SageContactReviewDialog({
           <DialogDescription>Review exact Sage identities, proposed new people, and contact changes. Every Sage write needs an approval by someone with Sage review access; Settings › Workflows › Sage contact review decides whether that may be the person who asked.</DialogDescription>
         </DialogHeader>
         <div className="space-y-4">
+          <StaffSageLinksSection open={open} />
           <h3 className="text-sm font-semibold">Sage identity links</h3>
           {links.length === 0 ? <p className="text-sm text-muted-foreground">No Sage identity lookups yet.</p> : null}
           {links.map((candidate) => (

@@ -9,7 +9,7 @@ import { FEATURE_SETTINGS } from "@/lib/feature-settings/registry"
 
 const GROUP = FEATURE_SETTINGS["sage-contact-review"]
 
-/** Settings → Workflows: whether the requester may approve their own Sage contact changes. */
+/** Settings → Workflows: who approves Sage contact changes, and how staff follow their Sage employee record. */
 export function SageContactReviewSettingsSection(): React.ReactElement {
   const { loaded, canEdit, customized, error, pending, settings: value, setSettings: setValue, save: saveSettings, reset } = useFeatureSettingsEditor("sage-contact-review", {
     savedMessage: "Sage contact review settings saved.",
@@ -44,6 +44,37 @@ export function SageContactReviewSettingsSection(): React.ReactElement {
               checked={value.requireSecondApprover}
               disabled={pending || !canEdit}
               onCheckedChange={(checked) => setValue({ ...value, requireSecondApprover: checked })}
+            />
+          </div>
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <Label htmlFor="sage-contact-review-auto-link-employees">Link staff to their Sage employee by email</Label>
+              <p className="text-xs text-muted-foreground">
+                On (default): when Compass reads Sage&apos;s employee list, an unlinked staff member is linked to the one current Sage employee
+                with the same email, and given an internal contact if they have none. Two matches either way are left for you in Sage review.
+                Names never link anyone.
+              </p>
+            </div>
+            <Switch
+              id="sage-contact-review-auto-link-employees"
+              checked={value.autoLinkEmployeesByEmail}
+              disabled={pending || !canEdit}
+              onCheckedChange={(checked) => setValue({ ...value, autoLinkEmployeesByEmail: checked })}
+            />
+          </div>
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <Label htmlFor="sage-contact-review-employee-status">Staff contacts follow their Sage employee status</Label>
+              <p className="text-xs text-muted-foreground">
+                On (default): a linked staff contact becomes inactive when Sage shows the employee as not current, and active again when
+                current. Their Compass login is not changed; an inactive contact loses automatic field app access.
+              </p>
+            </div>
+            <Switch
+              id="sage-contact-review-employee-status"
+              checked={value.employeeStatusFollowsSage}
+              disabled={pending || !canEdit}
+              onCheckedChange={(checked) => setValue({ ...value, employeeStatusFollowsSage: checked })}
             />
           </div>
           <div className="flex flex-wrap items-center gap-2">
