@@ -14,7 +14,7 @@
  * Nothing is ever granted without an admin's approval. Emails and
  * notifications are sent by ./notify.ts after these return.
  */
-import { and, eq, isNull } from "drizzle-orm"
+import { and, eq, isNull, or, sql } from "drizzle-orm"
 
 import {
   customerContacts,
@@ -28,7 +28,7 @@ import {
 import { organizationAccessRequests } from "@/db/schema-access-requests"
 import { recordActivityEvent, type ActivityActor } from "@/lib/activity-log"
 import { grantProjectContactAccess } from "@/lib/domain/contacts/prior-project-access"
-import { contactAccountLinkStatements } from "@/lib/domain/contacts/store"
+import { contactAccountLinkStatements, insertCustomer, insertCustomerPerson, insertVendor, insertVendorPersonStatement } from "@/lib/domain/contacts/store"
 import { ensureExternalOrganizationMembership, insertOrganizationMember } from "@/lib/domain/identity/store"
 import { projectNumberAndName } from "@/lib/project-display-name"
 import type { Db } from "@/lib/server/action-context"
@@ -41,6 +41,9 @@ import {
   approveAccessRequestSchema,
   approvedOrganizationRole,
   canDecideAccessRequests,
+  CLIENT_RECORD_OPTION_PREFIX,
+  NEW_DIRECTORY_RECORD_OPTION,
+  VENDOR_COMPANY_OPTION_PREFIX,
   projectRoleForContactType,
   type AccessRequestInput,
   type ApproveAccessRequestInput,
@@ -204,6 +207,119 @@ async function clientPerson(db: Db, organizationId: string, personId: string): P
     .get()
 }
 
+/**
+ * A client record picked directly. Many clients are kept as one record
+ * (often imported from Buildertrend) with no people under it, and a login
+ * links to a person. Uses the record's active person with the requester's or
+ * the record's email when there is one; otherwise adds that person to the
+ * record from its own name, email and phone, the same directory person the
+ * Contacts page would add. Never touches job contacts.
+ */
+async function clientPersonForRecord(
+  db: Db,
+  organizationId: string,
+  customerId: string,
+  requester: { readonly name: string; readonly email: string },
+  now: string,
+): Promise<LinkedPerson | undefined> {
+  const requesterEmail = requester.email
+  const record = await db
+    .select({ id: customers.id, name: customers.name, email: customers.email, phone: customers.phone })
+    .from(customers)
+    .where(and(
+      eq(customers.id, customerId),
+      eq(customers.organizationId, organizationId),
+      isNull(customers.mergedIntoCustomerId),
+    ))
+    .get()
+  if (!record) return undefined
+  const emails = new Set([plainEmail(requesterEmail), plainEmail(record.email)].filter((email): email is string => email !== null))
+  const people = await db
+    .select({ id: customerContacts.id, userId: customerContacts.userId, email: customerContacts.email })
+    .from(customerContacts)
+    .where(and(eq(customerContacts.customerId, record.id), eq(customerContacts.active, true), isNull(customerContacts.mergedIntoPersonId)))
+  const same = people.find((person) => {
+    const email = plainEmail(person.email)
+    return email !== null && emails.has(email)
+  })
+  if (same) return { id: same.id, userId: same.userId }
+  const id = crypto.randomUUID()
+  await insertCustomerPerson(db, {
+    id,
+    customerId: record.id,
+    // The record is this person when it carries their email; otherwise it's their company.
+    name: plainEmail(record.email) === plainEmail(requesterEmail) ? record.name : requester.name,
+    email: plainEmail(requesterEmail) ?? plainEmail(record.email),
+    phone: record.phone,
+    isPrimary: people.length === 0,
+    createdAt: now,
+    updatedAt: now,
+  })
+  return { id, userId: null }
+}
+
+/**
+ * A vendor company picked directly: its active person with the requester's
+ * email, or the requester added to it as a new person. Never touches job
+ * contacts.
+ */
+async function vendorPersonForCompany(
+  db: Db,
+  organizationId: string,
+  vendorId: string,
+  requester: { readonly name: string; readonly email: string; readonly phone: string | null },
+  now: string,
+): Promise<LinkedPerson | undefined> {
+  const company = await db
+    .select({ id: vendors.id })
+    .from(vendors)
+    .where(and(eq(vendors.id, vendorId), eq(vendors.organizationId, organizationId), eq(vendors.directoryStatus, "active"), isNull(vendors.mergedIntoVendorId)))
+    .get()
+  if (!company) return undefined
+  const email = plainEmail(requester.email)
+  const people = await db
+    .select({ id: vendorContacts.id, userId: vendorContacts.userId, email: vendorContacts.email })
+    .from(vendorContacts)
+    .where(and(eq(vendorContacts.vendorId, company.id), eq(vendorContacts.active, true), isNull(vendorContacts.mergedIntoPersonId)))
+  const same = people.find((person) => email !== null && plainEmail(person.email) === email)
+  if (same) return { id: same.id, userId: same.userId }
+  const id = crypto.randomUUID()
+  await insertVendorPersonStatement(db, {
+    id, vendorId: company.id, name: requester.name, email, phone: requester.phone,
+    isPrimary: people.length === 0, createdAt: now, updatedAt: now,
+  })
+  return { id, userId: null }
+}
+
+/**
+ * Nobody in the directory matched, so the admin approves the request as a
+ * new client or vendor: the directory record is made from what the person
+ * entered, then they are its person. An admin chose this; nothing is created
+ * without that click.
+ */
+async function newDirectoryPerson(
+  db: Db,
+  organizationId: string,
+  kind: "client" | "vendor",
+  requester: { readonly name: string; readonly email: string; readonly phone: string | null; readonly companyName: string | null; readonly vendorRole: string | null },
+  now: string,
+): Promise<LinkedPerson | undefined> {
+  const id = crypto.randomUUID()
+  if (kind === "client") {
+    await insertCustomer(db, {
+      id, organizationId, name: requester.name, email: plainEmail(requester.email), phone: requester.phone,
+      company: requester.companyName, relationshipType: "client", createdAt: now, updatedAt: now,
+    })
+    return clientPersonForRecord(db, organizationId, id, requester, now)
+  }
+  await insertVendor(db, {
+    id, organizationId, name: requester.companyName?.trim() || requester.name,
+    category: requester.vendorRole === "supplier" ? "Supplier" : "Subcontractor",
+    email: plainEmail(requester.email), phone: requester.phone, createdAt: now, updatedAt: now,
+  })
+  return vendorPersonForCompany(db, organizationId, id, requester, now)
+}
+
 async function vendorPerson(db: Db, organizationId: string, personId: string): Promise<LinkedPerson | undefined> {
   return db
     .select({ id: vendorContacts.id, userId: vendorContacts.userId })
@@ -220,24 +336,74 @@ async function vendorPerson(db: Db, organizationId: string, personId: string): P
     .get()
 }
 
-/** Every active job contact for this directory person, with what the grant needs. */
-async function personJobs(db: Db, organizationId: string, kind: "client" | "vendor", personId: string) {
-  return db
-    .select({
-      contactId: projectContacts.id,
-      contactType: projectContacts.contactType,
-      projectId: projects.id,
-      projectName: projects.name,
-      projectNumber: projects.projectNumber,
-      staffOnly: projects.importedConversationsStaffOnly,
-    })
+const jobColumns = {
+  contactId: projectContacts.id,
+  contactType: projectContacts.contactType,
+  projectId: projects.id,
+  projectName: projects.name,
+  projectNumber: projects.projectNumber,
+  staffOnly: projects.importedConversationsStaffOnly,
+}
+
+/** "Rita <Rita@X.com>" or " rita@x.com " -> "rita@x.com". */
+function plainEmail(value: string | null | undefined): string | null {
+  if (!value) return null
+  const wrapped = value.match(/<([^<>]+)>/)
+  const email = (wrapped ? wrapped[1] : value).trim().toLowerCase()
+  return email.includes("@") ? email : null
+}
+
+/**
+ * Every active job contact for this directory person, with what the grant
+ * needs. For a client this also includes owner job contacts that name no
+ * directory person yet but sit under a client record (merged or not) and carry
+ * the requester's own sign-in email, on the job contact or its client record.
+ * Most owners imported from Buildertrend look like that. Read-only: no job
+ * contact or directory row is changed to make the match.
+ */
+async function personJobs(
+  db: Db,
+  organizationId: string,
+  kind: "client" | "vendor",
+  personId: string,
+  requesterEmail: string,
+) {
+  const base = and(eq(projects.organizationId, organizationId), eq(projectContacts.active, true))
+  if (kind === "vendor") {
+    return db.select(jobColumns).from(projectContacts)
+      .innerJoin(projects, eq(projects.id, projectContacts.projectId))
+      .where(and(base, eq(projectContacts.vendorContactId, personId)))
+  }
+  const linked = await db.select(jobColumns).from(projectContacts)
+    .innerJoin(projects, eq(projects.id, projectContacts.projectId))
+    .where(and(base, eq(projectContacts.customerContactId, personId)))
+  const email = plainEmail(requesterEmail)
+  if (!email) return linked
+  const like = `%${email}%`
+  const unpersoned = await db
+    .select({ ...jobColumns, contactEmail: projectContacts.email, customerEmail: customers.email })
     .from(projectContacts)
     .innerJoin(projects, eq(projects.id, projectContacts.projectId))
+    .innerJoin(customers, eq(customers.id, projectContacts.customerId))
     .where(and(
-      eq(projects.organizationId, organizationId),
-      eq(projectContacts.active, true),
-      kind === "client" ? eq(projectContacts.customerContactId, personId) : eq(projectContacts.vendorContactId, personId),
+      base,
+      isNull(projectContacts.customerContactId),
+      eq(customers.organizationId, organizationId),
+      or(sql`lower(${projectContacts.email}) LIKE ${like}`, sql`lower(${customers.email}) LIKE ${like}`),
     ))
+  const seen = new Set(linked.map((job) => job.contactId))
+  const matched = unpersoned
+    .filter((job) => plainEmail(job.contactEmail) === email || plainEmail(job.customerEmail) === email)
+    .filter((job) => !seen.has(job.contactId))
+    .map((job) => ({
+      contactId: job.contactId,
+      contactType: job.contactType,
+      projectId: job.projectId,
+      projectName: job.projectName,
+      projectNumber: job.projectNumber,
+      staffOnly: job.staffOnly,
+    }))
+  return [...linked, ...matched]
 }
 
 /**
@@ -274,11 +440,22 @@ export async function approveAccessRequest(
   if (existing && isInternalStaffRole(existing.role)) return fail("This person is already on your staff in Compass.")
   if (existing && choice.kind === "employee") return fail("This person already has access. Change their role in People.")
 
-  const person = choice.kind === "client"
-    ? await clientPerson(db, organizationId, choice.customerContactId)
-    : choice.kind === "vendor"
-      ? await vendorPerson(db, organizationId, choice.vendorContactId)
-      : null
+  const requester = {
+    name: found.requesterName, email: found.requesterEmail, phone: request.phone,
+    companyName: request.companyName, vendorRole: choice.kind === "vendor" ? choice.role : null,
+  }
+  const picked = choice.kind === "client" ? choice.customerContactId : choice.kind === "vendor" ? choice.vendorContactId : ""
+  const person = choice.kind === "employee"
+    ? null
+    : picked === NEW_DIRECTORY_RECORD_OPTION
+      ? await newDirectoryPerson(db, organizationId, choice.kind, requester, now)
+      : choice.kind === "client"
+        ? picked.startsWith(CLIENT_RECORD_OPTION_PREFIX)
+          ? await clientPersonForRecord(db, organizationId, picked.slice(CLIENT_RECORD_OPTION_PREFIX.length), requester, now)
+          : await clientPerson(db, organizationId, picked)
+        : picked.startsWith(VENDOR_COMPANY_OPTION_PREFIX)
+          ? await vendorPersonForCompany(db, organizationId, picked.slice(VENDOR_COMPANY_OPTION_PREFIX.length), requester, now)
+          : await vendorPerson(db, organizationId, picked)
   if (choice.kind !== "employee") {
     if (!person) return fail("That directory contact wasn't found or is inactive.")
     if (person.userId && person.userId !== request.userId) {
@@ -291,8 +468,8 @@ export async function approveAccessRequest(
     status: "approved",
     decidedBy: actor.id,
     now,
-    customerContactId: choice.kind === "client" ? choice.customerContactId : null,
-    vendorContactId: choice.kind === "vendor" ? choice.vendorContactId : null,
+    customerContactId: choice.kind === "client" && person ? person.id : null,
+    vendorContactId: choice.kind === "vendor" && person ? person.id : null,
     grantedRole: role,
   })
   if (!claimed) return fail("This request was already decided.")
@@ -318,7 +495,7 @@ export async function approveAccessRequest(
         if (results[0]?.meta.changes !== 1) throw new Error("The directory contact changed while you were approving. Reload and try again.")
       }
       const email = found.requesterEmail.trim().toLowerCase()
-      const jobs = await personJobs(db, organizationId, choice.kind, person.id)
+      const jobs = await personJobs(db, organizationId, choice.kind, person.id, found.requesterEmail)
       // One grant per job, as the project invitation does: each step reads and
       // writes that job's membership, conversation and access rows.
       for (const job of jobs) {

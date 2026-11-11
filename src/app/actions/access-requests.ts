@@ -20,8 +20,7 @@ import {
   hasCompanyMembership,
   myAccessRequests,
   requestableOrganizationsFor,
-  searchAccessRequestDirectory,
-  suggestedAccessRequestDirectory,
+  listAccessRequestDirectory,
   type AccessRequestDirectoryOption,
   type CompanyAccessRequest,
   type MyAccessRequest,
@@ -144,10 +143,7 @@ export async function getAccessRequestDirectoryOptions(
     const found = await companyAccessRequest(db, organizationId, requestId)
     if (!found) return actionFailure("Request not found.")
     const base = { organizationId, kind: found.request.kind, requesterUserId: found.request.userId }
-    const options = search.trim().length >= 2
-      ? await searchAccessRequestDirectory(db, { ...base, search })
-      : await suggestedAccessRequestDirectory(db, { ...base, email: found.requesterEmail })
-    return { success: true, data: options }
+    return { success: true, data: await listAccessRequestDirectory(db, { ...base, requesterEmail: found.requesterEmail, search }) }
   } catch (error) {
     return actionFailure(errorMessage(error, "Unable to search the directory."))
   }

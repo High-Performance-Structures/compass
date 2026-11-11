@@ -4,7 +4,7 @@
  * directory people an admin can link a request to. Every read is scoped in
  * SQL to one person or one company.
  */
-import { and, desc, eq, inArray, sql } from "drizzle-orm"
+import { and, desc, eq, inArray, isNull, sql } from "drizzle-orm"
 import { alias } from "drizzle-orm/sqlite-core"
 
 import { organizationAccessRequests } from "@/db/schema-access-requests"
@@ -18,12 +18,11 @@ import {
   vendorContacts,
   vendors,
 } from "@/db/schema"
-import { searchDirectoryPeople, exactDirectoryPeople, type DirectoryPerson } from "@/lib/domain/contacts/people-search"
 import { isDemoOrg } from "@/lib/demo"
 import { ADMIN_USER_ROLES } from "@/lib/domain/identity/statuses"
 import type { Db } from "@/lib/server/action-context"
 
-import { isRequestableOrganization } from "./rules"
+import { CLIENT_RECORD_OPTION_PREFIX, isRequestableOrganization, VENDOR_COMPANY_OPTION_PREFIX } from "./rules"
 import type { AccessRequestKind, AccessRequestStatus } from "./statuses"
 
 /** The feature settings key for Settings > People > Access requests. */
@@ -223,19 +222,6 @@ export type AccessRequestDirectoryOption = {
   readonly linkedElsewhere: boolean
 }
 
-function directoryOptions(people: readonly DirectoryPerson[], kind: AccessRequestKind, requesterUserId: string): readonly AccessRequestDirectoryOption[] {
-  const type = kind === "client" ? "customer_contact" : kind === "vendor" ? "vendor_contact" : null
-  if (!type) return []
-  return people
-    .filter((person) => person.type === type && person.active)
-    .map((person) => ({
-      id: person.id,
-      name: person.name,
-      label: person.label,
-      email: person.email,
-      linkedElsewhere: person.userId !== null && person.userId !== requesterUserId,
-    }))
-}
 
 /**
  * Client people (for a client request) or vendor people (for a vendor
@@ -243,21 +229,102 @@ function directoryOptions(people: readonly DirectoryPerson[], kind: AccessReques
  * shared bounded directory search. No project is given, so a job's own
  * unlinked contacts are never offered.
  */
-export async function searchAccessRequestDirectory(
-  db: Db,
-  input: { readonly organizationId: string; readonly kind: AccessRequestKind; readonly requesterUserId: string; readonly search: string },
-): Promise<readonly AccessRequestDirectoryOption[]> {
-  if (input.kind === "employee") return []
-  return directoryOptions(await searchDirectoryPeople(db, input.organizationId, "", input.search), input.kind, input.requesterUserId)
-}
+const DIRECTORY_LIST_LIMIT = 400
 
-/** Directory people whose email is exactly the requester's: shown as a suggestion, never linked without a click. */
-export async function suggestedAccessRequestDirectory(
+/**
+ * Everyone this request could be, for the review dropdown: for a client
+ * request every client person and client record, for a vendor request every
+ * vendor person and vendor company, optionally narrowed by a search on name,
+ * company or email. People whose email is exactly the requester's come
+ * first as suggestions; nothing is linked until the admin picks one.
+ * Picking a client record or vendor company adds that person to it on
+ * approval (see the service). A job's own unlinked contacts are never offered.
+ */
+export async function listAccessRequestDirectory(
   db: Db,
-  input: { readonly organizationId: string; readonly kind: AccessRequestKind; readonly requesterUserId: string; readonly email: string },
+  input: {
+    readonly organizationId: string
+    readonly kind: AccessRequestKind
+    readonly requesterUserId: string
+    readonly requesterEmail: string
+    readonly search: string
+  },
 ): Promise<readonly AccessRequestDirectoryOption[]> {
   if (input.kind === "employee") return []
-  return directoryOptions(await exactDirectoryPeople(db, input.organizationId, "", input.email), input.kind, input.requesterUserId)
+  const text = input.search.trim().toLowerCase()
+  const like = `%${text}%`
+  const email = input.requesterEmail.trim().toLowerCase()
+  const linkedElsewhere = (userId: string | null): boolean => userId !== null && userId !== input.requesterUserId
+  const options: AccessRequestDirectoryOption[] = []
+  if (input.kind === "client") {
+    const people = await db
+      .select({ id: customerContacts.id, name: customerContacts.name, email: customerContacts.email, userId: customerContacts.userId, company: sql<string>`COALESCE(NULLIF(trim(${customers.company}), ''), ${customers.name})` })
+      .from(customerContacts)
+      .innerJoin(customers, eq(customers.id, customerContacts.customerId))
+      .where(and(
+        eq(customers.organizationId, input.organizationId),
+        isNull(customers.mergedIntoCustomerId),
+        isNull(customerContacts.mergedIntoPersonId),
+        eq(customerContacts.active, true),
+        text ? sql`(lower(${customerContacts.name}) LIKE ${like} OR lower(COALESCE(${customerContacts.email}, '')) LIKE ${like} OR lower(${customers.name}) LIKE ${like} OR lower(COALESCE(${customers.company}, '')) LIKE ${like})` : undefined,
+      ))
+      .orderBy(customerContacts.name)
+      .limit(DIRECTORY_LIST_LIMIT)
+    for (const row of people) options.push({ id: row.id, name: row.name, label: `Person at ${row.company}`, email: row.email, linkedElsewhere: linkedElsewhere(row.userId) })
+    const records = await db
+      .select({
+        id: customers.id, name: customers.name, company: customers.company, email: customers.email,
+        userId: sql<string | null>`(SELECT cc.user_id FROM customer_contacts cc WHERE cc.customer_id = ${customers.id} AND cc.active = 1 AND cc.user_id IS NOT NULL LIMIT 1)`,
+      })
+      .from(customers)
+      .where(and(
+        eq(customers.organizationId, input.organizationId),
+        isNull(customers.mergedIntoCustomerId),
+        text ? sql`(lower(${customers.name}) LIKE ${like} OR lower(COALESCE(${customers.company}, '')) LIKE ${like} OR lower(COALESCE(${customers.email}, '')) LIKE ${like})` : undefined,
+      ))
+      .orderBy(customers.name)
+      .limit(DIRECTORY_LIST_LIMIT)
+    for (const row of records) {
+      options.push({
+        id: `${CLIENT_RECORD_OPTION_PREFIX}${row.id}`, name: row.name,
+        label: row.company?.trim() ? `Client · ${row.company.trim()}` : "Client",
+        email: row.email, linkedElsewhere: linkedElsewhere(row.userId),
+      })
+    }
+  } else {
+    const people = await db
+      .select({ id: vendorContacts.id, name: vendorContacts.name, email: vendorContacts.email, userId: vendorContacts.userId, company: vendors.name })
+      .from(vendorContacts)
+      .innerJoin(vendors, eq(vendors.id, vendorContacts.vendorId))
+      .where(and(
+        eq(vendors.organizationId, input.organizationId),
+        eq(vendors.directoryStatus, "active"),
+        isNull(vendors.mergedIntoVendorId),
+        isNull(vendorContacts.mergedIntoPersonId),
+        eq(vendorContacts.active, true),
+        text ? sql`(lower(${vendorContacts.name}) LIKE ${like} OR lower(COALESCE(${vendorContacts.email}, '')) LIKE ${like} OR lower(${vendors.name}) LIKE ${like})` : undefined,
+      ))
+      .orderBy(vendors.name, vendorContacts.name)
+      .limit(DIRECTORY_LIST_LIMIT)
+    for (const row of people) options.push({ id: row.id, name: row.name, label: `Person at ${row.company}`, email: row.email, linkedElsewhere: linkedElsewhere(row.userId) })
+    const companies = await db
+      .select({ id: vendors.id, name: vendors.name, email: vendors.email, category: vendors.category })
+      .from(vendors)
+      .where(and(
+        eq(vendors.organizationId, input.organizationId),
+        eq(vendors.directoryStatus, "active"),
+        isNull(vendors.mergedIntoVendorId),
+        text ? sql`(lower(${vendors.name}) LIKE ${like} OR lower(COALESCE(${vendors.email}, '')) LIKE ${like})` : undefined,
+      ))
+      .orderBy(vendors.name)
+      .limit(DIRECTORY_LIST_LIMIT)
+    for (const row of companies) {
+      options.push({ id: `${VENDOR_COMPANY_OPTION_PREFIX}${row.id}`, name: row.name, label: `Vendor company · ${row.category}`, email: row.email, linkedElsewhere: false })
+    }
+  }
+  // Exact email matches first, as suggestions.
+  const matches = (option: AccessRequestDirectoryOption): boolean => email !== "" && (option.email ?? "").trim().toLowerCase() === email
+  return [...options.filter(matches), ...options.filter((option) => !matches(option))]
 }
 
 /** Active admins who decide requests and are told about new ones. */

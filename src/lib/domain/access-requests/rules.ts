@@ -108,3 +108,10 @@ export function projectRoleForContactType(contactType: string): "owner" | "subco
   if (contactType === "supplier") return "supplier"
   return null
 }
+
+/** Option ids for a client record picked directly (a client that has no people of its own yet). */
+export const CLIENT_RECORD_OPTION_PREFIX = "customer:"
+/** Option ids for a vendor company picked directly: approving adds the requester as a person there. */
+export const VENDOR_COMPANY_OPTION_PREFIX = "vendor:"
+/** Nobody in the directory matches: approving adds a new client or vendor from the request itself. */
+export const NEW_DIRECTORY_RECORD_OPTION = "new"
