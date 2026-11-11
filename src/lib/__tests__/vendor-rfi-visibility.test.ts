@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest"
 import { readFileSync } from "node:fs"
 import { and, eq } from "drizzle-orm"
-import { openCorrespondenceTestDatabase, type CorrespondenceTestDatabase } from "../../../__tests__/helpers/correspondence-core"
+import { openCorrespondenceTestDatabase, type CorrespondenceTestDatabase, addContactDirectorySchema } from "../../../__tests__/helpers/correspondence-core"
 import { projectRfis } from "@/db/schema"
 import { inJsonList, vendorVisibleRfiSourceIds } from "@/lib/rfis/vendor-visibility"
 import {
@@ -27,6 +27,7 @@ beforeEach(() => {
   database.sqlite.exec("CREATE TABLE project_rfis (id TEXT PRIMARY KEY, project_id TEXT NOT NULL, source_record_id TEXT)")
   for (const id of ["user-a", "user-a2"]) database.sqlite.prepare("INSERT INTO users (id,email,role,is_active,created_at,updated_at) VALUES (?,?,'supplier',1,?,?)").run(id, `${id}@example.test`, NOW, NOW)
   database.sqlite.exec(readFileSync("drizzle/0140_project_source_record_participants.sql", "utf8").replaceAll("--> statement-breakpoint", ""))
+  addContactDirectorySchema(database.sqlite)
   database.sqlite.exec(`INSERT INTO project_contacts (id,project_id,vendor_id,active,contact_type,display_name,company_name) VALUES
     ('contact-a','project-a','vendor-a',1,'supplier','Avery','Acme Supply'),
     ('contact-a2','project-a','vendor-a',1,'supplier','Alex','Acme Supply'),

@@ -25,18 +25,35 @@ import { defaultEstimateTitle } from "@/lib/estimates/client-report"
 import { contractEstimateConditions } from "@/lib/estimates/estimate-family"
 import { nextEstimateNumber } from "@/lib/estimates/estimate-modes"
 import { numberNewEstimate, readEstimateMode } from "@/lib/estimates/numbering"
+import { resolvedContactColumns, withContactDirectory } from "@/lib/domain/contacts/resolved-columns"
 
 /** Creating, copying and deleting estimate drafts. Callers check access first. */
 
-type ContactRow = typeof projectContacts.$inferSelect
+type ContactRow = {
+  readonly id: string
+  readonly contactType: string
+  readonly role: string | null
+  readonly displayName: string
+  readonly email: string | null
+}
 
-/** A project's active contacts, primary first: the default signers. */
+/**
+ * A project's active contacts, primary first: the default signers. Name and
+ * email come from each contact's directory record (resolved-columns.ts).
+ */
 async function signerContacts(db: CompassDb, projectId: string): Promise<ContactRow[]> {
-  return db
-    .select()
+  return withContactDirectory(db
+    .select({
+      id: projectContacts.id,
+      contactType: projectContacts.contactType,
+      role: projectContacts.role,
+      displayName: resolvedContactColumns.displayName,
+      email: resolvedContactColumns.email,
+    })
     .from(projectContacts)
     .where(and(eq(projectContacts.projectId, projectId), eq(projectContacts.active, true)))
     .orderBy(desc(projectContacts.primaryContact), asc(projectContacts.sortOrder))
+    .$dynamic())
 }
 
 function ownerSigners(contacts: readonly ContactRow[]): {

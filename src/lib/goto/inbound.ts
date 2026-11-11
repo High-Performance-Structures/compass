@@ -60,6 +60,7 @@ import {
   projectNumberParts,
 } from "@/lib/project-profile"
 import type { ProjectDepartment } from "@/lib/project-branding"
+import { resolvedContactColumns, withContactDirectory } from "@/lib/domain/contacts/resolved-columns"
 
 type Db = ReturnType<typeof getDb>
 
@@ -361,12 +362,12 @@ async function projectForMessage(input: {
     }
   | { readonly kind: "missing" | "ambiguous" }
 > {
-  const rows = await input.db
+  const rows = await withContactDirectory(input.db
     .select({
       id: projects.id,
       projectNumber: projects.projectNumber,
       status: projects.status,
-      contactPhone: projectContacts.phone,
+      contactPhone: resolvedContactColumns.phone,
       contactType: projectContacts.contactType,
       primaryContact: projectContacts.primaryContact,
     })
@@ -378,7 +379,7 @@ async function projectForMessage(input: {
         eq(projectContacts.active, true)
       )
     )
-    .where(eq(projects.organizationId, input.organizationId))
+    .where(eq(projects.organizationId, input.organizationId)).$dynamic(), input.organizationId)
   const priorConversationProjectIds = input.conversationId
     ? await input.db
         .select({ projectId: gotoInboundEvents.projectId })

@@ -1,9 +1,10 @@
 import { sql } from "drizzle-orm"
 
-import { projectContacts, users } from "@/db/schema"
+import { users } from "@/db/schema"
 import { messages } from "@/db/schema-conversations"
 import { archivedAwareNameSql } from "@/lib/archived-person-sql"
 import { projectContactPersonStatusSql } from "@/lib/domain/contacts/person-status"
+import { resolvedContactValueOf } from "@/lib/domain/contacts/resolved-columns"
 
 /*
  * Messages imported from an outside system (Buildertrend today) live in
@@ -16,12 +17,13 @@ import { projectContactPersonStatusSql } from "@/lib/domain/contacts/person-stat
 /** Extra message columns every conversation read selects alongside the message. */
 export const importedMessageColumns = {
   sourceSystem: messages.sourceSystem,
-  // The sender's directory name, else the sender exactly as the source showed
+  // The sender's directory name (resolved from the job contact's directory
+  // record, never its copied name), else the sender exactly as the source showed
   // it when they could not be matched (0290).
   // An archived sender (removed from Contacts, or former staff) reads
   // "Archived user – Name".
   importedSenderName: sql<string | null>`COALESCE((
-    SELECT ${archivedAwareNameSql(projectContacts.displayName, sql`${projectContactPersonStatusSql()} = 'archived_person'`)}
+    SELECT ${archivedAwareNameSql(resolvedContactValueOf("displayName"), sql`${projectContactPersonStatusSql()} = 'archived_person'`)}
     FROM project_contacts WHERE project_contacts.id = ${messages.importedSenderContactId}
   ), ${messages.sourceSenderLabelSnapshot})`,
 }

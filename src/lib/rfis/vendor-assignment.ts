@@ -6,6 +6,7 @@ import { projectSourceRecordParticipants } from "@/db/schema-participants"
 import type { ProjectContactType } from "@/lib/domain/contacts/statuses"
 import { upsertSourceRecordParticipantStatement } from "@/lib/domain/documents/store"
 import { canViewRfi, PARTICIPANT_CAPABILITIES } from "@/lib/participant-access"
+import { resolvedContactColumns, withContactDirectory } from "@/lib/domain/contacts/resolved-columns"
 
 type Db = ReturnType<typeof getDb>
 
@@ -43,30 +44,30 @@ function rfiVendorLabel(contact: { readonly displayName: string; readonly compan
 
 /** Only an active subcontractor/supplier contact on this project can be assigned. */
 export async function resolveRfiVendorContact(db: Db, projectId: string, contactId: string): Promise<RfiVendorContact | null> {
-  const [row] = await db.select({
+  const [row] = await withContactDirectory(db.select({
     id: projectContacts.id,
-    displayName: projectContacts.displayName,
-    companyName: projectContacts.companyName,
+    displayName: resolvedContactColumns.displayName,
+    companyName: resolvedContactColumns.companyName,
     vendorId: projectContacts.vendorId,
   }).from(projectContacts).where(and(
     eq(projectContacts.id, contactId),
     eq(projectContacts.projectId, projectId),
     eq(projectContacts.active, true),
     inArray(projectContacts.contactType, [...VENDOR_CONTACT_TYPES]),
-  )).limit(1)
+  )).limit(1).$dynamic())
   return row ?? null
 }
 
 export async function listRfiVendorOptions(db: Db, projectId: string): Promise<readonly RfiVendorOption[]> {
-  const rows = await db.select({
+  const rows = await withContactDirectory(db.select({
     id: projectContacts.id,
-    displayName: projectContacts.displayName,
-    companyName: projectContacts.companyName,
+    displayName: resolvedContactColumns.displayName,
+    companyName: resolvedContactColumns.companyName,
   }).from(projectContacts).where(and(
     eq(projectContacts.projectId, projectId),
     eq(projectContacts.active, true),
     inArray(projectContacts.contactType, [...VENDOR_CONTACT_TYPES]),
-  ))
+  )).$dynamic())
   return rows
     .map((row) => ({ contactId: row.id, label: rfiVendorLabel(row) }))
     .sort((first, second) => first.label.localeCompare(second.label))
@@ -121,7 +122,7 @@ export async function loadRfiVendorAssignments(db: Db, input: {
   readonly organizationId: string
   readonly projectId: string
 }): Promise<ReadonlyMap<string, RfiVendorAssignment>> {
-  const rows = await db.select({
+  const rows = await withContactDirectory(db.select({
     rfiId: projectRfis.id,
     sourceRecordId: projectSourceRecordParticipants.sourceRecordId,
     sourceParticipantId: projectSourceRecordParticipants.sourceParticipantId,
@@ -131,8 +132,8 @@ export async function loadRfiVendorAssignments(db: Db, input: {
     membershipStatus: projectSourceRecordParticipants.membershipStatus,
     capabilitiesJson: projectSourceRecordParticipants.capabilitiesJson,
     contactId: projectContacts.id,
-    displayName: projectContacts.displayName,
-    companyName: projectContacts.companyName,
+    displayName: resolvedContactColumns.displayName,
+    companyName: resolvedContactColumns.companyName,
     contactActive: projectContacts.active,
   }).from(projectSourceRecordParticipants)
     .leftJoin(projectContacts, eq(projectContacts.id, projectSourceRecordParticipants.projectContactId))
@@ -142,7 +143,7 @@ export async function loadRfiVendorAssignments(db: Db, input: {
       eq(projectSourceRecordParticipants.projectId, input.projectId),
       eq(projectSourceRecordParticipants.sourceRecordType, "rfi"),
       eq(projectSourceRecordParticipants.participantRole, RFI_VENDOR_ASSIGNEE_ROLE),
-    ))
+    )).$dynamic(), input.organizationId)
   const managed = new Set(rows.filter((row) => row.sourceParticipantId === VENDOR_ASSIGNEE_PARTICIPANT_ID).map((row) => row.rfiId ?? row.sourceRecordId))
   const assignments = new Map<string, RfiVendorAssignment>()
   for (const row of rows) {

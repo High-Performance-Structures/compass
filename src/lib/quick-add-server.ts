@@ -30,6 +30,7 @@ import {
   canUseOrganizationProjectScopeRole,
   isInternalStaffRole,
 } from "@/lib/user-roles"
+import { resolvedContactColumns, withContactDirectory } from "@/lib/domain/contacts/resolved-columns"
 
 type AccessRow = {
   readonly projectId: string
@@ -162,16 +163,16 @@ async function subVendorContactProjectIds(
   const normalizedEmail = user.email.trim().toLowerCase()
   for (const ids of chunkD1Values(projectIds)) {
     if (normalizedEmail) {
-      const emailRows = await db
+      const emailRows = await withContactDirectory(db
         .select({ projectId: projectContacts.projectId })
         .from(projectContacts)
         .where(
           and(
             inArray(projectContacts.projectId, ids),
             eq(projectContacts.active, true),
-            sql`lower(trim(${projectContacts.email})) = ${normalizedEmail}`,
+            sql`lower(${resolvedContactColumns.email}) = ${normalizedEmail}`,
           ),
-        )
+        ).$dynamic())
       for (const row of emailRows) result.add(row.projectId)
     }
     const invitationRows = await db

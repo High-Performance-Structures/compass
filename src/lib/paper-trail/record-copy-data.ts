@@ -22,6 +22,7 @@ import { isChangeOrderStatus } from "@/lib/change-orders/status"
 import { projectNumberAndName } from "@/lib/project-display-name"
 import { resolvedPurchaseOrderShipTo } from "@/lib/purchase-orders/ship-to"
 import { purchaseOrderVendorDetails } from "@/lib/purchase-orders/vendor-details"
+import { resolvedContactColumns, withContactDirectory } from "@/lib/domain/contacts/resolved-columns"
 
 /*
  * Data for the record-copy print page. These loaders run only after the page
@@ -76,12 +77,12 @@ export async function purchaseOrderCopyData(
       .from(projectPurchaseOrderLines)
       .where(eq(projectPurchaseOrderLines.operationId, recordId))
       .orderBy(asc(projectPurchaseOrderLines.lineNumber)),
-    db
+    withContactDirectory(db
       .select({
-        address: projectContacts.address,
-        displayName: projectContacts.displayName,
-        companyName: projectContacts.companyName,
-        email: projectContacts.email,
+        address: resolvedContactColumns.address,
+        displayName: resolvedContactColumns.displayName,
+        companyName: resolvedContactColumns.companyName,
+        email: resolvedContactColumns.email,
       })
       .from(projectContacts)
       .where(
@@ -90,7 +91,7 @@ export async function purchaseOrderCopyData(
           eq(projectContacts.active, true),
           inArray(projectContacts.contactType, ["supplier", "subcontractor"]),
         ),
-      ),
+      ).$dynamic(), project.organizationId ?? undefined),
     project.organizationId
       ? db
           .select({

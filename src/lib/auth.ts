@@ -34,6 +34,7 @@ import {
   markProjectAccessInvitationExpired,
   updateUser,
 } from "@/lib/domain/identity/store"
+import { resolvedContactColumns, withContactDirectory } from "@/lib/domain/contacts/resolved-columns"
 
 export type AuthUser = {
   readonly id: string
@@ -114,8 +115,7 @@ function pendingInvitationsQuery(
   db: ReturnType<typeof getDb>,
   normalizedEmail: string
 ) {
-  return db
-    .select({
+  return withContactDirectory(db.select({
       id: projectAccessInvitations.id,
       organizationId: projectAccessInvitations.organizationId,
       projectId: projectAccessInvitations.projectId,
@@ -123,8 +123,8 @@ function pendingInvitationsQuery(
       role: projectAccessInvitations.role,
       invitedBy: projectAccessInvitations.invitedBy,
       workosExpiresAt: projectAccessInvitations.workosExpiresAt,
-      contactPhone: projectContacts.phone,
-      contactAddress: projectContacts.address,
+      contactPhone: resolvedContactColumns.phone,
+      contactAddress: resolvedContactColumns.address,
     })
     .from(projectAccessInvitations)
     .leftJoin(
@@ -137,7 +137,7 @@ function pendingInvitationsQuery(
         sql`lower(trim(${projectAccessInvitations.email})) = ${normalizedEmail}`
       )
     )
-    .orderBy(desc(projectAccessInvitations.invitedAt))
+    .orderBy(desc(projectAccessInvitations.invitedAt)).$dynamic())
 }
 
 type PendingInvitation = Awaited<

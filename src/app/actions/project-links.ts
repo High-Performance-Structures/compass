@@ -18,6 +18,7 @@ import { projectDepartment } from "@/lib/project-branding"
 import { projectJobStatusLabel } from "@/lib/project-profile"
 import { carryOverBetweenLinkedJobs } from "@/lib/job-workflows/carryover"
 import { orgContext } from "@/lib/server/action-context"
+import { resolvedContactColumns, withContactDirectory } from "@/lib/domain/contacts/resolved-columns"
 
 type LinkedJob = {
   readonly linkId: string
@@ -114,18 +115,18 @@ export async function getProjectLinks(projectId: string): Promise<ProjectLinksVi
         .from(projectLinks)
         .where(and(eq(projectLinks.organizationId, organizationId), or(eq(projectLinks.projectId, projectId), eq(projectLinks.linkedProjectId, projectId))))
         .orderBy(asc(projectLinks.createdAt)),
-      db
+      withContactDirectory(db
         .select({
           customerId: projectContacts.sourceEntityId,
           entityType: projectContacts.sourceEntityType,
-          name: projectContacts.displayName,
-          phone: projectContacts.phone,
-          email: projectContacts.email,
+          name: resolvedContactColumns.displayName,
+          phone: resolvedContactColumns.phone,
+          email: resolvedContactColumns.email,
         })
         .from(projectContacts)
         .where(and(eq(projectContacts.projectId, projectId), eq(projectContacts.contactType, "owner"), eq(projectContacts.active, true)))
         .orderBy(asc(projectContacts.sortOrder))
-        .limit(1)
+        .limit(1).$dynamic(), organizationId)
         .get(),
       readFeatureSettings(db, organizationId, "linked-jobs"),
     ])

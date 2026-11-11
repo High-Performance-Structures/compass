@@ -10,6 +10,7 @@ import { getCloudflareContext } from "@/lib/db"
 import { assertProjectAccess } from "@/lib/project-access"
 import { canUseProjectAudience, type ProjectAudience } from "@/lib/project-audience-access"
 import { getProjectAudienceRequestScope } from "@/lib/project-audience-request-server"
+import { resolvedContactColumns, withContactDirectory } from "@/lib/domain/contacts/resolved-columns"
 export { getProjectAudienceRequestScope, assertAudiencePreviewWriteAllowed } from "@/lib/project-audience-request-server"
 import { canFeature } from "@/lib/permission-enforcement"
 import { isInternalStaffRole, isStaffOrganizationType } from "@/lib/user-roles"
@@ -80,7 +81,7 @@ export const resolveProjectAudienceViewer = cache(async function resolveProjectA
   // People invited who haven't accepted yet. Previewing one shows what their
   // contact (matched by email) will see once they accept.
   const eligibleEmails = new Set(eligible.map((person) => person.user.email.trim().toLowerCase()))
-  const pending = await db.select({
+  const pending = await withContactDirectory(db.select({
     invitation: {
       id: projectAccessInvitations.id,
       email: projectAccessInvitations.email,
@@ -88,11 +89,11 @@ export const resolveProjectAudienceViewer = cache(async function resolveProjectA
       invitedAt: projectAccessInvitations.invitedAt,
       updatedAt: projectAccessInvitations.updatedAt,
     },
-    contact: { displayName: projectContacts.displayName, companyName: projectContacts.companyName },
+    contact: { displayName: resolvedContactColumns.displayName, companyName: resolvedContactColumns.companyName },
   })
     .from(projectAccessInvitations).innerJoin(projectContacts, eq(projectContacts.id, projectAccessInvitations.projectContactId))
     .where(and(eq(projectAccessInvitations.projectId, projectId), eq(projectAccessInvitations.organizationId, organizationId), eq(projectAccessInvitations.status, "sent"), eq(projectContacts.active, true)))
-    .orderBy(desc(projectAccessInvitations.invitedAt))
+    .orderBy(desc(projectAccessInvitations.invitedAt)).$dynamic(), organizationId)
   const invited = pending.filter(({ invitation }, index) => {
     const email = invitation.email.trim().toLowerCase()
     return canUseProjectAudience(invitation.role, audience) && !eligibleEmails.has(email) &&
@@ -125,10 +126,10 @@ export const resolveProjectAudienceViewer = cache(async function resolveProjectA
       : null
   // Company labels are presentation only. Load accepted contact links once
   // rather than performing a contact lookup for every eligible person.
-  const contactLinks = eligible.length === 0 ? [] : await db.select({ userId: projectAccessInvitations.acceptedBy, companyName: projectContacts.companyName })
+  const contactLinks = eligible.length === 0 ? [] : await withContactDirectory(db.select({ userId: projectAccessInvitations.acceptedBy, companyName: resolvedContactColumns.companyName })
     .from(projectAccessInvitations).innerJoin(projectContacts, eq(projectContacts.id, projectAccessInvitations.projectContactId))
     .where(and(eq(projectAccessInvitations.projectId, projectId), eq(projectContacts.projectId, projectId), eq(projectAccessInvitations.status, "accepted"), eq(projectContacts.active, true)))
-    .orderBy(desc(projectAccessInvitations.acceptedAt))
+    .orderBy(desc(projectAccessInvitations.acceptedAt)).$dynamic(), organizationId)
   const previewOptions = [
     ...eligible.map(({ user }): ProjectAudiencePreviewPerson => ({ id: user.id, name: user.displayName ?? user.email, email: user.email, companyName: contactLinks.find((link) => link.userId === user.id)?.companyName ?? null, invited: false })),
     ...invited.map(({ invitation, contact }): ProjectAudiencePreviewPerson => ({ id: invitedPreviewId(invitation.id), name: contact.displayName || invitation.email, email: invitation.email, companyName: contact.companyName, invited: true })),

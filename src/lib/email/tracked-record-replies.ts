@@ -18,6 +18,7 @@ import {
 } from "@/lib/email/tracked-record-email"
 import { clearOverdueFollowUpReminders } from "@/lib/notifications/clear-on-read"
 import { notifyProjectStaffOfOutsideEvent } from "@/lib/notifications/events"
+import { resolvedContactColumns, withContactDirectory } from "@/lib/domain/contacts/resolved-columns"
 
 type Db = ReturnType<typeof getDb>
 
@@ -57,7 +58,7 @@ async function recordClientReply(input: {
   readonly preview: string
 }): Promise<void> {
   try {
-    const contact = await input.db
+    const contact = await withContactDirectory(input.db
       .select({ id: projectContacts.id })
       .from(projectContacts)
       .where(
@@ -65,9 +66,9 @@ async function recordClientReply(input: {
           eq(projectContacts.projectId, input.projectId),
           eq(projectContacts.contactType, "owner"),
           eq(projectContacts.active, true),
-          sql`lower(${projectContacts.email}) = ${input.candidate.fromAddress.trim().toLowerCase()}`
+          sql`lower(${resolvedContactColumns.email}) = ${input.candidate.fromAddress.trim().toLowerCase()}`
         )
-      )
+      ).$dynamic(), input.organizationId)
       .get()
     if (!contact) return
     const sender = input.candidate.fromName?.trim() || input.candidate.fromAddress

@@ -10,6 +10,7 @@ import {
   type EmailRecipientOption,
   type ProjectEmailContact,
 } from "@/lib/email/recipient-options"
+import { resolvedContactColumns, withContactDirectory } from "@/lib/domain/contacts/resolved-columns"
 
 function contactType(value: string): ProjectEmailContact["contactType"] {
   if (value === "owner" || value === "supplier" || value === "subcontractor") return value
@@ -26,13 +27,13 @@ export async function projectEmailRecipientOptions(
   recommended: readonly (string | null | undefined)[] = [],
   contactTypes?: readonly ProjectContactType[]
 ): Promise<readonly EmailRecipientOption[]> {
-  const rows = await db
+  const rows = await withContactDirectory(db
     .select({
       id: projectContacts.id,
       contactType: projectContacts.contactType,
-      displayName: projectContacts.displayName,
-      companyName: projectContacts.companyName,
-      email: projectContacts.email,
+      displayName: resolvedContactColumns.displayName,
+      companyName: resolvedContactColumns.companyName,
+      email: resolvedContactColumns.email,
     })
     .from(projectContacts)
     .where(and(
@@ -40,15 +41,15 @@ export async function projectEmailRecipientOptions(
       eq(projectContacts.active, true),
       notArchivedPersonContact(),
       contactTypes ? inArray(projectContacts.contactType, contactTypes) : undefined,
-    ))
+    )).$dynamic())
   const options = buildProjectEmailRecipientOptions(
     rows.map((row) => ({ ...row, contactType: contactType(row.contactType) })),
     recommended,
   )
   if (contactTypes && !contactTypes.includes("internal")) return options
 
-  const alternates = await db
-    .select({ contactId: projectContacts.id, displayName: projectContacts.displayName, email: userAlternateEmails.email })
+  const alternates = await withContactDirectory(db
+    .select({ contactId: projectContacts.id, displayName: resolvedContactColumns.displayName, email: userAlternateEmails.email })
     .from(projectContacts)
     .leftJoin(internalContacts, eq(internalContacts.id, projectContacts.internalContactId))
     // The staff member is the internal contact's account, or the account a staff row was added from.
@@ -64,6 +65,6 @@ export async function projectEmailRecipientOptions(
       // Only addresses kept by the project's own company.
       sql`${userAlternateEmails.organizationId} = (SELECT organization_id FROM projects WHERE id = ${projectId})`,
     ))
-    .limit(200)
+    .limit(200).$dynamic())
   return withStaffAlternateEmails(options, alternates)
 }

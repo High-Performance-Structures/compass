@@ -5,6 +5,7 @@ import {
   projectAccessInvitations,
   projectContacts,
 } from "@/db/schema"
+import { resolvedContactColumns, withContactDirectory } from "@/lib/domain/contacts/resolved-columns"
 
 export type ProjectAudienceViewerContact = {
   readonly id: string
@@ -19,9 +20,9 @@ export type ProjectAudienceViewerContact = {
 const VIEWER_CONTACT_SELECTION = {
   id: projectContacts.id,
   contactType: projectContacts.contactType,
-  displayName: projectContacts.displayName,
-  companyName: projectContacts.companyName,
-  email: projectContacts.email,
+  displayName: resolvedContactColumns.displayName,
+  companyName: resolvedContactColumns.companyName,
+  email: resolvedContactColumns.email,
   vendorId: projectContacts.vendorId,
 }
 
@@ -45,7 +46,7 @@ export async function getProjectAudienceViewerContact(
     .then((rows) => rows[0] ?? null)
 
   if (acceptedInvitation?.projectContactId) {
-    const invitedContact = await db
+    const invitedContact = await withContactDirectory(db
       .select(VIEWER_CONTACT_SELECTION)
       .from(projectContacts)
       .where(
@@ -55,7 +56,7 @@ export async function getProjectAudienceViewerContact(
           eq(projectContacts.active, true)
         )
       )
-      .limit(1)
+      .limit(1).$dynamic())
       .then((rows) => rows[0] ?? null)
     if (invitedContact) return invitedContact
   }
@@ -63,16 +64,16 @@ export async function getProjectAudienceViewerContact(
   const normalizedEmail = viewer.email.trim().toLowerCase()
   if (!normalizedEmail) return null
 
-  return db
+  return withContactDirectory(db
     .select(VIEWER_CONTACT_SELECTION)
     .from(projectContacts)
     .where(
       and(
         eq(projectContacts.projectId, projectId),
         eq(projectContacts.active, true),
-        sql`lower(trim(${projectContacts.email})) = ${normalizedEmail}`
+        sql`lower(${resolvedContactColumns.email}) = ${normalizedEmail}`
       )
     )
-    .limit(1)
+    .limit(1).$dynamic())
     .then((rows) => rows[0] ?? null)
 }

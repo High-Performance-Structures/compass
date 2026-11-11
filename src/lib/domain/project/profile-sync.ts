@@ -41,6 +41,7 @@ import {
 } from "@/lib/google/project-intake-tracker"
 import type { AuthUser } from "@/lib/auth"
 import type { Db } from "@/lib/server/action-context"
+import { resolvedContactColumns, withContactDirectory } from "@/lib/domain/contacts/resolved-columns"
 
 type SyncClients = { readonly drive: DriveClient; readonly sheets: SheetsClient; readonly trackerEmail: string }
 
@@ -124,13 +125,13 @@ async function updateTrackerRows(input: {
   const { db, organizationId, project, clients } = input
   const department = trackerDepartment(project.projectNumber)
   if (!department) throw new Error("Project number has no supported tracker department.")
-  const contactRows = await db
+  const contactRows = await withContactDirectory(db
     .select({
-      displayName: projectContacts.displayName,
+      displayName: resolvedContactColumns.displayName,
       customerContactId: projectContacts.customerContactId,
-      companyName: projectContacts.companyName,
-      email: projectContacts.email,
-      phone: projectContacts.phone,
+      companyName: resolvedContactColumns.companyName,
+      email: resolvedContactColumns.email,
+      phone: resolvedContactColumns.phone,
       directoryPersonName: customerContacts.name,
       directoryPersonEmail: customerContacts.email,
       directoryPersonPhone: customerContacts.phone,
@@ -160,7 +161,7 @@ async function updateTrackerRows(input: {
     )
     .where(and(eq(projectContacts.projectId, input.projectId), eq(projectContacts.contactType, "owner"), eq(projectContacts.active, true)))
     .orderBy(desc(projectContacts.primaryContact), asc(projectContacts.sortOrder))
-    .limit(1)
+    .limit(1).$dynamic(), organizationId)
   const contact = contactRows[0]
   const address = projectAddressParts(project.address)
   const ownerContact = projectTrackerOwnerContact({

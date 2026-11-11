@@ -3,6 +3,7 @@
 import { and, desc, eq, gte, isNull } from "drizzle-orm"
 import { getDb } from "@/db"
 import { projectContacts, projectFollowUps, projectInteractions, users } from "@/db/schema"
+import { resolvedContactColumns, withContactDirectory } from "@/lib/domain/contacts/resolved-columns"
 import { listProjectsForCurrentUser } from "@/lib/projects/project-list"
 import { getCurrentUser } from "@/lib/auth"
 import {
@@ -115,7 +116,7 @@ export async function getClientFollowUpWorkspace(
             .where(eq(projectFollowUps.organizationId, organizationId))
         : Promise.resolve([]),
       visibleIds.length
-        ? db
+        ? withContactDirectory(db
             .select({
               id: projectInteractions.id,
               projectId: projectInteractions.projectId,
@@ -129,7 +130,7 @@ export async function getClientFollowUpWorkspace(
               firstName: users.firstName,
               lastName: users.lastName,
               email: users.email,
-              contactName: projectContacts.displayName,
+              contactName: resolvedContactColumns.displayName,
             })
             .from(projectInteractions)
             .leftJoin(users, eq(users.id, projectInteractions.createdBy))
@@ -143,6 +144,7 @@ export async function getClientFollowUpWorkspace(
               ),
             )
             .orderBy(desc(projectInteractions.occurredAt))
+            .$dynamic(), organizationId)
         : Promise.resolve([]),
     ])
     const ownerById = new Map(owners.map((row) => [row.projectId, row]))

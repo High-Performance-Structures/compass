@@ -42,6 +42,7 @@ import type {
   ProjectSageSyncQueue,
   ProjectTodoItem,
 } from "./types"
+import { resolvedContactColumns, withContactDirectory } from "@/lib/domain/contacts/resolved-columns"
 
 const TODO_RECORD_TYPES = [...PROJECT_TODO_RECORD_TYPES]
 
@@ -369,12 +370,12 @@ async function loadVendorCandidates(
   organizationId: string,
 ): Promise<Omit<Parameters<typeof purchaseOrderVendorDetails>[0], "order">> {
   const [contacts, vendorRows] = await Promise.all([
-    db
+    withContactDirectory(db
       .select({
-        address: projectContacts.address,
-        displayName: projectContacts.displayName,
-        companyName: projectContacts.companyName,
-        email: projectContacts.email,
+        address: resolvedContactColumns.address,
+        displayName: resolvedContactColumns.displayName,
+        companyName: resolvedContactColumns.companyName,
+        email: resolvedContactColumns.email,
       })
       .from(projectContacts)
       .where(
@@ -383,7 +384,7 @@ async function loadVendorCandidates(
           eq(projectContacts.active, true),
           inArray(projectContacts.contactType, ["supplier", "subcontractor"]),
         ),
-      ),
+      ).$dynamic(), organizationId),
     db
       .select({
         address: vendors.address,

@@ -21,6 +21,7 @@ import {
   context,
   openCorrespondenceTestDatabase,
   type CorrespondenceTestDatabase,
+  addContactDirectorySchema,
 } from "../../../__tests__/helpers/correspondence-core"
 
 function project(id: string, name = id): ProjectListItem {
@@ -73,6 +74,7 @@ describe("getQuickAddProjects", () => {
         created_at TEXT NOT NULL, updated_at TEXT NOT NULL
       );
     `)
+    addContactDirectorySchema(database.sqlite)
     mocks.getCloudflareContext.mockResolvedValue({
       env: { DB: database.d1, COMPASS_CORRESPONDENCE_ENABLED: "true" },
     })

@@ -21,6 +21,7 @@ import { workflowRoleIdFromString } from "@/lib/project-workflow-roles"
 import { purchaseOrderRecordHref } from "@/lib/purchase-orders/record-href"
 import { portalPurchaseOrderVendorStatusLabel, type PortalPurchaseOrderVendorStatus } from "@/lib/purchase-orders/portal-response"
 import { isInternalStaffRole } from "@/lib/user-roles"
+import { resolvedContactColumns, withContactDirectory } from "@/lib/domain/contacts/resolved-columns"
 
 export {
   createNotificationEvent,
@@ -147,14 +148,13 @@ async function projectAssignmentRecipients(
   )
   if (normalizedNames.size === 0) return []
 
-  const contacts = await db
-    .select({
-      displayName: projectContacts.displayName,
-      companyName: projectContacts.companyName,
-      email: projectContacts.email,
+  const contacts = await withContactDirectory(db.select({
+      displayName: resolvedContactColumns.displayName,
+      companyName: resolvedContactColumns.companyName,
+      email: resolvedContactColumns.email,
     })
     .from(projectContacts)
-    .where(eq(projectContacts.projectId, projectId))
+    .where(eq(projectContacts.projectId, projectId)).$dynamic(), organizationId)
   const matchingEmails = new Set(
     contacts
       .filter((contact) => {

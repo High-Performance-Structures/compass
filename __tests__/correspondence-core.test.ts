@@ -13,6 +13,7 @@ import {
   insertParticipant,
   openCorrespondenceTestDatabase,
   type CorrespondenceTestDatabase,
+  addContactDirectorySchema,
 } from "./helpers/correspondence-core"
 
 describe("correspondence core D1 integration", () => {
@@ -25,6 +26,7 @@ describe("correspondence core D1 integration", () => {
 
   function open(): CorrespondenceTestDatabase {
     database = openCorrespondenceTestDatabase()
+    addContactDirectorySchema(database.sqlite)
     return database
   }
 

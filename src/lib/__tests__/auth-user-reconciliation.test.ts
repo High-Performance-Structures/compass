@@ -1,4 +1,5 @@
 import Database from "better-sqlite3"
+import { addContactDirectorySchema } from "../../../__tests__/helpers/correspondence-core"
 import { afterEach, describe, expect, it, vi } from "vitest"
 
 const mocks = vi.hoisted(() => ({
@@ -107,6 +108,7 @@ function openDatabase(): InstanceType<typeof Database> {
       address TEXT
     );
   `)
+  addContactDirectorySchema(sqlite)
   return sqlite
 }
 

@@ -8,6 +8,7 @@ import type { Db } from "@/lib/server/action-context"
 import { ALREADY_CONNECTED, connectUnassignedPerson } from "./connect-unassigned-person"
 import { planUnassigned, summarizeUnassignedPlan, type UnassignedPlanSummary } from "./unassigned-matching"
 import { unassignedPersonWhere } from "./unassigned-people"
+import { resolvedContactColumns, withContactDirectory } from "./resolved-columns"
 
 /*
  * "Connect automatically…" on Contacts → Unassigned (owner decision
@@ -50,15 +51,15 @@ export type UnassignedAutoConnectResult = {
 type Scope = { readonly db: Db; readonly user: AuthUser; readonly organizationId: string }
 
 async function loadRows(db: Db, organizationId: string): Promise<Parameters<typeof planUnassigned>[1]> {
-  return db
+  return withContactDirectory(db
     .select({
-      contactId: projectContacts.id, identity: projectContacts.sourceEntityId, name: projectContacts.displayName,
-      email: projectContacts.email, projectId: projectContacts.projectId, staffOnly: projects.importedConversationsStaffOnly,
+      contactId: projectContacts.id, identity: projectContacts.sourceEntityId, name: resolvedContactColumns.displayName,
+      email: resolvedContactColumns.email, projectId: projectContacts.projectId, staffOnly: projects.importedConversationsStaffOnly,
     })
     .from(projectContacts)
     .innerJoin(projects, eq(projects.id, projectContacts.projectId))
     .where(and(eq(projects.organizationId, organizationId), unassignedPersonWhere(organizationId)))
-    .limit(5000)
+    .limit(5000).$dynamic(), organizationId)
 }
 
 export async function runUnassignedAutoConnect(

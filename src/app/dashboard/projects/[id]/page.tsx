@@ -83,6 +83,7 @@ import { ProjectSiteWeatherCard } from "@/components/projects/project-site-weath
 import { getProjectSageStatus } from "@/app/actions/project-sage-send"
 import { ProjectSageStatusLine } from "@/components/projects/project-sage-status"
 import type { ProjectSageStatus } from "@/lib/domain/sage-bridge/project-send-rules"
+import { resolvedContactColumns, withContactDirectory } from "@/lib/domain/contacts/resolved-columns"
 
 function getWeekDays(): { date: Date; dayName: string }[] {
   const today = new Date()
@@ -316,10 +317,10 @@ export default async function ProjectSummaryPage({
       .where(eq(scheduleTasks.projectId, id))
     if (currentUser) {
       if (!projectRole) {
-        const internalContacts = await db
+        const internalContacts = await withContactDirectory(db
           .select({
-            displayName: projectContacts.displayName,
-            email: projectContacts.email,
+            displayName: resolvedContactColumns.displayName,
+            email: resolvedContactColumns.email,
             role: projectContacts.role,
           })
           .from(projectContacts)
@@ -329,7 +330,7 @@ export default async function ProjectSummaryPage({
               eq(projectContacts.contactType, "internal"),
               eq(projectContacts.active, true),
             ),
-          )
+          ).$dynamic())
 
         const fullName =
           `${currentUser.firstName ?? ""} ${currentUser.lastName ?? ""}`.trim()

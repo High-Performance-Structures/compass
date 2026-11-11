@@ -5,6 +5,7 @@ import type { getDb } from "@/db"
 import { customerContacts, customers, internalContacts, organizationMembers, projectContacts, projects, users, vendorContacts, vendors } from "@/db/schema"
 import { projectContactNeedsPersonForInvitation } from "@/lib/project-contact-access-status"
 import { isInternalStaffRole } from "@/lib/user-roles"
+import { resolvedContactColumns, withContactDirectory } from "@/lib/domain/contacts/resolved-columns"
 
 type Db = ReturnType<typeof getDb>
 type Person = { readonly email: string | null; readonly userId: string | null }
@@ -16,8 +17,8 @@ export async function currentInvitationRecipient(db: Db, input: {
   readonly organizationId: string
   readonly role: string
 }): Promise<string | null> {
-  const contact = await db.select({
-    contactType: projectContacts.contactType, email: projectContacts.email,
+  const contact = await withContactDirectory(db.select({
+    contactType: projectContacts.contactType, email: resolvedContactColumns.email,
     customerId: projectContacts.customerId, customerContactId: projectContacts.customerContactId,
     vendorId: projectContacts.vendorId, vendorContactId: projectContacts.vendorContactId,
     internalContactId: projectContacts.internalContactId, sourceEntityType: projectContacts.sourceEntityType,
@@ -25,7 +26,7 @@ export async function currentInvitationRecipient(db: Db, input: {
   }).from(projectContacts).innerJoin(projects, eq(projects.id, projectContacts.projectId)).where(and(
     eq(projectContacts.id, input.contactId), eq(projectContacts.projectId, input.projectId),
     eq(projects.organizationId, input.organizationId), eq(projectContacts.active, true),
-  )).get()
+  )).$dynamic(), input.organizationId).get()
   if (!contact || projectContactNeedsPersonForInvitation(contact)) return null
   if (!isInternalStaffRole(input.role) && contact.contactType !== input.role &&
     !(input.role === "client" && contact.contactType === "owner")) return null

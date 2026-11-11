@@ -5,6 +5,7 @@ import { buildertrendAccessCandidates } from "@/db/schema-buildertrend"
 import { projectAccessInvitations, projectContacts, projectMembers, projects } from "@/db/schema"
 import { recordActivityEvent, type ActivityActor } from "@/lib/activity-log"
 import { insertProjectContact, updateProjectContactById } from "@/lib/domain/contacts/store"
+import { resolvedContactColumns, withContactDirectory } from "@/lib/domain/contacts/resolved-columns"
 import { insertProjectAccessInvitation } from "@/lib/domain/identity/store"
 import { insertProjectMember, updateProjectMembers } from "@/lib/domain/project/store"
 import { ensureProjectAudienceConversation } from "@/lib/project-audience-conversations"
@@ -141,17 +142,18 @@ async function contactOnProject(db: Db, input: {
     : source.customerContactId
       ? eq(projectContacts.customerContactId, source.customerContactId)
       : undefined
-  const existing = await db
+  // Match on the contact's directory email (resolved), never the stale copy.
+  const sameEmail = sql`lower(${resolvedContactColumns.email}) = ${input.email}`
+  const existing = await withContactDirectory(db
     .select({ id: projectContacts.id })
     .from(projectContacts)
     .where(and(
       eq(projectContacts.projectId, input.projectId),
       eq(projectContacts.active, true),
       eq(projectContacts.contactType, source.contactType),
-      sameDirectoryPerson
-        ? or(sameDirectoryPerson, sql`lower(trim(${projectContacts.email})) = ${input.email}`)
-        : sql`lower(trim(${projectContacts.email})) = ${input.email}`,
+      sameDirectoryPerson ? or(sameDirectoryPerson, sameEmail) : sameEmail,
     ))
+    .$dynamic())
     .get()
   if (existing) return existing.id
   const id = `prior-access-${crypto.randomUUID()}`

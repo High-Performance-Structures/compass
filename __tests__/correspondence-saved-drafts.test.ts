@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
-import { context, insertConversation, insertParticipant, openCorrespondenceTestDatabase, type CorrespondenceTestDatabase } from "./helpers/correspondence-core"
+import { context, insertConversation, insertParticipant, openCorrespondenceTestDatabase, type CorrespondenceTestDatabase, addContactDirectorySchema } from "./helpers/correspondence-core"
 const mocks = vi.hoisted(() => ({ context: vi.fn() }))
 vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }))
 vi.mock("@/lib/correspondence/access", async (original) => ({ ...await original<typeof import("@/lib/correspondence/access")>(), correspondenceContext: mocks.context }))
@@ -11,7 +11,7 @@ import type { CompositionContent } from "@/lib/correspondence/types"
 const message: CompositionContent = { kind: "message", subject: "Permit", body: "Draft text", recipientUserIds: ["staff-a"], attachmentIds: [], requestId: null }
 describe("private project Drafts and Sent", () => {
   let database: CorrespondenceTestDatabase
-  beforeEach(() => { database = openCorrespondenceTestDatabase(); mocks.context.mockImplementation(async (projectId: string) => context(database, "owner-a", projectId)) })
+  beforeEach(() => { database = openCorrespondenceTestDatabase(); addContactDirectorySchema(database.sqlite); mocks.context.mockImplementation(async (projectId: string) => context(database, "owner-a", projectId)) })
   afterEach(() => { database.close(); vi.clearAllMocks() })
   it("stores multiple drafts, preserves Bcc and separates author and project", async () => {
     expect((await saveProjectComposition("project-a", "draft-1", 0, message)).success).toBe(true)

@@ -5,6 +5,7 @@ import type { Db } from "@/lib/server/action-context"
 
 import { normalizeCompanyName } from "./rules"
 import { unassignedPersonKeys } from "./unassigned-matching"
+import { resolvedContactColumns, withContactDirectory } from "./resolved-columns"
 
 /*
  * People added from imported (Buildertrend) messages who are not connected to
@@ -74,14 +75,14 @@ export function unassignedPersonWhere(organizationId: string): SQL {
 }
 
 export async function listUnassignedPeople(db: Db, organizationId: string): Promise<readonly UnassignedPerson[]> {
-  const rows = await db
+  const rows = await withContactDirectory(db
     .select({
       contactId: projectContacts.id,
       identity: projectContacts.sourceEntityId,
-      name: projectContacts.displayName,
-      email: projectContacts.email,
-      phone: projectContacts.phone,
-      companyName: projectContacts.companyName,
+      name: resolvedContactColumns.displayName,
+      email: resolvedContactColumns.email,
+      phone: resolvedContactColumns.phone,
+      companyName: resolvedContactColumns.companyName,
       projectId: projects.id,
       projectName: projects.name,
       projectNumber: projects.projectNumber,
@@ -90,8 +91,8 @@ export async function listUnassignedPeople(db: Db, organizationId: string): Prom
     .from(projectContacts)
     .innerJoin(projects, eq(projects.id, projectContacts.projectId))
     .where(and(eq(projects.organizationId, organizationId), unassignedPersonWhere(organizationId)))
-    .orderBy(asc(projectContacts.displayName), asc(projects.name))
-    .limit(MAX_ROWS)
+    .orderBy(asc(resolvedContactColumns.displayName), asc(projects.name))
+    .limit(MAX_ROWS).$dynamic(), organizationId)
 
   type Person = { name: string; email: string | null; phone: string | null; companyName: string | null; hasAccount: boolean; identities: Set<string>; projects: UnassignedPerson["projects"][number][] }
   const people = new Map<string, Person>()

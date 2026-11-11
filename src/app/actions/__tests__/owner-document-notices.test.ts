@@ -4,6 +4,9 @@ import { getTableConfig, type SQLiteTable } from "drizzle-orm/sqlite-core"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
 import {
+  customerContacts,
+  customers,
+  internalContacts,
   notificationPreferences,
   organizationMembers,
   projectBudgetApplications,
@@ -12,6 +15,8 @@ import {
   projectMembers,
   projects,
   users,
+  vendorContacts,
+  vendors,
 } from "@/db/schema"
 import { ownerNoticeDate } from "@/lib/billing/owner-document-notices"
 
@@ -64,7 +69,7 @@ function person(id: string, email: string, name: string, orgRole: string, projec
 beforeEach(() => {
   vi.clearAllMocks()
   sqlite = new Database(":memory:")
-  for (const table of [projects, projectBudgetApplications, projectContractDeposits, projectContacts, projectMembers, users, organizationMembers, notificationPreferences]) createTable(table)
+  for (const table of [projects, projectBudgetApplications, projectContractDeposits, projectContacts, projectMembers, users, organizationMembers, notificationPreferences, customers, customerContacts, vendors, vendorContacts, internalContacts]) createTable(table)
   insert("projects", { id: "bishop", name: "Ezell Residence", project_number: "H-430-1900", organization_id: "org" })
   insert("project_budget_applications", { id: "app-1", project_id: "bishop", source_system: "compass_contract_budget", application_number: "1", status: "billed", owner_visible: 1, current_payment_due: 163_610.98 })
   insert("project_contacts", { id: "c-ryan", project_id: "bishop", contact_type: "owner", display_name: "Ryan", email: "Ryan@BishopBuilt.example", active: 1 })

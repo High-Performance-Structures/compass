@@ -51,7 +51,7 @@ describe("purchase order delivery output coverage", () => {
     const queries = source("src/lib/domain/operations/queries.ts")
     const records = source("src/lib/domain/operations/records.ts")
 
-    expect(queries).toContain("address: projectContacts.address")
+    expect(queries).toContain("address: resolvedContactColumns.address")
     expect(queries).toContain("address: vendors.address")
     expect(queries).toContain("purchaseOrderVendorDetails")
     expect(records).toContain("vendorAddress: vendor.address")

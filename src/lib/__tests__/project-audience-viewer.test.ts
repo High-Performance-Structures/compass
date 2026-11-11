@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
-import { context, openCorrespondenceTestDatabase, insertConversation, insertGrant, insertMessage, insertParticipant, type CorrespondenceTestDatabase } from "../../../__tests__/helpers/correspondence-core"
+import { context, openCorrespondenceTestDatabase, insertConversation, insertGrant, insertMessage, insertParticipant, type CorrespondenceTestDatabase, addContactDirectorySchema } from "../../../__tests__/helpers/correspondence-core"
 import { AUDIENCE_SCOPE_HEADER, audienceScopeFromUrl, parseAudienceScope, scopedAudienceHref } from "@/lib/project-audience-request"
 
 const mocks = vi.hoisted(() => ({ actor: vi.fn(), environment: vi.fn(), headers: vi.fn(), permission: vi.fn(), audit: vi.fn() }))
@@ -26,6 +26,7 @@ beforeEach(() => {
   database.sqlite.exec(`CREATE TABLE project_access_invitations (id TEXT, organization_id TEXT, project_id TEXT, project_contact_id TEXT, email TEXT, role TEXT,
     status TEXT, workos_invitation_id TEXT, workos_expires_at TEXT, email_provider TEXT, email_provider_message_id TEXT, email_error TEXT,
     invited_by TEXT, invited_at TEXT, accepted_by TEXT, accepted_at TEXT, created_at TEXT, updated_at TEXT)`)
+  addContactDirectorySchema(database.sqlite)
   mocks.actor.mockResolvedValue(context(database, "staff-a", "project-a").user)
   mocks.environment.mockResolvedValue({ env: { DB: database.d1, COMPASS_CORRESPONDENCE_ENABLED: "true" } })
   mocks.permission.mockResolvedValue(true)

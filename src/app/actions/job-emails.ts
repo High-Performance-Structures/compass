@@ -31,6 +31,7 @@ import { getProjectAccessRecord } from "@/lib/project-access"
 import { projectDepartment } from "@/lib/project-branding"
 import { isInternalStaffRole } from "@/lib/user-roles"
 import { requireUserContext } from "@/lib/server/action-context"
+import { resolvedContactColumns, withContactDirectory } from "@/lib/domain/contacts/resolved-columns"
 
 type Result<T> = { readonly success: true; readonly data: T } | { readonly success: false; readonly error: string }
 
@@ -52,17 +53,17 @@ async function jobEmailContext(projectId: string, templateId: string, action: "r
   if (!project) throw new Error("Project not found.")
   const department = projectDepartment({ projectId: project.id, projectNumber: project.projectNumber })
   const clientOrder = templateId === REQUEST_COI_TEMPLATE || templateId === SEND_W9_TEMPLATE
-    ? [desc(projectContacts.primaryContact), asc(projectContacts.sortOrder), asc(projectContacts.displayName)]
-    : [asc(projectContacts.displayName)]
+    ? [desc(projectContacts.primaryContact), asc(projectContacts.sortOrder), asc(resolvedContactColumns.displayName)]
+    : [asc(resolvedContactColumns.displayName)]
   const [settings, profiles, client] = await Promise.all([
     readFeatureSettings(db, organizationId, "job-emails"),
     readDepartmentProfiles(db, organizationId),
-    db
-      .select({ id: projectContacts.id, displayName: projectContacts.displayName, email: projectContacts.email })
+    withContactDirectory(db
+      .select({ id: projectContacts.id, displayName: resolvedContactColumns.displayName, email: resolvedContactColumns.email })
       .from(projectContacts)
       .where(and(eq(projectContacts.projectId, projectId), eq(projectContacts.contactType, "owner"), eq(projectContacts.active, true)))
       .orderBy(...clientOrder)
-      .limit(1)
+      .limit(1).$dynamic(), organizationId)
       .get(),
   ])
   const profile = profiles[department]
