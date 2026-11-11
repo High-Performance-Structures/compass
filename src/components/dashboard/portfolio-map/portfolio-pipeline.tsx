@@ -42,7 +42,11 @@ export function PortfolioPipeline({
 }: PortfolioPipelineProps): React.ReactElement {
   return (
     <div className="h-full overflow-auto bg-card">
-      <ol className="grid min-h-full min-w-[56rem] grid-cols-6">
+      {/* One column per phase (seven), each wide enough for a job name and its tags; the board scrolls sideways when narrower. */}
+      <ol
+        className="grid min-h-full"
+        style={{ gridTemplateColumns: `repeat(${PORTFOLIO_PHASES.length}, minmax(11rem, 1fr))` }}
+      >
         {PORTFOLIO_PHASES.map((phase) => {
           const phaseJobs = jobs.filter((job) => job.phase === phase.id)
           const dimPhase = selectedPhase !== null && selectedPhase !== phase.id
@@ -88,13 +92,13 @@ export function PortfolioPipeline({
                             />
                           ) : null}
                         </span>
-                        <span className="flex min-w-0 flex-col gap-0.5">
-                          <span className="truncate text-xs">{job.name}</span>
+                        <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+                          <span className="line-clamp-2 break-words text-xs" title={job.name}>{job.name}</span>
                           <span className="font-mono text-xs tracking-[0.08em] text-muted-foreground">
                             {job.town ? job.town.toUpperCase() : "NO TOWN"}
                             {job.health !== "ok" ? ` · ${HEALTH_LABEL[job.health].toUpperCase()}` : ""}
                           </span>
-                          <span className="flex">
+                          <span className="flex min-w-0 flex-wrap">
                             <FollowUpChip signal={job.followUp} />
                           </span>
                         </span>
