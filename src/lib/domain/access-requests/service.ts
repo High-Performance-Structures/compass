@@ -14,7 +14,7 @@
  * Nothing is ever granted without an admin's approval. Emails and
  * notifications are sent by ./notify.ts after these return.
  */
-import { and, eq, isNull } from "drizzle-orm"
+import { and, eq, isNull, or, sql } from "drizzle-orm"
 
 import {
   customerContacts,
@@ -220,24 +220,75 @@ async function vendorPerson(db: Db, organizationId: string, personId: string): P
     .get()
 }
 
-/** Every active job contact for this directory person, with what the grant needs. */
-async function personJobs(db: Db, organizationId: string, kind: "client" | "vendor", personId: string) {
-  return db
-    .select({
-      contactId: projectContacts.id,
-      contactType: projectContacts.contactType,
-      projectId: projects.id,
-      projectName: projects.name,
-      projectNumber: projects.projectNumber,
-      staffOnly: projects.importedConversationsStaffOnly,
-    })
+const jobColumns = {
+  contactId: projectContacts.id,
+  contactType: projectContacts.contactType,
+  projectId: projects.id,
+  projectName: projects.name,
+  projectNumber: projects.projectNumber,
+  staffOnly: projects.importedConversationsStaffOnly,
+}
+
+/** "Rita <Rita@X.com>" or " rita@x.com " -> "rita@x.com". */
+export function plainEmail(value: string | null | undefined): string | null {
+  if (!value) return null
+  const wrapped = value.match(/<([^<>]+)>/)
+  const email = (wrapped ? wrapped[1] : value).trim().toLowerCase()
+  return email.includes("@") ? email : null
+}
+
+/**
+ * Every active job contact for this directory person, with what the grant
+ * needs. For a client this also includes owner job contacts that name no
+ * directory person yet but sit under a (not merged) client record and carry
+ * the requester's own sign-in email, on the job contact or its client record.
+ * Most owners imported from Buildertrend look like that. Read-only: no job
+ * contact or directory row is changed to make the match.
+ */
+async function personJobs(
+  db: Db,
+  organizationId: string,
+  kind: "client" | "vendor",
+  personId: string,
+  requesterEmail: string,
+) {
+  const base = and(eq(projects.organizationId, organizationId), eq(projectContacts.active, true))
+  if (kind === "vendor") {
+    return db.select(jobColumns).from(projectContacts)
+      .innerJoin(projects, eq(projects.id, projectContacts.projectId))
+      .where(and(base, eq(projectContacts.vendorContactId, personId)))
+  }
+  const linked = await db.select(jobColumns).from(projectContacts)
+    .innerJoin(projects, eq(projects.id, projectContacts.projectId))
+    .where(and(base, eq(projectContacts.customerContactId, personId)))
+  const email = plainEmail(requesterEmail)
+  if (!email) return linked
+  const like = `%${email}%`
+  const unpersoned = await db
+    .select({ ...jobColumns, contactEmail: projectContacts.email, customerEmail: customers.email })
     .from(projectContacts)
     .innerJoin(projects, eq(projects.id, projectContacts.projectId))
+    .innerJoin(customers, eq(customers.id, projectContacts.customerId))
     .where(and(
-      eq(projects.organizationId, organizationId),
-      eq(projectContacts.active, true),
-      kind === "client" ? eq(projectContacts.customerContactId, personId) : eq(projectContacts.vendorContactId, personId),
+      base,
+      isNull(projectContacts.customerContactId),
+      eq(customers.organizationId, organizationId),
+      isNull(customers.mergedIntoCustomerId),
+      or(sql`lower(${projectContacts.email}) LIKE ${like}`, sql`lower(${customers.email}) LIKE ${like}`),
     ))
+  const seen = new Set(linked.map((job) => job.contactId))
+  const matched = unpersoned
+    .filter((job) => plainEmail(job.contactEmail) === email || plainEmail(job.customerEmail) === email)
+    .filter((job) => !seen.has(job.contactId))
+    .map((job) => ({
+      contactId: job.contactId,
+      contactType: job.contactType,
+      projectId: job.projectId,
+      projectName: job.projectName,
+      projectNumber: job.projectNumber,
+      staffOnly: job.staffOnly,
+    }))
+  return [...linked, ...matched]
 }
 
 /**
@@ -318,7 +369,7 @@ export async function approveAccessRequest(
         if (results[0]?.meta.changes !== 1) throw new Error("The directory contact changed while you were approving. Reload and try again.")
       }
       const email = found.requesterEmail.trim().toLowerCase()
-      const jobs = await personJobs(db, organizationId, choice.kind, person.id)
+      const jobs = await personJobs(db, organizationId, choice.kind, person.id, found.requesterEmail)
       // One grant per job, as the project invitation does: each step reads and
       // writes that job's membership, conversation and access rows.
       for (const job of jobs) {

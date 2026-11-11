@@ -212,6 +212,36 @@ describe("deciding a request", () => {
     expect((await declineAccessRequest(db, adminA, submitted.data.requestId, NOW)).success).toBe(false)
   })
 
+  it("also opens a client's imported jobs that name no directory person but carry their sign-in email", async () => {
+    sqlite.exec(`
+      INSERT INTO customers (id, organization_id, name, email, created_at) VALUES
+        ('cust-bt', 'org-a', 'Treasurer Rita', NULL, '${NOW}'),
+        ('cust-bt2', 'org-a', 'Rita at home', ' RITA@client.test ', '${NOW}'),
+        ('cust-old', 'org-a', 'Old Rita', 'rita@client.test', '${NOW}');
+      UPDATE customers SET merged_into_customer_id = 'cust-1' WHERE id = 'cust-old';
+      INSERT INTO projects (id, organization_id, name, project_number, created_at) VALUES
+        ('p4', 'org-a', 'Range', 'O-4', '${NOW}'),
+        ('p5', 'org-a', 'Pad', 'O-5', '${NOW}'),
+        ('p6', 'org-a', 'Someone Else', 'O-6', '${NOW}'),
+        ('p7', 'org-a', 'Merged Record Job', 'O-7', '${NOW}');
+      INSERT INTO project_contacts (id, project_id, contact_type, display_name, email, customer_id, customer_contact_id, created_at, updated_at) VALUES
+        ('pc-4', 'p4', 'owner', 'Treasurer Rita', 'Rita Client <Rita@Client.test>', 'cust-bt', NULL, '${NOW}', '${NOW}'),
+        ('pc-5', 'p5', 'owner', 'Rita at home', NULL, 'cust-bt2', NULL, '${NOW}', '${NOW}'),
+        ('pc-6', 'p6', 'owner', 'Somebody', 'not-rita@client.test', 'cust-bt', NULL, '${NOW}', '${NOW}'),
+        ('pc-7', 'p7', 'owner', 'Old Rita', 'rita@client.test', 'cust-old', NULL, '${NOW}', '${NOW}');
+    `)
+    const submitted = await submit(rita, "client")
+    if (!submitted.success) throw new Error(submitted.error)
+    const result = await approveAccessRequest(db, d1, adminA, { kind: "client", requestId: submitted.data.requestId, customerContactId: "cc-1" }, NOW)
+    if (!result.success) throw new Error(result.error)
+    expect([...result.data.projects].sort()).toEqual(["O-1 - Smith Residence", "O-4 - Range", "O-5 - Pad"])
+    expect(row("SELECT role FROM project_members WHERE project_id = 'p4' AND user_id = 'user_rita'")).toEqual({ role: "owner" })
+    expect(row("SELECT count(*) AS n FROM project_members WHERE project_id IN ('p6', 'p7') AND user_id = 'user_rita'")).toEqual({ n: 0 })
+    // Read-only match: the job contact still names no directory person, and no job contact was added.
+    expect(row("SELECT customer_contact_id FROM project_contacts WHERE id = 'pc-4'")).toEqual({ customer_contact_id: null })
+    expect(row("SELECT count(*) AS n FROM project_contacts")).toEqual({ n: 7 })
+  })
+
   it("approves a vendor with the chosen role on the vendor person's jobs", async () => {
     const submitted = await submit(vic, "vendor")
     if (!submitted.success) throw new Error(submitted.error)
