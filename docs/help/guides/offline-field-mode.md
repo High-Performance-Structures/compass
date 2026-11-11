@@ -33,7 +33,7 @@ Each job has one **Field app** choice, the same for everyone: **Automatic**, **A
 - **Hide** keeps the job out of the field app.
 - Closed jobs (Complete, Closed, Inactive, Bid Refused, or archived) never appear.
 
-Who sees a job: anyone added to the job sees it while it is in the field app. When **Active Sage employees see every field app job automatically** is on (the default), staff whose internal contact is active and linked to a Sage employee record see every job in the field app without being added to each one. Clients, owners, trade partners and suppliers only ever see the jobs they were added to. After a job is switched on or off, refresh the field app while online to update the list.
+Who sees a job: anyone added to the job sees it while it is in the field app. When **Active Sage employees see every field app job automatically** is on (the default), staff whose internal contact is active and linked to a Sage employee record see every job in the field app without being added to each one. Clients, owners, trade partners and suppliers only ever see the jobs they were added to. After a job is switched on or off, the field app picks up the change by itself: while online, it checks for a new project list each time it opens or comes back to the screen (at most once a minute). To check right away, tap **Refresh** on the **Projects** tab. You do not need to sign out and back in. If a job you have open leaves the list, it stays open on that device, with any waiting work still syncing, until you choose another project. (Automatic refresh and the **Refresh** button need Android 1.0.9 or iPhone build 58 or later; older versions update the list only when you sign in.)
 
 ## Create Work Offline {#create-work}
 
