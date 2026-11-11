@@ -113,6 +113,24 @@ describe("projectContactCanInvite", () => {
     expect(projectContactCanInvite("pending")).toBe(true)
     expect(projectContactCanInvite("active")).toBe(false)
     expect(projectContactCanInvite("inactive")).toBe(false)
+    expect(projectContactCanInvite("company_staff")).toBe(false)
+  })
+})
+
+describe("company staff", () => {
+  it("reads company staff before any membership or invitation", () => {
+    expect(
+      projectContactAccessStatus({
+        companyStaff: true,
+        activeProjectMember: true,
+        latestInvitation: { status: "sent", workosExpiresAt: null, acceptedUserActive: null },
+        compassAccountStatus: "active",
+        now: NOW,
+      })
+    ).toBe("company_staff")
+    expect(
+      projectContactAccessStatus({ companyStaff: false, activeProjectMember: true, latestInvitation: null, now: NOW })
+    ).toBe("active")
   })
 })
 

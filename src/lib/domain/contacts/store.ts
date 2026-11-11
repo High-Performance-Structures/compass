@@ -10,7 +10,7 @@
  * resolved-project-contacts.ts. New project contacts must link:
  * insertableProjectContacts.
  */
-import { and, eq, inArray, isNull, ne, or, sql } from "drizzle-orm"
+import { and, eq, inArray, isNull, ne, or, sql, type SQL } from "drizzle-orm"
 import type { BatchItem } from "drizzle-orm/batch"
 
 import { customerContacts, customers, internalContacts, projectContacts, projectContactSourceLinks, vendorContacts, vendors } from "@/db/schema"
@@ -473,12 +473,55 @@ export function insertVendorPersonStatement(db: Db, values: VendorContactInsert,
   return ifMissing ? db.insert(vendorContacts).values(values).onConflictDoNothing() : db.insert(vendorContacts).values(values)
 }
 
+/** Vendor people removed in the vendor editor, and their job rows (kept as history). */
 export async function deactivateVendorPeople(db: Db, input: { readonly personIds: readonly string[]; readonly now: string }): Promise<void> {
   if (input.personIds.length === 0) return
-  await db
-    .update(vendorContacts)
-    .set({ active: false, isPrimary: false, updatedAt: input.now })
-    .where(inArray(vendorContacts.id, [...input.personIds]))
+  await db.batch([
+    db
+      .update(vendorContacts)
+      .set({ active: false, isPrimary: false, updatedAt: input.now })
+      .where(inArray(vendorContacts.id, [...input.personIds])),
+    ...archivedPersonProjectContactsStatements(db, { kind: "vendor_contact", personIds: input.personIds, now: input.now }),
+  ])
+}
+
+/** A directory person: an internal (staff), client or vendor contact. */
+export type DirectoryPersonKind = "internal_contact" | "customer_contact" | "vendor_contact"
+
+/** Project-contact rows that name a directory person, by link column or by provenance. */
+export function directoryPersonProjectContactsWhere(kind: DirectoryPersonKind, personIds: readonly string[]): SQL | undefined {
+  const ids = [...personIds]
+  const column =
+    kind === "internal_contact"
+      ? projectContacts.internalContactId
+      : kind === "customer_contact"
+        ? projectContacts.customerContactId
+        : projectContacts.vendorContactId
+  return or(
+    inArray(column, ids),
+    and(eq(projectContacts.sourceEntityType, kind), inArray(projectContacts.sourceEntityId, ids))
+  )
+}
+
+/**
+ * A person removed from Contacts leaves every job: their project-contact rows
+ * become inactive. Rows are never deleted (messages, logs, photos and Activity
+ * point at them) and notes and links are kept, so they read as history.
+ */
+export function archivedPersonProjectContactsStatements(
+  db: Db,
+  input: { readonly kind: DirectoryPersonKind; readonly personIds: readonly string[]; readonly now: string }
+): Statement[] {
+  // Each id is bound twice (link column and provenance), so 40 ids per
+  // statement stay under D1's 100-parameter limit.
+  const chunks: string[][] = []
+  for (let index = 0; index < input.personIds.length; index += 40) chunks.push(input.personIds.slice(index, index + 40))
+  return chunks.map((ids) =>
+    db
+      .update(projectContacts)
+      .set({ active: false, primaryContact: false, updatedAt: input.now })
+      .where(and(eq(projectContacts.active, true), directoryPersonProjectContactsWhere(input.kind, ids)))
+  )
 }
 
 // ---------------------------------------------------------------------------

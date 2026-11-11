@@ -3,6 +3,7 @@
  * daily logs, photos, weather and owner updates. No database or network
  * access, so the browser may import these for previews too.
  */
+import { archivedUserLabel } from "@/lib/archived-person"
 import type { DailyLogFormValues, DailyLogWorkLineDraft } from "@/lib/daily-logs/daily-log-form"
 import { MAX_PHOTO_UPLOAD_BATCH_BYTES, MAX_PHOTO_UPLOAD_FILE_BYTES } from "@/lib/photos/upload-limits"
 import {
@@ -45,19 +46,19 @@ export function submittedIdList(ids: readonly string[]): string[] {
 // Daily logs
 // ---------------------------------------------------------------------------
 
+/** An author's name; an inactive (archived) account reads "Archived user – Name". */
 export function personDisplayName(row: {
   readonly displayName: string | null
   readonly firstName: string | null
   readonly lastName: string | null
   readonly email: string | null
+  readonly isActive?: boolean | null
 }): string | null {
-  if (row.displayName) return row.displayName
-
   const fullName = [row.firstName, row.lastName]
     .filter((part) => part !== null && part.length > 0)
     .join(" ")
-
-  return fullName.length > 0 ? fullName : row.email
+  const name = row.displayName || (fullName.length > 0 ? fullName : row.email)
+  return name && row.isActive === false ? archivedUserLabel(name) : name
 }
 
 export function normalizedDailyLogReviewStatus(value: string): string {

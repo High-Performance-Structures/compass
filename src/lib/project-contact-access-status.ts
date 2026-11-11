@@ -4,6 +4,9 @@ export type ProjectContactAccessStatus =
   | "active"
   | "expired"
   | "inactive"
+  // Internal staff of the project's own company: they reach every company job
+  // through organization scope, so no project invitation applies.
+  | "company_staff"
 
 export type ProjectContactCompassAccountStatus =
   | "active"
@@ -41,11 +44,15 @@ export function projectContactNeedsPersonForInvitation(input: {
 }
 
 export function projectContactAccessStatus(input: {
+  /** Current internal staff of the project's own company. */
+  readonly companyStaff?: boolean
   readonly activeProjectMember: boolean
   readonly latestInvitation: ProjectContactInvitationSnapshot | null
   readonly compassAccountStatus?: ProjectContactCompassAccountStatus
   readonly now?: Date
 }): ProjectContactAccessStatus {
+  // Company staff see every job, so a project membership row adds nothing.
+  if (input.companyStaff === true) return "company_staff"
   if (input.activeProjectMember) return "active"
   if (input.compassAccountStatus === "active") return "not_invited"
 

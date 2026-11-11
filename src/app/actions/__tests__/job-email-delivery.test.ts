@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs"
 import { PDFDocument } from "pdf-lib"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
-import { context, openCorrespondenceTestDatabase, type CorrespondenceTestDatabase } from "../../../../__tests__/helpers/correspondence-core"
+import { context, addDirectoryPeopleSchema, openCorrespondenceTestDatabase, type CorrespondenceTestDatabase } from "../../../../__tests__/helpers/correspondence-core"
 import { REQUEST_COI_TEMPLATE, SEND_W9_TEMPLATE } from "@/lib/job-workflows/email-delivery"
 import { getJobEmailDeliverySettings, removeJobEmailW9, saveJobEmailDeliverySettings } from "../job-email-delivery-settings"
 import { getJobEmailDraft, sendJobEmail } from "../job-emails"
@@ -36,6 +36,7 @@ const AGENT = "agent@example.test"
 beforeEach(() => {
   vi.clearAllMocks()
   database = openCorrespondenceTestDatabase()
+  addDirectoryPeopleSchema(database.sqlite)
   database.sqlite.exec(`
     ALTER TABLE projects ADD COLUMN status TEXT;
     ALTER TABLE projects ADD COLUMN address TEXT;

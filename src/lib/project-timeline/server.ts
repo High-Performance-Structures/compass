@@ -14,6 +14,7 @@ import { equipmentLogEntries, equipmentMachines } from "@/db/schema-equipment"
 import { internalDutyEntries } from "@/db/schema-internal-duties"
 import { companyTimeZone } from "@/lib/daily-logs/log-followups-server"
 import { readFeatureSettings } from "@/lib/feature-settings/server"
+import { archivedAwareNameSql, inactiveUserSql } from "@/lib/archived-person-sql"
 import { recordStatusLabel } from "@/lib/domain/record-statuses/rules"
 import { loadRecordStatusList } from "@/lib/domain/record-statuses/store"
 import { dateKeyInTimeZone } from "@/lib/work-calendar"
@@ -265,7 +266,7 @@ export async function loadProjectTimeline(
       : Promise.resolve([]),
     shows("schedule")
       ? db
-          .select({ id: activityEvents.id, summary: activityEvents.summary, actorName: activityEvents.actorName, createdAt: activityEvents.createdAt })
+          .select({ id: activityEvents.id, summary: activityEvents.summary, actorName: sql<string>`${archivedAwareNameSql(activityEvents.actorName, inactiveUserSql(activityEvents.actorUserId))}`, createdAt: activityEvents.createdAt })
           .from(activityEvents)
           .where(
             and(

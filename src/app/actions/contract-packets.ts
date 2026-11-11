@@ -6,7 +6,6 @@ import { currentDepartmentProfiles } from "@/lib/department-profiles-server"
 import { and, asc, desc, eq, inArray, isNull } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 import { cookies } from "next/headers"
-
 import { getDb } from "@/db"
 import { projectContacts, projects } from "@/db/schema"
 import {
@@ -62,6 +61,7 @@ import {
 } from "@/lib/project-branding"
 import { isInternalStaffRole } from "@/lib/user-roles"
 import { contractEstimateConditions } from "@/lib/estimates/estimate-family"
+import { notArchivedPersonContact } from "@/lib/domain/contacts/person-status"
 
 export type { ProjectContractPacketDocumentItem } from "@/lib/contracts/packet-types"
 
@@ -409,7 +409,7 @@ export async function getProjectContractPacketWorkspace(
       })
       .from(projectContacts)
       .where(
-        and(eq(projectContacts.projectId, projectId), eq(projectContacts.active, true))
+        and(eq(projectContacts.projectId, projectId), eq(projectContacts.active, true), notArchivedPersonContact())
       )
       .orderBy(desc(projectContacts.primaryContact), asc(projectContacts.sortOrder)),
   ])

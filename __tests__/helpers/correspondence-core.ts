@@ -229,6 +229,28 @@ export function openCorrespondenceTestDatabase(): CorrespondenceTestDatabase {
   return { sqlite, d1, db, failures, close: () => sqlite.close() }
 }
 
+/**
+ * The directory-people columns and tables that the shared "archived person"
+ * rule reads (src/lib/domain/contacts/person-status.ts). Idempotent, so a
+ * test that already added some of them can still call it.
+ */
+export function addDirectoryPeopleSchema(sqlite: Sqlite): void {
+  const columns = (table: string): ReadonlySet<string> =>
+    new Set(sqlite.prepare(`PRAGMA table_info(${table})`).all().flatMap((row) => {
+      const name: unknown = row !== null && typeof row === "object" ? Reflect.get(row, "name") : null
+      return typeof name === "string" ? [name] : []
+    }))
+  const projectContactColumns = columns("project_contacts")
+  for (const column of ["customer_id", "customer_contact_id", "vendor_id", "vendor_contact_id"]) {
+    if (!projectContactColumns.has(column)) sqlite.exec(`ALTER TABLE project_contacts ADD COLUMN ${column} TEXT`)
+  }
+  if (!columns("internal_contacts").has("email")) sqlite.exec("ALTER TABLE internal_contacts ADD COLUMN email TEXT")
+  sqlite.exec(`
+    CREATE TABLE IF NOT EXISTS customer_contacts (id TEXT PRIMARY KEY, customer_id TEXT, user_id TEXT, name TEXT, email TEXT, active INTEGER NOT NULL DEFAULT 1);
+    CREATE TABLE IF NOT EXISTS vendor_contacts (id TEXT PRIMARY KEY, vendor_id TEXT, user_id TEXT, name TEXT, email TEXT, active INTEGER NOT NULL DEFAULT 1);
+  `)
+}
+
 /** A Drizzle handle over any better-sqlite3 database (for example one built from every migration). */
 export function drizzleOverSqlite(sqlite: Sqlite): ReturnType<typeof getDb> {
   const failures: FailureController = { failNextMatching: () => {}, setBindLimit: () => {}, setBeforeBatchHook: () => {} }

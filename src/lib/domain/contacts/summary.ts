@@ -14,6 +14,7 @@ import {
 import { canViewHistoricalProjectContacts } from "@/lib/project-contact-display"
 import type { ProjectContext } from "@/lib/server/action-context"
 import { contactsProjectContext } from "./access"
+import { projectContactPersonStatusSql } from "./person-status"
 
 import { buildCsiGroups, buildGroups, normalizeEmailKey, toContactItem } from "./rules"
 import { resolvedProjectContacts } from "./resolved-project-contacts"
@@ -47,14 +48,23 @@ function visibilityWhere(audience: ProjectContactAudience): SQL | undefined {
 const historicalWhere = and(
   eq(projectContacts.active, false),
   eq(projectContacts.contactType, "internal"),
-  eq(projectContacts.sourceSystem, "buildertrend"),
-  // Inactive imports also include superseded duplicates. Only surface rows
-  // that the cutover explicitly classified as historical staff records.
-  sql`case
-    when json_valid(${projectContacts.notes}) = 1
-      then json_extract(${projectContacts.notes}, '$.formerEmployeeStatus')
-    else null
-  end in ('former_employee', 'former_employee_or_review')`,
+  or(
+    // Staff removed from Contacts: archiving took them off this job.
+    sql`exists (
+      select 1 from internal_contacts ic
+      where ic.id = ${projectContacts.internalContactId} and ic.active = 0
+    )`,
+    and(
+      eq(projectContacts.sourceSystem, "buildertrend"),
+      // Inactive imports also include superseded duplicates. Only surface rows
+      // that the cutover explicitly classified as historical staff records.
+      sql`case
+        when json_valid(${projectContacts.notes}) = 1
+          then json_extract(${projectContacts.notes}, '$.formerEmployeeStatus')
+        else null
+      end in ('former_employee', 'former_employee_or_review')`
+    )
+  ),
   sql`not exists (
     select 1
     from project_contacts active_contact
@@ -173,7 +183,7 @@ async function loadProjectContactsSummary(
   const contactEmails = Array.from(
     new Set(rows.map((row) => normalizeEmailKey(row.email)).filter((email) => email.length > 0))
   )
-  const [directoryIdentityKeys, invitationRows, activeProjectMemberRows, compassAccountChunks, sourceLinks, sageNumbers] =
+  const [directoryIdentityKeys, invitationRows, activeProjectMemberRows, compassAccountChunks, sourceLinks, sageNumbers, personRows] =
     await Promise.all([
       activeDirectoryIdentityKeys({ db, organizationId, entityIds: directoryEntityIds(rows) }),
       db
@@ -209,6 +219,15 @@ async function loadProjectContactsSummary(
         .from(projectContactSourceLinks)
         .where(eq(projectContactSourceLinks.projectId, projectId)),
       companySageNumbers(db, rows),
+      db
+        .select({ id: projectContacts.id, personStatus: projectContactPersonStatusSql() })
+        .from(projectContacts)
+        .where(
+          and(
+            eq(projectContacts.projectId, projectId),
+            eq(projectContacts.active, true)
+          )
+        ),
     ])
 
   const compassAccountStatuses = accountStatusByEmail(compassAccountChunks.flat())
@@ -230,6 +249,13 @@ async function loadProjectContactsSummary(
   const activeProjectUserIds = new Set(activeProjectMemberRows.map((member) => member.userId))
   const activeProjectEmails = new Set(activeProjectMemberRows.map((member) => normalizeEmailKey(member.email)))
 
+  const personStatusById = new Map(personRows.map((row) => [row.id, row.personStatus]))
+  // Archived people (removed from Contacts, or former staff whose account is
+  // inactive or no longer in the company) read as historical records. The
+  // row itself is not changed.
+  const isArchivedPerson = (row: ContactRow): boolean =>
+    row.active && personStatusById.get(row.id) === "archived_person"
+
   const toProjectContactItem = (row: ContactRow): ProjectContactItem => {
     const email = normalizeEmailKey(row.email)
     const compassAccountStatus = compassAccountStatuses.get(email) ?? "not_registered"
@@ -242,7 +268,12 @@ async function loadProjectContactsSummary(
     return toContactItem(
       row,
       row.active
-        ? projectContactAccessStatus({ activeProjectMember, latestInvitation, compassAccountStatus })
+        ? projectContactAccessStatus({
+            companyStaff: personStatusById.get(row.id) === "current_staff",
+            activeProjectMember,
+            latestInvitation,
+            compassAccountStatus,
+          })
         : "not_invited",
       (row.sourceEntityId !== null && directoryIdentityKeys.has(`${row.sourceEntityType}:${row.sourceEntityId}`)) ||
         (row.vendorContactId !== null && directoryIdentityKeys.has(`vendor_contact:${row.vendorContactId}`)) ||
@@ -253,8 +284,11 @@ async function loadProjectContactsSummary(
         (row.customerId ? sageNumbers.get(`customer:${row.customerId}`) : undefined) ?? null
     )
   }
-  const allContacts = rows.filter((row) => row.active).map(toProjectContactItem)
-  const historicalContacts = rows.filter((row) => !row.active).map(toProjectContactItem)
+  const allContacts = rows.filter((row) => row.active && !isArchivedPerson(row)).map(toProjectContactItem)
+  const historicalContacts = [
+    ...rows.filter((row) => !row.active),
+    ...(includeHistorical ? rows.filter(isArchivedPerson).map((row) => ({ ...row, active: false })) : []),
+  ].map(toProjectContactItem)
   const countType = (type: ProjectContactItem["contactType"]): number =>
     allContacts.filter((contact) => contact.contactType === type).length
 

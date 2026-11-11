@@ -1,12 +1,13 @@
 "use server"
 
-import { and, desc, eq } from "drizzle-orm"
+import { and, desc, eq, sql } from "drizzle-orm"
 
 import { activityEvents, projects } from "@/db/schema"
 import {
   ACTIVITY_CATEGORIES,
   type ActivityCategory,
 } from "@/lib/activity-log"
+import { archivedAwareNameSql, inactiveUserSql } from "@/lib/archived-person-sql"
 import { requireOrg } from "@/lib/org-scope"
 import { isInternalStaffRole } from "@/lib/user-roles"
 import { requireUserContext } from "@/lib/server/action-context"
@@ -54,7 +55,8 @@ export async function getActivityEvents(
       projectId: activityEvents.projectId,
       projectName: projects.name,
       actorUserId: activityEvents.actorUserId,
-      actorName: activityEvents.actorName,
+      // Former staff read "Archived user – Name".
+      actorName: sql<string>`${archivedAwareNameSql(activityEvents.actorName, inactiveUserSql(activityEvents.actorUserId))}`,
       actorRole: activityEvents.actorRole,
       category: activityEvents.category,
       action: activityEvents.action,

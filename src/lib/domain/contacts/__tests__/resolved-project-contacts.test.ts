@@ -8,6 +8,7 @@ import {
   customers,
   internalContacts,
   organizationMembers,
+  organizations,
   projectAccessInvitations,
   projectContacts,
   projectContactSourceLinks,
@@ -25,6 +26,7 @@ vi.mock("@/lib/db", () => ({ getCloudflareContext: async () => ({ env: { DB: {} 
 vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }))
 
 import { getProjectContactsSummary } from "@/app/actions/project-contacts"
+import { resolvedProjectContacts } from "@/lib/domain/contacts/resolved-project-contacts"
 
 const TABLES: readonly SQLiteTable[] = [
   projects,
@@ -36,6 +38,7 @@ const TABLES: readonly SQLiteTable[] = [
   internalContacts,
   users,
   organizationMembers,
+  organizations,
   projectAccessInvitations,
   projectMembers,
   projectContactSourceLinks,
@@ -217,7 +220,11 @@ describe("resolvedProjectContacts (link to the directory)", () => {
       phone: "000",
       address: "Copied address",
     })
-    expect(contacts.get("pc-inactive")).toMatchObject({
+    // A person archived in Contacts is off the job's current list...
+    expect(contacts.has("pc-inactive")).toBe(false)
+    // ...and the read model falls back to the copy for history.
+    const rows = await resolvedProjectContacts(mocks.db(), { organizationId: "org-1", projectId: "project-1", order: "name" })
+    expect(rows.find((row) => row.id === "pc-inactive")).toMatchObject({
       displayName: "Copied name",
       companyName: "Client Co",
       email: null,

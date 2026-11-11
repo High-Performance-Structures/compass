@@ -5,6 +5,7 @@ import { toast } from "sonner"
 
 import {
   deleteCustomerDirectoryPerson,
+  getCustomerDirectoryPersonJobCount,
   getCustomerDirectoryPeople,
   saveCustomerDirectoryPerson,
   type CustomerDirectoryPerson,
@@ -26,6 +27,7 @@ import {
 } from "@/components/contacts/sage-linked-edit"
 import { SAGE_FIELD_LABELS } from "@/lib/sage/sage-linked-edit-fields"
 import { SageNumberBadge } from "@/components/sage-number-badge"
+import { archivedPersonJobsNotice } from "@/lib/archived-person"
 
 const EMPTY: CustomerPersonInput = { name: "", title: "", email: "", phone: "", isPrimary: false }
 
@@ -129,9 +131,11 @@ export function CustomerPeopleDialog({
     } finally { setBusy(false) }
   }
   const remove = async (person: CustomerDirectoryPerson) => {
-    if (!window.confirm(`Remove ${person.name} from this client's contact list?`)) return
     setBusy(true)
     try {
+      const count = await getCustomerDirectoryPersonJobCount(person.id)
+      const jobs = archivedPersonJobsNotice(count.success ? count.jobCount : null)
+      if (!window.confirm(`Remove ${person.name} from this client's contact list? ${jobs} Restoring them later does not put them back on jobs.`)) return
       const result = await deleteCustomerDirectoryPerson(person.id)
       if (!result.success) toast.error(result.error)
       else { toast.success("Client contact removed"); await reload() }

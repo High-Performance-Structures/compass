@@ -9,6 +9,7 @@ import {
   vendors,
 } from "@/db/schema"
 import { requirePermission } from "@/lib/permissions"
+import { removeArchivedPeopleFromJobs } from "@/lib/domain/contacts/person-archive"
 import { requireFeaturePermission } from "@/lib/permission-enforcement"
 import { revalidatePath } from "next/cache"
 import {
@@ -560,6 +561,9 @@ export async function updateVendor(
       .map((contact) => contact.id)
       .filter((contactId) => !retainedIds.has(contactId))
     await deactivateVendorPeople(db, { personIds: removedIds, now: updatedAt })
+    // People removed here leave every job (kept as history), and their
+    // accounts lose those project memberships.
+    await removeArchivedPeopleFromJobs(db, { organizationId: orgId, kind: "vendor_contact", personIds: removedIds, now: updatedAt })
 
     // An edited email leaves any pending (unaccepted) project invitation at
     // the old address. Nothing is revoked or resent here; staff are warned.

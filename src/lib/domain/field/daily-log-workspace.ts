@@ -215,6 +215,7 @@ export async function loadProjectDailyLogWorkspace(
       authorFirstName: users.firstName,
       authorLastName: users.lastName,
       authorEmail: users.email,
+      authorIsActive: users.isActive,
     })
     .from(dailyLogs)
     .leftJoin(users, eq(dailyLogs.authorId, users.id))
@@ -427,6 +428,7 @@ export async function loadProjectDailyLogWorkspace(
           firstName: row.authorFirstName,
           lastName: row.authorLastName,
           email: row.authorEmail,
+          isActive: row.authorIsActive,
         }),
         tags: row.tags,
       }),

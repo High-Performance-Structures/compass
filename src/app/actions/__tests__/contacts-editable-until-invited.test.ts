@@ -344,9 +344,9 @@ describe("internal people", () => {
 
   it("archives and restores an uninvited person", async () => {
     internal("ic-1", { active: 1 })
-    expect(await setInternalDirectoryPersonArchived("ic-1", true)).toEqual({ success: true, data: { name: "Ivy Imported" } })
+    expect(await setInternalDirectoryPersonArchived("ic-1", true)).toEqual({ success: true, data: { name: "Ivy Imported", jobCount: 0 } })
     expect(one("SELECT active FROM internal_contacts WHERE id = 'ic-1'").active).toBe(0)
-    expect(await setInternalDirectoryPersonArchived("ic-1", false)).toEqual({ success: true, data: { name: "Ivy Imported" } })
+    expect(await setInternalDirectoryPersonArchived("ic-1", false)).toEqual({ success: true, data: { name: "Ivy Imported", jobCount: 0 } })
     expect(one("SELECT active FROM internal_contacts WHERE id = 'ic-1'").active).toBe(1)
     expect(activity("internal_contact.archived")).toHaveLength(1)
     expect(activity("internal_contact.restored")).toHaveLength(1)

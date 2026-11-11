@@ -4,7 +4,7 @@ import { getConversationChannelAccess } from "@/lib/conversations/channel-access
 import { conversationHistoryBefore, conversationHistoryOrder, type ConversationHistoryCursor } from "@/lib/conversations/message-pagination"
 import { conversationRequestViewer } from "@/lib/conversations/preview-viewer"
 import { assertAudiencePreviewWriteAllowed } from "@/lib/project-audience-request-server"
-import { importedMessageColumns } from "@/lib/domain/conversations/imported"
+import { importedMessageColumns, messageSenderDisplayName } from "@/lib/domain/conversations/imported"
 import { getCloudflareContext } from "@/lib/db"
 import {
   eq,
@@ -760,7 +760,7 @@ export async function sendMessage(data: {
         createdAt: messages.createdAt,
         user: {
           id: users.id,
-          displayName: users.displayName,
+          displayName: messageSenderDisplayName,
           email: users.email,
           avatarUrl: users.avatarUrl,
         },
@@ -894,7 +894,7 @@ export async function getThreadMessages(
         ...importedMessageColumns,
         user: {
           id: users.id,
-          displayName: users.displayName,
+          displayName: messageSenderDisplayName,
           email: users.email,
           avatarUrl: users.avatarUrl,
         },

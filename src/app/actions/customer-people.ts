@@ -3,7 +3,7 @@
 import { and, asc, eq } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 
-import { customerContacts, customers, projectContacts } from "@/db/schema"
+import { customerContacts, customers } from "@/db/schema"
 import { recordActivityEvent } from "@/lib/activity-log"
 import {
   contactEmailChanged,
@@ -12,6 +12,7 @@ import {
 } from "@/lib/contact-identity-ownership"
 import { saveCustomerPerson } from "@/lib/domain/contacts/directory-people"
 import { stalePendingInvitationCount, stalePendingInvitationWarning } from "@/lib/domain/contacts/pending-invitations"
+import { directoryPersonJobCount, removeArchivedPeopleFromJobs } from "@/lib/domain/contacts/person-archive"
 import { updateCustomerPerson } from "@/lib/domain/contacts/store"
 import { isDemoUser } from "@/lib/demo"
 import { requireFeaturePermission } from "@/lib/permission-enforcement"
@@ -135,21 +136,33 @@ export async function deleteCustomerDirectoryPerson(personId: string): Promise<M
     if (person.userId || person.sageContactId) {
       return { success: false, error: "Unlink the Compass account or resolve the Sage link before removing this contact." }
     }
-    const assignment = await db.select({ id: projectContacts.id }).from(projectContacts)
-      .where(eq(projectContacts.customerContactId, personId)).limit(1).get()
-    if (assignment) return { success: false, error: "Remove this person from project contacts first." }
-    await updateCustomerPerson(db, { personId, values: { active: false, updatedAt: new Date().toISOString() } })
+    // Removing a person from Contacts takes them off every job (kept as history).
+    const now = new Date().toISOString()
+    await updateCustomerPerson(db, { personId, values: { active: false, updatedAt: now } })
+    const { jobCount } = await removeArchivedPeopleFromJobs(db, { organizationId: orgId, kind: "customer_contact", personIds: [personId], now })
     await recordActivityEvent({
       db, organizationId: orgId,
       actor: { id: user.id, email: user.email, displayName: user.displayName,
         firstName: user.firstName, lastName: user.lastName, role: user.role },
       category: "account", action: "customer_contact.removed",
       entityType: "customer_contact", entityId: personId,
-      summary: "Removed a client contact person from the active directory.",
+      summary: `Removed a client contact person from the active directory and from ${jobCount} ${jobCount === 1 ? "job" : "jobs"} (kept in history).`,
     })
     revalidatePath("/dashboard/contacts")
     return { success: true, id: personId }
   } catch (error) {
     return { success: false, error: error instanceof Error ? error.message : "Could not remove contact." }
+  }
+}
+
+/** How many jobs list this client person, for the Remove confirmation. */
+export async function getCustomerDirectoryPersonJobCount(personId: string): Promise<{ readonly success: true; readonly jobCount: number } | { readonly success: false; readonly error: string }> {
+  try {
+    const { user, db } = await requireUserContext()
+    await requireFeaturePermission(user, "customers", "read")
+    const organizationId = requireOrg(user)
+    return { success: true, jobCount: await directoryPersonJobCount(db, { organizationId, kind: "customer_contact", personId }) }
+  } catch (error) {
+    return { success: false, error: error instanceof Error ? error.message : "Could not count this person's jobs." }
   }
 }

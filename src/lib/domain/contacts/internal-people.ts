@@ -24,6 +24,7 @@ import {
   stalePendingInvitationCount,
   stalePendingInvitationWarning,
 } from "./pending-invitations"
+import { removeArchivedPeopleFromJobs } from "./person-archive"
 import { normalizeEmailKey } from "./rules"
 import { updateInternalPerson } from "./store"
 
@@ -121,18 +122,19 @@ export async function saveInternalPerson(
 }
 
 /**
- * Archive hides the person from the directory and every picker; restore
- * brings them back. People linked to a Compass user (invited or accepted)
- * and Sage-linked employees are not archived here.
+ * Archive hides the person from the directory and every picker and takes
+ * them off every job (kept as history, person-archive.ts); restore brings
+ * them back to the directory but not onto jobs. People linked to a Compass
+ * user (invited or accepted) and Sage-linked employees are not archived here.
  */
 export async function setInternalPersonArchived(
   db: Db,
   input: { readonly organizationId: string; readonly personId: string; readonly archived: boolean; readonly now: string }
-): Promise<{ readonly success: true; readonly name: string } | ActionFailure> {
+): Promise<{ readonly success: true; readonly name: string; readonly jobCount: number } | ActionFailure> {
   const existing = await loadPerson(db, input.organizationId, input.personId)
   if (!existing) return { success: false, error: "Internal contact was not found." }
   if (input.archived) {
-    if (!existing.active) return { success: true, name: existing.name }
+    if (!existing.active) return { success: true, name: existing.name, jobCount: 0 }
     if (existing.userId) {
       return { success: false, error: "This person is linked to a Compass user. Manage their access in user management instead." }
     }
@@ -140,7 +142,7 @@ export async function setInternalPersonArchived(
       return { success: false, error: "Sage-linked employees stay in the directory. Change them in Sage." }
     }
   } else if (existing.active) {
-    return { success: true, name: existing.name }
+    return { success: true, name: existing.name, jobCount: 0 }
   }
   await updateInternalPerson(db, {
     organizationId: input.organizationId,
@@ -148,5 +150,12 @@ export async function setInternalPersonArchived(
     values: { active: !input.archived },
     now: input.now,
   })
-  return { success: true, name: existing.name }
+  if (!input.archived) return { success: true, name: existing.name, jobCount: 0 }
+  const { jobCount } = await removeArchivedPeopleFromJobs(db, {
+    organizationId: input.organizationId,
+    kind: "internal_contact",
+    personIds: [input.personId],
+    now: input.now,
+  })
+  return { success: true, name: existing.name, jobCount }
 }

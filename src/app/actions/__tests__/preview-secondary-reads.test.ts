@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { getTableConfig } from "drizzle-orm/sqlite-core"
 import { channels, channelMembers, channelReadState, messages, typingSessions } from "@/db/schema-conversations"
-import { context, openCorrespondenceTestDatabase, type CorrespondenceTestDatabase } from "../../../../__tests__/helpers/correspondence-core"
+import { context, addDirectoryPeopleSchema, openCorrespondenceTestDatabase, type CorrespondenceTestDatabase } from "../../../../__tests__/helpers/correspondence-core"
 const mocks = vi.hoisted(() => ({ actor: vi.fn(), viewer: vi.fn(), scope: vi.fn(), env: vi.fn(), writeGuard: vi.fn(), resourceProject: vi.fn(), isPreview: vi.fn() }))
 vi.mock("server-only", () => ({}))
 vi.mock("@/lib/auth", () => ({ requireAuth: mocks.actor, getCurrentUser: mocks.actor }))
@@ -16,6 +16,7 @@ import { createProjectRfi, setProjectRfiVendorAssignment, getProjectRfiInboundEm
 let database: CorrespondenceTestDatabase
 beforeEach(() => {
   database = openCorrespondenceTestDatabase()
+  addDirectoryPeopleSchema(database.sqlite)
   for (const table of [channels, channelMembers, channelReadState, messages, typingSessions]) {
     const config = getTableConfig(table)
     database.sqlite.exec(`CREATE TABLE "${config.name}" (${config.columns.map((column) => `"${column.name}" ${column.getSQLType()}${column.primary ? " PRIMARY KEY" : ""}`).join(",")})`)

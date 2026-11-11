@@ -21,6 +21,7 @@ import { channelNotificationRecipients } from "@/lib/notifications/audience"
 import { isBuildertrendArchiveChannelId } from "@/lib/conversations/channel-access"
 import { projectNumberAndName } from "@/lib/project-display-name"
 import { requireUserContext } from "@/lib/server/action-context"
+import { notArchivedPersonContact } from "@/lib/domain/contacts/person-status"
 
 export type ProjectMessageRecipient =
   | { readonly kind: "channel" }
@@ -217,7 +218,8 @@ export async function sendProjectMessage(input: {
       .where(
         and(
           eq(projectContacts.projectId, channel.projectId),
-          eq(projectContacts.active, true)
+          eq(projectContacts.active, true),
+          notArchivedPersonContact()
         )
       )
 

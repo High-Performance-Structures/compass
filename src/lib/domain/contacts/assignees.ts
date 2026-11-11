@@ -19,13 +19,19 @@ import {
   vendorPersonToTaskAssigneeOption,
 } from "./rules"
 import { resolvedProjectContacts } from "./resolved-project-contacts"
+import { notArchivedPersonContact } from "./person-status"
 import { insertProjectContact } from "./store"
 import type { AddTaskAssigneeContactResult, ProjectTaskAssigneeOption, ProjectTaskAssigneeOptions } from "./types"
 
 type Scope = { readonly organizationId: string; readonly projectId: string }
 
-function activeProjectContacts(db: Db, scope: Scope, where = eq(projectContacts.active, true)) {
-  return resolvedProjectContacts(db, { ...scope, where, order: "type_then_name" })
+// Former staff stay on the job as history only; they are never offered for picking.
+function activeProjectContacts(db: Db, scope: Scope) {
+  return resolvedProjectContacts(db, {
+    ...scope,
+    where: and(eq(projectContacts.active, true), notArchivedPersonContact()),
+    order: "type_then_name",
+  })
 }
 
 function activeOrganizationUsers(db: Db, organizationId: string) {
@@ -197,7 +203,7 @@ export async function loadPurchaseOrderSiteContactOptions(
 ): Promise<readonly ProjectTaskAssigneeOption[]> {
   const projectRows = await resolvedProjectContacts(db, {
     ...scope,
-    where: and(eq(projectContacts.contactType, "internal"), eq(projectContacts.active, true)),
+    where: and(eq(projectContacts.contactType, "internal"), eq(projectContacts.active, true), notArchivedPersonContact()),
     order: "name",
   })
   const projectOptions = projectRows.map((row) => toContactItem(row)).map(projectContactToTaskAssigneeOption)
