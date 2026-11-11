@@ -41,6 +41,7 @@ import {
 import { getSageContactEntityIdentity } from "@/lib/sage/contact-entity"
 import { sameSageRecordId, withNormalizedSageRecordIds } from "@/lib/sage/record-id"
 import { sageContactLinkCandidateError, sageContactReadClaimError } from "@/lib/sage/contact-link-review"
+import { prepareApprovedSageChangesFor } from "@/lib/sage/contact-change-readiness"
 import { handleSageContactCreateResult } from "@/lib/sage/contact-create-result"
 import { advanceQueuedSageChanges, parseSageChanges, recordSageChangeActivity } from "@/lib/sage/contact-proposal-service"
 import type { ActivityActor } from "@/lib/activity-log"
@@ -228,6 +229,9 @@ export async function POST(request: Request): Promise<Response> {
     })
     await updateSageContactReadRequests(db, { status: "succeeded", completedAt: now, errorMessage: null },
       and(eq(sageContactReadRequests.id, read.id), eq(sageContactReadRequests.claimToken, result.claimToken)))
+    // An approved change that waited for this read is rebased and goes to the
+    // writer, or becomes a conflict when Sage changed its fields meanwhile.
+    await prepareApprovedSageChangesFor(db, env.DB, read.organizationId, kind.data, read.entityId)
     // A Compass edit that was waiting for this read now goes to Sage review.
     await advanceQueuedSageChanges(db, env, read.organizationId, kind.data, read.entityId)
     return accepted("succeeded")

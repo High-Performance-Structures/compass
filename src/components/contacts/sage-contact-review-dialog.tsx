@@ -6,6 +6,7 @@ import { toast } from "sonner"
 
 import {
   listSageContactChangeProposals,
+  reapplySageContactChange,
   reviewSageContactChange,
   type SageContactProposalListItem,
 } from "@/app/actions/sage-contact-changes"
@@ -64,13 +65,36 @@ export function SageContactReviewDialog({
   }, [])
   React.useEffect(() => { if (open) void reload() }, [open, reload])
 
+  const needsDecision = proposals.filter((proposal) => proposal.state.stage !== "sending")
+  const sending = proposals.filter((proposal) => proposal.state.stage === "sending")
+
+  /** Toast for an approval or reapply: sent, checking Sage first, or Sage changed underneath. */
+  const announceApproved = (status: string) => {
+    if (status === "conflict") toast.warning("Sage changed these fields since the request. See the change for Sage's values.")
+    else if (status === "checking_sage") toast.success("Approved. Compass is checking Sage's current values, then sends it.")
+    else toast.success("Approved; Sage gets the new values shortly")
+  }
+
+  const reapply = async (proposalId: string) => {
+    setBusyId(proposalId)
+    try {
+      const result = await reapplySageContactChange(proposalId)
+      if (!result.success) toast.error(result.error)
+      else {
+        announceApproved(result.status)
+        await reload()
+      }
+    } finally { setBusyId(null) }
+  }
+
   const decide = async (proposalId: string, decision: "approve" | "reject") => {
     setBusyId(proposalId)
     try {
       const result = await reviewSageContactChange(proposalId, decision, notes[proposalId] ?? "")
       if (!result.success) toast.error(result.error)
       else {
-        toast.success(decision === "approve" ? "Approved for Sage processing" : "Proposal rejected")
+        if (decision === "approve") announceApproved(result.status)
+        else toast.success("Change rejected")
         setNotes((current) => {
           const next = { ...current }
           delete next[proposalId]
@@ -193,14 +217,24 @@ export function SageContactReviewDialog({
               <div className="flex gap-2"><Button size="sm" onClick={() => void decideCreate(proposal.id, "approve")} disabled={busyId !== null || !canCreateSagePeople}>Approve Add</Button><Button size="sm" variant="outline" onClick={() => void decideCreate(proposal.id, "reject")} disabled={busyId !== null}>Reject</Button></div>
             </> : null}
           </section>)}
-          <h3 className="text-sm font-semibold">Contact change proposals</h3>
+          <h3 className="text-sm font-semibold">Contact changes</h3>
           {proposals.length === 0 ? (
-            <p className="text-sm text-muted-foreground">No contact change proposals yet.</p>
-          ) : proposals.map((proposal) => (
+            <p className="text-sm text-muted-foreground">No contact changes need a decision. Finished changes are in Activity.</p>
+          ) : null}
+          {sending.length > 0 ? (
+            <div className="space-y-1 border-b pb-4 text-xs text-muted-foreground">
+              {sending.map((proposal) => (
+                <p key={proposal.id}>
+                  <span className="font-medium text-foreground">{proposal.entityName ?? proposal.kindLabel}</span> · {proposal.kindLabel} · {proposal.state.label}
+                </p>
+              ))}
+            </div>
+          ) : null}
+          {needsDecision.map((proposal) => (
             <section key={proposal.id} className="space-y-3 border-b pb-4 last:border-b-0">
-              <div className="text-sm font-medium">{proposal.kind.replaceAll("_", " ")} · {proposal.entityName ?? proposal.entityId} · {proposal.status}</div>
-              <div className="text-xs text-muted-foreground">Requested {new Date(proposal.requestedAt).toLocaleString()} by {proposal.requestedByUserId}</div>
-              {proposal.errorMessage ? <p className="text-sm text-destructive">{proposal.errorMessage}</p> : null}
+              <div className="text-sm font-medium">{proposal.entityName ?? "Unnamed record"} · {proposal.kindLabel} · {proposal.state.label}</div>
+              <div className="text-xs text-muted-foreground">Requested {new Date(proposal.requestedAt).toLocaleString()} by {proposal.requestedByName}</div>
+              {proposal.problem ? <p className="text-sm text-destructive">{proposal.problem}</p> : null}
               {proposal.reviewNote ? <p className="text-sm text-muted-foreground">Review note: {proposal.reviewNote}</p> : null}
               <dl className="grid gap-1 text-sm">
                 <div className="grid grid-cols-3 gap-2 text-xs text-muted-foreground">
@@ -214,18 +248,23 @@ export function SageContactReviewDialog({
                   </div>
                 ))}
               </dl>
-              {proposal.status === "pending" && canApprove ? <Textarea value={notes[proposal.id] ?? ""} onChange={(event) => setNotes((current) => ({ ...current, [proposal.id]: event.target.value }))} placeholder="Review note (optional)" aria-label={`Review note for ${proposal.kind.replaceAll("_", " ")} ${proposal.entityId}`} /> : null}
-              {proposal.status === "pending" && canApprove ? (
+              {proposal.state.stage === "decide" && canApprove ? <Textarea value={notes[proposal.id] ?? ""} onChange={(event) => setNotes((current) => ({ ...current, [proposal.id]: event.target.value }))} placeholder="Review note (optional)" aria-label={`Review note for ${proposal.entityName ?? proposal.kindLabel}`} /> : null}
+              {proposal.state.stage === "decide" && canApprove ? (
                 <div className="flex gap-2">
                   <Button size="sm" onClick={() => void decide(proposal.id, "approve")} disabled={busyId !== null}>Approve</Button>
                   <Button size="sm" variant="outline" onClick={() => void decide(proposal.id, "reject")} disabled={busyId !== null}>Reject</Button>
                 </div>
-              ) : (proposal.status === "conflict" || proposal.status === "failed") && canApprove && proposal.kind !== "employee" ? (
+              ) : proposal.state.stage === "fix" && canApprove ? (
                 <div className="space-y-1">
-                  <p className="text-xs text-muted-foreground">Compass still shows the requested values. Retry from the record, or reject to put the Sage values back.</p>
-                  <Button size="sm" variant="outline" onClick={() => void decide(proposal.id, "reject")} disabled={busyId !== null}>Reject</Button>
+                  <p className="text-xs text-muted-foreground">
+                    Reapply sends the requested values over what Sage holds now. Reject {proposal.kind === "employee" ? "closes the request." : "puts Sage's values back in Compass."}
+                  </p>
+                  <div className="flex gap-2">
+                    <Button size="sm" onClick={() => void reapply(proposal.id)} disabled={busyId !== null}>Reapply</Button>
+                    <Button size="sm" variant="outline" onClick={() => void decide(proposal.id, "reject")} disabled={busyId !== null}>Reject</Button>
+                  </div>
                 </div>
-              ) : proposal.status === "pending" ? <p className="text-xs text-muted-foreground">View-only review access.</p> : null}
+              ) : <p className="text-xs text-muted-foreground">View-only review access.</p>}
             </section>
           ))}
         </div>

@@ -8,13 +8,11 @@ import {
   sageContactChangeProposals,
   sageContactCreateProposals,
   sageContactReadRequests,
-  sageContactSnapshots,
 } from "@/db/schema-sage"
 import { getCloudflareContext } from "@/lib/db"
 import { SAGE_BRIDGE_NONCE_RETENTION_MS, sageBridgeCutoff } from "@/lib/domain/sage-bridge/rules"
 import {
   claimSageContactCreateStatement,
-  insertSageContactChangeEvent,
   insertSageContactCreateEvent,
   updateSageContactChangeProposals,
   updateSageContactCreateProposals,
@@ -33,6 +31,7 @@ import {
 } from "@/lib/sage/contact-bridge"
 import { sageContactReadClaimError } from "@/lib/sage/contact-link-review"
 import { planSageContactCreate } from "@/lib/sage/contact-change-proposal"
+import { prepareApprovedSageChange } from "@/lib/sage/contact-change-readiness"
 import { normalizeSageRecordId, sameSageRecordId } from "@/lib/sage/record-id"
 
 const CLAIM_RETRY_MS = 10 * 60 * 1000
@@ -79,6 +78,59 @@ export async function GET(request: Request): Promise<Response> {
     return Response.json({ error: "Bridge request has already been consumed" }, { status: 409 })
   }
 
+  // Writes first: a change waiting on a fresh Sage read queues it here, and
+  // the read then goes out in this same poll.
+  const writes: unknown[] = []
+  if (contactWritesEnabled(env)) {
+    const writeCandidates = await db.select().from(sageContactChangeProposals).where(or(
+      eq(sageContactChangeProposals.status, "approved"),
+      and(eq(sageContactChangeProposals.status, "running"),
+        lt(sageContactChangeProposals.claimedAt, staleIso))
+    )).orderBy(asc(sageContactChangeProposals.requestedAt)).limit(MAX_BATCH)
+    for (const candidate of writeCandidates) {
+      if (!sageContactOrganizationMatches(env, candidate.organizationId)) continue
+      const kind = sageContactKindSchema.safeParse(candidate.kind)
+      let parsed: unknown
+      try { parsed = JSON.parse(candidate.changesJson) } catch { parsed = null }
+      const changes = changesSchema.safeParse(parsed)
+      if (!kind.success || !changes.success || !hasOnlySageContactFields(
+        kind.success ? kind.data : "employee",
+        Object.fromEntries(changes.success ? changes.data.map((change) => [change.field, change.after]) : [])
+      )) {
+        await updateSageContactChangeProposals(db, {
+          status: "failed", errorMessage: "Stored Sage contact proposal is invalid",
+          completedAt: nowIso, updatedAt: nowIso,
+        }, eq(sageContactChangeProposals.id, candidate.id))
+        continue
+      }
+      // The writer only gets a change planned against a recent Sage read. An
+      // old read queues a fresh one (the change waits); a newer revision with
+      // the same before-values rebases it; Sage changing a requested field
+      // underneath makes it a conflict (contact-change-readiness.ts).
+      const readiness = await prepareApprovedSageChange(db, env.DB, candidate, now)
+      if (readiness.state !== "ready") continue
+      const claimToken = crypto.randomUUID()
+      const updated = await updateSageContactChangeProposals(db, {
+        status: "running", claimToken, claimedAt: nowIso,
+        attemptCount: sql`${sageContactChangeProposals.attemptCount} + 1`,
+        updatedAt: nowIso,
+      }, and(eq(sageContactChangeProposals.id, readiness.id),
+        eq(sageContactChangeProposals.baseRevision, readiness.baseRevision), or(
+        eq(sageContactChangeProposals.status, "approved"),
+        and(eq(sageContactChangeProposals.status, "running"),
+          lt(sageContactChangeProposals.claimedAt, staleIso))
+      ))).returning({ id: sageContactChangeProposals.id })
+      if (updated.length !== 1) continue
+      writes.push({
+        id: readiness.id, claimToken, organizationId: candidate.organizationId,
+        kind: candidate.kind, entityId: candidate.entityId,
+        sageRecordId: normalizeSageRecordId(candidate.sageRecordId),
+        parentSageRecordId: normalizeSageRecordId(candidate.parentSageRecordId),
+        baseRevision: readiness.baseRevision,
+        changes: readiness.changes,
+      })
+    }
+  }
   const readCandidates = await db.select().from(sageContactReadRequests).where(or(
     eq(sageContactReadRequests.status, "queued"),
     and(eq(sageContactReadRequests.status, "running"),
@@ -118,73 +170,6 @@ export async function GET(request: Request): Promise<Response> {
     })
   }
 
-  const writes: unknown[] = []
-  if (contactWritesEnabled(env)) {
-    const writeCandidates = await db.select().from(sageContactChangeProposals).where(or(
-      eq(sageContactChangeProposals.status, "approved"),
-      and(eq(sageContactChangeProposals.status, "running"),
-        lt(sageContactChangeProposals.claimedAt, staleIso))
-    )).orderBy(asc(sageContactChangeProposals.requestedAt)).limit(MAX_BATCH)
-    for (const candidate of writeCandidates) {
-      if (!sageContactOrganizationMatches(env, candidate.organizationId)) continue
-      const kind = sageContactKindSchema.safeParse(candidate.kind)
-      let parsed: unknown
-      try { parsed = JSON.parse(candidate.changesJson) } catch { parsed = null }
-      const changes = changesSchema.safeParse(parsed)
-      if (!kind.success || !changes.success || !hasOnlySageContactFields(
-        kind.success ? kind.data : "employee",
-        Object.fromEntries(changes.success ? changes.data.map((change) => [change.field, change.after]) : [])
-      )) {
-        await updateSageContactChangeProposals(db, {
-          status: "failed", errorMessage: "Stored Sage contact proposal is invalid",
-          completedAt: nowIso, updatedAt: nowIso,
-        }, eq(sageContactChangeProposals.id, candidate.id))
-        continue
-      }
-      const snapshot = await db.select().from(sageContactSnapshots).where(and(
-        eq(sageContactSnapshots.organizationId, candidate.organizationId),
-        eq(sageContactSnapshots.kind, candidate.kind),
-        eq(sageContactSnapshots.entityId, candidate.entityId)
-      )).get()
-      const capturedAt = snapshot ? Date.parse(snapshot.capturedAt) : Number.NaN
-      if (!snapshot || snapshot.revision !== candidate.baseRevision ||
-        !sameSageRecordId(snapshot.sageRecordId, candidate.sageRecordId) ||
-        !sameSageRecordId(snapshot.parentSageRecordId, candidate.parentSageRecordId) ||
-        !Number.isFinite(capturedAt) || now.getTime() - capturedAt > CLAIM_RETRY_MS) {
-        await db.batch([
-          updateSageContactChangeProposals(db, {
-            status: "conflict", errorMessage: "Sage snapshot changed or expired before bridge claim",
-            completedAt: nowIso, updatedAt: nowIso,
-          }, eq(sageContactChangeProposals.id, candidate.id)),
-          insertSageContactChangeEvent(db, {
-            id: crypto.randomUUID(), proposalId: candidate.id,
-            organizationId: candidate.organizationId, actorUserId: null,
-            eventType: "conflict", detailJson: "{}", createdAt: nowIso,
-          }),
-        ])
-        continue
-      }
-      const claimToken = crypto.randomUUID()
-      const updated = await updateSageContactChangeProposals(db, {
-        status: "running", claimToken, claimedAt: nowIso,
-        attemptCount: sql`${sageContactChangeProposals.attemptCount} + 1`,
-        updatedAt: nowIso,
-      }, and(eq(sageContactChangeProposals.id, candidate.id), or(
-        eq(sageContactChangeProposals.status, "approved"),
-        and(eq(sageContactChangeProposals.status, "running"),
-          lt(sageContactChangeProposals.claimedAt, staleIso))
-      ))).returning({ id: sageContactChangeProposals.id })
-      if (updated.length !== 1) continue
-      writes.push({
-        id: candidate.id, claimToken, organizationId: candidate.organizationId,
-        kind: candidate.kind, entityId: candidate.entityId,
-        sageRecordId: normalizeSageRecordId(candidate.sageRecordId),
-        parentSageRecordId: normalizeSageRecordId(candidate.parentSageRecordId),
-        baseRevision: candidate.baseRevision,
-        changes: changes.data,
-      })
-    }
-  }
   const creates: unknown[] = []
   if (contactCreatesEnabled(env, request)) {
     // Once an Add might have been sent, a timeout is never an automatic retry.
