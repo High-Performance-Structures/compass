@@ -12,6 +12,8 @@ import type { SceneHighlight } from "@/components/dashboard/portfolio-map/portfo
 import { formatDateKeyShort } from "@/components/dashboard/portfolio-map/portfolio-dates"
 import { phaseColor } from "@/components/dashboard/portfolio-map/portfolio-style"
 import { AudienceJobPanel } from "@/components/projects/audience-job-panel"
+import { AudienceMapViewButtons, AudiencePipeline, useAudienceMapView } from "@/components/projects/audience-pipeline"
+import { useAudiencePreviewHref, useAudiencePreviewReadOnly } from "@/components/projects/project-audience-preview-scope"
 import { Button } from "@/components/ui/button"
 import { useNotificationInbox } from "@/hooks/use-notification-inbox"
 import { groupInbox } from "@/lib/notifications/inbox"
@@ -19,8 +21,8 @@ import { messageStacksFrom } from "@/lib/notifications/message-stacks"
 import { projectAudienceActiveProjectCookieName } from "@/lib/project-audience-active-project"
 import { audienceQuickLinks } from "@/lib/project-audience-links"
 import { projectAudienceSectionHref } from "@/lib/project-audience-preview-routes"
-import { PORTFOLIO_PHASES, phaseForJobStatus, type PortfolioMapJob } from "@/lib/portfolio-map/model"
-import type { VendorJobScope } from "@/lib/portfolio-map/audience-model"
+import type { PortfolioMapJob } from "@/lib/portfolio-map/model"
+import { audiencePipelineColumns, audienceStageLabel, type VendorJobScope } from "@/lib/portfolio-map/audience-model"
 import { cn } from "@/lib/utils"
 import { DEFAULT_MAP_STATE, type MapStateCode } from "@/lib/portfolio-map/states"
 
@@ -30,8 +32,8 @@ const PortfolioTerrain = dynamic(
   { ssr: false, loading: () => <div className="h-full min-h-[320px]" /> },
 )
 
-const PHASE_LABEL = new Map<string, string>(PORTFOLIO_PHASES.map((phase) => [phase.id, phase.label]))
 const MESSAGES_KEY = "compass:vendor-map-messages:v1"
+const VIEW_KEY = "compass:vendor-map-view:v1"
 
 type ScopeState =
   | { readonly kind: "loading" }
@@ -71,6 +73,8 @@ export function VendorJobMap({
   readonly mapState?: MapStateCode
 }): React.ReactElement | null {
   const router = useRouter()
+  const preview = useAudiencePreviewReadOnly()
+  const previewHref = useAudiencePreviewHref()
   const [showMap, setShowMap] = React.useState(false)
   const [messagesOn, setMessagesOn] = React.useState(true)
   const [selectedId, setSelectedId] = React.useState<string>(
@@ -137,16 +141,25 @@ export function VendorJobMap({
 
   const placedJobs = React.useMemo(() => jobs.filter((job) => job.lat !== null && job.lon !== null), [jobs])
   const mapWeather = useMapWeatherLayers(placedJobs, showMap && placedJobs.length > 0)
+  const mapAvailable = showMap && placedJobs.length > 0
+  const [view, chooseView] = useAudienceMapView(VIEW_KEY, mapAvailable)
+  const columns = React.useMemo(() => audiencePipelineColumns("sub_vendor", jobs), [jobs])
   if (jobs.length === 0) return null
 
-  const placed = jobs.filter((job) => job.lat !== null && job.lon !== null)
+  const placed = placedJobs
   const selected = jobs.find((job) => job.id === selectedId) ?? null
   const scope = selected ? scopes[selected.id] : undefined
   const totalUnread = [...unreadByJob.values()].reduce((sum, count) => sum + count, 0)
   const openJob = (jobId: string): void => {
     const cookieName = projectAudienceActiveProjectCookieName("sub-vendor")
+    const href = projectAudienceSectionHref(jobId, "sub-vendor", "overview")
+    // Staff previewing keep the person they're previewing and their own last job.
+    if (preview) {
+      window.location.assign(previewHref(href))
+      return
+    }
     document.cookie = `${cookieName}=${encodeURIComponent(jobId)}; Path=/; Max-Age=31536000; SameSite=Lax`
-    router.push(projectAudienceSectionHref(jobId, "sub-vendor", "overview"))
+    router.push(href)
   }
   const toggleMessages = (): void => {
     setMessagesOn((current) => {
@@ -169,7 +182,8 @@ export function VendorJobMap({
             {jobs.length} ASSIGNED
           </span>
         </div>
-        {showMap && placed.length > 0 ? (
+        <div className="flex flex-wrap gap-2">
+        {view === "map" ? (
           <button
             type="button"
             aria-pressed={messagesOn}
@@ -183,9 +197,11 @@ export function VendorJobMap({
             MESSAGES{totalUnread > 0 ? ` · ${totalUnread}` : ""}
           </button>
         ) : null}
+        <AudienceMapViewButtons view={view} mapAvailable={mapAvailable} onChange={chooseView} />
+        </div>
       </div>
       <div className="flex w-full flex-wrap border border-border">
-        {showMap && placed.length > 0 ? (
+        {view === "map" ? (
           <div className="h-[30rem] min-w-0 flex-[999_1_32rem]">
             <PortfolioTerrain
               mapState={mapState}
@@ -198,14 +214,19 @@ export function VendorJobMap({
               focusSelectedOnLoad={jobs.length === 1}
               layers={mapWeather.layers}
               weather={mapWeather.weather}
+              showPhaseKey={false}
             />
           </div>
-        ) : null}
+        ) : (
+          <div className="h-[30rem] min-w-0 flex-[999_1_32rem]">
+            <AudiencePipeline columns={columns} selectedJobId={selectedId || null} onSelectJob={setSelectedId} />
+          </div>
+        )}
         <aside
           aria-label="Job details"
           className={cn(
             "flex min-w-0 flex-[1_1_20rem] flex-col overflow-y-auto bg-card",
-            showMap && placed.length > 0 ? "h-[30rem] border-l border-border" : "max-h-[30rem]",
+            "h-[30rem] border-l border-border",
           )}
         >
           {mapWeather.panel ? (
@@ -223,8 +244,7 @@ export function VendorJobMap({
                   <h3 className="text-base font-semibold leading-snug">{selected.name}</h3>
                   <p className="flex items-center gap-2 text-xs text-muted-foreground">
                     <span aria-hidden className="size-2 rounded-full" style={{ backgroundColor: phaseColor(selected.phase) }} />
-                    {/* A job without a stage (an internal test job) shows its status. */}
-                    {(phaseForJobStatus(selected.jobStatusId, selected.statusLabel) && PHASE_LABEL.get(selected.phase)) || selected.statusLabel}
+                    {audienceStageLabel("sub_vendor", selected.phase)}
                   </p>
                   {selected.id !== currentProjectId ? (
                     <Button size="sm" className="mt-2 self-start" onClick={() => openJob(selected.id)}>

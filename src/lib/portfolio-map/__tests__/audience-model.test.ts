@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest"
-import { audienceMapJobs, ownerPhaseSteps, ownerScheduleProgress, vendorJobScope, type AudienceJobRow } from "@/lib/portfolio-map/audience-model"
+import { PORTFOLIO_PHASES } from "@/lib/portfolio-map/model"
+import { audienceMapJobs, audiencePipelineColumns, audienceStageLabel, ownerPhaseSteps, ownerScheduleProgress, vendorJobScope, type AudienceJobRow } from "@/lib/portfolio-map/audience-model"
 
 function row(overrides: Partial<AudienceJobRow> = {}): AudienceJobRow {
   return {
@@ -77,5 +78,23 @@ describe("owner relief helpers", () => {
     expect(steps.map((step) => step.label)).toEqual(["Getting started", "Design", "Pricing", "Contract", "Permits", "Under construction", "Finishing up"])
     expect(steps.map((step) => step.state)).toEqual(["done", "done", "done", "done", "current", "upcoming", "upcoming"])
     expect(steps[6]?.label).toBe("Finishing up")
+  })
+})
+
+describe("audience pipeline", () => {
+  const officeOnly = ["Intake", "Estimating", "Negotiation"]
+  const jobs = PORTFOLIO_PHASES.flatMap((phase) => audienceMapJobs([row({ id: phase.id })]).map((job) => ({ ...job, phase: phase.id })))
+
+  it("groups every partner job under partner stage names, never office stages", () => {
+    const columns = audiencePipelineColumns("sub_vendor", jobs)
+    expect(columns.map((column) => column.label)).toEqual(["Pre-construction", "Permits", "Under construction", "Finishing up"])
+    expect(columns.flatMap((column) => column.jobs).length).toBe(jobs.length)
+    for (const phase of PORTFOLIO_PHASES) expect(officeOnly).not.toContain(audienceStageLabel("sub_vendor", phase.id))
+  })
+
+  it("uses the owner stage names owners already see", () => {
+    const columns = audiencePipelineColumns("owner", jobs)
+    expect(columns.map((column) => column.label)).toEqual(ownerPhaseSteps("intake").map((step) => step.label))
+    expect(columns.every((column) => column.jobs.length === 1)).toBe(true)
   })
 })
