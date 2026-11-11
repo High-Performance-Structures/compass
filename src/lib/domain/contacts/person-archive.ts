@@ -19,7 +19,8 @@ import { deleteProjectMembers } from "@/lib/domain/project/store"
 import type { Db } from "@/lib/server/action-context"
 import { isInternalStaffRole, isStaffOrganizationType } from "@/lib/user-roles"
 
-import { archivedPersonProjectContactsStatements, directoryPersonProjectContactsWhere, type DirectoryPersonKind } from "./store"
+import { directoryPersonProjectContactsWhere, type DirectoryPersonKind } from "./person-status"
+import { archivedPersonProjectContactsStatements } from "./store"
 
 export type { DirectoryPersonKind }
 

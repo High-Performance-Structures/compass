@@ -10,7 +10,7 @@
  * resolved-project-contacts.ts. New project contacts must link:
  * insertableProjectContacts.
  */
-import { and, eq, inArray, isNull, ne, or, sql, type SQL } from "drizzle-orm"
+import { and, eq, inArray, isNull, ne, or, sql } from "drizzle-orm"
 import type { BatchItem } from "drizzle-orm/batch"
 
 import { customerContacts, customers, internalContacts, projectContacts, projectContactSourceLinks, vendorContacts, vendors } from "@/db/schema"
@@ -20,6 +20,7 @@ import { checkedListFields } from "@/lib/shared/statuses"
 import { companyMoveGuard, type CompanyReferenceMove } from "./company-merge-references"
 import { insertableProjectContacts } from "./rules"
 import { PROJECT_CONTACT_LISTS, type ProjectContactType } from "./statuses"
+import { directoryPersonProjectContactsWhere, type DirectoryPersonKind } from "./person-status"
 
 type Statement = BatchItem<"sqlite">
 
@@ -483,24 +484,6 @@ export async function deactivateVendorPeople(db: Db, input: { readonly personIds
       .where(inArray(vendorContacts.id, [...input.personIds])),
     ...archivedPersonProjectContactsStatements(db, { kind: "vendor_contact", personIds: input.personIds, now: input.now }),
   ])
-}
-
-/** A directory person: an internal (staff), client or vendor contact. */
-export type DirectoryPersonKind = "internal_contact" | "customer_contact" | "vendor_contact"
-
-/** Project-contact rows that name a directory person, by link column or by provenance. */
-export function directoryPersonProjectContactsWhere(kind: DirectoryPersonKind, personIds: readonly string[]): SQL | undefined {
-  const ids = [...personIds]
-  const column =
-    kind === "internal_contact"
-      ? projectContacts.internalContactId
-      : kind === "customer_contact"
-        ? projectContacts.customerContactId
-        : projectContacts.vendorContactId
-  return or(
-    inArray(column, ids),
-    and(eq(projectContacts.sourceEntityType, kind), inArray(projectContacts.sourceEntityId, ids))
-  )
 }
 
 /**

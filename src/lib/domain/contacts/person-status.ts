@@ -17,7 +17,7 @@
  * record's user link or email). Rows linked to a directory record and older
  * unlinked rows (Buildertrend imports) are both handled.
  */
-import { sql, type SQL } from "drizzle-orm"
+import { and, eq, inArray, or, sql, type SQL } from "drizzle-orm"
 
 import { projectContacts } from "@/db/schema"
 import { USER_ROLES } from "@/lib/domain/identity/statuses"
@@ -115,4 +115,22 @@ export function projectContactPersonStatusSql(): SQL<ProjectContactPersonStatus 
  */
 export function notArchivedPersonContact(): SQL {
   return sql`coalesce(${projectContactPersonStatusSql()}, '') <> 'archived_person'`
+}
+
+/** A directory person: an internal (staff), client or vendor contact. */
+export type DirectoryPersonKind = "internal_contact" | "customer_contact" | "vendor_contact"
+
+/** Project-contact rows that name a directory person, by link column or by provenance. */
+export function directoryPersonProjectContactsWhere(kind: DirectoryPersonKind, personIds: readonly string[]): SQL | undefined {
+  const ids = [...personIds]
+  const column =
+    kind === "internal_contact"
+      ? projectContacts.internalContactId
+      : kind === "customer_contact"
+        ? projectContacts.customerContactId
+        : projectContacts.vendorContactId
+  return or(
+    inArray(column, ids),
+    and(eq(projectContacts.sourceEntityType, kind), inArray(projectContacts.sourceEntityId, ids))
+  )
 }

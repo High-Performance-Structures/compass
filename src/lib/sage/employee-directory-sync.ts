@@ -24,6 +24,7 @@ import {
   linkInternalContactToSageEmployeeStatement,
   setInternalContactActiveFromSageStatement,
 } from "@/lib/domain/contacts/store"
+import { removeArchivedPeopleFromJobs } from "@/lib/domain/contacts/person-archive"
 import { insertSageContactLinkEvent, insertSageContactReadRequest } from "@/lib/domain/sage-bridge/contact-store"
 import { replaceSageEmployeeDirectory, sageBridgeHeartbeatStatement, type SageEmployeeDirectoryRow } from "@/lib/domain/sage-bridge/store"
 import { readFeatureSettings } from "@/lib/feature-settings/server"
@@ -280,6 +281,14 @@ export async function applySageEmployeeDirectory(
   // Status first, from the contacts as they were: a new link is to a current employee, so it never changes status.
   const statusChanges = settings.employeeStatusFollowsSage ? planSageEmployeeStatus({ employees: rows, contacts: staff.contacts }) : []
   const applied = await writeSageEmployeeStatus(db, organizationId, statusChanges, now)
+  // An employee Sage made inactive leaves every job, like an archived staff
+  // person (kept as history). Reactivating does not put them back on jobs.
+  await removeArchivedPeopleFromJobs(db, {
+    organizationId,
+    kind: "internal_contact",
+    personIds: applied.filter((change) => !change.active).map((change) => change.internalContactId),
+    now,
+  })
   const plan = planSageEmployeeLinks({ employees: rows, contacts: staff.contacts, usersWithoutContact: staff.usersWithoutContact })
   const linked = settings.autoLinkEmployeesByEmail
     ? await writeSageEmployeeLinks(db, organizationId, plan.links, { method: "email", actor: SAGE_ACTOR, now })
