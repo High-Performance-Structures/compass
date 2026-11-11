@@ -37,6 +37,7 @@ import { DEFAULT_DISPLAY_COLOR_PALETTE } from "@/lib/schedule/appearance"
 import { boardColumns as nuTechOrderColumns } from "@/components/nutech/nutech-order-board"
 import { followUpJobColumns } from "@/components/client-follow-up/client-follow-up-board"
 import { machineColumns, machineLogEntryColumns } from "@/components/equipment/equipment-workspace"
+import { btProposalColumns } from "@/components/projects/project-bt-proposals"
 import { creditMemoColumns } from "@/components/financials/credit-memos-table"
 import { financialInvoiceColumns } from "@/components/financials/invoices-table"
 import { paymentColumns } from "@/components/financials/payments-table"
@@ -165,6 +166,7 @@ describe("list sheet standard", () => {
       "equipment.log-entries": () => machineLogEntryColumns({ pending: false, onChange: noop, onRemove: noop }),
       "client-follow-up.jobs": () => followUpJobColumns(noop),
       "estimates.job": () => estimateColumns("p", () => createElement("span")),
+      "bt-proposals.estimate": () => btProposalColumns(noop),
       "shop-tickets.job": () => shopTicketColumns({ projectId: "p", canEdit: true, onEdit: noop, onVoid: noop }),
       "trade-letters.estimate": () => tradeLetterColumns({ projectId: "p", canEdit: true, ownerSigned: false, poSetup: null, onOpenDocs: noop, onCompose: noop, onDelete: noop, onReload: noop }),
       "warranty.source-review": () => warrantySourceColumns(noop),

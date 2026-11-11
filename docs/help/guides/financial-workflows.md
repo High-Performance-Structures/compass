@@ -7,7 +7,7 @@
   "summary": "Understand estimates, budgets, G703 views, pay applications, and Sage synchronization.",
   "contextSummary": "Compass supports operational review and controlled handoff. A saved, approved, or queued record is not posted or paid until Sage confirms that state.",
   "category": "Financial Workflows",
-  "tags": ["invoices", "simple invoices", "Square invoice", "estimates", "Priced by", "pricing requests", "bids", "takeoff", "assemblies", "customer report", "cost breakdown", "rate book", "accepted rates", "budget", "G703", "pay applications", "Sage", "accounting"],
+  "tags": ["Buildertrend proposals", "invoices", "simple invoices", "Square invoice", "estimates", "Priced by", "pricing requests", "bids", "takeoff", "assemblies", "customer report", "cost breakdown", "rate book", "accepted rates", "budget", "G703", "pay applications", "Sage", "accounting"],
   "audiences": ["staff"],
   "permissions": ["help:read", "finance:read"],
   "routes": ["/dashboard/financials", "/dashboard/projects/[id]/estimate", "/dashboard/projects/[id]/budget", "/dashboard/projects/[id]/financials", "/dashboard/settings"],
@@ -35,6 +35,10 @@ Use **Work on** to choose **Estimate costs**, **Pricing requests**, **Builder fe
 The version picker, **Compare versions**, and **Duplicate estimate** stay in the header in every area. Each version is listed with its estimate number, version, status, and date (for example, `25-104-00 · v1 · Accepted · 2026-08-20`), so check the status before you delete a draft. Once an estimate is accepted, the page opens that estimate, or a newer version of it that is still in progress, rather than an unrelated draft.
 
 **Edit** and **Insert below** open the line editor right under that line, and **Add item** on an assembly opens it at the end of the assembly, so you keep your place. **Add line** for a new line still opens the editor at the bottom of the page.
+
+### Buildertrend proposals
+
+Staff see a **Buildertrend proposals** list below the job's estimates when the job had proposals in Buildertrend. Each is marked with a small [BT] tag and is read-only history: the list sorts by any column and opens newest first. Open a proposal to see its introduction, groups and line items (with builder cost, markup and internal notes), closing text, attachments and approval details. **Print Preview** shows the proposal as the customer saw it, without builder cost or internal notes. **Copy into a new draft estimate** starts a normal draft estimate on this job with the proposal's items, keeping Buildertrend's builder cost, markup and owner prices; each group becomes an assembly. Cost codes that match the company catalog are used as is; any other code keeps its text with a note to remap it before signature. The Buildertrend proposal never changes, and nothing is sent to Sage or to anyone. Jobs that keep one contract estimate and already have one can't start a new draft this way. Owners and trade partners never see these proposals.
 
 ### Build and report by assembly
 

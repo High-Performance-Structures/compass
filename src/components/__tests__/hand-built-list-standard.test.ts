@@ -83,6 +83,10 @@ const HAND_BUILT_TABLES: Readonly<Record<string, Reason>> = {
   // Captured line items inside one historical RFQ response (read-only evidence); the responses
   // themselves are a cursor-paged list of expandable evidence, not a table.
   "src/components/projects/project-historical-rfq-list.tsx": "line items",
+  // One Buildertrend proposal's groups and items in its record drawer (read-only history).
+  "src/components/projects/bt-proposal-details.tsx": "line items",
+  // A Buildertrend proposal's Print Preview, as the customer saw it.
+  "src/components/projects/bt-proposal-document.tsx": "document",
   // Logs from before the duty log, each waiting for a duty; the entries themselves are the sheet above it.
   "src/components/projects/duty-log-workspace.tsx": "line items",
 

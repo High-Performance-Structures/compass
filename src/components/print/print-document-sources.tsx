@@ -133,6 +133,7 @@ export async function printDocumentSource(
     case "shop-ticket":
     case "deposit-request":
     case "invoice":
+    case "bt-proposal":
     case "meeting-transcript":
     case "selections-round":
     case "estimate-compare":

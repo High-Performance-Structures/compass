@@ -5,6 +5,7 @@ import { describe, expect, it } from "vitest"
 const REACT_PRINT_DOCUMENTS = [
   "src/app/dashboard/projects/[id]/budget/page.tsx",
   "src/components/projects/purchase-order-document.tsx",
+  "src/components/projects/bt-proposal-document.tsx",
   "src/app/preview/projects/[id]/owner/budget/page.tsx",
   "src/components/projects/estimate-client-report.tsx",
   "src/components/projects/daily-log-print-document.tsx",

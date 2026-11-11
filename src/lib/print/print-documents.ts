@@ -8,6 +8,7 @@ export const PRINT_DOCUMENTS = {
   "shop-ticket": { title: "Shop ticket", render: "page", params: ["ticketId"], landscape: false },
   "deposit-request": { title: "Deposit request", render: "page", params: ["depositId"], landscape: false },
   invoice: { title: "Invoice", render: "page", params: ["invoiceId"], landscape: false },
+  "bt-proposal": { title: "Proposal", render: "page", params: ["proposalId"], landscape: false },
   "change-order": { title: "Change order", render: "pdf", params: ["changeOrderId"], landscape: false },
   rfq: { title: "Request for quote", render: "pdf", params: ["rfqId"], landscape: false },
   "owner-update": { title: "Owner update", render: "pdf", params: ["updateId"], landscape: false },
