@@ -21,7 +21,7 @@ import {
 } from "@/lib/jarvis/feedback-timeline"
 import { syncFeedbackDeskItemsFromGithub } from "@/lib/jarvis/feedback-github-sync"
 import { requireOrg } from "@/lib/org-scope"
-import { canManageUserAccessRole } from "@/lib/user-roles"
+import { canManageUserAccessRole, isDeveloperRole } from "@/lib/user-roles"
 import { requireUserContext } from "@/lib/server/action-context"
 
 export type FeedbackRequestScope = "mine" | "all"
@@ -184,7 +184,7 @@ async function recoverConfirmedFeedbackRequests(
 }
 
 function canViewAllRequests(role: string): boolean {
-  return role === "developer" || canManageUserAccessRole(role)
+  return isDeveloperRole(role) || canManageUserAccessRole(role)
 }
 
 export async function getMyFeedbackRequests(

@@ -46,7 +46,7 @@ import {
   canUseProjectAudience,
   type ProjectAudience,
 } from "@/lib/project-audience-access"
-import { isInternalStaffRole } from "@/lib/user-roles"
+import { isInternalStaffRole, isVendorRole } from "@/lib/user-roles"
 import { projectNumberAndName } from "@/lib/project-display-name"
 import { isValidTimeZone } from "@/lib/work-calendar"
 import { requireUserContext } from "@/lib/server/action-context"
@@ -488,11 +488,11 @@ export async function getNotificationCenter(
     if (previewScope && requestedScope && (previewScope.projectId !== requestedScope.projectId || previewScope.audience !== requestedScope.audience)) throw new Error("Preview scope does not match notifications.")
     const scope = await resolveNotificationCenterScope(db, user, requestedScope ?? (previewScope ? { projectId: previewScope.projectId, audience: previewScope.audience } : undefined))
 
-    const vendorRfiIds = scope.projectId && !isInternalStaffRole(user.role) && ((requestedScope?.audience ?? previewScope?.audience) === "sub_vendor" || user.role === "supplier" || user.role === "subcontractor")
+    const vendorRfiIds = scope.projectId && !isInternalStaffRole(user.role) && ((requestedScope?.audience ?? previewScope?.audience) === "sub_vendor" || isVendorRole(user.role))
       ? await vendorVisibleRfiSourceIds({ db, projectId: scope.projectId, organizationId: scope.organizationId, viewerId: user.id, contact: await getProjectAudienceViewerContact(db, scope.projectId, user) }) : null
     const visibleRfis = vendorRfiIds !== null && vendorRfiIds.length > 0 && scope.projectId ? await db.select({ id: projectRfis.id }).from(projectRfis)
       .where(and(eq(projectRfis.projectId, scope.projectId), or(inJsonList(projectRfis.id, vendorRfiIds), inJsonList(projectRfis.sourceRecordId, vendorRfiIds)))) : vendorRfiIds === null ? null : []
-    const rfiVisibility = visibleRfis === null ? ((user.role === "supplier" || user.role === "subcontractor") && scope.projectId === null ? ne(notificationEvents.sourceType, "rfi") : undefined) : or(ne(notificationEvents.sourceType, "rfi"), inJsonList(notificationEvents.sourceId, visibleRfis.map((row) => row.id)))
+    const rfiVisibility = visibleRfis === null ? (isVendorRole(user.role) && scope.projectId === null ? ne(notificationEvents.sourceType, "rfi") : undefined) : or(ne(notificationEvents.sourceType, "rfi"), inJsonList(notificationEvents.sourceId, visibleRfis.map((row) => row.id)))
     const rows = await db
       .select({
         id: notificationRecipients.id,

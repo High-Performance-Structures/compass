@@ -5,7 +5,8 @@ import { revalidatePath } from "next/cache"
 import { z } from "zod/v4"
 
 import { getDb } from "@/db"
-import { projects, users } from "@/db/schema"
+import { projects } from "@/db/schema"
+import { peopleView } from "@/lib/domain/identity/views"
 import { equipmentLogEntries, equipmentMachines, equipmentServiceItems } from "@/db/schema-equipment"
 import { rateBookEntries } from "@/db/schema-rate-book"
 import { requireAuth, type AuthUser } from "@/lib/auth"
@@ -26,6 +27,8 @@ import { canFeature } from "@/lib/permission-enforcement"
 import { projectNumberAndName } from "@/lib/project-display-name"
 import { companyToday } from "@/lib/internal-duties/recurring-data"
 import { isInternalStaffRole } from "@/lib/user-roles"
+
+const people = peopleView()
 
 type Db = ReturnType<typeof getDb>
 type Result<T> = { readonly success: true; readonly data: T } | { readonly success: false; readonly error: string }
@@ -259,15 +262,15 @@ async function loadEntries(db: Db, orgId: string, where: ReturnType<typeof and>)
       projectName: projects.name,
       projectNumber: projects.projectNumber,
       serviceName: equipmentServiceItems.name,
-      displayName: users.displayName,
-      firstName: users.firstName,
-      lastName: users.lastName,
+      displayName: people.displayName,
+      firstName: people.firstName,
+      lastName: people.lastName,
     })
     .from(equipmentLogEntries)
     .innerJoin(equipmentMachines, eq(equipmentMachines.id, equipmentLogEntries.machineId))
     .leftJoin(projects, eq(projects.id, equipmentLogEntries.projectId))
     .leftJoin(equipmentServiceItems, eq(equipmentServiceItems.id, equipmentLogEntries.serviceItemId))
-    .leftJoin(users, eq(users.id, equipmentLogEntries.createdBy))
+    .leftJoin(people, eq(people.id, equipmentLogEntries.createdBy))
     .where(where)
     .orderBy(desc(equipmentLogEntries.entryDate), desc(equipmentLogEntries.createdAt))
     .limit(400)

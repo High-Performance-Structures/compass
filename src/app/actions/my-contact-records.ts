@@ -5,7 +5,7 @@ import { and, eq } from "drizzle-orm"
 import { customerContacts, customers, internalContacts, vendorContacts, vendors } from "@/db/schema"
 import { requireOrg } from "@/lib/org-scope"
 import type { SageContactKind } from "@/lib/sage/contact-change-proposal"
-import { isInternalStaffRole } from "@/lib/user-roles"
+import { isClientRole, isInternalStaffRole, isVendorRole } from "@/lib/user-roles"
 import { requireUserContext } from "@/lib/server/action-context"
 
 export type MyContactRecord = {
@@ -45,11 +45,11 @@ export async function getMyContactRecords(): Promise<readonly MyContactRecord[]>
     )),
   ])
   return [
-    ...(user.role === "client" ? clients : []).map((record): MyContactRecord => ({
+    ...(isClientRole(user.role) ? clients : []).map((record): MyContactRecord => ({
       kind: "client_person", entityId: record.id, name: record.name,
       companyName: record.companyName, sageLinked: Boolean(record.sageContactId),
     })),
-    ...(["supplier", "subcontractor"].includes(user.role) ? vendorsList : []).map((record): MyContactRecord => ({
+    ...(isVendorRole(user.role) ? vendorsList : []).map((record): MyContactRecord => ({
       kind: "vendor_person", entityId: record.id, name: record.name,
       companyName: record.companyName, sageLinked: Boolean(record.sageContactId),
     })),

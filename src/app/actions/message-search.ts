@@ -5,11 +5,14 @@ import { eq, and, like, sql, gte, lte, desc, inArray } from "drizzle-orm"
 import type { SQL } from "drizzle-orm"
 import { getDb } from "@/db"
 import { messages, channels, channelMembers } from "@/db/schema-conversations"
-import { users } from "@/db/schema"
+import { peopleView } from "@/lib/domain/identity/views"
 import { getCurrentUser } from "@/lib/auth"
 import { requirePermission } from "@/lib/permissions"
 import { revalidatePath } from "next/cache"
 import { updateMessage } from "@/lib/domain/conversations/store"
+import { isChannelModeratorRole } from "@/lib/user-roles"
+
+const people = peopleView()
 
 const MAX_QUERY_LENGTH = 100
 
@@ -110,12 +113,12 @@ export async function searchMessages(
         createdAt: messages.createdAt,
         channelName: channels.name,
         userId: messages.userId,
-        userDisplayName: users.displayName,
-        userAvatarUrl: users.avatarUrl,
+        userDisplayName: people.displayName,
+        userAvatarUrl: people.avatarUrl,
       })
       .from(messages)
       .leftJoin(channels, eq(channels.id, messages.channelId))
-      .leftJoin(users, eq(users.id, messages.userId))
+      .leftJoin(people, eq(people.id, messages.userId))
       .where(and(...conditions))
       .orderBy(desc(messages.createdAt))
       .limit(100)
@@ -184,14 +187,14 @@ export async function getPinnedMessages(
         lastReplyAt: messages.lastReplyAt,
         createdAt: messages.createdAt,
         user: {
-          id: users.id,
-          displayName: users.displayName,
-          email: users.email,
-          avatarUrl: users.avatarUrl,
+          id: people.id,
+          displayName: people.displayName,
+          email: people.email,
+          avatarUrl: people.avatarUrl,
         },
       })
       .from(messages)
-      .leftJoin(users, eq(users.id, messages.userId))
+      .leftJoin(people, eq(people.id, messages.userId))
       .where(
         and(
           eq(messages.channelId, channelId),
@@ -261,8 +264,7 @@ export async function unpinMessage(
       }
     })()
 
-    const isChannelModerator =
-      membership.role === "moderator" || membership.role === "owner"
+    const isChannelModerator = isChannelModeratorRole(membership.role)
 
     if (!canModerate && !isChannelModerator) {
       return {

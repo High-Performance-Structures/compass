@@ -4,7 +4,7 @@ import { and, asc, eq, gt, gte, isNull, ne, or, sql } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 import { z } from "zod/v4"
 import { getDb } from "@/db"
-import { users } from "@/db/schema"
+import { peopleView } from "@/lib/domain/identity/views"
 import {
   listeningQueueItems,
   listeningRoomParticipants,
@@ -45,10 +45,9 @@ import {
 } from "@/lib/domain/listening/store"
 import { can } from "@/lib/permissions"
 import { isInternalStaffRole } from "@/lib/user-roles"
-import {
-  getVoiceChannelAccess,
-  type VoiceChannelAccess,
-} from "@/lib/voice-channel-access"
+import { getVoiceChannelAccess, type VoiceChannelAccess } from "@/lib/voice-channel-access"
+
+const people = peopleView()
 
 const channelIdSchema = z.string().trim().min(1).max(200)
 const musicProviderSchema = z.enum(MUSIC_PROVIDERS)
@@ -264,12 +263,12 @@ async function roomSnapshot(
         durationMs: listeningQueueItems.durationMs,
         sortOrder: listeningQueueItems.sortOrder,
         addedBy: listeningQueueItems.addedBy,
-        addedByDisplayName: users.displayName,
-        addedByEmail: users.email,
+        addedByDisplayName: people.displayName,
+        addedByEmail: people.email,
         playedAt: listeningQueueItems.playedAt,
       })
       .from(listeningQueueItems)
-      .leftJoin(users, eq(users.id, listeningQueueItems.addedBy))
+      .leftJoin(people, eq(people.id, listeningQueueItems.addedBy))
       .where(eq(listeningQueueItems.roomId, room.id))
       .orderBy(
         asc(listeningQueueItems.sortOrder),
@@ -295,17 +294,17 @@ async function roomSnapshot(
         userId: listeningRoomParticipants.userId,
         preferredProvider: listeningRoomParticipants.preferredProvider,
         updatedAt: listeningRoomParticipants.updatedAt,
-        displayName: users.displayName,
-        email: users.email,
+        displayName: people.displayName,
+        email: people.email,
       })
       .from(listeningRoomParticipants)
-      .leftJoin(users, eq(users.id, listeningRoomParticipants.userId))
+      .leftJoin(people, eq(people.id, listeningRoomParticipants.userId))
       .where(eq(listeningRoomParticipants.roomId, room.id))
       .orderBy(asc(listeningRoomParticipants.joinedAt)),
     context.db
-      .select({ displayName: users.displayName, email: users.email })
-      .from(users)
-      .where(eq(users.id, room.hostUserId))
+      .select({ displayName: people.displayName, email: people.email })
+      .from(people)
+      .where(eq(people.id, room.hostUserId))
       .get(),
   ])
 

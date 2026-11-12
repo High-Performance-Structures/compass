@@ -4,7 +4,8 @@ import { and, desc, eq, inArray, isNull } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 
 import { getDb } from "@/db"
-import { greetingCardRequests, users } from "@/db/schema"
+import { greetingCardRequests } from "@/db/schema"
+import { peopleView } from "@/lib/domain/identity/views"
 import { requireAuth } from "@/lib/auth"
 import { getCloudflareContext } from "@/lib/db"
 import {
@@ -24,10 +25,7 @@ import {
   type GreetingCardRequestStatus,
   type SubmitGreetingCardRequestInput,
 } from "@/lib/greeting-cards/workflow"
-import {
-  getActiveEcardTemplate,
-  getEcardTemplate,
-} from "@/lib/greeting-cards/templates"
+import { getActiveEcardTemplate, getEcardTemplate } from "@/lib/greeting-cards/templates"
 import { sendCompassEmail } from "@/lib/email/compass-email"
 import { createGiftbitClient } from "@/lib/giftbit/client"
 import { giftbitClaimExpiryDate } from "@/lib/giftbit/claim-window"
@@ -41,10 +39,10 @@ import {
   getHandwryttenConfig,
 } from "@/lib/handwrytten/config"
 import { requireOrg } from "@/lib/org-scope"
-import {
-  canPrepareGreetingCards,
-} from "@/lib/permissions"
+import { canPrepareGreetingCards } from "@/lib/permissions"
 import { canFeature } from "@/lib/permission-enforcement"
+
+const people = peopleView()
 
 export type {
   GreetingCardCatalogItem,
@@ -116,8 +114,8 @@ export async function getGreetingCardRequests(): Promise<
       .select({
         id: greetingCardRequests.id,
         requestedBy: greetingCardRequests.requestedBy,
-        requestedByName: users.displayName,
-        requestedByEmail: users.email,
+        requestedByName: people.displayName,
+        requestedByEmail: people.email,
         provider: greetingCardRequests.provider,
         deliveryMethod: greetingCardRequests.deliveryMethod,
         providerOrderId: greetingCardRequests.providerOrderId,
@@ -155,7 +153,7 @@ export async function getGreetingCardRequests(): Promise<
         updatedAt: greetingCardRequests.updatedAt,
       })
       .from(greetingCardRequests)
-      .leftJoin(users, eq(greetingCardRequests.requestedBy, users.id))
+      .leftJoin(people, eq(greetingCardRequests.requestedBy, people.id))
       .where(visibility)
       .orderBy(desc(greetingCardRequests.createdAt))
       .limit(200)

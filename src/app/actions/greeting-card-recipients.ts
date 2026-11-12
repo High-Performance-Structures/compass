@@ -7,11 +7,10 @@ import {
   customerContacts,
   customers,
   internalContacts,
-  organizationMembers,
-  users,
   vendorContacts,
   vendors,
 } from "@/db/schema"
+import { membershipsView, peopleView } from "@/lib/domain/identity/views"
 import { requireAuth } from "@/lib/auth"
 import { getCloudflareContext } from "@/lib/db"
 import {
@@ -24,6 +23,9 @@ import {
 } from "@/lib/permissions"
 import { canFeature } from "@/lib/permission-enforcement"
 import { isInternalStaffRole } from "@/lib/user-roles"
+
+const people = peopleView()
+const memberships = membershipsView()
 
 export type { GreetingCardRecipientOption } from "@/lib/greeting-cards/recipient-directory"
 
@@ -102,19 +104,19 @@ export async function getGreetingCardRecipientOptions(): Promise<RecipientResult
           ),
         db
           .select({
-            id: users.id,
-            displayName: users.displayName,
-            firstName: users.firstName,
-            lastName: users.lastName,
-            email: users.email,
-            role: organizationMembers.role,
+            id: people.id,
+            displayName: people.displayName,
+            firstName: people.firstName,
+            lastName: people.lastName,
+            email: people.email,
+            role: memberships.role,
           })
-          .from(organizationMembers)
-          .innerJoin(users, eq(users.id, organizationMembers.userId))
+          .from(memberships)
+          .innerJoin(people, eq(people.id, memberships.userId))
           .where(
             and(
-              eq(organizationMembers.organizationId, organizationId),
-              eq(users.isActive, true),
+              eq(memberships.organizationId, organizationId),
+              eq(people.isActive, true),
             ),
           ),
         db

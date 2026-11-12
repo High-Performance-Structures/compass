@@ -4,11 +4,9 @@ import { getCloudflareContext } from "@/lib/db"
 import { getDb } from "@/db"
 import {
   organizationInvites,
-  organizationMembers,
-  organizations,
-  users,
   type NewOrganizationInvite,
 } from "@/db/schema"
+import { companiesView, membershipsView, peopleView } from "@/lib/domain/identity/views"
 import { getCurrentUser } from "@/lib/auth"
 import { insertOrganizationMember } from "@/lib/domain/identity/store"
 import { canManageUserAccess, requirePermission } from "@/lib/permissions"
@@ -17,6 +15,10 @@ import { userRoleSchema } from "@/lib/validations/common"
 import { eq, and, desc } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 import { cookies } from "next/headers"
+
+const people = peopleView()
+const memberships = membershipsView()
+const companies = companiesView()
 
 // unambiguous charset — no 0/O/1/I/l
 const CODE_CHARS = "23456789abcdefghjkmnpqrstuvwxyz"
@@ -61,9 +63,9 @@ export async function createInvite(
     const db = getDb(env.DB)
 
     const org = await db
-      .select({ slug: organizations.slug })
-      .from(organizations)
-      .where(eq(organizations.id, currentUser.organizationId))
+      .select({ slug: companies.slug })
+      .from(companies)
+      .where(eq(companies.id, currentUser.organizationId))
       .get()
 
     if (!org) return { success: false, error: "Organization not found" }
@@ -144,10 +146,10 @@ export async function getOrgInvites(): Promise<{
         expiresAt: organizationInvites.expiresAt,
         isActive: organizationInvites.isActive,
         createdAt: organizationInvites.createdAt,
-        createdByName: users.displayName,
+        createdByName: people.displayName,
       })
       .from(organizationInvites)
-      .leftJoin(users, eq(organizationInvites.createdBy, users.id))
+      .leftJoin(people, eq(organizationInvites.createdBy, people.id))
       .where(eq(organizationInvites.organizationId, currentUser.organizationId))
       .orderBy(desc(organizationInvites.createdAt))
 
@@ -240,10 +242,10 @@ export async function getInviteByCode(code: string): Promise<{
         useCount: organizationInvites.useCount,
         expiresAt: organizationInvites.expiresAt,
         isActive: organizationInvites.isActive,
-        organizationName: organizations.name,
+        organizationName: companies.name,
       })
       .from(organizationInvites)
-      .innerJoin(organizations, eq(organizationInvites.organizationId, organizations.id))
+      .innerJoin(companies, eq(organizationInvites.organizationId, companies.id))
       .where(eq(organizationInvites.code, code))
       .get()
 
@@ -289,10 +291,10 @@ export async function acceptInvite(code: string): Promise<{
         useCount: organizationInvites.useCount,
         expiresAt: organizationInvites.expiresAt,
         isActive: organizationInvites.isActive,
-        organizationName: organizations.name,
+        organizationName: companies.name,
       })
       .from(organizationInvites)
-      .innerJoin(organizations, eq(organizationInvites.organizationId, organizations.id))
+      .innerJoin(companies, eq(organizationInvites.organizationId, companies.id))
       .where(eq(organizationInvites.code, code))
       .get()
 
@@ -306,12 +308,12 @@ export async function acceptInvite(code: string): Promise<{
 
     // check user is not already a member
     const existing = await db
-      .select({ id: organizationMembers.id })
-      .from(organizationMembers)
+      .select({ id: memberships.id })
+      .from(memberships)
       .where(
         and(
-          eq(organizationMembers.organizationId, invite.organizationId),
-          eq(organizationMembers.userId, currentUser.id)
+          eq(memberships.organizationId, invite.organizationId),
+          eq(memberships.userId, currentUser.id)
         )
       )
       .get()

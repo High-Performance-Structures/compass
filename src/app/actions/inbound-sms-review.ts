@@ -5,12 +5,8 @@ import { revalidatePath } from "next/cache"
 import { redirect } from "next/navigation"
 
 import { getDb } from "@/db"
-import {
-  gotoInboundEvents,
-  organizationMembers,
-  projects,
-  users,
-} from "@/db/schema"
+import { gotoInboundEvents, projects } from "@/db/schema"
+import { membershipsView, peopleView } from "@/lib/domain/identity/views"
 import { recordActivityEvent } from "@/lib/activity-log"
 import { requireAuth } from "@/lib/auth"
 import { getCloudflareContext } from "@/lib/db"
@@ -36,6 +32,9 @@ import { requireFeaturePermission } from "@/lib/permission-enforcement"
 import { canManageProjectRegistry } from "@/lib/permissions"
 import { projectTodoHref } from "@/lib/work-calendar"
 import { updateGotoInboundEvents } from "@/lib/domain/feedback/inbound-store"
+
+const people = peopleView()
+const memberships = membershipsView()
 
 type StoredGotoAttachment = GotoInboundMessage["attachments"][number]
 
@@ -176,21 +175,21 @@ export async function getInboundSmsTaskAssignees(): Promise<
   const { db, organizationId } = await reviewContext()
   const rows = await db
     .select({
-      id: users.id,
-      email: users.email,
-      displayName: users.displayName,
-      firstName: users.firstName,
-      lastName: users.lastName,
+      id: people.id,
+      email: people.email,
+      displayName: people.displayName,
+      firstName: people.firstName,
+      lastName: people.lastName,
     })
-    .from(users)
-    .innerJoin(organizationMembers, eq(organizationMembers.userId, users.id))
+    .from(people)
+    .innerJoin(memberships, eq(memberships.userId, people.id))
     .where(
       and(
-        eq(organizationMembers.organizationId, organizationId),
-        eq(users.isActive, true)
+        eq(memberships.organizationId, organizationId),
+        eq(people.isActive, true)
       )
     )
-    .orderBy(asc(users.displayName), asc(users.email))
+    .orderBy(asc(people.displayName), asc(people.email))
 
   return rows.map((row) => ({
     id: row.id,
@@ -301,22 +300,22 @@ export async function routeInboundSms(formData: FormData): Promise<void> {
           const dueDate = requiredDueDate(formData)
           const assignee = await db
             .select({
-              id: users.id,
-              email: users.email,
-              displayName: users.displayName,
-              firstName: users.firstName,
-              lastName: users.lastName,
+              id: people.id,
+              email: people.email,
+              displayName: people.displayName,
+              firstName: people.firstName,
+              lastName: people.lastName,
             })
-            .from(users)
+            .from(people)
             .innerJoin(
-              organizationMembers,
-              eq(organizationMembers.userId, users.id)
+              memberships,
+              eq(memberships.userId, people.id)
             )
             .where(
               and(
-                eq(users.id, assigneeUserId),
-                eq(users.isActive, true),
-                eq(organizationMembers.organizationId, organizationId)
+                eq(people.id, assigneeUserId),
+                eq(people.isActive, true),
+                eq(memberships.organizationId, organizationId)
               )
             )
             .get()

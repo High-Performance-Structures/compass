@@ -9,10 +9,11 @@ import { getCloudflareContext } from "@/lib/db"
 import { eq, and, gt, desc, sql } from "drizzle-orm"
 import { getDb } from "@/db"
 import { messages, typingSessions } from "@/db/schema-conversations"
-import { users } from "@/db/schema"
+import { peopleView } from "@/lib/domain/identity/views"
 import { getCurrentUser } from "@/lib/auth"
 import { importedMessageColumns, messageSenderDisplayName } from "@/lib/domain/conversations/imported"
 
+const people = peopleView()
 
 type TypingUser = {
   id: string
@@ -60,10 +61,10 @@ const messageSelectFields = {
   createdAt: messages.createdAt,
   ...importedMessageColumns,
   user: {
-    id: users.id,
+    id: people.id,
     displayName: messageSenderDisplayName,
-    email: users.email,
-    avatarUrl: users.avatarUrl,
+    email: people.email,
+    avatarUrl: people.avatarUrl,
   },
 } as const
 
@@ -100,7 +101,7 @@ export async function getChannelUpdates(
     let messagesQuery = db
       .select(messageSelectFields)
       .from(messages)
-      .leftJoin(users, eq(users.id, messages.userId))
+      .leftJoin(people, eq(people.id, messages.userId))
       .where(
         and(
           eq(messages.channelId, channelId),
@@ -122,7 +123,7 @@ export async function getChannelUpdates(
         messagesQuery = db
           .select(messageSelectFields)
           .from(messages)
-          .leftJoin(users, eq(users.id, messages.userId))
+          .leftJoin(people, eq(people.id, messages.userId))
           .where(
             and(
               eq(messages.channelId, channelId),
@@ -146,11 +147,11 @@ export async function getChannelUpdates(
     // fetch currently typing users (excluding current user)
     const typingUsers = await db
       .select({
-        id: users.id,
-        displayName: users.displayName,
+        id: people.id,
+        displayName: people.displayName,
       })
       .from(typingSessions)
-      .leftJoin(users, eq(users.id, typingSessions.userId))
+      .leftJoin(people, eq(people.id, typingSessions.userId))
       .where(
         and(
           eq(typingSessions.channelId, channelId),

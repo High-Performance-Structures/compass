@@ -3,7 +3,8 @@
 import { and, eq, inArray } from "drizzle-orm"
 
 import { createProjectTaskCommand as createProjectTask } from "@/lib/domain/operations/todo-commands"
-import { organizationMembers, projectOperations, users } from "@/db/schema"
+import { projectOperations } from "@/db/schema"
+import { membershipsView, peopleView } from "@/lib/domain/identity/views"
 import { projectEstimateLines, projectEstimates } from "@/db/schema-estimates"
 import { estimateAccess, requireEditableEstimate, revalidateEstimate } from "@/lib/domain/estimates/access"
 import { updateEstimateLines } from "@/lib/domain/estimates/store"
@@ -11,6 +12,9 @@ import { findPricingSource, pricingSourceChoices, takeoffTodoTitle, type Pricing
 import { isDemoUser } from "@/lib/demo"
 import { readFeatureSettings } from "@/lib/feature-settings/server"
 import { isInternalStaffRole } from "@/lib/user-roles"
+
+const people = peopleView()
+const memberships = membershipsView()
 
 type Result<T> = { readonly success: true; readonly data: T } | { readonly success: false; readonly error: string }
 
@@ -52,16 +56,16 @@ async function companyStaff(
 ): Promise<readonly { readonly value: string; readonly label: string }[]> {
   const rows = await db
     .select({
-      id: users.id,
-      email: users.email,
-      displayName: users.displayName,
-      firstName: users.firstName,
-      lastName: users.lastName,
-      role: organizationMembers.role,
+      id: people.id,
+      email: people.email,
+      displayName: people.displayName,
+      firstName: people.firstName,
+      lastName: people.lastName,
+      role: memberships.role,
     })
-    .from(users)
-    .innerJoin(organizationMembers, eq(organizationMembers.userId, users.id))
-    .where(and(eq(organizationMembers.organizationId, organizationId), eq(users.isActive, true)))
+    .from(people)
+    .innerJoin(memberships, eq(memberships.userId, people.id))
+    .where(and(eq(memberships.organizationId, organizationId), eq(people.isActive, true)))
   return rows
     .filter((row) => isInternalStaffRole(row.role) && !isDemoUser(row.id))
     .map((row) => ({ value: row.id, label: staffLabel(row) }))

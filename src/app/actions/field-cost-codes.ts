@@ -15,7 +15,7 @@ import { legacyFieldJobCostCodes, loadFieldCostCodeList, loadProjectFieldAdditio
 import { requireOrg } from "@/lib/org-scope"
 import { canFeature, requireFeaturePermission } from "@/lib/permission-enforcement"
 import { getProjectAccessRecord } from "@/lib/domain/project/access"
-import { isInternalStaffRole } from "@/lib/user-roles"
+import { isInternalStaffRole, isProjectLeadRole } from "@/lib/user-roles"
 import { requireUserContext } from "@/lib/server/action-context"
 
 type Result<T> = { readonly success: true; readonly data: T } | { readonly success: false; readonly error: string }
@@ -42,7 +42,7 @@ async function context(projectId?: string) {
     const access = await getProjectAccessRecord(db, user, projectId)
     if (!access || access.organizationId !== organizationId) throw new Error("Project not found or access denied.")
   }
-  const editor = canEditFeatureSettings(user.role, "field-cost-codes") || Boolean(projectId && (user.role === "project_manager" || user.role === "project_administrator"))
+  const editor = canEditFeatureSettings(user.role, "field-cost-codes") || Boolean(projectId && isProjectLeadRole(user.role))
   const canEdit = editor && !isDemoUser(user.id) && !isDemoOrg(organizationId)
     && (!projectId || await canFeature(user, "project-hub", "update"))
   return { db, user, organizationId, canEdit }
