@@ -31,6 +31,19 @@ const ACCESS_REQUEST_SETTINGS_KEY = "access-requests"
 export type RequestableOrganization = {
   readonly id: string
   readonly name: string
+  /** Other names the company is known by (Settings > People > Access requests). */
+  readonly alsoKnownAs: readonly string[]
+}
+
+/** The stored also-known-as list, read as JSON text; anything malformed reads as none. */
+function storedNames(raw: string | null): readonly string[] {
+  if (!raw) return []
+  try {
+    const value: unknown = JSON.parse(raw)
+    return Array.isArray(value) ? value.filter((name): name is string => typeof name === "string" && name.trim() !== "") : []
+  } catch {
+    return []
+  }
 }
 
 /**
@@ -45,6 +58,7 @@ async function organizationsAllowingRequests(db: Db, organizationIds?: readonly 
       type: organizations.type,
       isActive: organizations.isActive,
       allowRequests: sql<number | null>`json_extract(${organizationFeatureSettings.value}, '$.allowRequests')`,
+      alsoKnownAs: sql<string | null>`json_extract(${organizationFeatureSettings.value}, '$.alsoKnownAs')`,
     })
     .from(organizationFeatureSettings)
     .innerJoin(organizations, eq(organizations.id, organizationFeatureSettings.organizationId))
@@ -54,7 +68,7 @@ async function organizationsAllowingRequests(db: Db, organizationIds?: readonly 
     ))
   return rows
     .filter((row) => !isDemoOrg(row.id) && isRequestableOrganization({ type: row.type, isActive: row.isActive, allowRequests: row.allowRequests === 1 }))
-    .map((row) => ({ id: row.id, name: row.name }))
+    .map((row) => ({ id: row.id, name: row.name, alsoKnownAs: storedNames(row.alsoKnownAs) }))
     .sort((a, b) => a.name.localeCompare(b.name))
 }
 
