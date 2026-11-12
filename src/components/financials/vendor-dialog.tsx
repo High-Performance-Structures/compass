@@ -93,6 +93,15 @@ export function VendorDialog({
 }: VendorDialogProps) {
   const [name, setName] = React.useState("")
   const [category, setCategory] = React.useState("Subcontractor")
+  // The company's vendor types, plus a vendor's older type until it is changed.
+  const categoryOptions = React.useMemo(
+    () =>
+      [...categories, ...(category && !categories.includes(category) ? [category] : [])].map((option) => ({
+        value: option,
+        label: categories.includes(option) ? option : `${option} (old type)`,
+      })),
+    [categories, category],
+  )
   const [email, setEmail] = React.useState("")
   const [phone, setPhone] = React.useState("")
   const [address, setAddress] = React.useState("")
@@ -323,7 +332,7 @@ export function VendorDialog({
                   <SageFieldNote pending={sageState?.pending[initialData.id]} field="name" note={companyFieldNote("name")} />
                 </div>
                 <div className="col-span-2 space-y-1.5">
-                  <Label htmlFor="vendor-category" className="text-xs">Category *</Label>
+                  <Label htmlFor="vendor-category" className="text-xs">Vendor type *</Label>
                   <SearchableCombobox
                     id="vendor-category"
                     className="h-9"
@@ -332,11 +341,11 @@ export function VendorDialog({
                       if (value !== "") setCategory(value)
                     }}
                     disabled={categoryLockedReason !== null}
-                    options={categories.map((categoryOption) => ({ value: categoryOption, label: categoryOption }))}
-                    ariaLabel="Vendor category"
-                    placeholder="Choose category"
-                    searchPlaceholder="Search categories..."
-                    emptyMessage="No matching categories."
+                    options={categoryOptions}
+                    ariaLabel="Vendor type"
+                    placeholder="Choose vendor type"
+                    searchPlaceholder="Search vendor types..."
+                    emptyMessage="No matching vendor types. Add types in Settings › Vendor types."
                   />
                   {categoryLockedReason && !readOnly ? <p className="text-xs text-muted-foreground">{categoryLockedReason}</p> : null}
                 </div>
@@ -383,7 +392,7 @@ export function VendorDialog({
               </div>
               <div className="col-span-2 space-y-1.5">
                 <Label htmlFor="vendor-category" className="text-xs">
-                  Category *
+                  Vendor type *
                 </Label>
                 <SearchableCombobox
                   id="vendor-category"
@@ -393,14 +402,11 @@ export function VendorDialog({
                     if (value !== "") setCategory(value)
                   }}
                   disabled={locked}
-                  options={categories.map((categoryOption) => ({
-                    value: categoryOption,
-                    label: categoryOption,
-                  }))}
-                  ariaLabel="Vendor category"
-                  placeholder="Choose category"
-                  searchPlaceholder="Search categories..."
-                  emptyMessage="No matching categories."
+                  options={categoryOptions}
+                  ariaLabel="Vendor type"
+                  placeholder="Choose vendor type"
+                  searchPlaceholder="Search vendor types..."
+                  emptyMessage="No matching vendor types. Add types in Settings › Vendor types."
                 />
               </div>
             </div>

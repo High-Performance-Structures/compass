@@ -3,7 +3,8 @@
 import { and, eq, isNull } from "drizzle-orm"
 
 import { customerContacts, customers, internalContacts, projectContacts, vendorContacts, vendors } from "@/db/schema"
-import { vendorCategoryToContactType } from "@/lib/contact-project-association"
+import { vendorJobContactType } from "@/lib/contact-project-association"
+import { readFeatureSettings } from "@/lib/feature-settings/server"
 import { activeDirectoryIdentityKeys } from "@/lib/contact-identity-ownership"
 import { loadProjectCostCodeChoices } from "@/lib/cost-codes/catalog-server"
 import type { Db } from "@/lib/server/action-context"
@@ -180,9 +181,10 @@ export async function loadProjectContactDirectoryOptions(
     customerContacts: [...(contactsByCustomer.get(row.id) ?? [])].sort(byPrimaryThenName),
     vendorContacts: [],
   }))
-  const vendorOptions: ProjectContactDirectoryOption[] = vendorRows
-    .filter((row) => !row.category.toLowerCase().includes("internal"))
-    .map((row) => ({
+  const { types } = await readFeatureSettings(db, orgId, "vendor-types")
+  const vendorOptions: ProjectContactDirectoryOption[] = vendorRows.flatMap((row) => {
+    const suggestedContactType = vendorJobContactType(row.category, types)
+    return suggestedContactType === null || suggestedContactType === "internal" ? [] : [{
       id: row.id,
       sourceType: "vendor",
       displayName: row.name,
@@ -190,11 +192,12 @@ export async function loadProjectContactDirectoryOptions(
       email: row.email,
       phone: row.phone,
       address: row.address,
-      suggestedContactType: vendorCategoryToContactType(row.category),
+      suggestedContactType,
       identityManagedByActiveUser: directoryIdentityKeys.has(`vendor:${row.id}`),
       customerContacts: [],
       vendorContacts: [...(contactsByVendor.get(row.id) ?? [])].sort(byPrimaryThenName),
-    }))
+    }]
+  })
   const teamOptions: ProjectContactDirectoryOption[] = teamRows.map((row) => ({
     id: row.id,
     sourceType: "team",

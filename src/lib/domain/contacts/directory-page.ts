@@ -1,6 +1,7 @@
 import { and, asc, count, desc, eq, isNull, ne, sql, type AnyColumn, type SQL } from "drizzle-orm"
 
 import { customers, internalContacts, vendors, type Customer, type Vendor } from "@/db/schema"
+import { readFeatureSettings } from "@/lib/feature-settings/server"
 import { containsPattern, phoneDigitsPattern, type RecordPage, type RecordPageQuery } from "@/lib/record-page"
 import type { Db } from "@/lib/server/action-context"
 
@@ -251,15 +252,17 @@ export type DirectorySummary = {
   readonly vendorCount: number
   readonly internalCount: number
   readonly vendorCategories: readonly string[]
+  /** The company's vendor types offered when editing a vendor (Settings › Vendor types). */
+  readonly vendorTypes: readonly string[]
 }
 
-/** Tab counts and the vendor categories in use, read in one D1 round trip. */
+/** Tab counts, the vendor types in use and the ones offered, read in one D1 round trip. */
 export async function loadDirectorySummary(
   db: Db,
   organizationId: string,
   grants: { readonly customers: boolean; readonly vendors: boolean; readonly internal: boolean },
 ): Promise<DirectorySummary> {
-  const [customerRows, vendorRows, internalRows, categoryRows] = await db.batch([
+  const [[customerRows, vendorRows, internalRows, categoryRows], vendorTypeSettings] = await Promise.all([db.batch([
     db.select({ value: count() }).from(customers)
       .where(and(eq(customers.organizationId, organizationId), isNull(customers.mergedIntoCustomerId))),
     db.select({ value: count() }).from(vendors)
@@ -268,7 +271,7 @@ export async function loadDirectorySummary(
       .where(and(eq(internalContacts.organizationId, organizationId), eq(internalContacts.active, true))),
     db.selectDistinct({ category: vendors.category }).from(vendors)
       .where(and(eq(vendors.organizationId, organizationId), eq(vendors.directoryStatus, "active"), notInternal)),
-  ])
+  ]), readFeatureSettings(db, organizationId, "vendor-types")])
   return {
     customerCount: grants.customers ? customerRows[0]?.value ?? 0 : 0,
     vendorCount: grants.vendors ? vendorRows[0]?.value ?? 0 : 0,
@@ -276,6 +279,7 @@ export async function loadDirectorySummary(
     vendorCategories: grants.vendors
       ? categoryRows.map((row) => row.category.trim()).filter((category) => category.length > 0)
       : [],
+    vendorTypes: vendorTypeSettings.types.filter((type) => !type.hidden).map((type) => type.name),
   }
 }
 

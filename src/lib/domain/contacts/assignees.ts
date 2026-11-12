@@ -3,7 +3,8 @@
 import { and, asc, eq, isNull } from "drizzle-orm"
 
 import { customers, organizationMembers, projectContacts, users, vendorContacts, vendors } from "@/db/schema"
-import { isDirectoryAssignable, vendorCategoryToContactType } from "@/lib/contact-project-association"
+import { vendorJobContactType } from "@/lib/contact-project-association"
+import { readFeatureSettings } from "@/lib/feature-settings/server"
 import { uniqueInternalStaffMembers } from "@/lib/internal-contact-directory"
 import type { Db } from "@/lib/server/action-context"
 
@@ -24,6 +25,11 @@ import { insertProjectContact } from "./store"
 import type { AddTaskAssigneeContactResult, ProjectTaskAssigneeOption, ProjectTaskAssigneeOptions } from "./types"
 
 type Scope = { readonly organizationId: string; readonly projectId: string }
+
+/** The company's vendor types, to decide how each directory vendor joins a job. */
+async function vendorTypes(db: Db, organizationId: string) {
+  return (await readFeatureSettings(db, organizationId, "vendor-types")).types
+}
 
 // Former staff stay on the job as history only; they are never offered for picking.
 function activeProjectContacts(db: Db, scope: Scope) {
@@ -93,14 +99,15 @@ export async function loadProjectTaskAssigneeOptions(
         .where(and(eq(vendors.organizationId, scope.organizationId), eq(vendors.directoryStatus, "active")))
         .orderBy(asc(vendors.name))
     : []
-  const directoryContacts = directoryRows
-    .filter(
-      (vendor) =>
-        isDirectoryAssignable(vendor.category) &&
-        !projectSourceVendorIds.has(vendor.id) &&
-        !projectNameKeys.has(normalizeDirectoryKey(vendor.name))
-    )
-    .map(directoryContactToTaskAssigneeOption)
+  const types = scope.grants.vendors ? await vendorTypes(db, scope.organizationId) : []
+  const directoryContacts = directoryRows.flatMap((vendor) => {
+    const contactType = vendorJobContactType(vendor.category, types)
+    return contactType !== null &&
+      !projectSourceVendorIds.has(vendor.id) &&
+      !projectNameKeys.has(normalizeDirectoryKey(vendor.name))
+      ? [directoryContactToTaskAssigneeOption({ ...vendor, contactType })]
+      : []
+  })
 
   return {
     projectContacts: [...projectContactItems.map(projectContactToTaskAssigneeOption), ...organizationUserOptions],
@@ -185,8 +192,15 @@ export async function loadScheduleTaskAssigneeOptions(
   const projectOptions = projectContactRows.map((row) => toContactItem(row)).map(projectContactToTaskAssigneeOption)
   const teamOptions = uniqueInternalStaffMembers(organizationUserRows).map(organizationUserToTaskAssigneeOption)
   const customerOptions = customerRows.map(customerToTaskAssigneeOption)
-  const vendorOptions = vendorRows.map(directoryContactToTaskAssigneeOption)
-  const vendorPersonOptions = vendorContactRows.map(vendorPersonToTaskAssigneeOption)
+  const types = scope.grants.vendors ? await vendorTypes(db, orgId) : []
+  const vendorOptions = vendorRows.flatMap((vendor) => {
+    const contactType = vendorJobContactType(vendor.category, types)
+    return contactType === null ? [] : [directoryContactToTaskAssigneeOption({ ...vendor, contactType })]
+  })
+  const vendorPersonOptions = vendorContactRows.flatMap((person) => {
+    const contactType = vendorJobContactType(person.category, types)
+    return contactType === null ? [] : [vendorPersonToTaskAssigneeOption({ ...person, contactType })]
+  })
 
   return {
     projectContacts: [...projectOptions, ...teamOptions],
@@ -252,8 +266,9 @@ export async function addDirectoryVendorForTask(
     .limit(1)
 
   if (!vendor) return { success: false, error: "Directory contact not found" }
-  if (!isDirectoryAssignable(vendor.category)) {
-    return { success: false, error: "This directory contact is not assignable" }
+  const contactType = vendorJobContactType(vendor.category, await vendorTypes(db, scope.organizationId))
+  if (contactType === null) {
+    return { success: false, error: "This company's vendor type has no role on jobs." }
   }
 
   const [existing] = await resolvedProjectContacts(db, {
@@ -266,7 +281,6 @@ export async function addDirectoryVendorForTask(
   }
 
   const now = new Date().toISOString()
-  const contactType = vendorCategoryToContactType(vendor.category)
   const role = contactType === "supplier" ? "Supplier" : contactType === "internal" ? "Internal" : "Subcontractor"
   const contactId = `project-contact-${sourceIdPart(scope.projectId)}-${sourceIdPart(contactType)}-${sourceIdPart(vendor.id)}`
 

@@ -4,7 +4,7 @@
  * database or network access, so client components may reuse it.
  */
 import type { projectContacts, projectContactSourceLinks } from "@/db/schema"
-import { vendorCategoryToContactType } from "@/lib/contact-project-association"
+import type { VendorContactType } from "@/lib/contact-project-association"
 import type {
   ProjectContactAccessStatus,
   ProjectContactCompassAccountStatus,
@@ -268,12 +268,10 @@ export function projectContactToTaskAssigneeOption(
 export function directoryContactToTaskAssigneeOption(input: {
   readonly id: string
   readonly name: string
-  readonly category: string
+  readonly contactType: VendorContactType
   readonly email: string | null
   readonly phone: string | null
 }): ProjectTaskAssigneeOption {
-  const contactType = vendorCategoryToContactType(input.category)
-
   return {
     id: `directory:${input.id}`,
     label: `${input.name} - Directory`,
@@ -281,7 +279,7 @@ export function directoryContactToTaskAssigneeOption(input: {
     companyName: input.name,
     email: input.email,
     phone: input.phone,
-    contactType,
+    contactType: input.contactType,
     source: "directory",
     projectContactId: null,
     directoryContactId: input.id,
@@ -317,7 +315,7 @@ export function customerToTaskAssigneeOption(input: {
 export function vendorPersonToTaskAssigneeOption(input: {
   readonly id: string
   readonly vendorName: string
-  readonly category: string
+  readonly contactType: VendorContactType
   readonly name: string
   readonly email: string | null
   readonly phone: string | null
@@ -329,7 +327,7 @@ export function vendorPersonToTaskAssigneeOption(input: {
     companyName: input.vendorName,
     email: input.email,
     phone: input.phone,
-    contactType: vendorCategoryToContactType(input.category),
+    contactType: input.contactType,
     source: "directory",
     projectContactId: null,
     directoryContactId: null,

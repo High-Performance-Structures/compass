@@ -146,7 +146,7 @@ describe("assignee options", () => {
   })
 
   it("builds directory, client, vendor-person and staff options", () => {
-    expect(directoryContactToTaskAssigneeOption({ id: "v", name: "Acme", category: "Supplier", email: null, phone: null })).toMatchObject({
+    expect(directoryContactToTaskAssigneeOption({ id: "v", name: "Acme", contactType: "supplier", email: null, phone: null })).toMatchObject({
       id: "directory:v",
       label: "Acme - Directory",
       contactType: "supplier",
@@ -156,7 +156,7 @@ describe("assignee options", () => {
       "Pat - Owner LLC"
     )
     expect(
-      vendorPersonToTaskAssigneeOption({ id: "p", vendorName: "Acme", category: "Subcontractor", name: "Sam", email: null, phone: null })
+      vendorPersonToTaskAssigneeOption({ id: "p", vendorName: "Acme", contactType: "subcontractor", name: "Sam", email: null, phone: null })
     ).toMatchObject({ id: "directory:vendor-contact:p", label: "Sam - Acme", contactType: "subcontractor" })
     expect(
       organizationUserToTaskAssigneeOption({ id: "u", email: "a@b.c", displayName: " ", firstName: "Ana", lastName: "Lee" }).name

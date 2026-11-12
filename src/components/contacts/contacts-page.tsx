@@ -69,16 +69,6 @@ type MergeState = {
   readonly anchor: MergeChoice | null
 }
 
-const DEFAULT_VENDOR_CATEGORIES = [
-  "Supplier",
-  "Subcontractor",
-  "Consultant",
-  "Governmental Agency",
-  "Miscellaneous Vendor",
-  "Building Department",
-  "Bank / Lender",
-] as const
-
 function choice(record: { readonly id: string; readonly name: string; readonly email: string | null; readonly primaryEmail?: string | null }): MergeChoice {
   return { id: record.id, name: record.name, email: record.primaryEmail || record.email }
 }
@@ -160,9 +150,10 @@ function ContactsContent({ bootstrap }: { readonly bootstrap: ContactsBootstrap 
     setTradeDocsVendor((current) => current ?? { id: tradeDocsParam, name: "" })
   }, [tradeDocsParam, showTradeDocs])
 
+  // Filters cover every type in use; editing offers the company's vendor types.
   const vendorCategories = React.useMemo(() => Array.from(
-    new Set([...DEFAULT_VENDOR_CATEGORIES, ...summary.vendorCategories.filter((category) => category.toLowerCase() !== "internal")])
-  ).sort((left, right) => left.localeCompare(right)), [summary.vendorCategories])
+    new Set([...summary.vendorTypes, ...summary.vendorCategories.filter((category) => category.toLowerCase() !== "internal")])
+  ).sort((left, right) => left.localeCompare(right)), [summary.vendorCategories, summary.vendorTypes])
 
   /** Re-reads the visible pages, tab counts and the internal list after a change. */
   const refresh = React.useCallback(async () => {
@@ -631,7 +622,7 @@ function ContactsContent({ bootstrap }: { readonly bootstrap: ContactsBootstrap 
         onOpenChange={setVendorDialogOpen}
         initialData={editingVendor}
         readOnly={vendorReadOnly}
-        categories={vendorCategories}
+        categories={summary.vendorTypes}
         onSubmit={handleVendorSubmit}
         onSageLinkedSaved={reloadLists}
         onSageLinkCompany={editingVendor && directoryAccess?.canReadSageReview ? () => {

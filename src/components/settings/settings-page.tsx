@@ -40,6 +40,7 @@ import { AccessRequestSettingsSection } from "@/components/settings/access-reque
 import { AccessRequestsCard } from "@/components/settings/access-requests-card"
 import { DepartmentProfilesSection } from "@/components/settings/department-profiles-section"
 import { InternalDepartmentSettingsSection } from "@/components/settings/internal-department-settings-section"
+import { VendorTypesSettingsSection } from "@/components/settings/vendor-types-settings-section"
 import { NetSuiteConnectionStatus } from "@/components/netsuite/connection-status"
 import { SyncControls } from "@/components/netsuite/sync-controls"
 import { GoogleDriveConnectionStatus } from "@/components/google/connection-status"
@@ -135,6 +136,7 @@ export function SettingsPageClient() {
           <div className="space-y-8">
             <DepartmentProfilesSection />
             <InternalDepartmentSettingsSection />
+            <VendorTypesSettingsSection />
           </div>
         )
       case "appearance":

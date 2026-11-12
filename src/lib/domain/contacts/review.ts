@@ -6,7 +6,8 @@
 import { and, asc, eq, inArray } from "drizzle-orm"
 
 import { projectContacts, projectContactSourceLinks, vendors } from "@/db/schema"
-import { isDirectoryAssignable, vendorCategoryToContactType } from "@/lib/contact-project-association"
+import { vendorJobContactType } from "@/lib/contact-project-association"
+import { readFeatureSettings } from "@/lib/feature-settings/server"
 import type { Db } from "@/lib/server/action-context"
 
 import {
@@ -44,7 +45,7 @@ export async function loadProjectContactMatchReview(
   const contacts = contactRows.map((row) => toContactItem(row))
   const contactsById = new Map(contacts.map((contact) => [contact.id, contact]))
 
-  const [independentContacts, linkRows] = await Promise.all([
+  const [independentContacts, linkRows, { types }] = await Promise.all([
     scope.canViewVendors
       ? db
           .select({
@@ -67,6 +68,7 @@ export async function loadProjectContactMatchReview(
         asc(projectContactSourceLinks.sourceName),
         asc(projectContactSourceLinks.sourceLabel)
       ),
+    readFeatureSettings(db, scope.organizationId, "vendor-types"),
   ])
 
   const links = linkRows.map((link) =>
@@ -77,16 +79,12 @@ export async function loadProjectContactMatchReview(
   return {
     projectId: scope.projectId,
     contacts,
-    independentContacts: independentContacts
-      .filter((contact) => !PLACEHOLDER_DIRECTORY_NAMES.includes(contact.name) && isDirectoryAssignable(contact.category))
-      .map((contact) => ({
-        id: contact.id,
-        name: contact.name,
-        category: contact.category,
-        sourceSystem: contact.sourceSystem,
-        syncStatus: contact.syncStatus,
-        contactType: vendorCategoryToContactType(contact.category),
-      })),
+    independentContacts: independentContacts.flatMap((contact) => {
+      const contactType = vendorJobContactType(contact.category, types)
+      return contactType === null || PLACEHOLDER_DIRECTORY_NAMES.includes(contact.name)
+        ? []
+        : [{ id: contact.id, name: contact.name, category: contact.category, sourceSystem: contact.sourceSystem, syncStatus: contact.syncStatus, contactType }]
+    }),
     links,
     matchedCount: countStatus("matched"),
     reviewCount: countStatus("review"),
@@ -128,7 +126,8 @@ export async function addIndependentContactFromReview(
     )
     .limit(1)
 
-  const contactType = vendorCategoryToContactType(vendor.category)
+  const contactType = vendorJobContactType(vendor.category, (await readFeatureSettings(db, scope.organizationId, "vendor-types")).types)
+  if (contactType === null) return { success: false, error: "This company's vendor type has no role on jobs." }
   const contactId =
     existing[0]?.id ??
     `project-contact-${sourceIdPart(scope.projectId)}-${sourceIdPart(contactType)}-${sourceIdPart(vendor.name)}`
