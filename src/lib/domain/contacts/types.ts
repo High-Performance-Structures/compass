@@ -7,6 +7,8 @@ import type {
   ProjectContactCompassAccountStatus,
 } from "@/lib/project-contact-access-status"
 
+import type { ProjectDepartmentCode } from "@/lib/domain/project/statuses"
+
 import type { ProjectContactType } from "./statuses"
 
 export type { ProjectContactType }
@@ -146,11 +148,15 @@ export type ProjectTaskAssigneeOption = {
   readonly projectContactId: string | null
   readonly directoryContactId: string | null
   readonly projectAccess: boolean
+  /** Set for a crew option: the department its work counts toward. */
+  readonly crew: { readonly department: ProjectDepartmentCode | null } | null
 }
 
 export type ProjectTaskAssigneeOptions = {
   readonly projectContacts: readonly ProjectTaskAssigneeOption[]
   readonly directoryContacts: readonly ProjectTaskAssigneeOption[]
+  /** The company's crews (schedule items only; empty elsewhere). */
+  readonly crews: readonly ProjectTaskAssigneeOption[]
 }
 
 export type AddTaskAssigneeContactResult =

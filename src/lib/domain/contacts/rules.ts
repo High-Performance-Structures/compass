@@ -11,6 +11,7 @@ import type {
 } from "@/lib/project-contact-access-status"
 import { isCanonicalDirectoryAssignment } from "@/lib/project-contact-directory-identity"
 import { projectContactAddress } from "@/lib/project-contact-privacy"
+import type { ProjectDepartmentCode } from "@/lib/domain/project/statuses"
 import { checkedListFields, isListValue } from "@/lib/shared/statuses"
 
 import { PROJECT_CONTACT_LISTS, PROJECT_CONTACT_TYPES } from "./statuses"
@@ -262,6 +263,7 @@ export function projectContactToTaskAssigneeOption(
     projectContactId: contact.id,
     directoryContactId: null,
     projectAccess: true,
+    crew: null,
   }
 }
 
@@ -284,6 +286,7 @@ export function directoryContactToTaskAssigneeOption(input: {
     projectContactId: null,
     directoryContactId: input.id,
     projectAccess: false,
+    crew: null,
   }
 }
 
@@ -309,6 +312,7 @@ export function customerToTaskAssigneeOption(input: {
     projectContactId: null,
     directoryContactId: null,
     projectAccess: false,
+    crew: null,
   }
 }
 
@@ -332,6 +336,7 @@ export function vendorPersonToTaskAssigneeOption(input: {
     projectContactId: null,
     directoryContactId: null,
     projectAccess: false,
+    crew: null,
   }
 }
 
@@ -359,6 +364,32 @@ export function organizationUserToTaskAssigneeOption(input: {
     projectContactId: null,
     directoryContactId: null,
     projectAccess: true,
+    crew: null,
+  }
+}
+
+/** Option ids for crews: "crew:<teamId>". */
+export const CREW_OPTION_PREFIX = "crew:"
+
+/** A crew in a schedule assignee picker; everyone on it is assigned. */
+export function crewToTaskAssigneeOption(crew: {
+  readonly id: string
+  readonly name: string
+  readonly department: ProjectDepartmentCode | null
+}): ProjectTaskAssigneeOption {
+  return {
+    id: `${CREW_OPTION_PREFIX}${crew.id}`,
+    label: crew.name,
+    name: crew.name,
+    companyName: null,
+    email: null,
+    phone: null,
+    contactType: "internal",
+    source: "project",
+    projectContactId: null,
+    directoryContactId: null,
+    projectAccess: true,
+    crew: { department: crew.department },
   }
 }
 

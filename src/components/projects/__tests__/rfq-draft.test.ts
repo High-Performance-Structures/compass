@@ -133,6 +133,7 @@ describe("rfq matching and labels", () => {
       projectContactId: "pc1",
       directoryContactId: null,
       projectAccess: true,
+      crew: null,
     }
     expect(optionMatches(option, "")).toBe(true)
     expect(optionMatches(option, normalizeChoice("peak glass"))).toBe(true)

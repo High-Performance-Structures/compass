@@ -15,6 +15,7 @@ import {
 
 import {
   DEPENDENCY_TYPES,
+  SCHEDULE_DONE_BY,
   SCHEDULE_TASK_STATUSES,
   STORED_SCHEDULE_LINK_TYPES,
   WORKDAY_EXCEPTION_TYPES,
@@ -119,6 +120,8 @@ export const scheduleTasks = sqliteTable("schedule_tasks", {
   assignedUserId: text("assigned_user_id").references(() => users.id, {
     onDelete: "set null",
   }),
+  /** Department code that performs the work, "outside", or null (0320). */
+  doneBy: text("performing_department", { enum: SCHEDULE_DONE_BY }),
   ownerVisible: integer("owner_visible", { mode: "boolean" })
     .notNull()
     .default(true),

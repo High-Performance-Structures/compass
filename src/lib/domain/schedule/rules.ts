@@ -5,7 +5,7 @@
  * and the agent API share exactly the same decisions.
  */
 import type { scheduleTasks } from "@/db/schema"
-import { DEPENDENCY_TYPES, SCHEDULE_TASK_STATUSES } from "@/lib/domain/schedule/statuses"
+import { DEPENDENCY_TYPES, SCHEDULE_DONE_BY, SCHEDULE_TASK_STATUSES, type ScheduleDoneBy } from "@/lib/domain/schedule/statuses"
 import { isListValue } from "@/lib/shared/statuses"
 import { findCriticalPath } from "@/lib/schedule/critical-path"
 import {
@@ -324,6 +324,12 @@ export type TaskEditInput = {
   readonly ownerVisible?: boolean
   readonly subVendorVisible?: boolean
   readonly confirmationRequired?: boolean
+  readonly doneBy?: string | null
+}
+
+/** A stored Done-by value: a listed department code or "outside", else null. */
+export function doneByValue(value: unknown): ScheduleDoneBy | null {
+  return isListValue(SCHEDULE_DONE_BY, value) ? value : null
 }
 
 const CLEARED_PROPOSAL = {
@@ -371,6 +377,7 @@ export function taskEditValues(input: {
       : {}),
     ...(data.ownerVisible !== undefined && { ownerVisible: data.ownerVisible }),
     ...(data.subVendorVisible !== undefined && { subVendorVisible: data.subVendorVisible }),
+    ...(data.doneBy !== undefined && { doneBy: doneByValue(data.doneBy) }),
     ...(data.confirmationRequired !== undefined && { confirmationRequired: input.confirmationRequired }),
     ...(input.restartConfirmation
       ? {

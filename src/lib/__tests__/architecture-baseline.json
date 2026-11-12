@@ -890,8 +890,14 @@
     "taskDependencies": [
       "src/lib/domain/schedule/store.ts"
     ],
+    "teamMembers": [
+      "src/lib/domain/identity/store.ts"
+    ],
     "teamPermissionOverrides": [
       "src/app/actions/permission-overrides.ts"
+    ],
+    "teams": [
+      "src/lib/domain/identity/store.ts"
     ],
     "tradeLetters": [
       "src/lib/domain/trade-letters/store.ts"

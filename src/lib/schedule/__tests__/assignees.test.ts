@@ -4,15 +4,16 @@ import {
   addedAssigneeUserIds,
   compactAssigneeLabel,
   joinAssigneeNames,
+  namedAssignee,
   normalizeAssigneeInputs,
   samePeople,
   scheduleItemAssigneeNames,
   scheduleItemAssigneeUserIds,
 } from "@/lib/schedule/assignees"
 
-const ann = { name: "Ann Lee", assignedUserId: "u-ann", projectContactId: null }
-const bo = { name: "Bo Diaz", assignedUserId: null, projectContactId: "pc-bo" }
-const cy = { name: "Cy Ross", assignedUserId: "u-cy", projectContactId: null }
+const ann = { name: "Ann Lee", assignedUserId: "u-ann", projectContactId: null, teamId: null, crewMemberIds: [] }
+const bo = { name: "Bo Diaz", assignedUserId: null, projectContactId: "pc-bo", teamId: null, crewMemberIds: [] }
+const cy = { name: "Cy Ross", assignedUserId: "u-cy", projectContactId: null, teamId: null, crewMemberIds: [] }
 
 describe("schedule assignees", () => {
   it("joins names for the legacy assigned_to column", () => {
@@ -73,5 +74,18 @@ describe("schedule assignees", () => {
     expect(samePeople([ann, bo], [bo, ann])).toBe(false)
     expect(samePeople([ann], [{ ...ann, assignedUserId: null }])).toBe(false)
     expect(samePeople([], [ann])).toBe(false)
+  })
+})
+
+describe("crew assignees", () => {
+  it("counts every crew member as assigned, once", () => {
+    const crew = { ...namedAssignee("ICF Crew"), teamId: "crew-icf", crewMemberIds: ["u-mike", "u-jose"] }
+    const mike = { ...namedAssignee("Mike R."), assignedUserId: "u-mike" }
+    expect(scheduleItemAssigneeUserIds({ assignedTo: "ICF Crew, Mike R.", people: [crew, mike] })).toEqual(["u-mike", "u-jose"])
+  })
+
+  it("treats a changed crew as a different assignment", () => {
+    const icf = { ...namedAssignee("Crew"), teamId: "crew-icf" }
+    expect(samePeople([icf], [{ ...icf, teamId: "crew-framing" }])).toBe(false)
   })
 })

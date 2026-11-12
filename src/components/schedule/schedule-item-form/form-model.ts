@@ -10,6 +10,7 @@ import type {
   TaskStatus,
 } from "@/lib/schedule/types"
 import { PHASE_ORDER, PHASE_LABELS } from "@/lib/schedule/phase-colors"
+import { SCHEDULE_DONE_BY, type ScheduleDoneBy } from "@/lib/domain/schedule/statuses"
 import { DEFAULT_DISPLAY_COLOR } from "@/lib/schedule/appearance"
 import type { ProjectTaskAssigneeOption } from "@/lib/domain/contacts/types"
 import { DEFAULT_NEW_SCHEDULE_ITEM_WORKDAYS } from "@/components/schedule/schedule-item-defaults"
@@ -91,6 +92,8 @@ export const scheduleItemSchema = z.object({
   ownerVisible: z.boolean(),
   subVendorVisible: z.boolean(),
   confirmationRequired: z.boolean(),
+  // The department doing the work, "outside", or null (not set).
+  doneBy: z.enum(SCHEDULE_DONE_BY).nullable(),
   notes: z.string(),
   shiftReason: z.string().max(500, "Reason must be 500 characters or fewer")
 }).superRefine((values, context) => {
@@ -125,6 +128,7 @@ export function newScheduleItemValues(): ScheduleItemFormValues {
     ownerVisible: true,
     subVendorVisible: false,
     confirmationRequired: false,
+    doneBy: null,
     notes: "",
     shiftReason: ""
   }
@@ -156,9 +160,20 @@ export function editingTaskValues(
     ownerVisible: task.ownerVisible ?? true,
     subVendorVisible: task.subVendorVisible ?? false,
     confirmationRequired: task.confirmationRequired ?? false,
+    doneBy: task.doneBy ?? null,
     notes: task.notes ?? "",
     shiftReason: ""
   }
+}
+
+/**
+ * The Done-by value a picked assignee implies: a crew's department, or
+ * "outside" for an owner, subcontractor or supplier. Null for staff and typed
+ * names, which say nothing about the department.
+ */
+export function doneByForAssignee(option: ProjectTaskAssigneeOption): ScheduleDoneBy | null {
+  if (option.crew !== null) return option.crew.department
+  return option.contactType === "subcontractor" || option.contactType === "supplier" ? "outside" : null
 }
 
 /** The assignee option whose name matches a saved assignee name. */

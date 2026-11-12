@@ -136,6 +136,7 @@ export default async function SchedulePage({
   try {
     const assigneeData = await getScheduleTaskAssigneeOptions(id)
     assigneeOptions = [
+      ...assigneeData.crews,
       ...assigneeData.projectContacts,
       ...assigneeData.directoryContacts,
     ]

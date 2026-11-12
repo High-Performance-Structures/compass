@@ -1,6 +1,8 @@
 import { format, parseISO } from "date-fns"
 import { describe, expect, it } from "vitest"
 
+import { PROJECT_DEPARTMENTS } from "@/lib/domain/project/statuses"
+import { SCHEDULE_DONE_BY } from "@/lib/domain/schedule/statuses"
 import { formatDate } from "@/lib/format"
 import type { ScheduleTaskData, TaskDependencyData } from "@/lib/schedule/types"
 
@@ -9,6 +11,7 @@ import {
   bulkTaskIds,
   criticalPathChanges,
   dependenciesWithin,
+  doneByValue,
   isDependencyType,
   isTaskStatus,
   legacyAssignment,
@@ -343,11 +346,21 @@ describe("assignee requests", () => {
   it("keeps every name and the first linked account in the legacy columns", () => {
     expect(
       legacyAssignment([
-        { name: "Bo Diaz", assignedUserId: null, projectContactId: "pc-bo" },
-        { name: "Ann Lee", assignedUserId: "u-ann", projectContactId: null },
-        { name: "Cy Ross", assignedUserId: "u-cy", projectContactId: null },
+        { name: "Bo Diaz", assignedUserId: null, projectContactId: "pc-bo", teamId: null, crewMemberIds: [] },
+        { name: "Ann Lee", assignedUserId: "u-ann", projectContactId: null, teamId: null, crewMemberIds: [] },
+        { name: "Cy Ross", assignedUserId: "u-cy", projectContactId: null, teamId: null, crewMemberIds: [] },
       ])
     ).toEqual({ assignedTo: "Bo Diaz, Ann Lee, Cy Ross", assignedUserId: "u-ann" })
     expect(legacyAssignment([])).toEqual({ assignedTo: null, assignedUserId: null })
+  })
+})
+
+describe("Done by", () => {
+  it("keeps department codes in step with projects and stores only listed values", () => {
+    expect(SCHEDULE_DONE_BY.filter((value) => value !== "outside")).toEqual([...PROJECT_DEPARTMENTS])
+    expect(doneByValue("H")).toBe("H")
+    expect(doneByValue("outside")).toBe("outside")
+    expect(doneByValue("crew")).toBeNull()
+    expect(doneByValue(null)).toBeNull()
   })
 })

@@ -17,6 +17,8 @@ import {
 } from "@/db/schema"
 import { scheduleTaskAssignees, scheduleTaskPeople } from "@/db/schema-participants"
 import { chunkD1Values } from "@/lib/d1-query"
+import { crewMemberIds, listCrews, type Crew } from "@/lib/domain/identity/crews"
+import { CREW_OPTION_PREFIX } from "@/lib/domain/contacts/rules"
 import type { ScheduleAssigneeInput } from "@/lib/schedule/assignees"
 import type { Db } from "@/lib/server/action-context"
 import type {
@@ -256,6 +258,7 @@ export async function loadTaskPeople(
             name: scheduleTaskPeople.displayName,
             assignedUserId: scheduleTaskPeople.assignedUserId,
             projectContactId: scheduleTaskPeople.projectContactId,
+            teamId: scheduleTaskPeople.teamId,
           })
           .from(scheduleTaskPeople)
           .where(inArray(scheduleTaskPeople.scheduleTaskId, chunk))
@@ -263,10 +266,11 @@ export async function loadTaskPeople(
     )
   ).flat()
   rows.sort((left, right) => left.position - right.position)
+  const members = await crewMemberIds(db, rows.flatMap((row) => (row.teamId ? [row.teamId] : [])))
   const byTask = new Map<string, ScheduleTaskPersonData[]>()
-  for (const { scheduleTaskId, name, assignedUserId, projectContactId } of rows) {
+  for (const { scheduleTaskId, name, assignedUserId, projectContactId, teamId } of rows) {
     const people = byTask.get(scheduleTaskId) ?? []
-    people.push({ name, assignedUserId, projectContactId })
+    people.push({ name, assignedUserId, projectContactId, teamId, crewMemberIds: teamId ? members.get(teamId) ?? [] : [] })
     byTask.set(scheduleTaskId, people)
   }
   return byTask
@@ -274,8 +278,9 @@ export async function loadTaskPeople(
 
 /**
  * The people rows for picked assignees: each picked option's Compass account
- * (see resolveAssignedUserId) and, for a project contact, the contact when it
- * belongs to this project. Typed names keep only their name.
+ * (see resolveAssignedUserId), for a project contact the contact when it
+ * belongs to this project, and for a crew ("crew:<teamId>") the company's crew
+ * and its members. Typed names keep only their name.
  */
 export async function resolveScheduleTaskPeople(
   db: Db,
@@ -300,15 +305,23 @@ export async function resolveScheduleTaskPeople(
       .flat()
       .map((row) => row.id)
   )
+  const crews = inputs.some((input) => input.optionId?.startsWith(CREW_OPTION_PREFIX))
+    ? new Map((await listCrews(db, organizationId)).map((crew) => [crew.id, crew]))
+    : new Map<string, Crew>()
   return Promise.all(
     inputs.map(async (input) => {
+      const crew = input.optionId?.startsWith(CREW_OPTION_PREFIX)
+        ? crews.get(input.optionId.slice(CREW_OPTION_PREFIX.length)) ?? null
+        : null
       const contactId = input.optionId?.startsWith("project:")
         ? input.optionId.slice("project:".length)
         : null
       return {
         name: input.name,
-        assignedUserId: await resolveAssignedUserId(db, organizationId, projectId, input.optionId),
+        assignedUserId: crew ? null : await resolveAssignedUserId(db, organizationId, projectId, input.optionId),
         projectContactId: contactId !== null && projectContactIds.has(contactId) ? contactId : null,
+        teamId: crew?.id ?? null,
+        crewMemberIds: crew?.memberIds ?? [],
       }
     })
   )

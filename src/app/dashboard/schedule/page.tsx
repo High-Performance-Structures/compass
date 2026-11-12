@@ -211,6 +211,7 @@ export default async function SchedulePage({
           primaryProject.id
         )
         assigneeOptions = [
+          ...assigneeData.crews,
           ...assigneeData.projectContacts,
           ...assigneeData.directoryContacts,
         ]

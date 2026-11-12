@@ -140,8 +140,8 @@ describe("schedule view rules", () => {
       id: "shared",
       assignedTo: "Ann Lee, Jane Doe",
       people: [
-        { name: "Ann Lee", assignedUserId: "u-ann", projectContactId: null },
-        { name: "Jane Doe", assignedUserId: null, projectContactId: null },
+        { name: "Ann Lee", assignedUserId: "u-ann", projectContactId: null, teamId: null, crewMemberIds: [] },
+        { name: "Jane Doe", assignedUserId: null, projectContactId: null, teamId: null, crewMemberIds: [] },
       ],
     })
     const other = task({ id: "other", assignedTo: "Bo Diaz" })

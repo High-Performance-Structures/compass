@@ -8,7 +8,6 @@ import {
   permissionAuditEvents,
   rolePermissionOverrides,
   teamPermissionOverrides,
-  teams,
   userPermissionOverrides,
   users,
   organizationMembers,
@@ -22,6 +21,7 @@ import {
   type PermissionAccessLevel,
 } from "@/lib/permissions"
 import { requireOrg } from "@/lib/org-scope"
+import { crewExists, crewOptionsQuery } from "@/lib/domain/identity/crews"
 import { USER_ROLES, type UserRole } from "@/lib/domain/identity/statuses"
 import { isListValue } from "@/lib/shared/statuses"
 import { isInternalStaffRole } from "@/lib/user-roles"
@@ -286,10 +286,7 @@ export async function getPermissionOverrideContext(): Promise<PermissionOverride
       })
       .from(teamPermissionOverrides)
       .where(eq(teamPermissionOverrides.organizationId, orgId)),
-    db
-      .select({ id: teams.id, name: teams.name })
-      .from(teams)
-      .where(eq(teams.organizationId, orgId)),
+    crewOptionsQuery(db, orgId),
     canManagePermissions
       ? db
           .select({
@@ -575,16 +572,7 @@ export async function updateTeamPermissionOverride(input: {
     }
 
     const db = getDb(env.DB)
-    const team = await db
-      .select({ id: teams.id })
-      .from(teams)
-      .where(
-        and(
-          eq(teams.id, input.teamId),
-          eq(teams.organizationId, currentUser.organizationId)
-        )
-      )
-      .get()
+    const team = await crewExists(db, currentUser.organizationId, input.teamId)
 
     if (!team) {
       return { success: false, error: "Unknown team" }

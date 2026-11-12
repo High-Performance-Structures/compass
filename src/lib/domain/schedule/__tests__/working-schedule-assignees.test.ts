@@ -111,8 +111,8 @@ describe("loadWorkingSchedule assignees", () => {
       .run(now, now)
     const db = d1(sqlite)
     const people = [
-      { name: "Ann Lee", assignedUserId: "u-ann", projectContactId: null },
-      { name: "Bo Diaz", assignedUserId: null, projectContactId: "pc-bo" },
+      { name: "Ann Lee", assignedUserId: "u-ann", projectContactId: null, teamId: null, crewMemberIds: [] },
+      { name: "Bo Diaz", assignedUserId: null, projectContactId: "pc-bo", teamId: null, crewMemberIds: [] },
     ]
     const [first, ...rest] = replaceTaskPeopleQueries(db, "t1", people, now)
     if (!first) throw new Error("expected statements")
@@ -123,7 +123,7 @@ describe("loadWorkingSchedule assignees", () => {
     await assignProjectTasks(db, "p1", [{ id: "t1", confirmationRequired: false }], "Cy Ross", now)
     const reassigned = (await loadWorkingSchedule(db, "p1")).tasks[0]
     expect(reassigned?.assignedTo).toBe("Cy Ross")
-    expect(reassigned?.people).toEqual([{ name: "Cy Ross", assignedUserId: null, projectContactId: null }])
+    expect(reassigned?.people).toEqual([{ name: "Cy Ross", assignedUserId: null, projectContactId: null, teamId: null, crewMemberIds: [] }])
     sqlite.close()
   })
 

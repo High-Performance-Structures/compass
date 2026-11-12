@@ -12,6 +12,14 @@ export const SCHEDULE_LINK_TYPES = [
 ] as const
 export type ScheduleLinkType = (typeof SCHEDULE_LINK_TYPES)[number]
 
+/**
+ * Who performs a schedule item's work ("Done by"): one of the company's
+ * department codes (the same codes as PROJECT_DEPARTMENTS, which a test keeps
+ * in step) or an outside trade. Null when not set.
+ */
+export const SCHEDULE_DONE_BY = ["O", "H", "N", "D", "outside"] as const
+export type ScheduleDoneBy = (typeof SCHEDULE_DONE_BY)[number]
+
 export const SCHEDULE_TASK_STATUSES = ["PENDING", "IN_PROGRESS", "COMPLETE", "BLOCKED"] as const
 export type TaskStatus = (typeof SCHEDULE_TASK_STATUSES)[number]
 

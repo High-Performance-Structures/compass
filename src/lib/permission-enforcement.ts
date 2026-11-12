@@ -1,17 +1,17 @@
 import "server-only"
 
 import { cache } from "react"
-import { and, eq, sql } from "drizzle-orm"
+import { and, eq, inArray, sql } from "drizzle-orm"
 
 import { getDb } from "@/db"
 import {
   rolePermissionOverrides,
-  teamMembers,
   teamPermissionOverrides,
   userPermissionOverrides,
 } from "@/db/schema"
 import type { AuthUser } from "@/lib/auth"
 import { getCloudflareContext } from "@/lib/db"
+import { crewIdsForUserSubquery } from "@/lib/domain/identity/crews"
 import { isDemoOrg, isDemoUser } from "@/lib/demo"
 import {
   accessLevelToFeatureActions,
@@ -116,14 +116,10 @@ const loadPermissionOverrides = cache(
           accessLevel: teamPermissionOverrides.accessLevel,
         })
         .from(teamPermissionOverrides)
-        .innerJoin(
-          teamMembers,
-          eq(teamPermissionOverrides.teamId, teamMembers.teamId)
-        )
         .where(
           and(
             eq(teamPermissionOverrides.organizationId, organizationId),
-            eq(teamMembers.userId, userId)
+            inArray(teamPermissionOverrides.teamId, crewIdsForUserSubquery(db, userId))
           )
         ),
       db

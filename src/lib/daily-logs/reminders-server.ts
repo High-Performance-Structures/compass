@@ -14,6 +14,7 @@ import {
 import { internalDutyEntries } from "@/db/schema-internal-duties"
 import { scheduleTaskPeople } from "@/db/schema-participants"
 import { companyTimeZone } from "@/lib/daily-logs/log-followups-server"
+import { crewMemberIds } from "@/lib/domain/identity/crews"
 import {
   isFieldRole,
   isWorkDay,
@@ -165,13 +166,17 @@ export async function staffMissingDailyLogs(
       .innerJoin(projects, eq(projects.id, scheduleTasks.projectId))
       .where(scheduledToday),
     db
-      .select({ userId: scheduleTaskPeople.assignedUserId, projectId: projects.id, name: projects.name, projectNumber: projects.projectNumber })
+      .select({ userId: scheduleTaskPeople.assignedUserId, teamId: scheduleTaskPeople.teamId, projectId: projects.id, name: projects.name, projectNumber: projects.projectNumber })
       .from(scheduleTaskPeople)
       .innerJoin(scheduleTasks, eq(scheduleTasks.id, scheduleTaskPeople.scheduleTaskId))
       .innerJoin(projects, eq(projects.id, scheduleTasks.projectId))
       .where(scheduledToday),
   ])
-  const scheduled = [...scheduledFirst, ...scheduledPeople]
+  // A crew assignment counts for everyone on the crew.
+  const crewRows = scheduledPeople.flatMap((row) => (row.teamId ? [{ ...row, teamId: row.teamId }] : []))
+  const crewMembers = await crewMemberIds(db, crewRows.map((row) => row.teamId))
+  const scheduledCrew = crewRows.flatMap((row) => (crewMembers.get(row.teamId) ?? []).map((userId) => ({ ...row, userId })))
+  const scheduled = [...scheduledFirst, ...scheduledPeople, ...scheduledCrew]
   const done = new Set<string>()
   for (const row of [...logged.flat(), ...dutyLogged.flat()]) if (row.userId) done.add(row.userId)
   const scheduledProject = new Map<string, { readonly id: string; readonly label: string }>()
