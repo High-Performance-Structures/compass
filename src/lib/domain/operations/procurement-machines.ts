@@ -57,8 +57,8 @@ export const purchaseOrderAutomation = defineMachine({
   },
 })
 
-export type RfqAutomationEvent = keyof typeof rfqAutomation.transitions
-export type PurchaseOrderAutomationEvent = keyof typeof purchaseOrderAutomation.transitions
+type RfqAutomationEvent = keyof typeof rfqAutomation.transitions
+type PurchaseOrderAutomationEvent = keyof typeof purchaseOrderAutomation.transitions
 
 export type ProcurementAutomation =
   | { readonly kind: "rfq"; readonly event: RfqAutomationEvent }
