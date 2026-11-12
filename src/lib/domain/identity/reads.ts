@@ -3,10 +3,11 @@
  * module owns users, organizations, their memberships and project access
  * invitations; callers outside it ask here instead of querying them.
  */
-import { and, eq } from "drizzle-orm"
+import { and, asc, eq } from "drizzle-orm"
 
-import { organizationMembers, organizations, projectAccessInvitations } from "@/db/schema"
+import { organizationMembers, organizations, projectAccessInvitations, users } from "@/db/schema"
 import type { Db } from "@/lib/server/action-context"
+import { isInternalStaffRole } from "@/lib/user-roles"
 
 /**
  * A still-open ("sent") invitation to this project, for staff previewing
@@ -48,4 +49,18 @@ export function organizationMembershipsQuery(db: Db, userId: string) {
     .from(organizationMembers)
     .innerJoin(organizations, eq(organizations.id, organizationMembers.organizationId))
     .where(eq(organizationMembers.userId, userId))
+}
+
+/** The company's active staff (internal roles only), by name, for staff-only pickers. */
+export async function activeStaff(
+  db: Db,
+  organizationId: string,
+): Promise<{ readonly id: string; readonly name: string }[]> {
+  const rows = await db
+    .select({ id: users.id, displayName: users.displayName, email: users.email, role: organizationMembers.role })
+    .from(organizationMembers)
+    .innerJoin(users, eq(users.id, organizationMembers.userId))
+    .where(and(eq(organizationMembers.organizationId, organizationId), eq(users.isActive, true)))
+    .orderBy(asc(users.displayName), asc(users.email))
+  return rows.filter((row) => isInternalStaffRole(row.role)).map((row) => ({ id: row.id, name: row.displayName?.trim() || row.email }))
 }

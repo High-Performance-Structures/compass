@@ -9,7 +9,7 @@ import { FormField, FormItem, FormLabel } from "@/components/ui/form"
 import type { ProjectTaskAssigneeOption } from "@/lib/domain/contacts/types"
 import { MAX_SCHEDULE_ASSIGNEES } from "@/lib/schedule/assignees"
 
-import type { ScheduleItemFormValues } from "./form-model"
+import { doneByForAssignee, type ScheduleItemFormValues } from "./form-model"
 
 type Assignee = ScheduleItemFormValues["assignees"][number]
 
@@ -40,6 +40,10 @@ export function ScheduleAssigneesField({
   // Picking an owner or vendor asks them to confirm and shows them the item,
   // as picking one did when an item had a single assignee.
   function applyAudience(option: ProjectTaskAssigneeOption): void {
+    // Done by follows the first assignee that implies a department, unless
+    // someone already set it.
+    const doneBy = doneByForAssignee(option)
+    if (doneBy !== null && form.getValues("doneBy") === null) form.setValue("doneBy", doneBy, { shouldDirty: true })
     const external = option.contactType === "owner" || option.contactType === "subcontractor" || option.contactType === "supplier"
     if (external) form.setValue("confirmationRequired", true, { shouldDirty: true })
     if (option.contactType === "owner") form.setValue("ownerVisible", true, { shouldDirty: true })
@@ -58,7 +62,7 @@ export function ScheduleAssigneesField({
         return (
           <FormItem>
             <FormLabel className="text-xs text-muted-foreground font-medium">
-              Responsible people
+              Responsible people or crews
             </FormLabel>
             {assignees.length > 0 && (
               <ul className="flex flex-wrap gap-1.5" aria-label="Assigned people">
@@ -87,7 +91,7 @@ export function ScheduleAssigneesField({
               options={assigneeOptions.filter((option) => !pickedNames.has(option.name.trim().toLowerCase()))}
               disabled={assignees.length >= MAX_SCHEDULE_ASSIGNEES}
               clearLabel="Remove everyone"
-              placeholder={assignees.length > 0 ? "Add another person..." : "Choose contacts or type a name..."}
+              placeholder={assignees.length > 0 ? "Add another person or crew..." : "Choose a crew, contact or type a name..."}
               onValueChange={(value, option) => {
                 // The picker's clear button sends an empty value.
                 if (!value.trim()) {

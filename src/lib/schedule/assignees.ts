@@ -23,6 +23,11 @@ type AssignedItem = {
   readonly people?: readonly ScheduleTaskPersonData[]
 }
 
+/** A typed-name assignee: no account, contact or crew behind it. */
+export function namedAssignee(name: string): ScheduleTaskPersonData {
+  return { name, assignedUserId: null, projectContactId: null, teamId: null, crewMemberIds: [] }
+}
+
 /** The joined names stored in schedule_tasks.assigned_to. */
 export function joinAssigneeNames(names: readonly string[]): string | null {
   return names.length > 0 ? names.join(", ") : null
@@ -65,12 +70,16 @@ export function scheduleItemAssigneeNames(item: AssignedItem): readonly string[]
 
 /**
  * Every linked Compass account assigned to the item, in picked order and
- * de-duplicated. assigned_user_id is always included: it is the first linked
- * person, or the account an older single-name edit kept.
+ * de-duplicated: each person's account and every member of an assigned crew.
+ * assigned_user_id is always included: it is the first linked person, or the
+ * account an older single-name edit kept.
  */
 export function scheduleItemAssigneeUserIds(item: AssignedItem): readonly string[] {
   const people = currentPeople(item) ?? []
-  const ids = [...people.map((person) => person.assignedUserId), item.assignedUserId ?? null]
+  const ids = [
+    ...people.flatMap((person) => [person.assignedUserId, ...person.crewMemberIds]),
+    item.assignedUserId ?? null,
+  ]
   return [...new Set(ids.filter((id): id is string => id !== null))]
 }
 
@@ -103,7 +112,8 @@ export function samePeople(
         other !== undefined &&
         person.name === other.name &&
         person.assignedUserId === other.assignedUserId &&
-        person.projectContactId === other.projectContactId
+        person.projectContactId === other.projectContactId &&
+        person.teamId === other.teamId
       )
     })
   )

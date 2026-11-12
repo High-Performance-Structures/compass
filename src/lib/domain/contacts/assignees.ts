@@ -6,9 +6,11 @@ import { customers, organizationMembers, projectContacts, users, vendorContacts,
 import { vendorJobContactType } from "@/lib/contact-project-association"
 import { readFeatureSettings } from "@/lib/feature-settings/server"
 import { uniqueInternalStaffMembers } from "@/lib/internal-contact-directory"
+import { listCrews } from "@/lib/domain/identity/crews"
 import type { Db } from "@/lib/server/action-context"
 
 import {
+  crewToTaskAssigneeOption,
   customerToTaskAssigneeOption,
   directoryContactToTaskAssigneeOption,
   normalizeDirectoryKey,
@@ -112,6 +114,7 @@ export async function loadProjectTaskAssigneeOptions(
   return {
     projectContacts: [...projectContactItems.map(projectContactToTaskAssigneeOption), ...organizationUserOptions],
     directoryContacts,
+    crews: [],
   }
 }
 
@@ -127,7 +130,7 @@ export async function loadScheduleTaskAssigneeOptions(
   }
 ): Promise<ProjectTaskAssigneeOptions> {
   const orgId = scope.organizationId
-  const [projectContactRows, customerRows, vendorRows, vendorContactRows, organizationUserRows] = await Promise.all([
+  const [projectContactRows, customerRows, vendorRows, vendorContactRows, organizationUserRows, crews] = await Promise.all([
     activeProjectContacts(db, scope),
     scope.grants.customers
       ? db
@@ -187,6 +190,7 @@ export async function loadScheduleTaskAssigneeOptions(
           .where(and(eq(organizationMembers.organizationId, orgId), eq(users.isActive, true)))
           .orderBy(asc(users.displayName), asc(users.email))
       : [],
+    scope.grants.internal ? listCrews(db, orgId) : [],
   ])
 
   const projectOptions = projectContactRows.map((row) => toContactItem(row)).map(projectContactToTaskAssigneeOption)
@@ -207,6 +211,7 @@ export async function loadScheduleTaskAssigneeOptions(
     directoryContacts: [...customerOptions, ...vendorOptions, ...vendorPersonOptions].sort((left, right) =>
       left.label.localeCompare(right.label)
     ),
+    crews: crews.map(crewToTaskAssigneeOption),
   }
 }
 
@@ -330,6 +335,7 @@ export async function addDirectoryVendorForTask(
       projectContactId: contactId,
       directoryContactId: null,
       projectAccess: true,
+      crew: null,
     },
   }
 }

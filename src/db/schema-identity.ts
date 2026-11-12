@@ -15,6 +15,7 @@ import {
 } from "drizzle-orm/sqlite-core"
 
 import { ACCOUNT_DELETION_REQUEST_STATUSES, STORED_USER_ROLES, USER_ROLES } from "../lib/domain/identity/statuses"
+import { PROJECT_DEPARTMENTS } from "../lib/domain/project/statuses"
 
 // Auth and user management tables
 export const users = sqliteTable("users", {
@@ -124,6 +125,11 @@ export const organizationInvites = sqliteTable("organization_invites", {
     index("organization_invites_organization_id_idx").on(table.organizationId),
   ])
 
+/**
+ * Teams of the company's own staff. A team with a department is a crew that
+ * schedule items can be assigned to (0320). Written by
+ * src/lib/domain/identity/crews.ts.
+ */
 export const teams = sqliteTable("teams", {
   id: text("id").primaryKey(),
   organizationId: text("organization_id")
@@ -131,10 +137,15 @@ export const teams = sqliteTable("teams", {
     .references(() => organizations.id, { onDelete: "cascade" }),
   name: text("name").notNull(),
   description: text("description"),
+  /** Department code (projects.department) whose work the crew does. */
+  department: text("department", { enum: PROJECT_DEPARTMENTS }),
+  leadUserId: text("lead_user_id").references(() => users.id, { onDelete: "set null" }),
   createdAt: text("created_at").notNull(),
 },
   (table) => [
     index("teams_organization_id_idx").on(table.organizationId),
+    index("teams_lead_user_id_idx").on(table.leadUserId),
+    uniqueIndex("teams_organization_name_unique").on(table.organizationId, table.name),
   ])
 
 export const teamMembers = sqliteTable("team_members", {

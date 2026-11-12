@@ -19,6 +19,7 @@ function option(
     projectContactId: id,
     directoryContactId: null,
     projectAccess: true,
+    crew: null,
   }
 }
 

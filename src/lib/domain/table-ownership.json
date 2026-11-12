@@ -3,12 +3,14 @@
   "modules": {
     "identity": {
       "path": "src/lib/domain/identity",
-      "hint": "Signed-in user/org: userContext / orgContext from @/lib/server/action-context. Anything else: use or add a read function in src/lib/domain/identity/.",
+      "hint": "Signed-in user/org: userContext / orgContext from @/lib/server/action-context. Anything else: use or add a read function in src/lib/domain/identity/. Crews (teams): src/lib/domain/identity/crews.ts.",
       "tables": {
         "users": "users",
         "organizations": "organizations",
         "organizationMembers": "organization_members",
-        "projectAccessInvitations": "project_access_invitations"
+        "projectAccessInvitations": "project_access_invitations",
+        "teams": "teams",
+        "teamMembers": "team_members"
       }
     },
     "project": {
@@ -34,7 +36,10 @@
   },
   "roles": {
     "$comment": "Role logic lives in one place. Literal role comparisons are allowed only in these paths.",
-    "allowedPaths": ["src/lib/domain/identity/", "src/lib/user-roles.ts"],
+    "allowedPaths": [
+      "src/lib/domain/identity/",
+      "src/lib/user-roles.ts"
+    ],
     "hint": "Use a named role predicate from @/lib/user-roles (isInternalStaffRole, isExternalProjectRole, ...). If none fits, add one there."
   }
 }

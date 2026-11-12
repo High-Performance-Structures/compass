@@ -6,7 +6,7 @@ import {
   text,
   uniqueIndex,
 } from "drizzle-orm/sqlite-core"
-import { organizations, projectContacts, projects, scheduleTasks, users } from "./schema"
+import { organizations, projectContacts, projects, scheduleTasks, teams, users } from "./schema"
 
 /**
  * A source-record participant is the authorization boundary for an imported
@@ -165,9 +165,12 @@ export const scheduleTaskPeople = sqliteTable(
       () => projectContacts.id,
       { onDelete: "set null" },
     ),
+    // A crew assignment (0320): everyone on the crew is assigned.
+    teamId: text("team_id").references(() => teams.id, { onDelete: "set null" }),
     createdAt: text("created_at").notNull(),
   },
   (table) => [
+    index("schedule_task_people_team_idx").on(table.teamId),
     uniqueIndex("schedule_task_people_task_name_unique").on(
       table.scheduleTaskId,
       table.displayName,

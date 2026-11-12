@@ -7,9 +7,7 @@ import {
   projects,
   organizationMembers,
   projectMembers,
-  teamMembers,
   groupMembers,
-  teams,
   groups,
   type User,
   type NewUser,
@@ -17,6 +15,7 @@ import {
 import { getCurrentUser } from "@/lib/auth"
 import { canManageUserAccess, requirePermission } from "@/lib/permissions"
 import { isDemoOrg, isDemoUser } from "@/lib/demo"
+import { crewsForUsers } from "@/lib/domain/identity/crews"
 import { insertProjectMember } from "@/lib/domain/project/store"
 import { sendOrResendWorkOSInvitation } from "@/lib/workos-invitations"
 import { ensureInternalContactForStaff } from "@/lib/internal-contact-provisioning"
@@ -82,25 +81,14 @@ async function getOrganizationUsers(
         )
       )
 
-    // for each user, fetch their teams, groups, and counts
+    // Crews for everyone in one read; groups and counts per user.
+    const crewsByUser = await crewsForUsers(db, organizationId, allUsers.map((user) => user.id))
     const usersWithRelations = await Promise.all(
       allUsers.map(async (user) => {
         const { organizationRole, ...identity } = user
         const accessStatus: UserWithRelations["accessStatus"] = user.isActive
           ? "active"
           : "invited"
-        // get teams
-        const userTeams = await db
-          .select({ id: teams.id, name: teams.name })
-          .from(teamMembers)
-          .innerJoin(teams, eq(teamMembers.teamId, teams.id))
-          .where(
-            and(
-              eq(teamMembers.userId, user.id),
-              eq(teams.organizationId, organizationId)
-            )
-          )
-
         // get groups
         const userGroups = await db
           .select({ id: groups.id, name: groups.name, color: groups.color })
@@ -137,7 +125,7 @@ async function getOrganizationUsers(
           role: organizationRole,
           // Rosters and collaboration search are not private employee files.
           address: null,
-          teams: userTeams,
+          teams: crewsByUser.get(user.id) ?? [],
           groups: userGroups,
           projectCount,
           organizationCount,

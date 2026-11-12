@@ -4,6 +4,7 @@ import type { ProjectTaskAssigneeOption } from "@/lib/domain/contacts/types"
 import {
   CUSTOM_PHASE_VALUE,
   confirmationStatusLabel,
+  doneByForAssignee,
   editingTaskValues,
   matchingAssigneeOptionId,
   percentForStatusChange,
@@ -109,6 +110,7 @@ describe("schedule item form model", () => {
       projectContactId: id,
       directoryContactId: null,
       projectAccess: true,
+      crew: null,
     }))
     expect(matchingAssigneeOptionId(options, "  jane doe ")).toBe("c1")
     expect(matchingAssigneeOptionId(options, null)).toBeNull()
@@ -173,6 +175,7 @@ describe("schedule item assignees in the form", () => {
       projectContactId: null,
       directoryContactId: null,
       projectAccess: true,
+      crew: null,
     },
   ]
 
@@ -181,8 +184,8 @@ describe("schedule item assignees in the form", () => {
       task({
         assignedTo: "Ann Lee, Framing Crew",
         people: [
-          { name: "Ann Lee", assignedUserId: "u-ann", projectContactId: null },
-          { name: "Framing Crew", assignedUserId: null, projectContactId: null },
+          { name: "Ann Lee", assignedUserId: "u-ann", projectContactId: null, teamId: null, crewMemberIds: [] },
+          { name: "Framing Crew", assignedUserId: null, projectContactId: null, teamId: null, crewMemberIds: [] },
         ],
       }),
       options
@@ -206,5 +209,19 @@ describe("schedule item assignees in the form", () => {
     expect(withAssignee(one, "ann lee", null)).toEqual(one)
     expect(withAssignee(one, "  ", null)).toEqual(one)
     expect(withAssignee(one, "Bo Diaz", null)).toEqual([...one, { name: "Bo Diaz", optionId: null }])
+  })
+})
+
+describe("doneByForAssignee", () => {
+  const base = {
+    id: "x", label: "x", name: "x", companyName: null, email: null, phone: null,
+    source: "project" as const, projectContactId: null, directoryContactId: null, projectAccess: true,
+  }
+
+  it("takes a crew's department, outside for vendors, nothing for staff", () => {
+    expect(doneByForAssignee({ ...base, contactType: "internal", crew: { department: "H" } })).toBe("H")
+    expect(doneByForAssignee({ ...base, contactType: "subcontractor", crew: null })).toBe("outside")
+    expect(doneByForAssignee({ ...base, contactType: "supplier", crew: null })).toBe("outside")
+    expect(doneByForAssignee({ ...base, contactType: "internal", crew: null })).toBeNull()
   })
 })

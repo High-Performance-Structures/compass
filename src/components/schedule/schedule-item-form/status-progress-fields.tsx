@@ -19,6 +19,7 @@ import { Switch } from "@/components/ui/switch"
 import { STATUS_OPTIONS } from "@/lib/schedule/types"
 import type { ProjectTaskAssigneeOption } from "@/lib/domain/contacts/types"
 import { ScheduleAssigneesField } from "./assignees-field"
+import { ScheduleDoneByField } from "./done-by-field"
 import {
   percentForStatusChange,
   statusForPercentChange,
@@ -75,6 +76,8 @@ export function StatusProgressFields({
       />
 
       <ScheduleAssigneesField form={form} assigneeOptions={assigneeOptions} />
+
+      <ScheduleDoneByField form={form} />
 
       <FormField
         control={form.control}

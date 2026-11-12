@@ -28,6 +28,7 @@ import {
 import {
   dependencyData,
   exceptionDataCast,
+  doneByValue,
   legacyAssignment,
   ownerSchedulePaths,
   propagateFrom,
@@ -263,6 +264,8 @@ export async function createTask(
     ownerVisible?: boolean
     subVendorVisible?: boolean
     confirmationRequired?: boolean
+    /** Department code or "outside" doing the work. */
+    doneBy?: string | null
     notes?: string | null
     templateScheduleItemId?: string | null
     templateTodoIds?: readonly string[]
@@ -352,6 +355,7 @@ export async function createTask(
       assignedUserId,
       ownerVisible: data.ownerVisible ?? true,
       subVendorVisible: data.subVendorVisible ?? false,
+      doneBy: doneByValue(data.doneBy),
       confirmationRequired,
       confirmationStatus: confirmation.status,
       confirmationRequestedAt: confirmation.requestedAt,
@@ -457,6 +461,8 @@ export async function updateTask(
     ownerVisible?: boolean
     subVendorVisible?: boolean
     confirmationRequired?: boolean
+    /** Department code or "outside" doing the work; null clears it. */
+    doneBy?: string | null
     acceptChangeProposal?: boolean
     shiftReason?: string
     notes?: string | null

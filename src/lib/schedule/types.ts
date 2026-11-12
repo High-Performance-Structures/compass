@@ -1,4 +1,4 @@
-import type { DependencyType, TaskStatus, WorkdayExceptionType } from "@/lib/domain/schedule/statuses"
+import type { DependencyType, ScheduleDoneBy, TaskStatus, WorkdayExceptionType } from "@/lib/domain/schedule/statuses"
 
 export type { DependencyType, TaskStatus, WorkdayExceptionType }
 
@@ -46,6 +46,8 @@ export interface ScheduleTaskData {
   percentComplete: number
   assignedTo: string | null
   assignedUserId?: string | null
+  /** Department code that performs the work, "outside", or null. */
+  doneBy?: ScheduleDoneBy | null
   ownerVisible?: boolean
   subVendorVisible?: boolean
   confirmationRequired?: boolean
@@ -65,11 +67,17 @@ export interface ScheduleTaskData {
   people?: readonly ScheduleTaskPersonData[]
 }
 
-/** One person assigned to a schedule item. All assignees are equal. */
+/**
+ * One assignee of a schedule item: a person, or a crew (teamId set), in which
+ * case everyone in crewMemberIds is assigned. All assignees are equal.
+ */
 export interface ScheduleTaskPersonData {
   readonly name: string
   readonly assignedUserId: string | null
   readonly projectContactId: string | null
+  readonly teamId: string | null
+  /** The crew's members when teamId is set, else empty. Read, never stored. */
+  readonly crewMemberIds: readonly string[]
 }
 
 export interface ScheduleTaskAssigneeData {

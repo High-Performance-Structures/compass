@@ -30,6 +30,7 @@ import type {
   TaskDependencyData,
   WorkdayExceptionData,
 } from "@/lib/schedule/types"
+import { namedAssignee } from "@/lib/schedule/assignees"
 
 import { loadProjectScheduleRows } from "./queries"
 import { criticalPathChanges, dependencyData, taskWithStatus, type DateUpdates } from "./rules"
@@ -146,7 +147,7 @@ export async function assignProjectTasks(
       ...replaceTaskPeopleQueries(
         db,
         task.id,
-        assignedTo ? [{ name: assignedTo, assignedUserId: null, projectContactId: null }] : [],
+        assignedTo ? [namedAssignee(assignedTo)] : [],
         now
       ),
       db
@@ -354,6 +355,7 @@ export function replaceTaskPeopleQueries(
     displayName: person.name,
     assignedUserId: person.assignedUserId,
     projectContactId: person.projectContactId,
+    teamId: person.teamId,
     createdAt: now,
   }))
   return [
@@ -372,7 +374,7 @@ export async function setTaskAssignedTo(
   const [first, ...rest] = replaceTaskPeopleQueries(
     db,
     taskId,
-    assignedTo ? [{ name: assignedTo, assignedUserId: null, projectContactId: null }] : [],
+    assignedTo ? [namedAssignee(assignedTo)] : [],
     now
   )
   if (first) await db.batch([first, ...rest])

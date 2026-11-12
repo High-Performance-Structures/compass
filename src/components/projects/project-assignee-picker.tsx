@@ -75,9 +75,11 @@ function AssigneeOption({
       <span className="min-w-0">
         <span className="block truncate font-medium">{option.name}</span>
         <span className="block truncate text-xs text-muted-foreground">
-          {option.source === "directory"
-            ? `${option.companyName ?? option.contactType} · Directory`
-            : option.companyName ?? option.contactType}
+          {option.crew !== null
+            ? "Crew · everyone on it is assigned"
+            : option.source === "directory"
+              ? `${option.companyName ?? option.contactType} · Directory`
+              : option.companyName ?? option.contactType}
         </span>
       </span>
       {selected && <IconCheck className="mt-0.5 size-4 shrink-0" />}
@@ -104,9 +106,14 @@ export function ProjectAssigneePicker({
         normalizeChoice(option.name) === normalizedValue ||
         normalizeChoice(option.label) === normalizedValue
     ) ?? null
+  const crewOptions = options.filter(
+    (option) => option.crew !== null && optionMatches(option, normalizedQuery)
+  )
   const projectOptions = options.filter(
     (option) =>
-      option.source === "project" && optionMatches(option, normalizedQuery)
+      option.crew === null &&
+      option.source === "project" &&
+      optionMatches(option, normalizedQuery)
   )
   const directoryOptions = options.filter(
     (option) =>
@@ -158,6 +165,22 @@ export function ProjectAssigneePicker({
           />
         </div>
         <div className="max-h-72 overflow-y-auto p-2">
+          {crewOptions.length > 0 && (
+            <div className="mb-2 space-y-1 border-b pb-2">
+              <p className="px-2 py-1 text-xs font-medium text-muted-foreground">
+                Crews
+              </p>
+              {crewOptions.map((option) => (
+                <AssigneeOption
+                  key={option.id}
+                  option={option}
+                  selected={selectedOption?.id === option.id}
+                  onSelect={() => selectOption(option)}
+                />
+              ))}
+            </div>
+          )}
+
           {projectOptions.length > 0 && (
             <div className="space-y-1">
               <p className="px-2 py-1 text-xs font-medium text-muted-foreground">
@@ -190,7 +213,7 @@ export function ProjectAssigneePicker({
             </div>
           )}
 
-          {projectOptions.length === 0 && directoryOptions.length === 0 && (
+          {crewOptions.length === 0 && projectOptions.length === 0 && directoryOptions.length === 0 && (
             <p className="px-2 py-3 text-sm text-muted-foreground">
               No matching contacts.
             </p>

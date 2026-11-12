@@ -2,18 +2,20 @@
  * The only code that writes the identity tables (architecture standard,
  * section 1): users, organization memberships, project access invitations
  * (including their welcome-email queue), staff members' other email
- * addresses and account deletion requests.
+ * addresses, account deletion requests and crews (teams).
  * Callers resolve access first; nothing here checks who is asking.
  * Functions named `…Statement` return a statement for the caller's
  * `db.batch`, so writes that must land together stay in one batch.
  */
-import { and, eq, inArray, lte, notInArray, or, sql } from "drizzle-orm"
+import { and, eq, inArray, lte, ne, notInArray, or, sql } from "drizzle-orm"
 import type { BatchItem } from "drizzle-orm/batch"
 
 import {
   accountDeletionRequests,
   organizationMembers,
   projectAccessInvitations,
+  teamMembers,
+  teams,
   userAlternateEmails,
   users,
   type NewOrganizationMember,
@@ -21,11 +23,13 @@ import {
   type NewUser,
 } from "@/db/schema"
 import { PERSONAL_DATA_TABLES } from "@/lib/account-deletion"
+import { chunkD1InsertRows } from "@/lib/d1-query"
 import { ACCOUNT_DELETION_REQUEST_STATUSES, STORED_USER_ROLES, USER_ROLES } from "@/lib/domain/identity/statuses"
 import { deleteProjectSavedViewsOwnedByStatements, deleteSavedViewDefaultsForUserStatement } from "@/lib/domain/settings/store"
 import type { Db } from "@/lib/server/action-context"
 import { assertListFields, requireListValue } from "@/lib/shared/statuses"
 
+import { crewExists, type CrewInput } from "./crews"
 import { deidentifiedUserValues, externalOrganizationRole } from "./rules"
 
 type Statement = BatchItem<"sqlite">
@@ -432,4 +436,54 @@ export async function deleteUserAlternateEmail(db: Db, input: { readonly organiz
     ))
     .returning({ id: userAlternateEmails.id })
   return removed.length > 0
+}
+
+// ---------------------------------------------------------------------------
+// Crews (teams); reads are in ./crews
+// ---------------------------------------------------------------------------
+
+/**
+ * Creates or updates a crew and replaces its members in one batch. Callers
+ * check the input with crewInputProblem first. Returns the crew id, or null
+ * when another crew already has the name or the crew is not the company's.
+ */
+export async function saveCrew(
+  db: Db,
+  input: CrewInput & { readonly organizationId: string; readonly id: string | null; readonly now: string },
+): Promise<string | null> {
+  const name = input.name.trim()
+  const id = input.id ?? crypto.randomUUID()
+  const clash = await db
+    .select({ id: teams.id })
+    .from(teams)
+    .where(and(eq(teams.organizationId, input.organizationId), sql`lower(${teams.name}) = ${name.toLowerCase()}`, ne(teams.id, id)))
+    .get()
+  if (clash) return null
+  if (input.id !== null && !(await crewExists(db, input.organizationId, input.id))) return null
+
+  const values = { name, department: input.department, leadUserId: input.leadUserId }
+  const memberRows = [...new Set(input.memberIds)].map((userId) => ({ id: crypto.randomUUID(), teamId: id, userId, joinedAt: input.now }))
+  const write: BatchItem<"sqlite"> =
+    input.id === null
+      ? db.insert(teams).values({ id, organizationId: input.organizationId, createdAt: input.now, ...values })
+      : db.update(teams).set(values).where(and(eq(teams.id, id), eq(teams.organizationId, input.organizationId)))
+  await db.batch([
+    write,
+    db.delete(teamMembers).where(eq(teamMembers.teamId, id)),
+    ...chunkD1InsertRows(teamMembers, memberRows).map((chunk) => db.insert(teamMembers).values(chunk)),
+  ])
+  return id
+}
+
+/**
+ * Deletes a crew. Its members and permission overrides go with it; schedule
+ * items keep the crew's name and lose the link (schedule_task_people.team_id
+ * is set null), so nothing points at a missing crew.
+ */
+export async function deleteCrew(db: Db, organizationId: string, crewId: string): Promise<boolean> {
+  const deleted = await db
+    .delete(teams)
+    .where(and(eq(teams.id, crewId), eq(teams.organizationId, organizationId)))
+    .returning({ id: teams.id })
+  return deleted.length > 0
 }
