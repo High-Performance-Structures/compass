@@ -143,7 +143,7 @@ export async function ensureUserExists(workosUser: {
     lastName: workosUser.lastName ?? null,
     displayName: /* firstName + lastName, or email prefix */,
     avatarUrl: workosUser.profilePictureUrl ?? null,
-    role: "office", // default role
+    role: "guest", // least access; memberships decide the working role
     isActive: true,
     lastLoginAt: now,
     createdAt: now,
@@ -155,7 +155,7 @@ export async function ensureUserExists(workosUser: {
 }
 ```
 
-New users get the "office" role by default. An admin must explicitly promote them. This is a security decision: new users should have limited access until someone with authority grants more.
+New accounts start as "guest", the least access. The role a person actually works with comes from their company or project membership (`resolveSessionRole` in `src/lib/domain/identity/session-role.ts`); `users.role` is only the fallback for someone with no membership at all. A person becomes staff only when an admin adds them to the company as staff. This is a security decision: no account should fall back to a staff role by accident.
 
 
 session management

@@ -662,24 +662,6 @@ export async function ensureUserExists(workosUser: {
     return reconciledUser
   }
 
-  const pendingInvitation = await db
-    .select({
-      role: projectAccessInvitations.role,
-    })
-    .from(projectAccessInvitations)
-    .where(
-      and(
-        eq(projectAccessInvitations.status, "sent"),
-        sql`lower(trim(${projectAccessInvitations.email})) = ${workosUser.email
-          .trim()
-          .toLowerCase()}`,
-        sql`(${projectAccessInvitations.workosExpiresAt} IS NULL OR ${projectAccessInvitations.workosExpiresAt} > ${now})`
-      )
-    )
-    .orderBy(desc(projectAccessInvitations.invitedAt))
-    .limit(1)
-    .get()
-
   const newUser: typeof users.$inferInsert = {
     id: workosUser.id,
     email: workosUser.email,
@@ -690,9 +672,12 @@ export async function ensureUserExists(workosUser: {
         ? `${workosUser.firstName} ${workosUser.lastName}`
         : workosUser.email.split("@")[0],
     avatarUrl: workosUser.profilePictureUrl ?? null,
-    // Project invitation roles remain project-scoped. The effective role is
-    // derived from project_members after authentication.
-    role: pendingInvitation ? "guest" : "office",
+    // Every new account starts as "guest", the least access. The working
+    // role comes from the person's company or project membership
+    // (resolveSessionRole); someone becomes staff only when an admin adds them
+    // to the company as staff. "office" here once left invited owners and
+    // vendors whose WorkOS link had expired holding a staff fallback role.
+    role: "guest",
     isActive: true,
     lastLoginAt: now,
     createdAt: now,
