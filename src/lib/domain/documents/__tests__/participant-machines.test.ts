@@ -7,6 +7,11 @@ import { afterEach, describe, expect, it } from "vitest"
 import { projectSourceRecordParticipants } from "@/db/schema-participants"
 import { sqliteDb } from "@/lib/domain/__tests__/sqlite-d1"
 import { participantIdentityMachine, participantReviewMachine } from "@/lib/domain/documents/participant-machines"
+import {
+  PARTICIPANT_IDENTITY_STATUSES,
+  PARTICIPANT_MEMBERSHIP_STATUSES,
+  PARTICIPANT_REVIEW_STATUSES,
+} from "@/lib/domain/documents/statuses"
 import { reviewSourceRecordParticipantsStatement } from "@/lib/domain/documents/store"
 import { availableEvents, machineProblems, nextState } from "@/lib/shared/state-machine"
 
@@ -21,12 +26,38 @@ describe("participant machines", () => {
     expect(availableEvents(participantReviewMachine, "reviewed")).toEqual([])
   })
 
-  it("only a run-together literal can be split; a split row is final", () => {
+  it("a split row is final; review of any other identity keeps working", () => {
     expect(nextState(participantIdentityMachine, "boundary_unproven:several", "split").ok).toBe(true)
-    expect(nextState(participantIdentityMachine, "unmatched", "split").ok).toBe(false)
     expect(nextState(participantIdentityMachine, "boundary_split", "match").ok).toBe(false)
+    for (const imported of ["source_display_unverified", "matched_source_held", "matched_active_user", "matched_project_contact"] as const) {
+      expect(nextState(participantIdentityMachine, imported, "match").ok).toBe(true)
+    }
+  })
+
+  it("leaves the older cutover review values alone", () => {
+    for (const imported of ["held", "needs_review", "verified"] as const) {
+      expect(availableEvents(participantReviewMachine, imported)).toEqual([])
+    }
+  })
+
+  // Values found in production on 2026-11-12 (read only). A stored value
+  // missing from its list would make the typed column lie.
+  it("lists every status stored in production", () => {
+    const production = {
+      identity: ["matched", "boundary_split", "boundary_unproven:none", "unmatched", "matched_active_user",
+        "matched_project_contact", "matched_source_held", "source_display_unverified"],
+      membership: ["active", "pending"],
+      review: ["reviewed", "unreviewed", "held", "needs_review", "verified"],
+    }
+    expect(production.identity.filter((value) => !includes(PARTICIPANT_IDENTITY_STATUSES, value))).toEqual([])
+    expect(production.membership.filter((value) => !includes(PARTICIPANT_MEMBERSHIP_STATUSES, value))).toEqual([])
+    expect(production.review.filter((value) => !includes(PARTICIPANT_REVIEW_STATUSES, value))).toEqual([])
   })
 })
+
+function includes(list: readonly string[], value: string): boolean {
+  return list.includes(value)
+}
 
 const SCHEMA = readFileSync("drizzle/0140_project_source_record_participants.sql", "utf8").replaceAll("--> statement-breakpoint", "")
 
@@ -61,12 +92,20 @@ describe("reviewSourceRecordParticipantsStatement", () => {
     expect(row(sqlite, "p1")).toEqual({ identity_status: "matched", review_status: "reviewed", user_id: "u1" })
   })
 
-  it("splits only a run-together literal", async () => {
+  it("splits a run-together literal; an older cutover review value is left alone", async () => {
     const { sqlite, db } = seed()
-    await db.batch([reviewSourceRecordParticipantsStatement(db, eq(projectSourceRecordParticipants.id, "p1"), { identity: "split", set: { updatedAt: "t1" } })])
-    expect(row(sqlite, "p1")).toEqual({ identity_status: "unmatched", review_status: "unreviewed", user_id: null })
+    sqlite.exec("UPDATE project_source_record_participants SET identity_status = 'matched_source_held', review_status = 'needs_review' WHERE id = 'p1'")
+    await db.batch([reviewSourceRecordParticipantsStatement(db, eq(projectSourceRecordParticipants.id, "p1"), { identity: "match", set: { userId: "u1", updatedAt: "t1" } })])
+    expect(row(sqlite, "p1")).toEqual({ identity_status: "matched_source_held", review_status: "needs_review", user_id: null })
     await db.batch([reviewSourceRecordParticipantsStatement(db, eq(projectSourceRecordParticipants.id, "p2"), { identity: "split", set: { updatedAt: "t1" } })])
     expect(row(sqlite, "p2")).toEqual({ identity_status: "boundary_split", review_status: "reviewed", user_id: null })
+  })
+
+  it("matches an unreviewed row whatever identity the importer stored", async () => {
+    const { sqlite, db } = seed()
+    sqlite.exec("UPDATE project_source_record_participants SET identity_status = 'source_display_unverified' WHERE id = 'p1'")
+    await db.batch([reviewSourceRecordParticipantsStatement(db, eq(projectSourceRecordParticipants.id, "p1"), { identity: "match", set: { userId: "u1", updatedAt: "t1" } })])
+    expect(row(sqlite, "p1")).toEqual({ identity_status: "matched", review_status: "reviewed", user_id: "u1" })
   })
 
   it("leaves a row as is: reviewed, identity unchanged", async () => {

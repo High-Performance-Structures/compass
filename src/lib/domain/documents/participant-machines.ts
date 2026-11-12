@@ -7,15 +7,19 @@
  *
  *   review:   unreviewed ──review──▶ reviewed
  *
- *   identity: unmatched ─────────────────┐
- *             boundary_unproven:* ──match─┴─▶ matched
- *             boundary_unproven:* ──split───▶ boundary_split
+ *   identity: any undecided identity ──match──▶ matched
+ *             any undecided identity ──split──▶ boundary_split
  *
- * The importer creates rows as matched, unmatched or boundary_unproven:*
- * (entry states). Rows staff add or assign by hand (RFI vendor, sub/vendor
- * requester, rows added by review) are written whole with
- * MANAGED_PARTICIPANT_STATUSES or RECORDED_PARTICIPANT_STATUSES.
- * membership_status has no transitions: it is set when a row is written.
+ * Review is the real guard: it lands only on rows still `unreviewed`. The
+ * identity events leave from every identity except `boundary_split`, because
+ * review has never checked identity and must keep working on whatever an
+ * importer stored. Every state other than `unmatched` is an entry state
+ * (written by an importer as it found it). The older cutover review values
+ * (held, needs_review, verified) are entry states no Compass code moves.
+ * Rows staff add or assign by hand (RFI vendor, sub/vendor requester, rows
+ * added by review) are written whole with MANAGED_PARTICIPANT_STATUSES or
+ * RECORDED_PARTICIPANT_STATUSES. membership_status has no transitions: it is
+ * set when a row is written.
  */
 import { defineMachine } from "@/lib/shared/state-machine"
 
@@ -25,27 +29,30 @@ export const participantReviewMachine = defineMachine({
   name: "participant review",
   states: PARTICIPANT_REVIEW_STATUSES,
   initial: "unreviewed",
-  terminal: ["reviewed"],
+  entry: ["held", "needs_review", "verified"],
+  terminal: ["reviewed", "held", "needs_review", "verified"],
   transitions: {
     // Staff decided the row (picked a person, split it, or left it as is).
     review: { from: ["unreviewed"], to: "reviewed" },
   },
 })
 
-const UNPROVEN = ["boundary_unproven:none", "boundary_unproven:several", "boundary_unproven:sender_several"] as const
+/** Identities review may still decide: all but a split literal. */
+const UNDECIDED = PARTICIPANT_IDENTITY_STATUSES.filter(
+  (status): status is Exclude<(typeof PARTICIPANT_IDENTITY_STATUSES)[number], "boundary_split"> => status !== "boundary_split",
+)
 
 export const participantIdentityMachine = defineMachine({
   name: "participant identity",
   states: PARTICIPANT_IDENTITY_STATUSES,
   initial: "unmatched",
-  entry: ["matched", ...UNPROVEN],
+  entry: UNDECIDED.filter((status) => status !== "unmatched"),
   terminal: ["boundary_split"],
   transitions: {
-    // Review tied the row to one person. A row the importer already matched
-    // may be re-pointed while it is still unreviewed.
-    match: { from: ["unmatched", "matched", ...UNPROVEN], to: "matched" },
+    // Review tied the row to one person (re-pointing an importer match too).
+    match: { from: UNDECIDED, to: "matched" },
     // Review split a run-together literal into people (added as their own rows).
-    split: { from: [...UNPROVEN], to: "boundary_split" },
+    split: { from: UNDECIDED, to: "boundary_split" },
   },
 })
 
