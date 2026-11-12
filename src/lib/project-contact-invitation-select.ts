@@ -2,10 +2,12 @@ import {
   customerContacts,
   customers,
   internalContacts,
-  users,
   vendorContacts,
   vendors,
 } from "@/db/schema"
+import { peopleView } from "@/lib/domain/identity/views"
+
+const people = peopleView()
 
 // Drizzle uses the first selected column to detect an absent nullable join.
 // The ID must precede optional email, phone, and account-link fields.
@@ -35,9 +37,9 @@ export const projectContactInvitationDirectorySelection = {
     phone: vendorContacts.phone,
   },
   teamMember: {
-    id: users.id,
-    email: users.email,
-    phone: users.phone,
+    id: people.id,
+    email: people.email,
+    phone: people.phone,
   },
   internalPerson: {
     id: internalContacts.id,

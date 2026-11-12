@@ -2,11 +2,10 @@ import { and, eq, isNull } from "drizzle-orm"
 
 import type { getDb } from "@/db"
 import {
-  projectAccessInvitations,
-  projectMembers,
   projects,
-  users,
 } from "@/db/schema"
+import { invitationsView, peopleView } from "@/lib/domain/identity/views"
+import { projectMembersView } from "@/lib/domain/project/views"
 import {
   channelMembers,
   channelReadState,
@@ -27,6 +26,10 @@ import {
   setChannelMemberRole,
 } from "@/lib/domain/conversations/store"
 
+const invitations = invitationsView()
+const projectMemberships = projectMembersView()
+const people = peopleView()
+
 type Db = ReturnType<typeof getDb>
 type ConversationMemberRole = "owner" | "moderator" | "member"
 type DesiredMember = {
@@ -34,6 +37,11 @@ type DesiredMember = {
   readonly role: ConversationMemberRole
 }
 type ExistingMember = DesiredMember
+
+/** Narrows a stored channel_members.role (a chat channel role, not a Compass user role). */
+function parseConversationMemberRole(value: string): ConversationMemberRole {
+  return value === "owner" || value === "moderator" ? value : "member"
+}
 
 export type ProjectAudienceMemberReconciliation = {
   readonly addMembers: readonly DesiredMember[]
@@ -126,10 +134,7 @@ async function ensureMembers(
   const reconciliation = planProjectAudienceMemberReconciliation({
     existingMembers: existingMembers.map((member) => ({
       userId: member.userId,
-      role:
-        member.role === "owner" || member.role === "moderator"
-          ? member.role
-          : "member",
+      role: parseConversationMemberRole(member.role),
     })),
     existingReadStateUserIds: existingReadStates.map((state) => state.userId),
     desiredMembers,
@@ -191,15 +196,15 @@ async function externalParticipantUserIds(input: {
 }): Promise<readonly string[]> {
   const projectMemberRows = await input.db
     .select({
-      userId: projectMembers.userId,
-      projectRole: projectMembers.role,
+      userId: projectMemberships.userId,
+      projectRole: projectMemberships.role,
     })
-    .from(projectMembers)
-    .innerJoin(users, eq(users.id, projectMembers.userId))
+    .from(projectMemberships)
+    .innerJoin(people, eq(people.id, projectMemberships.userId))
     .where(
       and(
-        eq(projectMembers.projectId, input.projectId),
-        eq(users.isActive, true)
+        eq(projectMemberships.projectId, input.projectId),
+        eq(people.isActive, true)
       )
     )
   const eligibleUserIds = new Set(
@@ -215,15 +220,15 @@ async function externalParticipantUserIds(input: {
   }
 
   const acceptedInvitationRows = await input.db
-    .select({ userId: projectAccessInvitations.acceptedBy })
-    .from(projectAccessInvitations)
+    .select({ userId: invitations.acceptedBy })
+    .from(invitations)
     .where(
       and(
-        eq(projectAccessInvitations.projectId, input.projectId),
+        eq(invitations.projectId, input.projectId),
         input.contactId === null
-          ? isNull(projectAccessInvitations.projectContactId)
-          : eq(projectAccessInvitations.projectContactId, input.contactId),
-        eq(projectAccessInvitations.status, "accepted")
+          ? isNull(invitations.projectContactId)
+          : eq(invitations.projectContactId, input.contactId),
+        eq(invitations.status, "accepted")
       )
     )
   const acceptedUserIds = acceptedInvitationRows.flatMap((invitation) =>

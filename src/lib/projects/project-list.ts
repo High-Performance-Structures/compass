@@ -2,7 +2,8 @@ import { and, asc, eq } from "drizzle-orm"
 import { cache } from "react"
 
 import { getDb } from "@/db"
-import { projectJobStatuses, projectMembers, projects } from "@/db/schema"
+import { projectJobStatuses, projects } from "@/db/schema"
+import { projectMembersView } from "@/lib/domain/project/views"
 import { requireAuth } from "@/lib/auth"
 import { getCloudflareContext } from "@/lib/db"
 import { linkedProjectClientName } from "@/lib/domain/contacts/directory-links"
@@ -10,6 +11,8 @@ import { requirePermission } from "@/lib/permissions"
 import { projectJobStatusLabel } from "@/lib/project-profile"
 import { activeRegistryProject } from "@/lib/project-registry-visibility"
 import { canUseOrganizationProjectScopeRole } from "@/lib/user-roles"
+
+const projectMemberships = projectMembersView()
 
 export type ProjectListItem = {
   readonly id: string
@@ -105,8 +108,8 @@ async function loadProjectList(
       internalDepartment: projects.internalDepartment,
       createdAt: projects.createdAt,
     })
-    .from(projectMembers)
-    .innerJoin(projects, eq(projects.id, projectMembers.projectId))
+    .from(projectMemberships)
+    .innerJoin(projects, eq(projects.id, projectMemberships.projectId))
     .leftJoin(
       projectJobStatuses,
       and(
@@ -116,7 +119,7 @@ async function loadProjectList(
     )
     .where(
       and(
-        eq(projectMembers.userId, userId),
+        eq(projectMemberships.userId, userId),
         activeRegistryProject(db),
       ),
     )

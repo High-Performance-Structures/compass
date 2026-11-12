@@ -1,9 +1,11 @@
 import { and, ne, or, sql } from "drizzle-orm"
 import type { getDb } from "@/db"
-import { users } from "@/db/schema"
+import { peopleView } from "@/lib/domain/identity/views"
 import { readFeatureSettings } from "@/lib/feature-settings/server"
 import { DEPARTMENT_CODES } from "@/lib/department-profiles"
 import { isValidRecipientEmail, normalizeRecipientEmail } from "@/lib/email/recipient-options"
+
+const people = peopleView()
 
 /**
  * Compass sends mail *as* a user's users.email / users.googleEmail through
@@ -50,15 +52,15 @@ export async function findSenderAddressConflict(
 ): Promise<SenderAddressConflict | null> {
   const address = input.address.trim().toLowerCase()
   const matchesAddress = or(
-    sql`lower(trim(${users.email})) = ${address}`,
-    sql`lower(trim(${users.googleEmail})) = ${address}`
+    sql`lower(trim(${people.email})) = ${address}`,
+    sql`lower(trim(${people.googleEmail})) = ${address}`
   )
   const userRow = await db
-    .select({ id: users.id })
-    .from(users)
+    .select({ id: people.id })
+    .from(people)
     .where(
       input.excludeUserId
-        ? and(ne(users.id, input.excludeUserId), matchesAddress)
+        ? and(ne(people.id, input.excludeUserId), matchesAddress)
         : matchesAddress
     )
     .limit(1)

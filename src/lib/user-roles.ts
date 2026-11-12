@@ -243,3 +243,18 @@ export function isInternalStaffRole(role: string): boolean {
       return false
   }
 }
+
+/** The "client" account role alone; "owner" is a project-role alias, not an account role. */
+export function isClientAccountRole(role: string | null | undefined): boolean {
+  return role === "client"
+}
+
+/** The legacy catch-all "field" role, which covers both field workflow roles. */
+export function isLegacyFieldRole(role: string | null | undefined): boolean {
+  return role === "field"
+}
+
+/** The general "office" (Office Staff) role, which covers the office workflow roles. */
+export function isGeneralOfficeRole(role: string | null | undefined): boolean {
+  return role === "office"
+}

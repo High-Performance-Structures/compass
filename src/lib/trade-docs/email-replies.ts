@@ -3,7 +3,8 @@ import "server-only"
 import { and, eq } from "drizzle-orm"
 
 import type { getDb } from "@/db"
-import { emailReplyThreads, users, vendors } from "@/db/schema"
+import { emailReplyThreads, vendors } from "@/db/schema"
+import { peopleView } from "@/lib/domain/identity/views"
 import { recordActivityEvent } from "@/lib/activity-log"
 import { stripHtml, type InboundCandidate } from "@/lib/email/gmail-message-parser"
 import { emailReplyPreview } from "@/lib/email/tracked-record-email"
@@ -11,6 +12,8 @@ import { readFeatureSettings } from "@/lib/feature-settings/server"
 import { ensureVendorTradeDocsFolder } from "@/lib/trade-docs/drive"
 import { notifyTradeDocLinkSender } from "@/lib/trade-docs/link-delivery"
 import { TRADE_DOC_LINK_MAX_BYTES, TRADE_DOC_REPLY_ACTION } from "@/lib/trade-docs/vendor-link"
+
+const people = peopleView()
 
 type Db = ReturnType<typeof getDb>
 
@@ -45,9 +48,9 @@ export async function postTradeDocReply(input: {
   if (!vendor) return "needs_review"
   const sender = replyThread.createdBy
     ? await db
-        .select({ id: users.id, email: users.email, googleEmail: users.googleEmail })
-        .from(users)
-        .where(and(eq(users.id, replyThread.createdBy), eq(users.isActive, true)))
+        .select({ id: people.id, email: people.email, googleEmail: people.googleEmail })
+        .from(people)
+        .where(and(eq(people.id, replyThread.createdBy), eq(people.isActive, true)))
         .get()
     : undefined
 

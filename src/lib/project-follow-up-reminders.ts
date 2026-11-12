@@ -1,10 +1,13 @@
 import { and, desc, eq, gte, inArray, isNull } from "drizzle-orm"
 import type { getDb } from "@/db"
-import { projectFollowUpReminders, projectFollowUps, projectInteractions, projects, users } from "@/db/schema"
+import { projectFollowUpReminders, projectFollowUps, projectInteractions, projects } from "@/db/schema"
+import { peopleView } from "@/lib/domain/identity/views"
 import { readFeatureSettings } from "@/lib/feature-settings/server"
 import { createSystemNotificationEvent } from "@/lib/notifications/create-event"
 import { loadProjectFollowUpSignals } from "@/lib/project-aging-server"
 import type { ProjectFollowUpSignal } from "@/lib/project-follow-up"
+
+const people = peopleView()
 
 const OVERDUE_FOLLOW_UP_EVENT = "project.follow_up_overdue"
 
@@ -138,18 +141,18 @@ export async function sendOverdueFollowUpReminders(db: Db, now: Date = new Date(
         .where(eq(projectFollowUpReminders.organizationId, organizationId)),
     ])
     const recipientIds = [...new Set(overdue.flatMap((job) => responsible.get(job.id) ?? []))]
-    const people = []
+    const recipientRows = []
     // Chunked to stay under D1's bound-parameter limit.
     for (let start = 0; start < recipientIds.length; start += 80) {
-      people.push(
+      recipientRows.push(
         ...(await db
-          .select({ id: users.id, email: users.email, isActive: users.isActive })
-          .from(users)
-          .where(inArray(users.id, recipientIds.slice(start, start + 80)))),
+          .select({ id: people.id, email: people.email, isActive: people.isActive })
+          .from(people)
+          .where(inArray(people.id, recipientIds.slice(start, start + 80)))),
       )
     }
     const remindedAtById = new Map(reminders.map((row) => [row.projectId, row.remindedAt]))
-    const personById = new Map(people.map((row) => [row.id, row]))
+    const personById = new Map(recipientRows.map((row) => [row.id, row]))
     for (const job of overdue) {
       const signal = signals.get(job.id)
       if (!signal || !overdueReminderDue(signal, remindedAtById.get(job.id) ?? null)) continue

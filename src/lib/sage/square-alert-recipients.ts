@@ -1,11 +1,14 @@
 import { and, eq, inArray } from "drizzle-orm"
 
 import type { getDb } from "@/db"
-import { organizationMembers, users } from "@/db/schema"
+import { membershipsView, peopleView } from "@/lib/domain/identity/views"
 import { ADMIN_USER_ROLES } from "@/lib/domain/identity/statuses"
 import { readFeatureSettings } from "@/lib/feature-settings/server"
 import { getJarvisEnvValue } from "@/lib/jarvis/auth"
-import { isInternalStaffRole } from "@/lib/user-roles"
+import { seesStaffViews } from "@/lib/user-roles"
+
+const memberships = membershipsView()
+const people = peopleView()
 
 type Db = ReturnType<typeof getDb>
 
@@ -33,18 +36,18 @@ export async function squareAlertRecipientIds(
   }
   const activeMembers = (ids: readonly string[] | null) =>
     db
-      .select({ userId: users.id, role: organizationMembers.role })
-      .from(organizationMembers)
-      .innerJoin(users, eq(users.id, organizationMembers.userId))
+      .select({ userId: people.id, role: memberships.role })
+      .from(memberships)
+      .innerJoin(people, eq(people.id, memberships.userId))
       .where(
         and(
-          eq(organizationMembers.organizationId, organizationId),
-          eq(users.isActive, true),
-          ids === null ? inArray(users.role, [...ADMIN_USER_ROLES]) : inArray(users.id, [...ids]),
+          eq(memberships.organizationId, organizationId),
+          eq(people.isActive, true),
+          ids === null ? inArray(people.role, [...ADMIN_USER_ROLES]) : inArray(people.id, [...ids]),
         ),
       )
   const staffIds = (rows: readonly { userId: string; role: string }[]): readonly string[] =>
-    rows.filter((row) => isInternalStaffRole(row.role) || row.role === "developer").map((row) => row.userId)
+    rows.filter((row) => seesStaffViews(row.role)).map((row) => row.userId)
   if (chosen.length > 0) return staffIds(await activeMembers(chosen))
   if (kind === "connection") {
     const developer = getJarvisEnvValue(env, "SQUARE_AUTH_NOTIFICATION_USER_ID")

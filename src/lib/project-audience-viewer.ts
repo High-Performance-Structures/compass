@@ -4,7 +4,9 @@ import { and, desc, eq } from "drizzle-orm"
 import { cache } from "react"
 import { resolveProjectRouteId } from "@/lib/project-route-id"
 import { getDb } from "@/db"
-import { organizationMembers, organizations, projectAccessInvitations, projectContacts, projectMembers, users } from "@/db/schema"
+import { projectContacts } from "@/db/schema"
+import { companiesView, invitationsView, membershipsView, peopleView } from "@/lib/domain/identity/views"
+import { projectMembersView } from "@/lib/domain/project/views"
 import { requireAuth, type AuthUser } from "@/lib/auth"
 import { getCloudflareContext } from "@/lib/db"
 import { assertProjectAccess } from "@/lib/domain/project/access"
@@ -16,6 +18,13 @@ import { canFeature } from "@/lib/permission-enforcement"
 import { isInternalStaffRole, isStaffOrganizationType } from "@/lib/user-roles"
 import { recordActivityEvent } from "@/lib/activity-log"
 import { invitedPreviewId, isInvitedPreviewId } from "@/lib/invited-preview"
+
+const memberships = membershipsView()
+const companies = companiesView()
+const invitations = invitationsView()
+const projectMemberships = projectMembersView()
+const people = peopleView()
+
 export { isInvitedPreviewId } from "@/lib/invited-preview"
 
 export type ProjectAudiencePreviewPerson = {
@@ -59,41 +68,41 @@ export const resolveProjectAudienceViewer = cache(async function resolveProjectA
     throw new Error("Preview scope does not match this project.")
   }
   const target = targetUserId === undefined ? request?.targetUserId ?? null : targetUserId
-  const membership = await db.select({ role: organizationMembers.role, organization: organizations })
-    .from(organizationMembers).innerJoin(organizations, eq(organizations.id, organizationMembers.organizationId))
-    .where(and(eq(organizationMembers.userId, actor.id), eq(organizationMembers.organizationId, organizationId))).get()
+  const membership = await db.select({ role: memberships.role, organization: companies })
+    .from(memberships).innerJoin(companies, eq(companies.id, memberships.organizationId))
+    .where(and(eq(memberships.userId, actor.id), eq(memberships.organizationId, organizationId))).get()
   if (!membership || !membership.organization.isActive) throw new Error("Project not found.")
   const isPreview = isStaffOrganizationType(membership.organization.type) && isInternalStaffRole(membership.role)
   if (!isPreview) {
     if (target !== null) throw new Error("Preview is unavailable.")
-    const projectMembership = await db.select({ role: projectMembers.role }).from(projectMembers)
-      .where(and(eq(projectMembers.projectId, projectId), eq(projectMembers.userId, actor.id))).get()
+    const projectMembership = await db.select({ role: projectMemberships.role }).from(projectMemberships)
+      .where(and(eq(projectMemberships.projectId, projectId), eq(projectMemberships.userId, actor.id))).get()
     if (!canUseProjectAudience(projectMembership?.role ?? null, audience)) throw new Error("Project not found.")
     return { db, env, actor, viewer: { ...actor, role: membership.role, organizationId, organizationType: membership.organization.type, organizationName: membership.organization.name }, organizationId, projectId, audience, isPreview, previewOptions: [] }
   }
   const authorizedActor: AuthUser = { ...actor, role: membership.role, organizationId, organizationType: membership.organization.type, organizationName: membership.organization.name }
   if (!(await canFeature(authorizedActor, "project-audience-preview", "read"))) throw new Error("External preview permission is required.")
-  const people = await db.select({ user: users, role: organizationMembers.role, projectRole: projectMembers.role })
-    .from(projectMembers).innerJoin(users, eq(users.id, projectMembers.userId))
-    .innerJoin(organizationMembers, and(eq(organizationMembers.userId, users.id), eq(organizationMembers.organizationId, organizationId)))
-    .where(and(eq(projectMembers.projectId, projectId), eq(users.isActive, true)))
-  const eligible = people.filter((person, index) => !isInternalStaffRole(person.role) && canUseProjectAudience(person.projectRole, audience) && people.findIndex((candidate) => candidate.user.id === person.user.id) === index)
+  const audienceMembers = await db.select({ user: people, role: memberships.role, projectRole: projectMemberships.role })
+    .from(projectMemberships).innerJoin(people, eq(people.id, projectMemberships.userId))
+    .innerJoin(memberships, and(eq(memberships.userId, people.id), eq(memberships.organizationId, organizationId)))
+    .where(and(eq(projectMemberships.projectId, projectId), eq(people.isActive, true)))
+  const eligible = audienceMembers.filter((person, index) => !isInternalStaffRole(person.role) && canUseProjectAudience(person.projectRole, audience) && audienceMembers.findIndex((candidate) => candidate.user.id === person.user.id) === index)
   // People invited who haven't accepted yet. Previewing one shows what their
   // contact (matched by email) will see once they accept.
   const eligibleEmails = new Set(eligible.map((person) => person.user.email.trim().toLowerCase()))
   const pending = await withContactDirectory(db.select({
     invitation: {
-      id: projectAccessInvitations.id,
-      email: projectAccessInvitations.email,
-      role: projectAccessInvitations.role,
-      invitedAt: projectAccessInvitations.invitedAt,
-      updatedAt: projectAccessInvitations.updatedAt,
+      id: invitations.id,
+      email: invitations.email,
+      role: invitations.role,
+      invitedAt: invitations.invitedAt,
+      updatedAt: invitations.updatedAt,
     },
     contact: { displayName: resolvedContactColumns.displayName, companyName: resolvedContactColumns.companyName },
   })
-    .from(projectAccessInvitations).innerJoin(projectContacts, eq(projectContacts.id, projectAccessInvitations.projectContactId))
-    .where(and(eq(projectAccessInvitations.projectId, projectId), eq(projectAccessInvitations.organizationId, organizationId), eq(projectAccessInvitations.status, "sent"), eq(projectContacts.active, true)))
-    .orderBy(desc(projectAccessInvitations.invitedAt)).$dynamic(), organizationId)
+    .from(invitations).innerJoin(projectContacts, eq(projectContacts.id, invitations.projectContactId))
+    .where(and(eq(invitations.projectId, projectId), eq(invitations.organizationId, organizationId), eq(invitations.status, "sent"), eq(projectContacts.active, true)))
+    .orderBy(desc(invitations.invitedAt)).$dynamic(), organizationId)
   const invited = pending.filter(({ invitation }, index) => {
     const email = invitation.email.trim().toLowerCase()
     return canUseProjectAudience(invitation.role, audience) && !eligibleEmails.has(email) &&
@@ -126,10 +135,10 @@ export const resolveProjectAudienceViewer = cache(async function resolveProjectA
       : null
   // Company labels are presentation only. Load accepted contact links once
   // rather than performing a contact lookup for every eligible person.
-  const contactLinks = eligible.length === 0 ? [] : await withContactDirectory(db.select({ userId: projectAccessInvitations.acceptedBy, companyName: resolvedContactColumns.companyName })
-    .from(projectAccessInvitations).innerJoin(projectContacts, eq(projectContacts.id, projectAccessInvitations.projectContactId))
-    .where(and(eq(projectAccessInvitations.projectId, projectId), eq(projectContacts.projectId, projectId), eq(projectAccessInvitations.status, "accepted"), eq(projectContacts.active, true)))
-    .orderBy(desc(projectAccessInvitations.acceptedAt)).$dynamic(), organizationId)
+  const contactLinks = eligible.length === 0 ? [] : await withContactDirectory(db.select({ userId: invitations.acceptedBy, companyName: resolvedContactColumns.companyName })
+    .from(invitations).innerJoin(projectContacts, eq(projectContacts.id, invitations.projectContactId))
+    .where(and(eq(invitations.projectId, projectId), eq(projectContacts.projectId, projectId), eq(invitations.status, "accepted"), eq(projectContacts.active, true)))
+    .orderBy(desc(invitations.acceptedAt)).$dynamic(), organizationId)
   const previewOptions = [
     ...eligible.map(({ user }): ProjectAudiencePreviewPerson => ({ id: user.id, name: user.displayName ?? user.email, email: user.email, companyName: contactLinks.find((link) => link.userId === user.id)?.companyName ?? null, invited: false })),
     ...invited.map(({ invitation, contact }): ProjectAudiencePreviewPerson => ({ id: invitedPreviewId(invitation.id), name: contact.displayName || invitation.email, email: invitation.email, companyName: contact.companyName, invited: true })),

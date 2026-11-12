@@ -1,3 +1,5 @@
+import { isGeneralOfficeRole, isLegacyFieldRole } from "@/lib/user-roles"
+
 export type ProjectWorkflowRoleId =
   | "admin-owner"
   | "project-manager"
@@ -355,8 +357,8 @@ export function allowedWorkflowRoleIds({
   const projectWorkflowRole = workflowRoleIdFromString(projectRole)
   if (projectWorkflowRole) return [projectWorkflowRole]
 
-  if (userRole === "field") return FIELD_WORKFLOW_ROLE_IDS
-  if (userRole === "office") return OFFICE_WORKFLOW_ROLE_IDS
+  if (isLegacyFieldRole(userRole)) return FIELD_WORKFLOW_ROLE_IDS
+  if (isGeneralOfficeRole(userRole)) return OFFICE_WORKFLOW_ROLE_IDS
 
   const userWorkflowRole = workflowRoleIdFromString(userRole)
   if (userWorkflowRole && userWorkflowRole !== "admin-owner") {

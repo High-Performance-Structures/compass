@@ -1,3 +1,5 @@
+import { isOwnerRole, isVendorRole } from "@/lib/user-roles"
+
 export type ScheduleConfirmationState = {
   readonly status:
     | "not_requested"
@@ -41,14 +43,13 @@ export function isPublishedScheduleAssignmentVisible(input: {
     return false
   }
   if (
-    (input.projectRole === "client" || input.projectRole === "owner") &&
+    isOwnerRole(input.projectRole) &&
     input.ownerVisible === false
   ) {
     return false
   }
   if (
-    (input.projectRole === "subcontractor" ||
-      input.projectRole === "supplier") &&
+    isVendorRole(input.projectRole) &&
     input.subVendorVisible !== true
   ) {
     return false
