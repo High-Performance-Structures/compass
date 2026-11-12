@@ -6,12 +6,11 @@ import type { getDb } from "@/db"
 import {
   gotoInboundEvents,
   notificationPreferences,
-  organizationMembers,
   projectContacts,
   projectJobStatuses,
   projects,
-  users,
 } from "@/db/schema"
+import { membershipsView, peopleView } from "@/lib/domain/identity/views"
 import { recordActivityEvent } from "@/lib/activity-log"
 import type {
   InboundAttachment,
@@ -62,6 +61,9 @@ import {
 import type { ProjectDepartment } from "@/lib/project-branding"
 import { resolvedContactColumns, withContactDirectory } from "@/lib/domain/contacts/resolved-columns"
 
+const memberships = membershipsView()
+const accounts = peopleView()
+
 type Db = ReturnType<typeof getDb>
 
 async function isInternalSender(input: {
@@ -71,7 +73,7 @@ async function isInternalSender(input: {
 }): Promise<boolean> {
   const candidates = await input.db
     .select({
-      role: organizationMembers.role,
+      role: memberships.role,
       smsEnabled: notificationPreferences.smsEnabled,
       smsPhoneNumber: notificationPreferences.smsPhoneNumber,
       smsConsentAccepted: notificationPreferences.smsConsentAccepted,
@@ -79,16 +81,16 @@ async function isInternalSender(input: {
         notificationPreferences.smsConsentDisclosureVersion,
       smsConsentPhoneNumber: notificationPreferences.smsConsentPhoneNumber,
     })
-    .from(organizationMembers)
-    .innerJoin(users, eq(users.id, organizationMembers.userId))
+    .from(memberships)
+    .innerJoin(accounts, eq(accounts.id, memberships.userId))
     .leftJoin(
       notificationPreferences,
-      eq(notificationPreferences.userId, users.id)
+      eq(notificationPreferences.userId, accounts.id)
     )
     .where(
       and(
-        eq(organizationMembers.organizationId, input.organizationId),
-        eq(users.isActive, true)
+        eq(memberships.organizationId, input.organizationId),
+        eq(accounts.isActive, true)
       )
     )
 

@@ -6,14 +6,13 @@ import type { getDb } from "@/db"
 import {
   dailyLogs,
   organizationCalendarSettings,
-  organizationMembers,
   projectContacts,
   projectFinishSelections,
   projectOperations,
   projects,
   projectTodoEvents,
-  users,
 } from "@/db/schema"
+import { membershipsView, peopleView } from "@/lib/domain/identity/views"
 import { recordProjectAudit } from "@/lib/domain/project-audit/store"
 import { insertProjectInteraction } from "@/lib/domain/crm/store"
 import { internalDutyEntries } from "@/db/schema-internal-duties"
@@ -45,6 +44,9 @@ import { loadRecordStatusListForProject } from "@/lib/domain/record-statuses/sto
 import { isInternalStaffRole } from "@/lib/user-roles"
 import { instantForLocalDateTime } from "@/lib/work-calendar"
 import { resolvedContactColumns, withContactDirectory } from "@/lib/domain/contacts/resolved-columns"
+
+const memberships = membershipsView()
+const accounts = peopleView()
 
 type Db = ReturnType<typeof getDb>
 
@@ -166,10 +168,10 @@ async function loadDailyLogClientContacts(db: Db, projectId: string): Promise<re
 async function loadDailyLogAssignees(db: Db, organizationId: string, projectId: string): Promise<readonly DailyLogAssigneeOption[]> {
   const [staff, contacts] = await Promise.all([
     db
-      .select({ role: organizationMembers.role, displayName: users.displayName, firstName: users.firstName, lastName: users.lastName, email: users.email })
-      .from(organizationMembers)
-      .innerJoin(users, eq(users.id, organizationMembers.userId))
-      .where(and(eq(organizationMembers.organizationId, organizationId), eq(users.isActive, true))),
+      .select({ role: memberships.role, displayName: accounts.displayName, firstName: accounts.firstName, lastName: accounts.lastName, email: accounts.email })
+      .from(memberships)
+      .innerJoin(accounts, eq(accounts.id, memberships.userId))
+      .where(and(eq(memberships.organizationId, organizationId), eq(accounts.isActive, true))),
     withContactDirectory(db
       .select({ contactType: projectContacts.contactType, name: resolvedContactColumns.displayName, companyName: resolvedContactColumns.companyName })
       .from(projectContacts)
@@ -585,13 +587,13 @@ export async function loadProjectTodoHistory(db: Db, projectId: string, todoId: 
       toStatus: projectTodoEvents.toStatus,
       note: projectTodoEvents.note,
       createdAt: projectTodoEvents.createdAt,
-      displayName: users.displayName,
-      firstName: users.firstName,
-      lastName: users.lastName,
+      displayName: accounts.displayName,
+      firstName: accounts.firstName,
+      lastName: accounts.lastName,
       logDate: dailyLogs.logDate,
     })
     .from(projectTodoEvents)
-    .leftJoin(users, eq(users.id, projectTodoEvents.actorId))
+    .leftJoin(accounts, eq(accounts.id, projectTodoEvents.actorId))
     .leftJoin(dailyLogs, eq(dailyLogs.id, projectTodoEvents.dailyLogId))
     .where(and(eq(projectTodoEvents.projectId, projectId), eq(projectTodoEvents.todoId, todoId)))
     .orderBy(asc(projectTodoEvents.createdAt))

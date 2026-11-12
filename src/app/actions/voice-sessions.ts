@@ -6,7 +6,6 @@ import type {
   UserDetailsResponseV2,
 } from "@cloudflare/realtimekit"
 import { getDb } from "@/db"
-import { users } from "@/db/schema"
 import {
   voiceRealtimeKitMeetings,
   voiceParticipants,
@@ -21,6 +20,7 @@ import {
   type VoiceChannelAccess,
 } from "@/lib/voice-channel-access"
 import { userContext } from "@/lib/server/action-context"
+import { peopleView } from "@/lib/domain/identity/views"
 
 const ACTIVE_PARTICIPANT_WINDOW_MS = 30_000
 const STALE_SIGNAL_WINDOW_MS = 5 * 60_000
@@ -606,19 +606,19 @@ async function listActiveParticipants(
   db: ReturnType<typeof getDb>,
   channelId: string
 ): Promise<readonly VoiceParticipantData[]> {
+  const people = peopleView()
   const rows = await db
     .select({
       userId: voiceParticipants.userId,
       displayName: voiceParticipants.displayName,
-      userDisplayName: users.displayName,
-      email: users.email,
+      userDisplayName: people.displayName, email: people.email,
       isMuted: voiceParticipants.isMuted,
       isDeafened: voiceParticipants.isDeafened,
       joinedAt: voiceParticipants.joinedAt,
       lastSeenAt: voiceParticipants.lastSeenAt,
     })
     .from(voiceParticipants)
-    .leftJoin(users, eq(users.id, voiceParticipants.userId))
+    .leftJoin(people, eq(people.id, voiceParticipants.userId))
     .where(
       and(
         eq(voiceParticipants.channelId, channelId),

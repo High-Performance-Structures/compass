@@ -11,13 +11,13 @@ import { loadProjectListForRequest, type ProjectListItem } from "@/lib/projects/
 import { scheduleProjectSwitcherProjects } from "@/lib/schedule/project-scope"
 import type { ScheduleData } from "@/lib/schedule/types"
 import { CONTEXT_ERRORS, orgContext, type OrgContext } from "@/lib/server/action-context"
-import { canUseOrganizationProjectScopeRole, isInternalStaffRole } from "@/lib/user-roles"
+import { canUseOrganizationProjectScopeRole, seesStaffViews } from "@/lib/user-roles"
 
 import { isOrganizationProject, loadWorkingSchedule } from "./queries"
 
 /** Staff and developers see working (unpublished) schedule rows. */
 export function canViewWorkingSchedule(role: string): boolean {
-  return isInternalStaffRole(role) || role === "developer"
+  return seesStaffViews(role)
 }
 
 /**

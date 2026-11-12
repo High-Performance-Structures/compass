@@ -6,7 +6,6 @@ import { NextRequest } from "next/server"
 
 import {
   dailyLogPhotos,
-  projectMembers,
   projects,
 } from "@/db/schema"
 import { googleAuth } from "@/db/schema-google"
@@ -29,6 +28,7 @@ import {
 } from "@/lib/project-audience-access"
 import { assertOwnerUpdateReadAccess } from "@/lib/owner-updates/access"
 import { assertProjectAccess } from "@/lib/domain/project/access"
+import { projectMembersView } from "@/lib/domain/project/views"
 import { hasActiveExternalProjectResourceGrant } from "@/lib/project-external-resource-access"
 import { isInternalStaffRole } from "@/lib/user-roles"
 import {
@@ -155,20 +155,21 @@ export async function GET(
 
       // A preview was already authorized as project staff above.
       if (!previewing) {
+        const members = projectMembersView()
         const [membership] = await db
-          .select({ role: projectMembers.role })
-          .from(projectMembers)
+          .select({ role: members.role })
+          .from(members)
           .innerJoin(
             projects,
             and(
-              eq(projects.id, projectMembers.projectId),
+              eq(projects.id, members.projectId),
               eq(projects.organizationId, projectOrganizationId)
             )
           )
           .where(
             and(
-              eq(projectMembers.projectId, projectId),
-              eq(projectMembers.userId, user.id)
+              eq(members.projectId, projectId),
+              eq(members.userId, user.id)
             )
           )
           .limit(1)

@@ -2,12 +2,16 @@ import { and, eq, inArray, isNull } from "drizzle-orm"
 
 import { getDb } from "@/db"
 import {
-  organizations,
   projectExternalResourceGrants,
-  projectMembers,
   projects,
-  users,
 } from "@/db/schema"
+import { companiesView, peopleView } from "@/lib/domain/identity/views"
+import { projectMembersView } from "@/lib/domain/project/views"
+
+const companies = companiesView()
+const projectMemberships = projectMembersView()
+const people = peopleView()
+
 export type ExternalProjectResourceType =
   | "photo"
   | "owner_update_document"
@@ -40,23 +44,23 @@ export async function hasActiveExternalProjectResourceGrant(input: {
       )
     )
     .innerJoin(
-      organizations,
+      companies,
       and(
-        eq(organizations.id, projects.organizationId),
-        eq(organizations.id, input.organizationId),
-        eq(organizations.type, "client"),
-        eq(organizations.isActive, true)
+        eq(companies.id, projects.organizationId),
+        eq(companies.id, input.organizationId),
+        eq(companies.type, "client"),
+        eq(companies.isActive, true)
       )
     )
     .innerJoin(
-      projectMembers,
+      projectMemberships,
       and(
-        eq(projectMembers.projectId, projects.id),
-        eq(projectMembers.userId, input.recipientUserId),
-        inArray(projectMembers.role, recipientRoles)
+        eq(projectMemberships.projectId, projects.id),
+        eq(projectMemberships.userId, input.recipientUserId),
+        inArray(projectMemberships.role, recipientRoles)
       )
     )
-    .innerJoin(users, and(eq(users.id, input.recipientUserId), eq(users.isActive, true)))
+    .innerJoin(people, and(eq(people.id, input.recipientUserId), eq(people.isActive, true)))
     .where(
       and(
         eq(projectExternalResourceGrants.organizationId, input.organizationId),

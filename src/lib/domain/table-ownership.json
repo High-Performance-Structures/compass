@@ -3,7 +3,7 @@
   "modules": {
     "identity": {
       "path": "src/lib/domain/identity",
-      "hint": "Signed-in user/org: userContext / orgContext from @/lib/server/action-context. Anything else: use or add a read function in src/lib/domain/identity/. Crews (teams): src/lib/domain/identity/crews.ts.",
+      "hint": "Signed-in user/org: userContext / orgContext from @/lib/server/action-context. Showing or listing people, companies, memberships or invitations: join peopleView / companiesView / membershipsView / invitationsView from @/lib/domain/identity/views. Anything with a rule: use or add a read function in src/lib/domain/identity/. Crews (teams): src/lib/domain/identity/crews.ts.",
       "tables": {
         "users": "users",
         "organizations": "organizations",
@@ -15,7 +15,7 @@
     },
     "project": {
       "path": "src/lib/domain/project",
-      "hint": "Access check: projectContext from @/lib/server/action-context, or assertProjectAccess from @/lib/project-access. Member lists: use or add a read function in src/lib/domain/project/.",
+      "hint": "Access check: projectContext from @/lib/server/action-context, or assertProjectAccess from @/lib/project-access. Showing or listing members: join projectMembersView from @/lib/domain/project/views, or use or add a read function in src/lib/domain/project/.",
       "tables": {
         "projectMembers": "project_members"
       }
@@ -40,6 +40,6 @@
       "src/lib/domain/identity/",
       "src/lib/user-roles.ts"
     ],
-    "hint": "Use a named role predicate from @/lib/user-roles (isInternalStaffRole, isExternalProjectRole, ...). If none fits, add one there."
+    "hint": "Use a named role predicate from @/lib/user-roles (isInternalStaffRole, isOwnerRole, isVendorRole, projectAudienceForRole, seesStaffViews, isExternalProjectRole, ...). If none fits, add one there."
   }
 }

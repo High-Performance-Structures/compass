@@ -7,7 +7,7 @@ import { requireOrg } from "@/lib/org-scope"
 import { requireFeaturePermission } from "@/lib/permission-enforcement"
 import type { ProjectTimeline } from "@/lib/project-timeline/model"
 import { loadProjectTimeline } from "@/lib/project-timeline/server"
-import { isInternalStaffRole } from "@/lib/user-roles"
+import { seesStaffViews } from "@/lib/user-roles"
 import { requireUserContext } from "@/lib/server/action-context"
 
 type Result<T> = { readonly success: true; readonly data: T } | { readonly success: false; readonly error: string }
@@ -20,7 +20,7 @@ type Result<T> = { readonly success: true; readonly data: T } | { readonly succe
 export async function getProjectTimeline(projectId: string, to?: string): Promise<Result<ProjectTimeline>> {
   try {
     const { user, db } = await requireUserContext()
-    if (!isInternalStaffRole(user.role) && user.role !== "developer") {
+    if (!seesStaffViews(user.role)) {
       return { success: false, error: "The project timeline is for staff." }
     }
     await requireFeaturePermission(user, "project-hub", "read")

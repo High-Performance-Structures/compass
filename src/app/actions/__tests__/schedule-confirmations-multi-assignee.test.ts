@@ -14,7 +14,10 @@ vi.mock("@/lib/permissions", () => ({ requirePermission: mocks.requirePermission
 vi.mock("@/lib/domain/project/access", () => ({ assertProjectAccess: mocks.assertProjectAccess }))
 vi.mock("@/lib/activity-log", () => ({ recordActivityEvent: mocks.recordActivityEvent }))
 vi.mock("@/lib/notifications/events", () => ({ createNotificationEvent: mocks.createNotificationEvent }))
-vi.mock("@/lib/user-roles", () => ({ isInternalStaffRole: mocks.isInternalStaffRole }))
+vi.mock("@/lib/user-roles", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/user-roles")>()),
+  isInternalStaffRole: mocks.isInternalStaffRole,
+}))
 vi.mock("next/cache", () => ({ revalidatePath: mocks.revalidatePath }))
 
 import { respondToScheduleTaskAssignee } from "@/app/actions/schedule-confirmations"

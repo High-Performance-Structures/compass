@@ -6,15 +6,13 @@
 import { and, asc, eq, inArray } from "drizzle-orm"
 
 import {
-  organizationMembers,
-  projectAccessInvitations,
   projectContacts,
   projects,
   scheduleTasks,
   taskDependencies,
-  users,
   workdayExceptions,
 } from "@/db/schema"
+import { invitationsView, membershipsView, peopleView } from "@/lib/domain/identity/views"
 import { scheduleTaskAssignees, scheduleTaskPeople } from "@/db/schema-participants"
 import { chunkD1Values } from "@/lib/d1-query"
 import { crewMemberIds, listCrews, type Crew } from "@/lib/domain/identity/crews"
@@ -35,6 +33,10 @@ import {
   nextSortOrder,
   taskWithProgress,
 } from "./rules"
+
+const memberships = membershipsView()
+const invitations = invitationsView()
+const peopleRows = peopleView()
 
 export type ScheduleTaskRow = typeof scheduleTasks.$inferSelect
 export type TaskDependencyRow = typeof taskDependencies.$inferSelect
@@ -206,14 +208,14 @@ export async function resolveAssignedUserId(
   if (assigneeOptionId.startsWith("team:")) {
     const userId = assigneeOptionId.slice("team:".length)
     const member = await db
-      .select({ userId: users.id })
-      .from(users)
-      .innerJoin(organizationMembers, eq(organizationMembers.userId, users.id))
+      .select({ userId: peopleRows.id })
+      .from(peopleRows)
+      .innerJoin(memberships, eq(memberships.userId, peopleRows.id))
       .where(
         and(
-          eq(users.id, userId),
-          eq(users.isActive, true),
-          eq(organizationMembers.organizationId, organizationId)
+          eq(peopleRows.id, userId),
+          eq(peopleRows.isActive, true),
+          eq(memberships.organizationId, organizationId)
         )
       )
       .get()
@@ -223,14 +225,14 @@ export async function resolveAssignedUserId(
   if (assigneeOptionId.startsWith("project:")) {
     const projectContactId = assigneeOptionId.slice("project:".length)
     const invitation = await db
-      .select({ userId: projectAccessInvitations.acceptedBy })
-      .from(projectAccessInvitations)
+      .select({ userId: invitations.acceptedBy })
+      .from(invitations)
       .where(
         and(
-          eq(projectAccessInvitations.organizationId, organizationId),
-          eq(projectAccessInvitations.projectId, projectId),
-          eq(projectAccessInvitations.projectContactId, projectContactId),
-          eq(projectAccessInvitations.status, "accepted")
+          eq(invitations.organizationId, organizationId),
+          eq(invitations.projectId, projectId),
+          eq(invitations.projectContactId, projectContactId),
+          eq(invitations.status, "accepted")
         )
       )
       .get()

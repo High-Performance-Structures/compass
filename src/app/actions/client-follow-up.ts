@@ -2,7 +2,8 @@
 
 import { and, desc, eq, gte, isNull } from "drizzle-orm"
 import { getDb } from "@/db"
-import { projectContacts, projectFollowUps, projectInteractions, users } from "@/db/schema"
+import { projectContacts, projectFollowUps, projectInteractions } from "@/db/schema"
+import { peopleView } from "@/lib/domain/identity/views"
 import { resolvedContactColumns, withContactDirectory } from "@/lib/domain/contacts/resolved-columns"
 import { listProjectsForCurrentUser } from "@/lib/projects/project-list"
 import { getCurrentUser } from "@/lib/auth"
@@ -20,6 +21,8 @@ import { loadProjectFollowUpSignals } from "@/lib/project-aging-server"
 import type { ProjectFollowUpSignal } from "@/lib/project-follow-up"
 import { projectInteractionTypeLabel } from "@/lib/project-profile"
 import { isInternalStaffRole } from "@/lib/user-roles"
+
+const people = peopleView()
 
 export type ClientFollowUpJob = {
   readonly id: string
@@ -106,13 +109,13 @@ export async function getClientFollowUpWorkspace(
             .select({
               projectId: projectFollowUps.projectId,
               ownerUserId: projectFollowUps.ownerUserId,
-              displayName: users.displayName,
-              firstName: users.firstName,
-              lastName: users.lastName,
-              email: users.email,
+              displayName: people.displayName,
+              firstName: people.firstName,
+              lastName: people.lastName,
+              email: people.email,
             })
             .from(projectFollowUps)
-            .leftJoin(users, eq(users.id, projectFollowUps.ownerUserId))
+            .leftJoin(people, eq(people.id, projectFollowUps.ownerUserId))
             .where(eq(projectFollowUps.organizationId, organizationId))
         : Promise.resolve([]),
       visibleIds.length
@@ -126,14 +129,14 @@ export async function getClientFollowUpWorkspace(
               occurredAt: projectInteractions.occurredAt,
               source: projectInteractions.source,
               createdBy: projectInteractions.createdBy,
-              displayName: users.displayName,
-              firstName: users.firstName,
-              lastName: users.lastName,
-              email: users.email,
+              displayName: people.displayName,
+              firstName: people.firstName,
+              lastName: people.lastName,
+              email: people.email,
               contactName: resolvedContactColumns.displayName,
             })
             .from(projectInteractions)
-            .leftJoin(users, eq(users.id, projectInteractions.createdBy))
+            .leftJoin(people, eq(people.id, projectInteractions.createdBy))
             .leftJoin(projectContacts, eq(projectContacts.id, projectInteractions.projectContactId))
             .where(
               and(

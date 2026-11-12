@@ -4,7 +4,8 @@ import { and, asc, desc, eq, inArray } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 import { z } from "zod/v4"
 
-import { dailyLogs, organizationMembers, projects, users } from "@/db/schema"
+import { dailyLogs, projects } from "@/db/schema"
+import { membershipsView, peopleView } from "@/lib/domain/identity/views"
 import { internalDutyEntries } from "@/db/schema-internal-duties"
 import type { AuthUser } from "@/lib/auth"
 import { isDemoUser } from "@/lib/demo"
@@ -19,6 +20,9 @@ import { projectNumberAndName } from "@/lib/project-display-name"
 import { orgContext, type Db } from "@/lib/server/action-context"
 import { isInternalStaffRole } from "@/lib/user-roles"
 import { dutiesNeedingAttention, loadRecurringDuties, type RecurringDutyView } from "@/lib/internal-duties/recurring-data"
+
+const accounts = peopleView()
+const memberships = membershipsView()
 
 export type { InternalWorkspaceSummary } from "@/lib/internal-duties/model"
 
@@ -98,12 +102,12 @@ export async function getDutyLogWorkspace(projectId: string, month?: string): Pr
     db
       .select({
         entry: internalDutyEntries,
-        displayName: users.displayName,
-        firstName: users.firstName,
-        lastName: users.lastName,
+        displayName: accounts.displayName,
+        firstName: accounts.firstName,
+        lastName: accounts.lastName,
       })
       .from(internalDutyEntries)
-      .leftJoin(users, eq(users.id, internalDutyEntries.userId))
+      .leftJoin(accounts, eq(accounts.id, internalDutyEntries.userId))
       .where(eq(internalDutyEntries.projectId, projectId))
       .orderBy(desc(internalDutyEntries.entryDate), desc(internalDutyEntries.createdAt))
       .limit(500),
@@ -114,12 +118,12 @@ export async function getDutyLogWorkspace(projectId: string, month?: string): Pr
         workCompleted: dailyLogs.workCompleted,
         notes: dailyLogs.notes,
         hours: dailyLogs.hoursWorked,
-        displayName: users.displayName,
-        firstName: users.firstName,
-        lastName: users.lastName,
+        displayName: accounts.displayName,
+        firstName: accounts.firstName,
+        lastName: accounts.lastName,
       })
       .from(dailyLogs)
-      .leftJoin(users, eq(users.id, dailyLogs.authorId))
+      .leftJoin(accounts, eq(accounts.id, dailyLogs.authorId))
       .where(eq(dailyLogs.projectId, projectId))
       .orderBy(desc(dailyLogs.logDate))
       .limit(400),
@@ -131,10 +135,10 @@ export async function getDutyLogWorkspace(projectId: string, month?: string): Pr
     canFeature(user, FEATURE, "update"),
     kind ? loadRecurringDuties(db, projectId) : Promise.resolve([]),
     db
-      .select({ id: users.id, displayName: users.displayName, firstName: users.firstName, lastName: users.lastName, role: users.role })
-      .from(users)
-      .innerJoin(organizationMembers, eq(organizationMembers.userId, users.id))
-      .where(and(eq(organizationMembers.organizationId, orgId), eq(users.isActive, true))),
+      .select({ id: accounts.id, displayName: accounts.displayName, firstName: accounts.firstName, lastName: accounts.lastName, role: accounts.role })
+      .from(accounts)
+      .innerJoin(memberships, eq(memberships.userId, accounts.id))
+      .where(and(eq(memberships.organizationId, orgId), eq(accounts.isActive, true))),
   ])
   const relatedLabels = new Map(related.map((item) => [item.id, projectNumberAndName(item)]))
   const entries: DutyLogEntryView[] = entryRows.map(({ entry, ...person }) => ({
@@ -333,12 +337,12 @@ export async function getInternalWorkspaceSummary(projectId: string): Promise<In
         dutyLabel: internalDutyEntries.dutyLabel,
         hours: internalDutyEntries.hours,
         dailyLogId: internalDutyEntries.dailyLogId,
-        displayName: users.displayName,
-        firstName: users.firstName,
-        lastName: users.lastName,
+        displayName: accounts.displayName,
+        firstName: accounts.firstName,
+        lastName: accounts.lastName,
       })
       .from(internalDutyEntries)
-      .leftJoin(users, eq(users.id, internalDutyEntries.userId))
+      .leftJoin(accounts, eq(accounts.id, internalDutyEntries.userId))
       .where(eq(internalDutyEntries.projectId, projectId)),
     db.select({ id: dailyLogs.id }).from(dailyLogs).where(eq(dailyLogs.projectId, projectId)),
     canFeature(user, FEATURE, "update"),

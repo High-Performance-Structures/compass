@@ -7,16 +7,15 @@ import {
   morningPlanPreferences,
   myCompassCalendars,
   organizationCalendarSettings,
-  organizationMembers,
   projectClientMeetings,
   projectOperations,
   projects,
   scheduleTasks,
-  users,
   workCalendarEventAttendees,
   workCalendarEvents,
   workdayExceptions,
 } from "@/db/schema"
+import { membershipsView, peopleView } from "@/lib/domain/identity/views"
 import { companyTimeZone } from "@/lib/daily-logs/log-followups-server"
 import { isDemoUser } from "@/lib/demo"
 import { upsertMorningPlanPreferences } from "@/lib/domain/settings/store"
@@ -46,6 +45,9 @@ import {
   timeKeyInTimeZone,
 } from "@/lib/work-calendar"
 import { expandWorkCalendarRecurrence, isWorkCalendarRecurrence } from "@/lib/work-calendar-recurrence"
+
+const memberships = membershipsView()
+const accounts = peopleView()
 
 type Db = ReturnType<typeof getDb>
 
@@ -362,24 +364,24 @@ type StaffRow = PlanPerson & {
 async function staffWithPreferences(db: Db, organizationId: string): Promise<readonly StaffRow[]> {
   const rows = await db
     .select({
-      id: users.id,
-      role: organizationMembers.role,
-      email: users.email,
-      googleEmail: users.googleEmail,
-      displayName: users.displayName,
-      firstName: users.firstName,
-      lastName: users.lastName,
+      id: accounts.id,
+      role: memberships.role,
+      email: accounts.email,
+      googleEmail: accounts.googleEmail,
+      displayName: accounts.displayName,
+      firstName: accounts.firstName,
+      lastName: accounts.lastName,
       otherNames: myCompassCalendars.otherNames,
       digestEnabled: morningPlanPreferences.digestEnabled,
       digestHour: morningPlanPreferences.digestHour,
       lastDigestOn: morningPlanPreferences.lastDigestOn,
       lastOverloadWeek: morningPlanPreferences.lastOverloadWeek,
     })
-    .from(organizationMembers)
-    .innerJoin(users, eq(users.id, organizationMembers.userId))
-    .leftJoin(myCompassCalendars, eq(myCompassCalendars.userId, users.id))
-    .leftJoin(morningPlanPreferences, eq(morningPlanPreferences.userId, users.id))
-    .where(and(eq(organizationMembers.organizationId, organizationId), eq(users.isActive, true)))
+    .from(memberships)
+    .innerJoin(accounts, eq(accounts.id, memberships.userId))
+    .leftJoin(myCompassCalendars, eq(myCompassCalendars.userId, accounts.id))
+    .leftJoin(morningPlanPreferences, eq(morningPlanPreferences.userId, accounts.id))
+    .where(and(eq(memberships.organizationId, organizationId), eq(accounts.isActive, true)))
   return rows
     .filter((row) => isInternalStaffRole(row.role) && !isDemoUser(row.id))
     .map((row) => ({
@@ -450,7 +452,7 @@ async function saveSent(
  * once a day at their hour, and an overload warning at most once a week.
  */
 export async function sweepMorningPlans(db: Db, now: Date = new Date()): Promise<{ readonly digests: number; readonly warnings: number }> {
-  const orgs = await db.selectDistinct({ organizationId: organizationMembers.organizationId }).from(organizationMembers)
+  const orgs = await db.selectDistinct({ organizationId: memberships.organizationId }).from(memberships)
   let digests = 0
   let warnings = 0
   for (const { organizationId } of orgs) {

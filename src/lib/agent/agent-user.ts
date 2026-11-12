@@ -2,8 +2,12 @@ import "server-only"
 
 import { and, eq } from "drizzle-orm"
 import type { getDb } from "@/db"
-import { organizationMembers, organizations, users } from "@/db/schema"
+import { companiesView, membershipsView, peopleView } from "@/lib/domain/identity/views"
 import type { AuthUser } from "@/lib/auth"
+
+const memberships = membershipsView()
+const companies = companiesView()
+const accounts = peopleView()
 
 /**
  * Resolve the live Compass user behind a verified agent token.
@@ -23,23 +27,23 @@ export async function resolveAgentUser(
 ): Promise<AuthUser | null> {
   const row = await db
     .select({
-      user: users,
-      membershipRole: organizationMembers.role,
-      organization: organizations,
+      user: accounts,
+      membershipRole: memberships.role,
+      organization: companies,
     })
-    .from(users)
+    .from(accounts)
     .innerJoin(
-      organizationMembers,
+      memberships,
       and(
-        eq(organizationMembers.userId, users.id),
-        eq(organizationMembers.organizationId, auth.orgId),
+        eq(memberships.userId, accounts.id),
+        eq(memberships.organizationId, auth.orgId),
       ),
     )
     .innerJoin(
-      organizations,
-      eq(organizations.id, organizationMembers.organizationId),
+      companies,
+      eq(companies.id, memberships.organizationId),
     )
-    .where(eq(users.id, auth.userId))
+    .where(eq(accounts.id, auth.userId))
     .get()
   if (
     !row ||

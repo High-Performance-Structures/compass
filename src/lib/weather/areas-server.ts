@@ -1,9 +1,12 @@
 import { eq, ne } from "drizzle-orm"
 import type { getDb } from "@/db"
-import { organizationFeatureSettings, organizations } from "@/db/schema"
+import { organizationFeatureSettings } from "@/db/schema"
+import { companiesView } from "@/lib/domain/identity/views"
 import { parseFeatureSettings } from "@/lib/feature-settings/registry"
 import { readPortfolioMapRules } from "@/lib/portfolio-map/rules-server"
 import { weatherAreaForState, type WeatherArea } from "@/lib/weather/areas"
+
+const companies = companiesView()
 
 type Db = ReturnType<typeof getDb>
 
@@ -14,8 +17,8 @@ export async function organizationWeatherArea(db: Db, organizationId: string): P
 
 /** Areas some company's map shows (client organizations use their contractor's map). */
 export async function weatherAreasInUse(db: Db): Promise<readonly WeatherArea[]> {
-  const [companies, rows] = await Promise.all([
-    db.select({ id: organizations.id }).from(organizations).where(ne(organizations.type, "client")),
+  const [mapCompanies, rows] = await Promise.all([
+    db.select({ id: companies.id }).from(companies).where(ne(companies.type, "client")),
     db
       .select({ organizationId: organizationFeatureSettings.organizationId, value: organizationFeatureSettings.value })
       .from(organizationFeatureSettings)
@@ -23,7 +26,7 @@ export async function weatherAreasInUse(db: Db): Promise<readonly WeatherArea[]>
   ])
   const stored = new Map(rows.map((row) => [row.organizationId, row.value]))
   const areas = new Map<string, WeatherArea>()
-  for (const company of companies) {
+  for (const company of mapCompanies) {
     const area = weatherAreaForState(parseFeatureSettings("portfolio-map", stored.get(company.id)).mapState)
     areas.set(area.key, area)
   }

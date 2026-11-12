@@ -1,8 +1,11 @@
 import { and, eq, gt } from "drizzle-orm"
 
 import type { getDb } from "@/db"
-import { projectClientMeetings, users } from "@/db/schema"
+import { projectClientMeetings } from "@/db/schema"
+import { peopleView } from "@/lib/domain/identity/views"
 import { normalizeRecipientEmail } from "@/lib/email/recipient-options"
+
+const accounts = peopleView()
 
 export type GuestClientMeeting = {
   readonly id: string
@@ -44,13 +47,13 @@ export async function upcomingClientMeetingsForGuest(
   const rows = await db
     .select({
       meeting: projectClientMeetings,
-      displayName: users.displayName,
-      firstName: users.firstName,
-      lastName: users.lastName,
-      email: users.email,
+      displayName: accounts.displayName,
+      firstName: accounts.firstName,
+      lastName: accounts.lastName,
+      email: accounts.email,
     })
     .from(projectClientMeetings)
-    .innerJoin(users, eq(users.id, projectClientMeetings.organizerUserId))
+    .innerJoin(accounts, eq(accounts.id, projectClientMeetings.organizerUserId))
     .where(
       and(
         eq(projectClientMeetings.organizationId, input.organizationId),

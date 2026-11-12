@@ -3,7 +3,7 @@
 import { and, eq, inArray } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 
-import { users, vendorContacts } from "@/db/schema"
+import { vendorContacts } from "@/db/schema"
 import { sageDirectoryAddRequests } from "@/db/schema-sage"
 import { actionFailure } from "@/lib/action-result"
 import type { AuthUser } from "@/lib/auth"
@@ -32,6 +32,9 @@ import {
 } from "@/lib/sage/directory-add-service"
 import { orgContext, type Db } from "@/lib/server/action-context"
 import { isInternalStaffRole } from "@/lib/user-roles"
+import { peopleView } from "@/lib/domain/identity/views"
+
+const users = peopleView()
 
 /*
  * Contacts → "Request add to Sage": office staff ask, Compass checks for

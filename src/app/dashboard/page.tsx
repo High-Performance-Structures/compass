@@ -26,20 +26,16 @@ import {
   canManageProjectRegistry,
 } from "@/lib/permissions"
 import { ClientRedirect } from "@/components/client-redirect"
+import { projectAudienceForRole } from "@/lib/user-roles"
 
 export default async function Page(): Promise<React.ReactElement> {
   const currentUser = await getCurrentUser()
-  if (
-    currentUser &&
-    ["client", "owner", "subcontractor", "supplier"].includes(
-      currentUser.role
-    )
-  ) {
-    const audience =
-      currentUser.role === "client" || currentUser.role === "owner"
-        ? "owner"
-        : "sub-vendor"
-    const dataAudience = audience === "owner" ? "owner" : "sub_vendor"
+  const portalAudience = currentUser
+    ? projectAudienceForRole(currentUser.role)
+    : null
+  if (currentUser && portalAudience) {
+    const audience = portalAudience === "owner" ? "owner" : "sub-vendor"
+    const dataAudience = portalAudience
     const [assignedProjects, cookieStore] = await Promise.all([
       getProjectAudienceOptions(dataAudience),
       cookies(),

@@ -104,6 +104,25 @@ Each error names the owning module and the function to call instead. **When
 you hit one, move the access into the owning module** (add a read function
 there if none fits) and call it. Do not work around it.
 
+What to call instead:
+
+- **Access decisions** (may this person open this job, record or company):
+  `projectContext` / `orgContext` from `@/lib/server/action-context`, or
+  `assertProjectAccess`. Never re-derive access from membership rows.
+- **Roles**: the named predicates in `@/lib/user-roles` (`isInternalStaffRole`,
+  `isOwnerRole`, `isVendorRole`, `projectAudienceForRole`, `seesStaffViews`, ...).
+  Add one there when none fits.
+- **Showing or listing** people, companies, memberships or invitations: join the
+  read-only views in `src/lib/domain/identity/views.ts` (`peopleView`,
+  `companiesView`, `membershipsView`, `invitationsView`) and
+  `src/lib/domain/project/views.ts` (`projectMembersView`) instead of the
+  table. Views are read-only; the module's `store.ts` stays the only writer. A view joins like the table (name it to join it twice):
+  `const author = peopleView("author")` then
+  `.leftJoin(author, eq(author.id, notes.createdBy))`.
+- **Anything with a rule** (who counts as active staff, which invitation is
+  open): a named read function in the owning module, such as `activeStaff` or
+  `openInvitationForProject`.
+
 The ratchet:
 
 - Violations that existed when the rules landed are frozen in

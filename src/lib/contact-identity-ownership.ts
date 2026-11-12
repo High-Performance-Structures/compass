@@ -2,11 +2,13 @@ import { and, eq, isNull, or } from "drizzle-orm"
 
 import type { getDb } from "@/db"
 import {
-  projectAccessInvitations,
   projectContacts,
   projects,
-  users,
 } from "@/db/schema"
+import { invitationsView, peopleView } from "@/lib/domain/identity/views"
+
+const invitations = invitationsView()
+const accounts = peopleView()
 
 export type ContactIdentityFields = {
   readonly email: string | null
@@ -83,23 +85,23 @@ export async function directoryIdentityManagedByActiveUser(input: {
             eq(projectContacts.sourceEntityId, input.entityId)
           )
   const row = await input.db
-    .select({ userId: users.id })
+    .select({ userId: accounts.id })
     .from(projectContacts)
     .innerJoin(projects, eq(projects.id, projectContacts.projectId))
     .innerJoin(
-      projectAccessInvitations,
+      invitations,
       and(
-        eq(projectAccessInvitations.projectId, projectContacts.projectId),
-        eq(projectAccessInvitations.projectContactId, projectContacts.id),
-        eq(projectAccessInvitations.status, "accepted")
+        eq(invitations.projectId, projectContacts.projectId),
+        eq(invitations.projectContactId, projectContacts.id),
+        eq(invitations.status, "accepted")
       )
     )
-    .innerJoin(users, eq(users.id, projectAccessInvitations.acceptedBy))
+    .innerJoin(accounts, eq(accounts.id, invitations.acceptedBy))
     .where(
       and(
         eq(projects.organizationId, input.organizationId),
         directoryMatch,
-        eq(users.isActive, true)
+        eq(accounts.isActive, true)
       )
     )
     .limit(1)
@@ -130,18 +132,18 @@ export async function activeDirectoryIdentityKeys(input: {
     .from(projectContacts)
     .innerJoin(projects, eq(projects.id, projectContacts.projectId))
     .innerJoin(
-      projectAccessInvitations,
+      invitations,
       and(
-        eq(projectAccessInvitations.projectId, projectContacts.projectId),
-        eq(projectAccessInvitations.projectContactId, projectContacts.id),
-        eq(projectAccessInvitations.status, "accepted")
+        eq(invitations.projectId, projectContacts.projectId),
+        eq(invitations.projectContactId, projectContacts.id),
+        eq(invitations.status, "accepted")
       )
     )
-    .innerJoin(users, eq(users.id, projectAccessInvitations.acceptedBy))
+    .innerJoin(accounts, eq(accounts.id, invitations.acceptedBy))
     .where(
       and(
         eq(projects.organizationId, input.organizationId),
-        eq(users.isActive, true),
+        eq(accounts.isActive, true),
         or(
           eq(projectContacts.sourceEntityType, "customer"),
           eq(projectContacts.sourceEntityType, "customer_contact"),

@@ -4,13 +4,15 @@ import { getDb } from "@/db"
 import {
   notificationEvents,
   notificationRecipients,
-  organizationMembers,
-  users,
 } from "@/db/schema"
+import { membershipsView, peopleView } from "@/lib/domain/identity/views"
 import { sageBridgeStatus } from "@/db/schema-sage"
 import { ADMIN_USER_ROLES } from "@/lib/domain/identity/statuses"
 import { dismissNotificationRecipients } from "@/lib/domain/notifications/store"
 import { createSystemNotificationEvent } from "@/lib/notifications/events"
+
+const memberships = membershipsView()
+const people = peopleView()
 
 export const SAGE_BRIDGE_HEARTBEAT_MAX_AGE_MILLISECONDS = 5 * 60 * 1000
 
@@ -148,14 +150,14 @@ export async function runSageBridgeHealthCheck(
 
   const admins = await db
     .select({
-      organizationId: organizationMembers.organizationId,
-      userId: users.id,
-      email: users.email,
+      organizationId: memberships.organizationId,
+      userId: people.id,
+      email: people.email,
     })
-    .from(organizationMembers)
-    .innerJoin(users, eq(users.id, organizationMembers.userId))
+    .from(memberships)
+    .innerJoin(people, eq(people.id, memberships.userId))
     .where(
-      and(eq(users.isActive, true), inArray(users.role, [...ADMIN_USER_ROLES]))
+      and(eq(people.isActive, true), inArray(people.role, [...ADMIN_USER_ROLES]))
     )
   if (admins.length === 0) {
     return {

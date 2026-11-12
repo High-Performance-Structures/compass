@@ -5,7 +5,8 @@ import { requestVendorCertificateSyncs } from "@/lib/sage/vendor-certificates"
 import { and, eq, isNull } from "drizzle-orm"
 
 import type { getDb } from "@/db"
-import { projects, users, vendorContacts, vendors } from "@/db/schema"
+import { projects, vendorContacts, vendors } from "@/db/schema"
+import { peopleView } from "@/lib/domain/identity/views"
 import { tradeLetters, vendorTradeDocuments, type TradeLetter } from "@/db/schema-trade-docs"
 import type { AuthUser } from "@/lib/auth"
 import { loadContractPacketPdfBranding } from "@/lib/contracts/packet-pdf"
@@ -21,6 +22,8 @@ import { summarizeTradeDocs, type TradeDocSummary } from "@/lib/trade-docs/statu
 import { buildTradeLetterPdf, type PreparedTradeLetterPdf } from "@/lib/trade-letters/letter-pdf"
 import { fillLetterText, joinWithAnd, longDate, parseScope, parseStringList, type TradeLetterKind } from "@/lib/trade-letters/letter"
 import { insertTradeDocumentStatement, updateTradeDocumentsStatement } from "@/lib/domain/documents/store"
+
+const people = peopleView()
 
 type Db = ReturnType<typeof getDb>
 
@@ -189,7 +192,7 @@ export async function fileSignedTradeLetter(input: { readonly db: Db; readonly e
   if (!letter.vendorId || !letter.foxitEnvelopeId) return null
   const vendor = await loadTradeVendor(db, letter.organizationId, letter.vendorId)
   const sender = letter.createdBy
-    ? await db.select({ id: users.id, email: users.email, googleEmail: users.googleEmail }).from(users).where(eq(users.id, letter.createdBy)).get()
+    ? await db.select({ id: people.id, email: people.email, googleEmail: people.googleEmail }).from(people).where(eq(people.id, letter.createdBy)).get()
     : undefined
   if (!vendor || !sender) return null
   const settings = await readFeatureSettings(db, letter.organizationId, "trade-docs")

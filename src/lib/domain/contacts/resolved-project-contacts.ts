@@ -4,7 +4,7 @@
  * fallback), in one query. The column expressions and directory joins are in
  * resolved-columns.ts; every write goes through store.ts.
  */
-import { and, asc, eq, getTableColumns, type SQL } from "drizzle-orm"
+import { and, asc, eq, getTableColumns, inArray, type SQL } from "drizzle-orm"
 
 import { projectContacts } from "@/db/schema"
 import type { Db } from "@/lib/server/action-context"
@@ -48,4 +48,24 @@ export async function resolvedProjectContacts(
   return withContactDirectory(select, query.organizationId)
     .where(and(eq(projectContacts.projectId, query.projectId), query.where))
     .orderBy(...orderBy(query.order))
+}
+
+/**
+ * Phone and address (from the directory record, else the copy) for these
+ * project contacts, keyed by contact id. Sign-in uses it to fill an invited
+ * person's empty profile fields from the contact they were invited as.
+ */
+export async function projectContactPhoneAndAddress(
+  db: Db,
+  contactIds: readonly string[],
+): Promise<ReadonlyMap<string, { readonly phone: string | null; readonly address: string | null }>> {
+  if (contactIds.length === 0) return new Map()
+  const rows = await withContactDirectory(
+    db
+      .select({ id: projectContacts.id, phone: resolvedContactColumns.phone, address: resolvedContactColumns.address })
+      .from(projectContacts)
+      .where(inArray(projectContacts.id, [...contactIds]))
+      .$dynamic(),
+  )
+  return new Map(rows.map((row) => [row.id, { phone: row.phone, address: row.address }]))
 }

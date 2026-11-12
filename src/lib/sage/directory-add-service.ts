@@ -2,7 +2,8 @@ import "server-only"
 
 import { and, desc, eq, gte, inArray, or } from "drizzle-orm"
 
-import { customerContacts, customers, organizationMembers, users, vendorContacts, vendors } from "@/db/schema"
+import { customerContacts, customers, vendorContacts, vendors } from "@/db/schema"
+import { membershipsView, peopleView } from "@/lib/domain/identity/views"
 import { sageDirectoryAddRequests } from "@/db/schema-sage"
 import { recordActivityEvent, type ActivityActor } from "@/lib/activity-log"
 import { insertSageContactCreateEvent, insertSageContactCreateProposal } from "@/lib/domain/sage-bridge/contact-store"
@@ -24,6 +25,9 @@ import {
 } from "@/lib/sage/directory-add-request"
 import type { Db } from "@/lib/server/action-context"
 import { canManageUserAccessRole } from "@/lib/user-roles"
+
+const memberships = membershipsView()
+const people = peopleView()
 
 /*
  * The "Request add to Sage" workflow after the request is made: who decides,
@@ -72,9 +76,9 @@ type Approvers = {
 /** The company's approver (Settings > Workflows > Adding to Sage), or its active admins when none is chosen. */
 export async function sageAddApprovers(db: Db, organizationId: string): Promise<Approvers> {
   const settings = await readFeatureSettings(db, organizationId, "sage-add-requests")
-  const members = await db.select({ id: users.id, email: users.email, role: organizationMembers.role, active: users.isActive })
-    .from(organizationMembers).innerJoin(users, eq(users.id, organizationMembers.userId))
-    .where(eq(organizationMembers.organizationId, organizationId))
+  const members = await db.select({ id: people.id, email: people.email, role: memberships.role, active: people.isActive })
+    .from(memberships).innerJoin(people, eq(people.id, memberships.userId))
+    .where(eq(memberships.organizationId, organizationId))
   const chosen = settings.approverUserId ? members.find((member) => member.id === settings.approverUserId && member.active) : undefined
   const recipients = chosen
     ? [{ userId: chosen.id, email: chosen.email }]
@@ -106,8 +110,8 @@ export async function notifySageAddApprovers(
 
 export async function notifySageAddRequester(db: Db, request: AddRequestRow, title: string, body: string): Promise<void> {
   if (!request.requestedByUserId) return
-  const requester = await db.select({ id: users.id, email: users.email, active: users.isActive }).from(users)
-    .where(eq(users.id, request.requestedByUserId)).get()
+  const requester = await db.select({ id: people.id, email: people.email, active: people.isActive }).from(people)
+    .where(eq(people.id, request.requestedByUserId)).get()
   if (!requester?.active) return
   await createSystemNotificationEvent({
     organizationId: request.organizationId, projectId: null,

@@ -3,7 +3,8 @@ import { getCloudflareContext } from "@/lib/db"
 import { getCurrentUser } from "@/lib/auth"
 import { can } from "@/lib/permissions"
 import { getDb } from "@/db"
-import { projects, users } from "@/db/schema"
+import { projects } from "@/db/schema"
+import { peopleView } from "@/lib/domain/identity/views"
 import { googleAuth } from "@/db/schema-google"
 import { eq } from "drizzle-orm"
 import { decrypt } from "@/lib/crypto"
@@ -75,10 +76,11 @@ export async function GET(
         return new Response("Project folder is not mapped", { status: 404 })
       }
 
+      const people = peopleView()
       const connectedBy = await db
-        .select({ email: users.email, googleEmail: users.googleEmail })
-        .from(users)
-        .where(eq(users.id, auth.connectedBy))
+        .select({ email: people.email, googleEmail: people.googleEmail })
+        .from(people)
+        .where(eq(people.id, auth.connectedBy))
         .limit(1)
         .then((rows) => rows[0] ?? null)
       if (!connectedBy) {

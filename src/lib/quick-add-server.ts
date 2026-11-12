@@ -3,13 +3,11 @@ import { and, eq, inArray, sql } from "drizzle-orm"
 import type { ProjectListItem } from "@/lib/projects/project-list"
 import { getDb } from "@/db"
 import {
-  organizationMembers,
-  organizations,
-  projectAccessInvitations,
   projectContacts,
-  projectMembers,
   projects,
 } from "@/db/schema"
+import { companiesView, invitationsView, membershipsView } from "@/lib/domain/identity/views"
+import { projectMembersView } from "@/lib/domain/project/views"
 import type { AuthUser } from "@/lib/auth"
 import { changeOrderRequesterType } from "@/lib/change-orders/access"
 import { isWarrantyProjectStage } from "@/lib/warranty/status"
@@ -29,8 +27,15 @@ import {
 import {
   canUseOrganizationProjectScopeRole,
   isInternalStaffRole,
+  isOwnerRole,
+  isVendorRole,
 } from "@/lib/user-roles"
 import { resolvedContactColumns, withContactDirectory } from "@/lib/domain/contacts/resolved-columns"
+
+const memberships = membershipsView()
+const companies = companiesView()
+const invitations = invitationsView()
+const projectMemberships = projectMembersView()
 
 type AccessRow = {
   readonly projectId: string
@@ -55,8 +60,8 @@ function workspaceFor(row: AccessRow): QuickAddWorkspace | null {
     row.organizationRole !== null &&
     isInternalStaffRole(row.organizationRole)
   if (staff) return "staff"
-  if (row.projectRole === "client" || row.projectRole === "owner") return "owner"
-  if (row.projectRole === "subcontractor" || row.projectRole === "supplier") {
+  if (isOwnerRole(row.projectRole)) return "owner"
+  if (isVendorRole(row.projectRole)) {
     return "sub_vendor"
   }
   return null
@@ -128,24 +133,24 @@ async function accessRows(
         .select({
           projectId: projects.id,
           organizationId: projects.organizationId,
-          organizationType: organizations.type,
-          organizationRole: organizationMembers.role,
-          projectRole: projectMembers.role,
+          organizationType: companies.type,
+          organizationRole: memberships.role,
+          projectRole: projectMemberships.role,
         })
         .from(projects)
-        .innerJoin(organizations, eq(organizations.id, projects.organizationId))
+        .innerJoin(companies, eq(companies.id, projects.organizationId))
         .leftJoin(
-          organizationMembers,
+          memberships,
           and(
-            eq(organizationMembers.organizationId, projects.organizationId),
-            eq(organizationMembers.userId, userId),
+            eq(memberships.organizationId, projects.organizationId),
+            eq(memberships.userId, userId),
           ),
         )
         .leftJoin(
-          projectMembers,
+          projectMemberships,
           and(
-            eq(projectMembers.projectId, projects.id),
-            eq(projectMembers.userId, userId),
+            eq(projectMemberships.projectId, projects.id),
+            eq(projectMemberships.userId, userId),
           ),
         )
         .where(inArray(projects.id, ids)),
@@ -176,21 +181,21 @@ async function subVendorContactProjectIds(
       for (const row of emailRows) result.add(row.projectId)
     }
     const invitationRows = await db
-      .select({ projectId: projectAccessInvitations.projectId })
-      .from(projectAccessInvitations)
+      .select({ projectId: invitations.projectId })
+      .from(invitations)
       .innerJoin(
         projectContacts,
         and(
-          eq(projectContacts.id, projectAccessInvitations.projectContactId),
-          eq(projectContacts.projectId, projectAccessInvitations.projectId),
+          eq(projectContacts.id, invitations.projectContactId),
+          eq(projectContacts.projectId, invitations.projectId),
           eq(projectContacts.active, true),
         ),
       )
       .where(
         and(
-          inArray(projectAccessInvitations.projectId, ids),
-          eq(projectAccessInvitations.acceptedBy, user.id),
-          eq(projectAccessInvitations.status, "accepted"),
+          inArray(invitations.projectId, ids),
+          eq(invitations.acceptedBy, user.id),
+          eq(invitations.status, "accepted"),
         ),
       )
     for (const row of invitationRows) result.add(row.projectId)
@@ -226,7 +231,7 @@ export async function getQuickAddProjects(
     ])
     const accessByProject = new Map(rows.map((row) => [row.projectId, row]))
     const subVendorIds = rows
-      .filter((row) => row.projectRole === "subcontractor" || row.projectRole === "supplier")
+      .filter((row) => isVendorRole(row.projectRole))
       .map((row) => row.projectId)
     const contactProjects = subVendorIds.length > 0
       ? await subVendorContactProjectIds(db, user, subVendorIds)
@@ -254,7 +259,7 @@ export async function getQuickAddProjects(
         if (capabilities.purchaseOrder) actions.push(destination("purchase-order", project.id, "staff"))
         if (capabilities.rfq) actions.push(destination("rfq", project.id, "staff"))
       } else if (
-        (access.projectRole === "subcontractor" || access.projectRole === "supplier") &&
+        (isVendorRole(access.projectRole)) &&
         contactProjects.has(project.id)
       ) {
         actions.push(destination("rfi", project.id, "sub_vendor"))

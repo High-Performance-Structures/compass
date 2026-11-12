@@ -12,8 +12,8 @@ import {
   projectOperations,
   projects,
   scheduleTasks,
-  users,
 } from "@/db/schema"
+import { peopleView } from "@/lib/domain/identity/views"
 import type { AuthUser } from "@/lib/auth"
 import {
   dailyLogFormSetup,
@@ -37,6 +37,8 @@ import type { Db } from "@/lib/server/action-context"
 import { isInternalStaffRole } from "@/lib/user-roles"
 
 import { personDisplayName, uniqueSchedulePhases, weatherLabel } from "./rules"
+
+const people = peopleView()
 
 export type ProjectDailyLogPhoto = {
   readonly id: string
@@ -218,14 +220,14 @@ export async function loadProjectDailyLogWorkspace(
       syncStatus: dailyLogs.syncStatus,
       tags: dailyLogs.tags,
       authorId: dailyLogs.authorId,
-      authorDisplayName: users.displayName,
-      authorFirstName: users.firstName,
-      authorLastName: users.lastName,
-      authorEmail: users.email,
-      authorIsActive: users.isActive,
+      authorDisplayName: people.displayName,
+      authorFirstName: people.firstName,
+      authorLastName: people.lastName,
+      authorEmail: people.email,
+      authorIsActive: people.isActive,
     })
     .from(dailyLogs)
-    .leftJoin(users, eq(dailyLogs.authorId, users.id))
+    .leftJoin(people, eq(dailyLogs.authorId, people.id))
     .where(eq(dailyLogs.projectId, projectId))
     .orderBy(desc(dailyLogs.logDate), desc(dailyLogs.createdAt))
 

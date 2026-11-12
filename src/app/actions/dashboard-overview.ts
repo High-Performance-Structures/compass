@@ -32,7 +32,7 @@ import {
 import { getSageBridgeStatus } from "@/lib/sage/config"
 import { isSageBridgeHeartbeatOnline } from "@/lib/sage/bridge-health"
 import { dateKeyInTimeZone, isValidTimeZone } from "@/lib/work-calendar"
-import { isInternalStaffRole } from "@/lib/user-roles"
+import { seesStaffViews } from "@/lib/user-roles"
 
 type DashboardTask = {
   readonly id: string
@@ -463,7 +463,7 @@ export async function getDashboardOverview(): Promise<DashboardOverview> {
     const today = dateKeyInTimeZone(new Date(), timeZone)
 
     const tasksByProject = groupByProjectId(
-      isInternalStaffRole(user.role) || user.role === "developer" ? allTaskRows : []
+      seesStaffViews(user.role) ? allTaskRows : []
     )
     const photosByProject = groupByProjectId(allPhotoRows)
     const logsByProject = groupByProjectId(allLogRows)

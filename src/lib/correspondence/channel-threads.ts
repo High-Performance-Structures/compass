@@ -1,5 +1,7 @@
 import { and, desc, eq, inArray, isNotNull, isNull, lt, or, sql } from "drizzle-orm"
-import { organizationMembers, projectMembers, projects, users } from "@/db/schema"
+import { projects } from "@/db/schema"
+import { membershipsView, peopleView } from "@/lib/domain/identity/views"
+import { projectMembersView } from "@/lib/domain/project/views"
 import { channelMembers, channelReadState, channelThreadUserState, channels, messageAttachments, messages } from "@/db/schema-conversations"
 import { canAccessConversationChannel, importedConversationAccess } from "@/lib/conversations/channel-access"
 import { importedConversationContent, messageSenderDisplay } from "@/lib/conversations/imported-message-content"
@@ -8,10 +10,14 @@ import { chunkD1Values } from "@/lib/d1-query"
 import { importedMessageColumns } from "@/lib/domain/conversations/imported"
 import { setChannelThreadClosed, upsertChannelReadForUser, upsertChannelThreadStateStatement, type ChannelThreadStatePatch } from "@/lib/domain/conversations/store"
 import { markChannelNotificationsRead } from "@/lib/notifications/clear-on-read"
-import { isInternalStaffRole } from "@/lib/user-roles"
+import { isInternalStaffRole, projectAudienceForRole } from "@/lib/user-roles"
 import type { CorrespondenceContext } from "./access"
 import { channelThreadConversationId } from "./channel-thread-id"
 import type { CorrespondenceAttachment, CorrespondenceDetail, CorrespondenceInboxFilter, CorrespondenceMessage, CorrespondencePerson, CorrespondenceSummary } from "./types"
+
+const memberships = membershipsView()
+const projectMemberships = projectMembersView()
+const accounts = peopleView()
 
 /*
  * Read adapter: project conversations stored as channels (Buildertrend threads
@@ -75,8 +81,8 @@ function canOpenChannelThread(input: {
 }
 
 async function viewerOrganizationRole(ctx: CorrespondenceContext): Promise<string | null> {
-  const row = await ctx.db.select({ role: organizationMembers.role }).from(organizationMembers)
-    .where(and(eq(organizationMembers.organizationId, ctx.organizationId), eq(organizationMembers.userId, ctx.user.id))).get()
+  const row = await ctx.db.select({ role: memberships.role }).from(memberships)
+    .where(and(eq(memberships.organizationId, ctx.organizationId), eq(memberships.userId, ctx.user.id))).get()
   return row?.role ?? null
 }
 
@@ -129,9 +135,7 @@ function messageText(message: { readonly id: string; readonly content: string; r
 
 function personRole(organizationRole: string, projectRole: string | null): CorrespondencePerson["role"] | null {
   if (isInternalStaffRole(organizationRole)) return "staff"
-  if (projectRole === "owner" || projectRole === "client") return "owner"
-  if (projectRole === "subcontractor" || projectRole === "supplier") return "sub_vendor"
-  return null
+  return projectAudienceForRole(projectRole)
 }
 
 async function summarize(ctx: CorrespondenceContext, threads: readonly ChannelThread[]): Promise<readonly CorrespondenceSummary[]> {
@@ -147,12 +151,12 @@ async function summarize(ctx: CorrespondenceContext, threads: readonly ChannelTh
       ctx.db.select({ channelId: messages.channelId, id: messages.id, content: messages.content, createdAt: messages.createdAt, sourceSystem: messages.sourceSystem })
         .from(messages)
         .where(and(inArray(messages.channelId, ids), sql`${messages.id} = (SELECT m.id FROM messages m WHERE m.channel_id = ${messages.channelId} AND m.user_id = ${ctx.user.id} AND m.source_system IS NULL AND m.deleted_at IS NULL ORDER BY m.created_at DESC, m.id DESC LIMIT 1)`)),
-      ctx.db.select({ channelId: channelMembers.channelId, userId: users.id, name: users.displayName, email: users.email, organizationRole: organizationMembers.role, projectRole: projectMembers.role })
+      ctx.db.select({ channelId: channelMembers.channelId, userId: accounts.id, name: accounts.displayName, email: accounts.email, organizationRole: memberships.role, projectRole: projectMemberships.role })
         .from(channelMembers)
-        .innerJoin(users, eq(users.id, channelMembers.userId))
-        .innerJoin(organizationMembers, and(eq(organizationMembers.userId, users.id), eq(organizationMembers.organizationId, ctx.organizationId)))
-        .leftJoin(projectMembers, and(eq(projectMembers.userId, users.id), eq(projectMembers.projectId, ctx.projectId)))
-        .where(and(inArray(channelMembers.channelId, ids), eq(users.isActive, true))),
+        .innerJoin(accounts, eq(accounts.id, channelMembers.userId))
+        .innerJoin(memberships, and(eq(memberships.userId, accounts.id), eq(memberships.organizationId, ctx.organizationId)))
+        .leftJoin(projectMemberships, and(eq(projectMemberships.userId, accounts.id), eq(projectMemberships.projectId, ctx.projectId)))
+        .where(and(inArray(channelMembers.channelId, ids), eq(accounts.isActive, true))),
     ])
     latestRows.push(...latest)
     sentRows.push(...sent)
@@ -205,10 +209,10 @@ export async function readChannelThread(ctx: CorrespondenceContext, channelId: s
     sequence: numbered.sequence, id: messages.id, userId: messages.userId, content: messages.content,
     createdAt: messages.createdAt, editedAt: messages.editedAt, deletedAt: messages.deletedAt,
     snapshot: messages.sourceSentAtSnapshot, ...importedMessageColumns,
-    userDisplayName: users.displayName, userEmail: users.email,
+    userDisplayName: accounts.displayName, userEmail: accounts.email,
   }).from(numbered)
     .innerJoin(messages, eq(messages.id, numbered.id))
-    .leftJoin(users, eq(users.id, messages.userId))
+    .leftJoin(accounts, eq(accounts.id, messages.userId))
     .where(beforeSequence === undefined ? undefined : lt(numbered.sequence, beforeSequence))
     .orderBy(desc(numbered.sequence)).limit(PAGE_SIZE + 1)
   const visible = rows.slice(0, PAGE_SIZE).reverse()

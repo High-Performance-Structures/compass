@@ -36,7 +36,7 @@ describe("schedule assignee directory data boundary", () => {
     expect(scheduleAction).toContain(".from(customers)")
     expect(scheduleAction).toContain(".from(vendors)")
     expect(scheduleAction).toContain(".from(vendorContacts)")
-    expect(scheduleAction).toContain(".from(organizationMembers)")
+    expect(scheduleAction).toContain(".from(memberships)")
     expect(scheduleAction).toContain("customerRows.map(customerToTaskAssigneeOption)")
     // Vendors whose type has no job role (Settings › Vendor types) are left out.
     expect(scheduleAction).toContain("vendorRows.flatMap(")

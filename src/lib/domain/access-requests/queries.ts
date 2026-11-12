@@ -5,25 +5,26 @@
  * SQL to one person or one company.
  */
 import { and, desc, eq, inArray, isNull, sql } from "drizzle-orm"
-import { alias } from "drizzle-orm/sqlite-core"
 
 import { organizationAccessRequests } from "@/db/schema-access-requests"
 import {
   customerContacts,
   customers,
   organizationFeatureSettings,
-  organizationMembers,
-  organizations,
-  users,
   vendorContacts,
   vendors,
 } from "@/db/schema"
+import { companiesView, membershipsView, peopleView } from "@/lib/domain/identity/views"
 import { isDemoOrg } from "@/lib/demo"
 import { ADMIN_USER_ROLES } from "@/lib/domain/identity/statuses"
 import type { Db } from "@/lib/server/action-context"
 
 import { CLIENT_RECORD_OPTION_PREFIX, isRequestableOrganization, VENDOR_COMPANY_OPTION_PREFIX } from "./rules"
 import type { AccessRequestKind, AccessRequestStatus } from "./statuses"
+
+const companyMemberships = membershipsView()
+const companyRows = companiesView()
+const peopleRows = peopleView()
 
 /** The feature settings key for Settings > People > Access requests. */
 const ACCESS_REQUEST_SETTINGS_KEY = "access-requests"
@@ -53,18 +54,18 @@ function storedNames(raw: string | null): readonly string[] {
 async function organizationsAllowingRequests(db: Db, organizationIds?: readonly string[]): Promise<readonly RequestableOrganization[]> {
   const rows = await db
     .select({
-      id: organizations.id,
-      name: organizations.name,
-      type: organizations.type,
-      isActive: organizations.isActive,
+      id: companyRows.id,
+      name: companyRows.name,
+      type: companyRows.type,
+      isActive: companyRows.isActive,
       allowRequests: sql<number | null>`json_extract(${organizationFeatureSettings.value}, '$.allowRequests')`,
       alsoKnownAs: sql<string | null>`json_extract(${organizationFeatureSettings.value}, '$.alsoKnownAs')`,
     })
     .from(organizationFeatureSettings)
-    .innerJoin(organizations, eq(organizations.id, organizationFeatureSettings.organizationId))
+    .innerJoin(companyRows, eq(companyRows.id, organizationFeatureSettings.organizationId))
     .where(and(
       eq(organizationFeatureSettings.featureKey, ACCESS_REQUEST_SETTINGS_KEY),
-      organizationIds ? inArray(organizations.id, [...organizationIds]) : undefined,
+      organizationIds ? inArray(companyRows.id, [...organizationIds]) : undefined,
     ))
   return rows
     .filter((row) => !isDemoOrg(row.id) && isRequestableOrganization({ type: row.type, isActive: row.isActive, allowRequests: row.allowRequests === 1 }))
@@ -76,7 +77,7 @@ async function organizationsAllowingRequests(db: Db, organizationIds?: readonly 
 export async function requestableOrganizationsFor(db: Db, userId: string): Promise<readonly RequestableOrganization[]> {
   const [open, memberships] = await Promise.all([
     organizationsAllowingRequests(db),
-    db.select({ organizationId: organizationMembers.organizationId }).from(organizationMembers).where(eq(organizationMembers.userId, userId)),
+    db.select({ organizationId: companyMemberships.organizationId }).from(companyMemberships).where(eq(companyMemberships.userId, userId)),
   ])
   const member = new Set(memberships.map((row) => row.organizationId))
   return open.filter((org) => !member.has(org.id))
@@ -90,9 +91,9 @@ export async function requestableOrganization(db: Db, organizationId: string): P
 
 export async function isOrganizationMember(db: Db, organizationId: string, userId: string): Promise<boolean> {
   const row = await db
-    .select({ id: organizationMembers.id })
-    .from(organizationMembers)
-    .where(and(eq(organizationMembers.organizationId, organizationId), eq(organizationMembers.userId, userId)))
+    .select({ id: companyMemberships.id })
+    .from(companyMemberships)
+    .where(and(eq(companyMemberships.organizationId, organizationId), eq(companyMemberships.userId, userId)))
     .get()
   return row !== undefined
 }
@@ -100,10 +101,10 @@ export async function isOrganizationMember(db: Db, organizationId: string, userI
 /** True when the person belongs to a company (not only their own personal workspace). */
 export async function hasCompanyMembership(db: Db, userId: string): Promise<boolean> {
   const row = await db
-    .select({ id: organizationMembers.id })
-    .from(organizationMembers)
-    .innerJoin(organizations, eq(organizations.id, organizationMembers.organizationId))
-    .where(and(eq(organizationMembers.userId, userId), sql`${organizations.type} <> 'personal'`))
+    .select({ id: companyMemberships.id })
+    .from(companyMemberships)
+    .innerJoin(companyRows, eq(companyRows.id, companyMemberships.organizationId))
+    .where(and(eq(companyMemberships.userId, userId), sql`${companyRows.type} <> 'personal'`))
     .get()
   return row !== undefined
 }
@@ -126,18 +127,18 @@ export async function myAccessRequests(db: Db, userId: string): Promise<readonly
     .select({
       id: organizationAccessRequests.id,
       organizationId: organizationAccessRequests.organizationId,
-      organizationName: organizations.name,
+      organizationName: companyRows.name,
       kind: organizationAccessRequests.kind,
       status: organizationAccessRequests.status,
       createdAt: organizationAccessRequests.createdAt,
       decidedAt: organizationAccessRequests.decidedAt,
-      memberId: organizationMembers.id,
+      memberId: companyMemberships.id,
     })
     .from(organizationAccessRequests)
-    .innerJoin(organizations, eq(organizations.id, organizationAccessRequests.organizationId))
-    .leftJoin(organizationMembers, and(
-      eq(organizationMembers.organizationId, organizationAccessRequests.organizationId),
-      eq(organizationMembers.userId, organizationAccessRequests.userId),
+    .innerJoin(companyRows, eq(companyRows.id, organizationAccessRequests.organizationId))
+    .leftJoin(companyMemberships, and(
+      eq(companyMemberships.organizationId, organizationAccessRequests.organizationId),
+      eq(companyMemberships.userId, organizationAccessRequests.userId),
     ))
     .where(eq(organizationAccessRequests.userId, userId))
     .orderBy(desc(organizationAccessRequests.createdAt))
@@ -165,7 +166,7 @@ export type CompanyAccessRequest = {
   readonly linkedPerson: string | null
 }
 
-const decider = alias(users, "access_request_decider")
+const decider = peopleView("access_request_decider")
 
 /** One company's requests for its admins: pending first, then the latest decisions. */
 export async function companyAccessRequests(db: Db, organizationId: string): Promise<readonly CompanyAccessRequest[]> {
@@ -175,10 +176,10 @@ export async function companyAccessRequests(db: Db, organizationId: string): Pro
       kind: organizationAccessRequests.kind,
       status: organizationAccessRequests.status,
       requesterUserId: organizationAccessRequests.userId,
-      displayName: users.displayName,
-      firstName: users.firstName,
-      lastName: users.lastName,
-      requesterEmail: users.email,
+      displayName: peopleRows.displayName,
+      firstName: peopleRows.firstName,
+      lastName: peopleRows.lastName,
+      requesterEmail: peopleRows.email,
       companyName: organizationAccessRequests.companyName,
       phone: organizationAccessRequests.phone,
       jobReference: organizationAccessRequests.jobReference,
@@ -192,7 +193,7 @@ export async function companyAccessRequests(db: Db, organizationId: string): Pro
       vendorPerson: sql<string | null>`CASE WHEN ${vendorContacts.id} IS NULL THEN NULL ELSE ${vendorContacts.name} || ' (' || ${vendors.name} || ')' END`,
     })
     .from(organizationAccessRequests)
-    .innerJoin(users, eq(users.id, organizationAccessRequests.userId))
+    .innerJoin(peopleRows, eq(peopleRows.id, organizationAccessRequests.userId))
     .leftJoin(decider, eq(decider.id, organizationAccessRequests.decidedBy))
     .leftJoin(customerContacts, eq(customerContacts.id, organizationAccessRequests.customerContactId))
     .leftJoin(customers, eq(customers.id, customerContacts.customerId))
@@ -213,15 +214,15 @@ export async function companyAccessRequest(db: Db, organizationId: string, reque
   return db
     .select({
       request: organizationAccessRequests,
-      requesterEmail: users.email,
-      requesterName: sql<string>`COALESCE(NULLIF(trim(${users.displayName}), ''), trim(COALESCE(${users.firstName}, '') || ' ' || COALESCE(${users.lastName}, '')), ${users.email})`,
-      requesterFirstName: users.firstName,
-      requesterActive: users.isActive,
-      organizationName: organizations.name,
+      requesterEmail: peopleRows.email,
+      requesterName: sql<string>`COALESCE(NULLIF(trim(${peopleRows.displayName}), ''), trim(COALESCE(${peopleRows.firstName}, '') || ' ' || COALESCE(${peopleRows.lastName}, '')), ${peopleRows.email})`,
+      requesterFirstName: peopleRows.firstName,
+      requesterActive: peopleRows.isActive,
+      organizationName: companyRows.name,
     })
     .from(organizationAccessRequests)
-    .innerJoin(users, eq(users.id, organizationAccessRequests.userId))
-    .innerJoin(organizations, eq(organizations.id, organizationAccessRequests.organizationId))
+    .innerJoin(peopleRows, eq(peopleRows.id, organizationAccessRequests.userId))
+    .innerJoin(companyRows, eq(companyRows.id, organizationAccessRequests.organizationId))
     .where(and(eq(organizationAccessRequests.id, requestId), eq(organizationAccessRequests.organizationId, organizationId)))
     .get()
 }
@@ -344,13 +345,13 @@ export async function listAccessRequestDirectory(
 /** Active admins who decide requests and are told about new ones. */
 export async function accessRequestDeciders(db: Db, organizationId: string): Promise<readonly { readonly userId: string; readonly email: string }[]> {
   const rows = await db
-    .select({ userId: users.id, email: users.email })
-    .from(organizationMembers)
-    .innerJoin(users, eq(users.id, organizationMembers.userId))
+    .select({ userId: peopleRows.id, email: peopleRows.email })
+    .from(companyMemberships)
+    .innerJoin(peopleRows, eq(peopleRows.id, companyMemberships.userId))
     .where(and(
-      eq(organizationMembers.organizationId, organizationId),
-      inArray(organizationMembers.role, [...ADMIN_USER_ROLES]),
-      eq(users.isActive, true),
+      eq(companyMemberships.organizationId, organizationId),
+      inArray(companyMemberships.role, [...ADMIN_USER_ROLES]),
+      eq(peopleRows.isActive, true),
     ))
   return rows
 }

@@ -1,6 +1,7 @@
 import { and, desc, eq, notInArray } from "drizzle-orm"
 
-import { projectBudgetApplications, projectBudgetLines, projectOperations, projects, users } from "@/db/schema"
+import { projectBudgetApplications, projectBudgetLines, projectOperations, projects } from "@/db/schema"
+import { peopleView } from "@/lib/domain/identity/views"
 import { projectContractBudgetLines, projectContractBudgetRevisions } from "@/db/schema-estimates"
 import { payApplicationSageSyncs, sagePayApplicationSnapshots } from "@/db/schema-sage"
 import { payApplicationShopTicketImports } from "@/db/schema-shop-tickets"
@@ -32,6 +33,8 @@ import { markShopTicketsCoveredBySage } from "@/lib/financials/sage-pay-request-
 import type { Db } from "@/lib/server/action-context"
 import { sagePayApplicationHeaderSchema, sagePayApplicationLineSchema } from "@/lib/sage/pay-application-snapshot"
 import { z } from "zod/v4"
+
+const accounts = peopleView()
 
 /*
  * Pay requests built in Sage 100 Contractor, synced into Compass from the
@@ -576,9 +579,9 @@ const SAGE_SYNC_ACTOR: ActivityActor = { id: null, email: "sage-sync", displayNa
 export async function sageSyncActor(db: Db, userId: string | null): Promise<ActivityActor | null> {
   if (!userId) return null
   const user = await db
-    .select({ id: users.id, email: users.email, displayName: users.displayName, firstName: users.firstName, lastName: users.lastName, role: users.role })
-    .from(users)
-    .where(eq(users.id, userId))
+    .select({ id: accounts.id, email: accounts.email, displayName: accounts.displayName, firstName: accounts.firstName, lastName: accounts.lastName, role: accounts.role })
+    .from(accounts)
+    .where(eq(accounts.id, userId))
     .get()
   return user ?? null
 }

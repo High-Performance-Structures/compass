@@ -18,7 +18,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
-import { USER_ROLE_OPTIONS, userRoleLabel } from "@/lib/user-roles"
+import { USER_ROLE_OPTIONS, userRoleBadgeVariant, userRoleLabel } from "@/lib/user-roles"
 
 type PeopleTableProps = {
   readonly users: readonly UserWithRelations[]
@@ -135,7 +135,7 @@ export function peopleColumns(actions: PeopleRowActions): ColumnDef<UserWithRela
       cell: ({ row }) => {
         const role = row.original.role
         return (
-          <Badge variant={role === "admin" ? "default" : role === "office" ? "secondary" : "outline"}>
+          <Badge variant={userRoleBadgeVariant(role)}>
             {userRoleLabel(role)}
           </Badge>
         )

@@ -3,7 +3,6 @@
 import { and, asc, desc, eq, isNull, sql } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 import { getDb } from "@/db"
-import { users } from "@/db/schema"
 import { projectEstimateLineCostItems } from "@/db/schema-estimates"
 import { rateBookEntries, rateBookEntryHistory } from "@/db/schema-rate-book"
 import { getCurrentUser } from "@/lib/auth"
@@ -18,6 +17,9 @@ import {
 } from "@/lib/rate-book/model"
 import { getProjectTravelCharge } from "@/app/actions/project-travel-charges"
 import { isInternalStaffRole } from "@/lib/user-roles"
+import { peopleView } from "@/lib/domain/identity/views"
+
+const users = peopleView()
 
 export type RateBookEntry = RateBookEntryInput & {
   readonly id: string

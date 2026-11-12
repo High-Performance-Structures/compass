@@ -4,13 +4,12 @@ import {
   dailyLogReminders,
   dailyLogs,
   notificationPreferences,
-  organizationMembers,
   projects,
   scheduleTasks,
-  users,
   workCalendarEventAttendees,
   workCalendarEvents,
 } from "@/db/schema"
+import { membershipsView, peopleView } from "@/lib/domain/identity/views"
 import { internalDutyEntries } from "@/db/schema-internal-duties"
 import { scheduleTaskPeople } from "@/db/schema-participants"
 import { companyTimeZone } from "@/lib/daily-logs/log-followups-server"
@@ -27,6 +26,9 @@ import { createSystemNotificationEvent } from "@/lib/notifications/create-event"
 import { shiftDateKey } from "@/lib/project-timeline/model"
 import { isInternalStaffRole } from "@/lib/user-roles"
 import { dateKeyInTimeZone, timeKeyInTimeZone } from "@/lib/work-calendar"
+
+const memberships = membershipsView()
+const accounts = peopleView()
 
 type Db = ReturnType<typeof getDb>
 
@@ -120,18 +122,18 @@ export async function staffMissingDailyLogs(
   if (!isWorkDay(date, rules.workDays)) return []
   const members = await db
     .select({
-      userId: users.id,
-      role: organizationMembers.role,
-      email: users.email,
-      displayName: users.displayName,
-      firstName: users.firstName,
-      lastName: users.lastName,
+      userId: accounts.id,
+      role: memberships.role,
+      email: accounts.email,
+      displayName: accounts.displayName,
+      firstName: accounts.firstName,
+      lastName: accounts.lastName,
       personalTime: notificationPreferences.dailyLogReminderTime,
     })
-    .from(organizationMembers)
-    .innerJoin(users, eq(users.id, organizationMembers.userId))
-    .leftJoin(notificationPreferences, eq(notificationPreferences.userId, users.id))
-    .where(and(eq(organizationMembers.organizationId, organizationId), eq(users.isActive, true)))
+    .from(memberships)
+    .innerJoin(accounts, eq(accounts.id, memberships.userId))
+    .leftJoin(notificationPreferences, eq(notificationPreferences.userId, accounts.id))
+    .where(and(eq(memberships.organizationId, organizationId), eq(accounts.isActive, true)))
   // Staff only, by their role in this company: never clients, subs or suppliers.
   let staff = members.filter((member) => isInternalStaffRole(member.role))
   if (rules.audience === "field_staff") staff = staff.filter((member) => isFieldRole(member.role))
@@ -230,7 +232,7 @@ export async function staffMissingDailyLogs(
  * time, on a day they haven't logged. Honors each company's settings.
  */
 export async function sendMissingDailyLogReminders(db: Db, now: Date = new Date()): Promise<{ readonly reminded: number }> {
-  const orgs = await db.selectDistinct({ organizationId: organizationMembers.organizationId }).from(organizationMembers)
+  const orgs = await db.selectDistinct({ organizationId: memberships.organizationId }).from(memberships)
   let reminded = 0
   for (const { organizationId } of orgs) {
     const rules = await readFeatureSettings(db, organizationId, "daily-log-reminders")

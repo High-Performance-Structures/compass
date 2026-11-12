@@ -1,4 +1,4 @@
-import { isInternalStaffRole } from "@/lib/user-roles"
+import { isInternalStaffRole, isOwnerRole, isVendorRole } from "@/lib/user-roles"
 export type TeamAccessSection =
   | "internal"
   | "vendors"
@@ -7,8 +7,8 @@ export type TeamAccessSection =
 
 export function teamAccessSectionForRole(role: string): TeamAccessSection {
   if (isInternalStaffRole(role)) return "internal"
-  if (role === "subcontractor" || role === "supplier" || role === "vendor") return "vendors"
-  if (role === "client" || role === "owner") return "clients"
+  if (isVendorRole(role) || role === "vendor") return "vendors"
+  if (isOwnerRole(role)) return "clients"
   // Guest and developer accounts have no reliable company relationship here.
   return "other"
 }

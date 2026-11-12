@@ -1,6 +1,8 @@
 import { and, eq, isNull, or, sql, type SQL } from "drizzle-orm"
 
-import { users } from "@/db/schema"
+import { peopleView } from "@/lib/domain/identity/views"
+
+const people = peopleView()
 
 const WORKOS_USER_ID_PREFIX = "user_"
 
@@ -15,14 +17,14 @@ type SettingsRosterUser = {
  * pending local invitations, while keeping deactivated WorkOS users hidden.
  */
 export function getUserAvailabilityCondition(includeInvited: boolean): SQL {
-  if (!includeInvited) return eq(users.isActive, true)
+  if (!includeInvited) return eq(people.isActive, true)
 
   const condition = or(
-    eq(users.isActive, true),
+    eq(people.isActive, true),
     and(
-      eq(users.isActive, false),
-      isNull(users.lastLoginAt),
-      sql`substr(${users.id}, 1, ${WORKOS_USER_ID_PREFIX.length}) <> ${WORKOS_USER_ID_PREFIX}`
+      eq(people.isActive, false),
+      isNull(people.lastLoginAt),
+      sql`substr(${people.id}, 1, ${WORKOS_USER_ID_PREFIX.length}) <> ${WORKOS_USER_ID_PREFIX}`
     )
   )
 

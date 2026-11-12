@@ -88,6 +88,7 @@ describe("compass-core rules", () => {
       { code: 'if (user.role === "client") {}', filename: at("src/lib/user-roles.ts") },
       { code: 'if (role === "admin") {}', filename: at("src/lib/domain/identity/rules.ts") },
       { code: 'if (calendar.accessRole === "owner") {}', filename: COMPONENT },
+      { code: 'if (driveRole === "owner") {}', filename: COMPONENT },
       { code: 'if (status === "client") {}', filename: COMPONENT },
       { code: 'if (user.role === "not-a-role") {}', filename: COMPONENT },
     ],

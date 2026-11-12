@@ -20,7 +20,6 @@ import {
   dailyLogs,
   ownerProjectUpdates,
   projectContacts,
-  projectMembers,
   projectOperations,
   projectRfis,
   projects,
@@ -71,6 +70,7 @@ import {
 } from "@/lib/rfqs/portal-response"
 import { requireUserContext } from "@/lib/server/action-context"
 import { resolvedContactColumns, withContactDirectory } from "@/lib/domain/contacts/resolved-columns"
+import { projectMembersView } from "@/lib/domain/project/views"
 
 export type { ProjectAudience } from "@/lib/project-audience-access"
 export type {
@@ -131,9 +131,8 @@ async function loadAudienceProjectOptions(input: {
   readonly audience: ProjectAudience
   readonly organizationId?: string
 }): Promise<readonly AudienceProjectOption[]> {
-  const organizationFilter = input.organizationId
-    ? eq(projects.organizationId, input.organizationId)
-    : undefined
+  const organizationFilter = input.organizationId ? eq(projects.organizationId, input.organizationId) : undefined
+  const projectMembers = projectMembersView()
   const rows = await input.db
     .select({
       id: projects.id,

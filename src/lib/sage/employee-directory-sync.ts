@@ -2,7 +2,8 @@ import "server-only"
 
 import { and, eq, inArray, sql } from "drizzle-orm"
 
-import { internalContacts, organizationMembers, users } from "@/db/schema"
+import { internalContacts } from "@/db/schema"
+import { membershipsView, peopleView } from "@/lib/domain/identity/views"
 import { sageBridgeStatus, sageEmployeeDirectoryEntries } from "@/db/schema-sage"
 import { recordActivityEvents, type ActivityActor } from "@/lib/activity-log"
 import {
@@ -30,6 +31,9 @@ import { replaceSageEmployeeDirectory, sageBridgeHeartbeatStatement, type SageEm
 import { readFeatureSettings } from "@/lib/feature-settings/server"
 import type { Db } from "@/lib/server/action-context"
 import { isInternalStaffRole } from "@/lib/user-roles"
+
+const memberships = membershipsView()
+const people = peopleView()
 
 /*
  * Ties staff to their Sage employee record. The private, read-only Sage
@@ -109,30 +113,30 @@ async function loadStaffDirectory(db: Db, organizationId: string): Promise<{
         userId: internalContacts.userId,
         name: internalContacts.name,
         email: internalContacts.email,
-        userEmail: users.email,
+        userEmail: people.email,
         active: internalContacts.active,
         sageEmployeeId: internalContacts.sageEmployeeId,
         sageEmployeeNumber: internalContacts.sageEmployeeNumber,
       })
       .from(internalContacts)
-      .leftJoin(users, eq(users.id, internalContacts.userId))
+      .leftJoin(people, eq(people.id, internalContacts.userId))
       .where(eq(internalContacts.organizationId, organizationId)),
     db
       .select({
-        userId: users.id,
-        role: organizationMembers.role,
-        email: users.email,
-        displayName: users.displayName,
-        firstName: users.firstName,
-        lastName: users.lastName,
-        phone: users.phone,
+        userId: people.id,
+        role: memberships.role,
+        email: people.email,
+        displayName: people.displayName,
+        firstName: people.firstName,
+        lastName: people.lastName,
+        phone: people.phone,
       })
-      .from(organizationMembers)
-      .innerJoin(users, eq(users.id, organizationMembers.userId))
+      .from(memberships)
+      .innerJoin(people, eq(people.id, memberships.userId))
       .where(and(
-        eq(organizationMembers.organizationId, organizationId),
-        eq(users.isActive, true),
-        sql`NOT EXISTS (SELECT 1 FROM internal_contacts ic WHERE ic.organization_id = ${organizationId} AND ic.user_id = ${users.id})`,
+        eq(memberships.organizationId, organizationId),
+        eq(people.isActive, true),
+        sql`NOT EXISTS (SELECT 1 FROM internal_contacts ic WHERE ic.organization_id = ${organizationId} AND ic.user_id = ${people.id})`,
       )),
   ])
   const usersWithoutContact = members

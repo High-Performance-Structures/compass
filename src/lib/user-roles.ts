@@ -182,6 +182,61 @@ export function isExternalProjectRole(role: string): boolean {
   ].includes(role)
 }
 
+/** An owner-side role: the client or owner of a job (the owner portal). */
+export function isOwnerRole(role: string | null | undefined): boolean {
+  return role === "client" || role === "owner"
+}
+
+/** The client role exactly (an owner-side company membership); see isOwnerRole for either owner-side role. */
+export function isClientRole(role: string | null | undefined): boolean {
+  return role === "client"
+}
+
+/** Office and project leadership: admins, executives, office staff and project managers (not field or design roles). */
+export function isOfficeLeadershipRole(role: string): boolean {
+  switch (role) {
+    case "admin":
+    case "secondary_admin":
+    case "executive":
+    case "office":
+    case "office_manager":
+    case "project_manager":
+    case "project_administrator":
+    case "assistant_project_manager":
+    case "coordinator":
+      return true
+    default:
+      return false
+  }
+}
+
+/** A vendor role: subcontractor or supplier (the sub/vendor portal). */
+export function isVendorRole(role: string | null | undefined): boolean {
+  return role === "subcontractor" || role === "supplier"
+}
+
+/** Someone outside the company who signed up but has no project role yet. */
+export function isGuestRole(role: string | null | undefined): boolean {
+  return role === "guest"
+}
+
+/** The developer account: sees staff working views without being company staff. */
+export function isDeveloperRole(role: string | null | undefined): boolean {
+  return role === "developer"
+}
+
+/** Company staff, or the developer, who sees what staff see. */
+export function seesStaffViews(role: string): boolean {
+  return isInternalStaffRole(role) || isDeveloperRole(role)
+}
+
+/** The outside portal a project role opens: owner, sub/vendor, or none (staff, guest). */
+export function projectAudienceForRole(role: string | null | undefined): "owner" | "sub_vendor" | null {
+  if (isOwnerRole(role)) return "owner"
+  if (isVendorRole(role)) return "sub_vendor"
+  return null
+}
+
 /** A company whose staff run jobs. A demo company stands in for a real one. */
 export function isStaffOrganizationType(type: string | null | undefined): boolean {
   return type === "internal" || type === "demo"
@@ -210,4 +265,46 @@ export function isInternalStaffRole(role: string): boolean {
     default:
       return false
   }
+}
+
+/** The full administrator only (not secondary_admin). */
+export function isAdminRole(role: string | null | undefined): boolean {
+  return role === "admin"
+}
+
+/** Runs a job day to day: project manager or project administrator. */
+export function isProjectLeadRole(role: string | null | undefined): boolean {
+  return role === "project_manager" || role === "project_administrator"
+}
+
+/** The general "office" (Office Staff) role, which covers the office workflow roles. */
+export function isGeneralOfficeRole(role: string | null | undefined): boolean {
+  return role === "office"
+}
+
+/** The legacy catch-all "field" role, which covers both field workflow roles. */
+export function isLegacyFieldRole(role: string | null | undefined): boolean {
+  return role === "field"
+}
+
+/** A subcontractor (trade doing work), not a supplier. */
+export function isSubcontractorRole(role: string | null | undefined): boolean {
+  return role === "subcontractor"
+}
+
+/** A supplier (materials) rather than a subcontractor (work). */
+export function isSupplierRole(role: string | null | undefined): boolean {
+  return role === "supplier"
+}
+
+/** A conversation channel member role that may moderate: the channel's owner or a moderator. */
+export function isChannelModeratorRole(role: string | null | undefined): boolean {
+  return role === "owner" || role === "moderator"
+}
+
+const USER_ROLE_BADGE_VARIANTS: Readonly<Record<string, "default" | "secondary">> = { admin: "default", office: "secondary" }
+
+/** Badge style for a role in people lists: admin solid, office muted, everyone else outlined. */
+export function userRoleBadgeVariant(role: string): "default" | "secondary" | "outline" {
+  return USER_ROLE_BADGE_VARIANTS[role] ?? "outline"
 }

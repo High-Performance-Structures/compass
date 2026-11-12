@@ -5,7 +5,8 @@ import { and, desc, eq, inArray } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 
 import { getDb } from "@/db"
-import { accountDeletionRequests, organizationMembers } from "@/db/schema"
+import { accountDeletionRequests } from "@/db/schema"
+import { membershipsView } from "@/lib/domain/identity/views"
 import { isWorkOSNotFound } from "@/lib/account-deletion"
 import { requireAuth, type AuthUser } from "@/lib/auth"
 import { isWorkOSConfigured } from "@/lib/auth-config"
@@ -17,6 +18,8 @@ import {
 import { runAccountDeletion, startAccountDeletionRequestProcessing } from "@/lib/domain/identity/store"
 import { canManageUserAccess } from "@/lib/permissions"
 import { listValueOr } from "@/lib/shared/statuses"
+
+const memberships = membershipsView()
 
 type ActionResult<T = undefined> =
   | { success: true; data?: T }
@@ -57,8 +60,8 @@ const NOT_ALLOWED = "Only admins can manage account deletion requests."
 /** Only requests from people in the admin's own organization are visible. */
 function inOrganization(organizationId: string) {
   return and(
-    eq(organizationMembers.userId, accountDeletionRequests.userId),
-    eq(organizationMembers.organizationId, organizationId)
+    eq(memberships.userId, accountDeletionRequests.userId),
+    eq(memberships.organizationId, organizationId)
   )
 }
 
@@ -74,7 +77,7 @@ async function loadRequest(
       status: accountDeletionRequests.status,
     })
     .from(accountDeletionRequests)
-    .innerJoin(organizationMembers, inOrganization(organizationId))
+    .innerJoin(memberships, inOrganization(organizationId))
     .where(eq(accountDeletionRequests.id, requestId))
     .get()
 }
@@ -105,14 +108,14 @@ export async function getAccountDeletionRequestsForAdmin(): Promise<
       db
         .select(columns)
         .from(accountDeletionRequests)
-        .innerJoin(organizationMembers, inOrganization(organizationId))
+        .innerJoin(memberships, inOrganization(organizationId))
         .where(inArray(accountDeletionRequests.status, ["pending", "processing"]))
         .orderBy(accountDeletionRequests.requestedAt)
         .all(),
       db
         .select(columns)
         .from(accountDeletionRequests)
-        .innerJoin(organizationMembers, inOrganization(organizationId))
+        .innerJoin(memberships, inOrganization(organizationId))
         .where(inArray(accountDeletionRequests.status, ["completed", "cancelled"]))
         .orderBy(desc(accountDeletionRequests.updatedAt))
         .limit(20)

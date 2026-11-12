@@ -6,11 +6,16 @@
  */
 import { and, eq } from "drizzle-orm"
 
-import { projectMembers, users } from "@/db/schema"
+import { projectMembersView } from "@/lib/domain/project/views"
+import { peopleView } from "@/lib/domain/identity/views"
 import { recordActivityEvent, type ActivityActor } from "@/lib/activity-log"
 import { createNotificationEvent } from "@/lib/notifications/events"
 import { isPublishedScheduleAssignmentVisible } from "@/lib/schedule/confirmation"
 import type { Db } from "@/lib/server/action-context"
+import { isOwnerRole, isVendorRole } from "@/lib/user-roles"
+
+const projectMemberships = projectMembersView()
+const peopleRows = peopleView()
 
 /** Where an assignee answers or opens the item: the portal for owners and vendors. */
 export function scheduleConfirmationHref(
@@ -18,10 +23,10 @@ export function scheduleConfirmationHref(
   taskId: string,
   projectRole: string | null
 ): string {
-  if (projectRole === "client" || projectRole === "owner") {
+  if (isOwnerRole(projectRole)) {
     return `/preview/projects/${projectId}/owner/schedule`
   }
-  if (projectRole === "subcontractor" || projectRole === "supplier") {
+  if (isVendorRole(projectRole)) {
     return `/preview/projects/${projectId}/sub-vendor/schedule`
   }
   return `/dashboard/projects/${projectId}/schedule?view=list&item=${taskId}`
@@ -58,18 +63,18 @@ export async function notifyScheduleAssignees(
   let notified = 0
   for (const userId of new Set(input.recipientUserIds)) {
     const recipient = await db
-      .select({ id: users.id, email: users.email })
-      .from(users)
-      .where(and(eq(users.id, userId), eq(users.isActive, true)))
+      .select({ id: peopleRows.id, email: peopleRows.email })
+      .from(peopleRows)
+      .where(and(eq(peopleRows.id, userId), eq(peopleRows.isActive, true)))
       .get()
     if (!recipient) {
       firstError ??= "The assigned Compass user is inactive."
       continue
     }
     const membership = await db
-      .select({ role: projectMembers.role })
-      .from(projectMembers)
-      .where(and(eq(projectMembers.projectId, task.projectId), eq(projectMembers.userId, recipient.id)))
+      .select({ role: projectMemberships.role })
+      .from(projectMemberships)
+      .where(and(eq(projectMemberships.projectId, task.projectId), eq(projectMemberships.userId, recipient.id)))
       .get()
     const visible = isPublishedScheduleAssignmentVisible({
       currentAssignedUserId: recipient.id,

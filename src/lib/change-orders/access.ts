@@ -1,5 +1,6 @@
 import { isExternallyPublishedChangeOrderStatus } from "@/lib/change-orders/status"
 import type { ChangeOrderStatus } from "@/lib/change-orders/status"
+import { isOwnerRole, isSubcontractorRole } from "@/lib/user-roles"
 
 export type ChangeOrderRequesterType =
   | "internal"
@@ -11,10 +12,8 @@ export function changeOrderRequesterType(input: {
   readonly projectRole: string | null
 }): ChangeOrderRequesterType | null {
   if (input.internal) return "internal"
-  if (input.projectRole === "client" || input.projectRole === "owner") {
-    return "owner"
-  }
-  if (input.projectRole === "subcontractor") return "subcontractor"
+  if (isOwnerRole(input.projectRole)) return "owner"
+  if (isSubcontractorRole(input.projectRole)) return "subcontractor"
   return null
 }
 

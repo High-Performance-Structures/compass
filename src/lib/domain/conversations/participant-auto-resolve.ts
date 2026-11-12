@@ -7,14 +7,13 @@ import {
   customerContacts,
   customers,
   internalContacts,
-  organizationMembers,
   projectContacts,
   projects,
   userAlternateEmails,
-  users,
   vendorContacts,
   vendors,
 } from "@/db/schema"
+import { membershipsView, peopleView } from "@/lib/domain/identity/views"
 import { projectSourceRecordParticipants } from "@/db/schema-participants"
 import type { ActionResult } from "@/lib/action-result"
 import type { DirectoryPerson } from "@/lib/domain/contacts/people-search"
@@ -44,6 +43,9 @@ import {
   type ParticipantIdentity,
 } from "./participant-matching"
 import { resolvedContactColumns, withContactDirectory } from "@/lib/domain/contacts/resolved-columns"
+
+const memberships = membershipsView()
+const peopleRows = peopleView()
 
 /*
  * Resolves unresolved imported participants a whole identity at a time
@@ -144,9 +146,9 @@ export async function identityKeyOfRow(db: Db, organizationId: string, rowId: st
  */
 export async function loadMatchDirectory(db: Db, organizationId: string, withClients = false): Promise<BuiltDirectory> {
   const [staff, internal, alternates, vendorRows, vendorPeople, clientPeople, contacts, domains, clientRows] = await Promise.all([
-    db.select({ userId: users.id, email: users.email, displayName: users.displayName, firstName: users.firstName, lastName: users.lastName, role: organizationMembers.role, active: users.isActive, phone: users.phone })
-      .from(organizationMembers).innerJoin(users, eq(users.id, organizationMembers.userId))
-      .where(eq(organizationMembers.organizationId, organizationId)),
+    db.select({ userId: peopleRows.id, email: peopleRows.email, displayName: peopleRows.displayName, firstName: peopleRows.firstName, lastName: peopleRows.lastName, role: memberships.role, active: peopleRows.isActive, phone: peopleRows.phone })
+      .from(memberships).innerJoin(peopleRows, eq(peopleRows.id, memberships.userId))
+      .where(eq(memberships.organizationId, organizationId)),
     db.select({ id: internalContacts.id, userId: internalContacts.userId, name: internalContacts.name, email: internalContacts.email, active: internalContacts.active, phone: internalContacts.phone })
       .from(internalContacts).where(eq(internalContacts.organizationId, organizationId)),
     db.select({ userId: userAlternateEmails.userId, email: userAlternateEmails.email })

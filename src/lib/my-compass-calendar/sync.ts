@@ -7,13 +7,12 @@ import {
   myCompassCalendarItems,
   myCompassCalendars,
   organizationCalendarSettings,
-  organizationMembers,
-  projectMembers,
   projectOperations,
   projects,
   scheduleTasks,
-  users,
 } from "@/db/schema"
+import { membershipsView, peopleView } from "@/lib/domain/identity/views"
+import { projectMembersView } from "@/lib/domain/project/views"
 import { googleAuth } from "@/db/schema-google"
 import { isDemoUser } from "@/lib/demo"
 import { insertMissingMyCompassCalendars, updateMyCompassCalendar } from "@/lib/domain/calendars/store"
@@ -32,6 +31,10 @@ import {
   type MyCompassItem,
 } from "@/lib/my-compass-calendar/items"
 import { isInternalStaffRole } from "@/lib/user-roles"
+
+const memberships = membershipsView()
+const projectMemberships = projectMembersView()
+const accounts = peopleView()
 
 type Db = ReturnType<typeof getDb>
 
@@ -160,9 +163,9 @@ async function desiredItems(input: {
       ? new Set(
           (
             await db
-              .select({ projectId: projectMembers.projectId })
-              .from(projectMembers)
-              .where(eq(projectMembers.userId, user.id))
+              .select({ projectId: projectMemberships.projectId })
+              .from(projectMemberships)
+              .where(eq(projectMemberships.userId, user.id))
           ).map((row) => row.projectId)
         )
       : new Set<string>()
@@ -252,16 +255,16 @@ export async function syncMyCompassCalendar(input: {
     .select({
       calendar: myCompassCalendars,
       user: {
-        id: users.id,
-        email: users.email,
-        googleEmail: users.googleEmail,
-        displayName: users.displayName,
-        firstName: users.firstName,
-        lastName: users.lastName,
+        id: accounts.id,
+        email: accounts.email,
+        googleEmail: accounts.googleEmail,
+        displayName: accounts.displayName,
+        firstName: accounts.firstName,
+        lastName: accounts.lastName,
       },
     })
     .from(myCompassCalendars)
-    .innerJoin(users, eq(users.id, myCompassCalendars.userId))
+    .innerJoin(accounts, eq(accounts.id, myCompassCalendars.userId))
     .where(eq(myCompassCalendars.userId, input.userId))
     .limit(1)
     .then((rows) => rows[0] ?? null)
@@ -450,15 +453,15 @@ export async function sweepMyCompassCalendars(db: Db, env: unknown, now = new Da
       )[0]?.timeZone ?? "America/Denver"
     const members = await db
       .select({
-        id: users.id,
-        email: users.email,
-        googleEmail: users.googleEmail,
-        role: users.role,
-        isActive: users.isActive,
+        id: accounts.id,
+        email: accounts.email,
+        googleEmail: accounts.googleEmail,
+        role: accounts.role,
+        isActive: accounts.isActive,
       })
-      .from(users)
-      .innerJoin(organizationMembers, eq(organizationMembers.userId, users.id))
-      .where(eq(organizationMembers.organizationId, workspace.organizationId))
+      .from(accounts)
+      .innerJoin(memberships, eq(memberships.userId, accounts.id))
+      .where(eq(memberships.organizationId, workspace.organizationId))
     const eligible = members.filter(
       (member) => userIsEligible(settings, member) && workspaceEmailFor(member, workspace.domain) !== null
     )

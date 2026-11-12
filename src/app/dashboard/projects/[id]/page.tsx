@@ -10,7 +10,6 @@ import {
   projectContacts,
   projectExternalLinks,
   projectJobStatuses,
-  projectMembers,
   projects,
   scheduleTasks,
 } from "@/db/schema"
@@ -19,6 +18,8 @@ import { canCreateProjectDriveFolder, canManageProjectRegistry } from "@/lib/per
 import { ProjectDriveFolderButton } from "@/components/projects/project-drive-folder-button"
 import { ProjectDriveFolderLink } from "@/components/projects/project-drive-folder-link"
 import { getProjectAccessRecord } from "@/lib/domain/project/access"
+import { projectMembersView } from "@/lib/domain/project/views"
+import { isOwnerRole, isVendorRole } from "@/lib/user-roles"
 import { projectAudiencePreviewHref } from "@/lib/project-audience-preview-routes"
 import { isDeveloperModeEnabled } from "@/lib/developer-mode-server"
 import { and, eq } from "drizzle-orm"
@@ -157,21 +158,22 @@ async function projectAudienceRedirectHref(projectId: string): Promise<string | 
     if (!currentUser) return null
     const { env } = await getCloudflareContext()
     if (!env?.DB) return null
+    const members = projectMembersView()
     const membership = await getDb(env.DB)
-      .select({ role: projectMembers.role })
-      .from(projectMembers)
+      .select({ role: members.role })
+      .from(members)
       .where(
         and(
-          eq(projectMembers.projectId, projectId),
-          eq(projectMembers.userId, currentUser.id),
+          eq(members.projectId, projectId),
+          eq(members.userId, currentUser.id),
         ),
       )
       .get()
     const role = membership?.role ?? null
-    if (role === "client" || role === "owner") {
+    if (isOwnerRole(role)) {
       return projectAudiencePreviewHref(projectId, "owner")
     }
-    if (role === "subcontractor" || role === "supplier") {
+    if (isVendorRole(role)) {
       return projectAudiencePreviewHref(projectId, "sub-vendor")
     }
     return null
@@ -246,13 +248,14 @@ export default async function ProjectSummaryPage({
     if (!currentUser || !(await getProjectAccessRecord(db, currentUser, id))) {
       notFound()
     }
+    const routeMembers = projectMembersView()
     const routeMembership = await db
-      .select({ role: projectMembers.role })
-      .from(projectMembers)
+      .select({ role: routeMembers.role })
+      .from(routeMembers)
       .where(
         and(
-          eq(projectMembers.projectId, id),
-          eq(projectMembers.userId, currentUser.id),
+          eq(routeMembers.projectId, id),
+          eq(routeMembers.userId, currentUser.id),
         ),
       )
       .get()

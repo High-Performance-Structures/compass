@@ -8,14 +8,13 @@ import {
   compassProjectCalendarMembers,
   compassProjectCalendars,
   organizationCalendarSettings,
-  organizationMembers,
   projectClientMeetings,
-  projectMembers,
   projects,
   scheduleTasks,
-  users,
   workCalendarEvents,
 } from "@/db/schema"
+import { membershipsView, peopleView } from "@/lib/domain/identity/views"
+import { projectMembersView } from "@/lib/domain/project/views"
 import { googleAuth } from "@/db/schema-google"
 import { chunkD1Values } from "@/lib/d1-query"
 import { isDemoUser } from "@/lib/demo"
@@ -40,6 +39,10 @@ import {
   type ProjectCalendarItem,
 } from "@/lib/project-calendars/items"
 import { isInternalStaffRole } from "@/lib/user-roles"
+
+const memberships = membershipsView()
+const projectMemberships = projectMembersView()
+const people = peopleView()
 
 type Db = ReturnType<typeof getDb>
 
@@ -206,23 +209,23 @@ async function desiredProjectMembers(input: {
   const { db, settings } = input
   const staff = await db
     .select({
-      id: users.id,
-      email: users.email,
-      googleEmail: users.googleEmail,
-      isActive: users.isActive,
-      role: organizationMembers.role,
+      id: people.id,
+      email: people.email,
+      googleEmail: people.googleEmail,
+      isActive: people.isActive,
+      role: memberships.role,
     })
-    .from(organizationMembers)
-    .innerJoin(users, eq(users.id, organizationMembers.userId))
-    .where(eq(organizationMembers.organizationId, input.organizationId))
+    .from(memberships)
+    .innerJoin(people, eq(people.id, memberships.userId))
+    .where(eq(memberships.organizationId, input.organizationId))
   const team =
     settings.shareWith === "project"
       ? new Set(
           (
             await db
-              .select({ userId: projectMembers.userId })
-              .from(projectMembers)
-              .where(eq(projectMembers.projectId, input.projectId))
+              .select({ userId: projectMemberships.userId })
+              .from(projectMemberships)
+              .where(eq(projectMemberships.projectId, input.projectId))
           ).map((row) => row.userId)
         )
       : null

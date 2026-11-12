@@ -4,16 +4,18 @@ import {
   customerContacts,
   customers,
   internalContacts,
-  organizationMembers,
   projectContacts,
   projects,
-  users,
   vendorContacts,
   vendors,
 } from "@/db/schema"
+import { membershipsView, peopleView } from "@/lib/domain/identity/views"
 import type { Db } from "@/lib/server/action-context"
 import { isInternalStaffRole } from "@/lib/user-roles"
 import { resolvedContactColumns, withContactDirectory } from "./resolved-columns"
+
+const memberships = membershipsView()
+const peopleRows = peopleView()
 
 /*
  * One person anywhere in an organization's directory, found by a bounded,
@@ -111,14 +113,14 @@ async function readPeople(db: Db, organizationId: string, projectId: string, mat
   const limit = only ? 1 : PER_SOURCE_LIMIT
   const [staff, internal, vendorPeople, clientPeople, projectPeople] = await Promise.all([
     want("user") ? db
-      .select({ id: users.id, name: sql<string>`COALESCE(${users.displayName}, trim(COALESCE(${users.firstName}, '') || ' ' || COALESCE(${users.lastName}, '')), ${users.email})`, email: users.email, phone: users.phone, role: organizationMembers.role, active: users.isActive })
-      .from(organizationMembers)
-      .innerJoin(users, eq(users.id, organizationMembers.userId))
+      .select({ id: peopleRows.id, name: sql<string>`COALESCE(${peopleRows.displayName}, trim(COALESCE(${peopleRows.firstName}, '') || ' ' || COALESCE(${peopleRows.lastName}, '')), ${peopleRows.email})`, email: peopleRows.email, phone: peopleRows.phone, role: memberships.role, active: peopleRows.isActive })
+      .from(memberships)
+      .innerJoin(peopleRows, eq(peopleRows.id, memberships.userId))
       .where(and(
-        eq(organizationMembers.organizationId, organizationId),
+        eq(memberships.organizationId, organizationId),
         // A staff account with an internal contact is listed once, as that contact.
-        sql`NOT EXISTS (SELECT 1 FROM internal_contacts ic WHERE ic.organization_id = ${organizationId} AND ic.user_id = ${users.id})`,
-        filter("user", users.id, (m) => matches(m, users.displayName, users.email, [users.phone])),
+        sql`NOT EXISTS (SELECT 1 FROM internal_contacts ic WHERE ic.organization_id = ${organizationId} AND ic.user_id = ${peopleRows.id})`,
+        filter("user", peopleRows.id, (m) => matches(m, peopleRows.displayName, peopleRows.email, [peopleRows.phone])),
       ))
       .limit(limit) : [],
     want("internal") ? db

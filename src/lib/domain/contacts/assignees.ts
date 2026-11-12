@@ -2,7 +2,8 @@
 // items, purchase order site contacts), built from project contacts and staff.
 import { and, asc, eq, isNull } from "drizzle-orm"
 
-import { customers, organizationMembers, projectContacts, users, vendorContacts, vendors } from "@/db/schema"
+import { customers, projectContacts, vendorContacts, vendors } from "@/db/schema"
+import { membershipsView, peopleView } from "@/lib/domain/identity/views"
 import { vendorJobContactType } from "@/lib/contact-project-association"
 import { readFeatureSettings } from "@/lib/feature-settings/server"
 import { uniqueInternalStaffMembers } from "@/lib/internal-contact-directory"
@@ -26,6 +27,9 @@ import { notArchivedPersonContact } from "./person-status"
 import { insertProjectContact } from "./store"
 import type { AddTaskAssigneeContactResult, ProjectTaskAssigneeOption, ProjectTaskAssigneeOptions } from "./types"
 
+const memberships = membershipsView()
+const peopleRows = peopleView()
+
 type Scope = { readonly organizationId: string; readonly projectId: string }
 
 /** The company's vendor types, to decide how each directory vendor joins a job. */
@@ -45,16 +49,16 @@ function activeProjectContacts(db: Db, scope: Scope) {
 function activeOrganizationUsers(db: Db, organizationId: string) {
   return db
     .select({
-      id: users.id,
-      email: users.email,
-      displayName: users.displayName,
-      firstName: users.firstName,
-      lastName: users.lastName,
+      id: peopleRows.id,
+      email: peopleRows.email,
+      displayName: peopleRows.displayName,
+      firstName: peopleRows.firstName,
+      lastName: peopleRows.lastName,
     })
-    .from(organizationMembers)
-    .innerJoin(users, eq(users.id, organizationMembers.userId))
-    .where(and(eq(organizationMembers.organizationId, organizationId), eq(users.isActive, true)))
-    .orderBy(asc(users.displayName), asc(users.email))
+    .from(memberships)
+    .innerJoin(peopleRows, eq(peopleRows.id, memberships.userId))
+    .where(and(eq(memberships.organizationId, organizationId), eq(peopleRows.isActive, true)))
+    .orderBy(asc(peopleRows.displayName), asc(peopleRows.email))
 }
 
 /**
@@ -178,17 +182,17 @@ export async function loadScheduleTaskAssigneeOptions(
     scope.grants.internal
       ? db
           .select({
-            id: users.id,
-            email: users.email,
-            displayName: users.displayName,
-            firstName: users.firstName,
-            lastName: users.lastName,
-            role: organizationMembers.role,
+            id: peopleRows.id,
+            email: peopleRows.email,
+            displayName: peopleRows.displayName,
+            firstName: peopleRows.firstName,
+            lastName: peopleRows.lastName,
+            role: memberships.role,
           })
-          .from(organizationMembers)
-          .innerJoin(users, eq(users.id, organizationMembers.userId))
-          .where(and(eq(organizationMembers.organizationId, orgId), eq(users.isActive, true)))
-          .orderBy(asc(users.displayName), asc(users.email))
+          .from(memberships)
+          .innerJoin(peopleRows, eq(peopleRows.id, memberships.userId))
+          .where(and(eq(memberships.organizationId, orgId), eq(peopleRows.isActive, true)))
+          .orderBy(asc(peopleRows.displayName), asc(peopleRows.email))
       : [],
     scope.grants.internal ? listCrews(db, orgId) : [],
   ])
@@ -234,17 +238,17 @@ export async function loadPurchaseOrderSiteContactOptions(
   const organizationRows = scope.grants.internal
     ? await db
         .select({
-          id: users.id,
-          email: users.email,
-          displayName: users.displayName,
-          firstName: users.firstName,
-          lastName: users.lastName,
-          phone: users.phone,
+          id: peopleRows.id,
+          email: peopleRows.email,
+          displayName: peopleRows.displayName,
+          firstName: peopleRows.firstName,
+          lastName: peopleRows.lastName,
+          phone: peopleRows.phone,
         })
-        .from(organizationMembers)
-        .innerJoin(users, eq(users.id, organizationMembers.userId))
-        .where(and(eq(organizationMembers.organizationId, scope.organizationId), eq(users.isActive, true)))
-        .orderBy(asc(users.displayName), asc(users.email))
+        .from(memberships)
+        .innerJoin(peopleRows, eq(peopleRows.id, memberships.userId))
+        .where(and(eq(memberships.organizationId, scope.organizationId), eq(peopleRows.isActive, true)))
+        .orderBy(asc(peopleRows.displayName), asc(peopleRows.email))
     : []
   const organizationOptions = organizationRows
     .map((row) => ({ ...organizationUserToTaskAssigneeOption(row), phone: row.phone }))

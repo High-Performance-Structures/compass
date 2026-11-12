@@ -5,7 +5,6 @@ import { and, eq } from "drizzle-orm"
 import { NextRequest } from "next/server"
 
 import { getDb } from "@/db"
-import { projectMembers } from "@/db/schema"
 import {
   projectWarrantyClaimAttachments,
   projectWarrantyClaims,
@@ -13,6 +12,7 @@ import {
 import { getCurrentUser } from "@/lib/auth"
 import { getCloudflareContext } from "@/lib/db"
 import { assertProjectAccess } from "@/lib/domain/project/access"
+import { projectMembersView } from "@/lib/domain/project/views"
 import { canUseProjectAudience } from "@/lib/project-audience-access"
 import { isInternalStaffRole } from "@/lib/user-roles"
 import { getWarrantyDriveContext } from "@/lib/warranty/google-drive"
@@ -42,13 +42,14 @@ export async function GET(
     await assertProjectAccess(db, user, projectId)
     const viewerIsInternal = isInternalStaffRole(user.role)
     if (!viewerIsInternal) {
+      const members = projectMembersView()
       const membership = await db
-        .select({ role: projectMembers.role })
-        .from(projectMembers)
+        .select({ role: members.role })
+        .from(members)
         .where(
           and(
-            eq(projectMembers.projectId, projectId),
-            eq(projectMembers.userId, user.id)
+            eq(members.projectId, projectId),
+            eq(members.userId, user.id)
           )
         )
         .limit(1)

@@ -2,14 +2,8 @@ import { and, eq, inArray, isNull } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 
 import { getDb } from "@/db"
-import {
-  notificationDeliveries,
-  notificationEvents,
-  notificationPreferences,
-  organizationMembers,
-  projects,
-  users,
-} from "@/db/schema"
+import { notificationDeliveries, notificationEvents, notificationPreferences, projects } from "@/db/schema"
+import { membershipsView, peopleView } from "@/lib/domain/identity/views"
 import {
   channelMembers,
   channels,
@@ -46,6 +40,9 @@ import {
   shouldSendSmsNotification,
   shouldUseProjectActivitySmsRoute,
 } from "@/lib/notifications/sms-policy"
+
+const memberships = membershipsView()
+const people = peopleView()
 
 type NotificationPreferenceState = {
   readonly inAppEnabled: boolean
@@ -574,20 +571,20 @@ async function persistNotificationEvent(rawInput: CreateNotificationInput): Prom
   const db = getDb(env.DB)
   const recipients = await db
     .select({
-      userId: users.id,
-      email: users.email,
-      googleEmail: users.googleEmail,
+      userId: people.id,
+      email: people.email,
+      googleEmail: people.googleEmail,
     })
-    .from(organizationMembers)
-    .innerJoin(users, eq(users.id, organizationMembers.userId))
+    .from(memberships)
+    .innerJoin(people, eq(people.id, memberships.userId))
     .where(
       and(
         eq(
-          organizationMembers.organizationId,
+          memberships.organizationId,
           input.organizationId
         ),
-        eq(users.isActive, true),
-        inArray(organizationMembers.userId, requestedRecipientIds)
+        eq(people.isActive, true),
+        inArray(memberships.userId, requestedRecipientIds)
       )
     )
   if (recipients.length === 0) return

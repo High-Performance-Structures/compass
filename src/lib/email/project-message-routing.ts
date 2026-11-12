@@ -2,7 +2,9 @@ import "server-only"
 
 import { and, eq, inArray, sql } from "drizzle-orm"
 import type { getDb } from "@/db"
-import { notificationPreferences, organizationMembers, organizations, users } from "@/db/schema"
+import { notificationPreferences } from "@/db/schema"
+import { companiesView, membershipsView, peopleView } from "@/lib/domain/identity/views"
+import { projectMembersView } from "@/lib/domain/project/views"
 import { correspondenceMessages } from "@/db/schema-correspondence"
 import { isCorrespondenceEnabled } from "@/lib/correspondence/access"
 import { USER_ROLES } from "@/lib/domain/identity/statuses"
@@ -13,6 +15,11 @@ import { inboundProjectMessageRecipients } from "./project-message-mentions"
 import { storeInboundMessageAttachments } from "@/lib/correspondence/inbound-attachments"
 import { attachmentInsertStatement, conversationInsertStatement, messageInsertStatement, participantInsertStatement, recipientInsertStatement, writeGuardDeleteStatement, writeGuardInsertStatement } from "@/lib/domain/correspondence/store"
 import { notificationEventInsertStatement, notificationRecipientInsertStatement } from "@/lib/domain/notifications/store"
+
+const memberships = membershipsView()
+const companies = companiesView()
+const accounts = peopleView()
+const projectMemberships = projectMembersView()
 
 /** Called only after the shared email/SMS router verifies the sender and project. */
 export async function routeInboundProjectMessage(input: {
@@ -35,14 +42,14 @@ export async function routeInboundProjectMessage(input: {
 
   const staffRoles = USER_ROLES.filter(isInternalStaffRole)
   const staff = await input.db.select({
-    id: users.id, name: users.displayName, firstName: users.firstName, lastName: users.lastName, email: users.email,
+    id: accounts.id, name: accounts.displayName, firstName: accounts.firstName, lastName: accounts.lastName, email: accounts.email,
     inApp: notificationPreferences.inAppEnabled,
-    assigned: sql<number>`EXISTS(SELECT 1 FROM project_members pm WHERE pm.project_id=${input.projectId} AND pm.user_id=${users.id}) OR EXISTS(SELECT 1 FROM project_contacts pc WHERE pc.project_id=${input.projectId} AND pc.source_entity_type='user' AND pc.source_entity_id=${users.id} AND pc.contact_type='internal' AND pc.active=1)`,
-  }).from(users)
-    .innerJoin(organizationMembers, and(eq(organizationMembers.userId, users.id), eq(organizationMembers.organizationId, input.organizationId)))
-    .innerJoin(organizations, and(eq(organizations.id, organizationMembers.organizationId), eq(organizations.type, "internal")))
-    .leftJoin(notificationPreferences, eq(notificationPreferences.userId, users.id))
-    .where(and(eq(users.isActive, true), inArray(organizationMembers.role, staffRoles)))
+    assigned: sql<number>`EXISTS(SELECT 1 FROM ${projectMemberships} pm WHERE pm.project_id=${input.projectId} AND pm.user_id=${accounts.id}) OR EXISTS(SELECT 1 FROM project_contacts pc WHERE pc.project_id=${input.projectId} AND pc.source_entity_type='user' AND pc.source_entity_id=${accounts.id} AND pc.contact_type='internal' AND pc.active=1)`,
+  }).from(accounts)
+    .innerJoin(memberships, and(eq(memberships.userId, accounts.id), eq(memberships.organizationId, input.organizationId)))
+    .innerJoin(companies, and(eq(companies.id, memberships.organizationId), eq(companies.type, "internal")))
+    .leftJoin(notificationPreferences, eq(notificationPreferences.userId, accounts.id))
+    .where(and(eq(accounts.isActive, true), inArray(memberships.role, staffRoles)))
   const text = `${input.candidate.subject}\n${input.body}`
   const requiresAssignment = !/(?:^|[\s(])@/u.test(text)
   const recipients = inboundProjectMessageRecipients(text, staff.map((person) => ({
@@ -60,8 +67,8 @@ export async function routeInboundProjectMessage(input: {
   // Save the message, audience grants, and in-app notification in one D1 batch.
   // External sender headers never grant access or impersonate a Compass account.
   try { await input.db.batch([
-    writeGuardInsertStatement(input.db, guardId, sql`CASE WHEN EXISTS(SELECT 1 FROM projects WHERE id=${input.projectId} AND organization_id=${input.organizationId}) AND NOT EXISTS(SELECT 1 FROM json_each(${JSON.stringify(recipients.map((person) => person.id))}) person WHERE NOT EXISTS(SELECT 1 FROM users u JOIN organization_members om ON om.user_id=u.id JOIN organizations o ON o.id=om.organization_id WHERE u.id=person.value AND u.is_active=1 AND o.type='internal' AND om.organization_id=${input.organizationId} AND om.role IN (SELECT value FROM json_each(${JSON.stringify(staffRoles)}))
-      AND (${!requiresAssignment} OR EXISTS(SELECT 1 FROM project_members pm WHERE pm.project_id=${input.projectId} AND pm.user_id=u.id)
+    writeGuardInsertStatement(input.db, guardId, sql`CASE WHEN EXISTS(SELECT 1 FROM projects WHERE id=${input.projectId} AND organization_id=${input.organizationId}) AND NOT EXISTS(SELECT 1 FROM json_each(${JSON.stringify(recipients.map((person) => person.id))}) person WHERE NOT EXISTS(SELECT 1 FROM ${accounts} u JOIN ${memberships} om ON om.user_id=u.id JOIN ${companies} o ON o.id=om.organization_id WHERE u.id=person.value AND u.is_active=1 AND o.type='internal' AND om.organization_id=${input.organizationId} AND om.role IN (SELECT value FROM json_each(${JSON.stringify(staffRoles)}))
+      AND (${!requiresAssignment} OR EXISTS(SELECT 1 FROM ${projectMemberships} pm WHERE pm.project_id=${input.projectId} AND pm.user_id=u.id)
         OR EXISTS(SELECT 1 FROM project_contacts pc WHERE pc.project_id=${input.projectId} AND pc.source_entity_type='user' AND pc.source_entity_id=u.id AND pc.contact_type='internal' AND pc.active=1))
     )) THEN 1 ELSE 0 END`),
     conversationInsertStatement(input.db, { id: conversationId, organizationId: input.organizationId, projectId: input.projectId, subject: title, createdAt: input.now }),

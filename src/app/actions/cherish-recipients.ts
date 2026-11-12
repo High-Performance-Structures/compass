@@ -3,9 +3,9 @@
 import { and, asc, eq } from "drizzle-orm"
 
 import { getDb } from "@/db"
-import { organizationMembers, users } from "@/db/schema"
 import { requireAuth } from "@/lib/auth"
 import { getCloudflareContext } from "@/lib/db"
+import { membershipsView, peopleView } from "@/lib/domain/identity/views"
 import { requireOrg } from "@/lib/org-scope"
 import { canUseFieldDesk } from "@/lib/permissions"
 import { isInternalStaffRole } from "@/lib/user-roles"
@@ -41,24 +41,27 @@ export async function getCherishRecipientOptions(): Promise<RecipientResult> {
       }
     }
 
-    const rows = await getDb(env.DB)
+    const db = getDb(env.DB)
+    const people = peopleView()
+    const memberships = membershipsView()
+    const rows = await db
       .select({
-        id: users.id,
-        displayName: users.displayName,
-        firstName: users.firstName,
-        lastName: users.lastName,
-        email: users.email,
-        role: organizationMembers.role,
+        id: people.id,
+        displayName: people.displayName,
+        firstName: people.firstName,
+        lastName: people.lastName,
+        email: people.email,
+        role: memberships.role,
       })
-      .from(organizationMembers)
-      .innerJoin(users, eq(users.id, organizationMembers.userId))
+      .from(memberships)
+      .innerJoin(people, eq(people.id, memberships.userId))
       .where(
         and(
-          eq(organizationMembers.organizationId, organizationId),
-          eq(users.isActive, true),
+          eq(memberships.organizationId, organizationId),
+          eq(people.isActive, true),
         ),
       )
-      .orderBy(asc(users.displayName), asc(users.firstName), asc(users.email))
+      .orderBy(asc(people.displayName), asc(people.firstName), asc(people.email))
 
     return {
       success: true,

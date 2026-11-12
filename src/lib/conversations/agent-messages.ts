@@ -3,7 +3,7 @@ import "server-only"
 import { and, desc, eq, gte, inArray, sql } from "drizzle-orm"
 import type { SQL } from "drizzle-orm"
 import type { getDb } from "@/db"
-import { users } from "@/db/schema"
+import { peopleView } from "@/lib/domain/identity/views"
 import {
   channelMembers,
   channelReadState,
@@ -11,6 +11,8 @@ import {
   messages,
 } from "@/db/schema-conversations"
 import { isInternalStaffRole } from "@/lib/user-roles"
+
+const accounts = peopleView()
 
 // Read-only conversation lookups for Ask Jarvis. Visibility mirrors
 // listChannels in src/app/actions/conversations.ts: channels in the viewer's
@@ -160,12 +162,12 @@ export async function searchVisibleMessages(
       channelName: channels.name,
       createdAt: messages.createdAt,
       content: messages.content,
-      authorName: users.displayName,
-      authorEmail: users.email,
+      authorName: accounts.displayName,
+      authorEmail: accounts.email,
     })
     .from(messages)
     .innerJoin(channels, eq(channels.id, messages.channelId))
-    .leftJoin(users, eq(users.id, messages.userId))
+    .leftJoin(accounts, eq(accounts.id, messages.userId))
     .where(and(...conditions))
     .orderBy(desc(messages.createdAt))
     .limit(limit)

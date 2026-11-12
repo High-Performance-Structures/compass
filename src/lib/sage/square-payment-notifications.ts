@@ -3,11 +3,13 @@ import { and, eq, inArray } from "drizzle-orm"
 import { getDb } from "@/db"
 import {
   notificationEvents,
-  users,
 } from "@/db/schema"
+import { peopleView } from "@/lib/domain/identity/views"
 import { settleNotificationRecipientsWhereStatement } from "@/lib/domain/notifications/store"
 import { createSystemNotificationEvent } from "@/lib/notifications/events"
 import { squareAlertRecipientIds } from "@/lib/sage/square-alert-recipients"
+
+const people = peopleView()
 
 const EXCEPTION_EVENT_TYPE = "sage.square_payment.exception"
 const MANUAL_RECEIPT_EVENT_TYPE = "sage.square_payment.manual_receipt"
@@ -74,11 +76,11 @@ async function notifySageSquareAdmins(
   const recipientIds = await squareAlertRecipientIds(db, env, input.organizationId, "payments")
   const admins = await db
     .select({
-      userId: users.id,
-      email: users.email,
+      userId: people.id,
+      email: people.email,
     })
-    .from(users)
-    .where(inArray(users.id, recipientIds.length > 0 ? [...recipientIds] : [""]))
+    .from(people)
+    .where(inArray(people.id, recipientIds.length > 0 ? [...recipientIds] : [""]))
   await createSystemNotificationEvent({
     organizationId: input.organizationId,
     projectId: input.projectId,

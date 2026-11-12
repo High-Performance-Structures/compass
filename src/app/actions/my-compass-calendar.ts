@@ -4,7 +4,8 @@ import { and, eq } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 
 import { getDb } from "@/db"
-import { myCompassCalendarItems, myCompassCalendars, organizationCalendarSettings, organizationMembers, users } from "@/db/schema"
+import { myCompassCalendarItems, myCompassCalendars, organizationCalendarSettings } from "@/db/schema"
+import { membershipsView, peopleView } from "@/lib/domain/identity/views"
 import { googleAuth } from "@/db/schema-google"
 import { requireAuth, type AuthUser } from "@/lib/auth"
 import { getCloudflareContext } from "@/lib/db"
@@ -20,6 +21,9 @@ import {
 } from "@/lib/my-compass-calendar/sync"
 import { requireOrg } from "@/lib/org-scope"
 import { isInternalStaffRole } from "@/lib/user-roles"
+
+const people = peopleView()
+const memberships = membershipsView()
 
 type Result<T> = { readonly success: true; readonly data: T } | { readonly success: false; readonly error: string }
 
@@ -216,16 +220,16 @@ export async function getMyCompassCalendarStaffOptions(): Promise<
     if (!canEditFeatureSettings(ctx.user.role, "my-compass-calendar")) return { success: true, data: [] }
     const rows = await ctx.db
       .select({
-        id: users.id,
-        email: users.email,
-        displayName: users.displayName,
-        firstName: users.firstName,
-        lastName: users.lastName,
-        role: users.role,
+        id: people.id,
+        email: people.email,
+        displayName: people.displayName,
+        firstName: people.firstName,
+        lastName: people.lastName,
+        role: people.role,
       })
-      .from(users)
-      .innerJoin(organizationMembers, eq(organizationMembers.userId, users.id))
-      .where(and(eq(organizationMembers.organizationId, ctx.organizationId), eq(users.isActive, true)))
+      .from(people)
+      .innerJoin(memberships, eq(memberships.userId, people.id))
+      .where(and(eq(memberships.organizationId, ctx.organizationId), eq(people.isActive, true)))
     return {
       success: true,
       data: rows

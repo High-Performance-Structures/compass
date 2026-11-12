@@ -1,12 +1,20 @@
 import { and, asc, eq } from "drizzle-orm"
 import type { getDb } from "@/db"
-import { organizationMembers, organizations, projectMembers, projects, users } from "@/db/schema"
+import { projects } from "@/db/schema"
+import { companiesView, membershipsView, peopleView } from "@/lib/domain/identity/views"
+import { projectMembersView } from "@/lib/domain/project/views"
 import { projectArchiveDocuments, projectArchiveRecipients, type ProjectArchiveDocument } from "@/db/schema-project-archives"
 import { canUseProjectAudience, type ProjectAudience } from "@/lib/project-audience-access"
-import { isInternalStaffRole } from "@/lib/user-roles"
+import { isClientRole, isGuestRole, isInternalStaffRole, isVendorRole } from "@/lib/user-roles"
 import { insertArchiveEdition } from "@/lib/domain/documents/store"
 
 import { archivePublicationSchema, type ArchivePublication } from "@/lib/project-archive-model"
+
+const memberships = membershipsView()
+const companies = companiesView()
+const projectMemberships = projectMembersView()
+const people = peopleView()
+
 export type { ArchivePublication } from "@/lib/project-archive-model"
 export { archivePublicationSchema } from "@/lib/project-archive-model"
 type Db = ReturnType<typeof getDb>
@@ -16,15 +24,15 @@ export type ArchiveScope = { readonly projectId: string; readonly organizationId
 
 /** Real active accounts only. Pending invitations and display/company labels grant nothing. */
 export async function archiveReaders(db: Db, projectId: string, organizationId: string): Promise<readonly ArchiveReader[]> {
-  const rows = await db.select({ id: users.id, name: users.displayName, email: users.email, role: organizationMembers.role, projectRole: projectMembers.role })
-    .from(projectMembers).innerJoin(users, and(eq(users.id, projectMembers.userId), eq(users.isActive, true)))
-    .innerJoin(projects, and(eq(projects.id, projectMembers.projectId), eq(projects.organizationId, organizationId)))
-    .innerJoin(organizations, and(eq(organizations.id, projects.organizationId), eq(organizations.isActive, true)))
-    .innerJoin(organizationMembers, and(eq(organizationMembers.organizationId, organizations.id), eq(organizationMembers.userId, users.id)))
-    .where(eq(projectMembers.projectId, projectId))
+  const rows = await db.select({ id: people.id, name: people.displayName, email: people.email, role: memberships.role, projectRole: projectMemberships.role })
+    .from(projectMemberships).innerJoin(people, and(eq(people.id, projectMemberships.userId), eq(people.isActive, true)))
+    .innerJoin(projects, and(eq(projects.id, projectMemberships.projectId), eq(projects.organizationId, organizationId)))
+    .innerJoin(companies, and(eq(companies.id, projects.organizationId), eq(companies.isActive, true)))
+    .innerJoin(memberships, and(eq(memberships.organizationId, companies.id), eq(memberships.userId, people.id)))
+    .where(eq(projectMemberships.projectId, projectId))
   const readers: ArchiveReader[] = []
   for (const row of rows) {
-    if (isInternalStaffRole(row.role) || !["client", "subcontractor", "supplier", "guest"].includes(row.role)) continue
+    if (isInternalStaffRole(row.role) || !(isClientRole(row.role) || isVendorRole(row.role) || isGuestRole(row.role))) continue
     const audience = canUseProjectAudience(row.projectRole, "owner") ? "owner" : canUseProjectAudience(row.projectRole, "sub_vendor") ? "sub_vendor" : null
     if (audience && !readers.some((reader) => reader.id === row.id && reader.audience === audience)) readers.push({ id: row.id, name: row.name ?? row.email, email: row.email, audience })
   }

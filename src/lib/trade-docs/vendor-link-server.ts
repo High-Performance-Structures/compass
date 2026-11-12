@@ -3,7 +3,8 @@ import "server-only"
 import { and, desc, eq } from "drizzle-orm"
 
 import { getDb } from "@/db"
-import { users, vendors } from "@/db/schema"
+import { vendors } from "@/db/schema"
+import { peopleView } from "@/lib/domain/identity/views"
 import { vendorTradeDocLinks, vendorTradeDocuments } from "@/db/schema-trade-docs"
 import { readVendorTypes } from "@/lib/feature-settings/vendor-types-server"
 import { readDepartmentProfiles } from "@/lib/department-profiles-server"
@@ -21,6 +22,8 @@ import {
   type TradeDocLinkAudience,
   type TradeDocLinkItemState,
 } from "@/lib/trade-docs/vendor-link"
+
+const people = peopleView()
 
 export type TradeDocLinkContext = {
   readonly db: ReturnType<typeof getDb>
@@ -53,9 +56,9 @@ export async function resolveTradeDocLink(env: CloudflareEnv, token: string, now
     .get()
   if (!vendor || vendor.status !== "active") return null
   const sender = await db
-    .select({ id: users.id, email: users.email, googleEmail: users.googleEmail, displayName: users.displayName, isActive: users.isActive })
-    .from(users)
-    .where(eq(users.id, link.createdBy))
+    .select({ id: people.id, email: people.email, googleEmail: people.googleEmail, displayName: people.displayName, isActive: people.isActive })
+    .from(people)
+    .where(eq(people.id, link.createdBy))
     .get()
   if (!sender?.isActive) return null
   const settings = await readFeatureSettings(db, link.organizationId, "trade-docs")

@@ -5,8 +5,8 @@ const source = readFileSync("src/lib/sage/square-alert-recipients.ts", "utf8")
 
 describe("Square alert recipients", () => {
   it("only alerts active members of the same organization", () => {
-    expect(source).toContain("eq(organizationMembers.organizationId, organizationId)")
-    expect(source).toContain("eq(users.isActive, true)")
+    expect(source).toContain("eq(memberships.organizationId, organizationId)")
+    expect(source).toContain("eq(people.isActive, true)")
   })
 
   it("never falls back to all staff for connection alerts", () => {

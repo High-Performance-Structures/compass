@@ -3,7 +3,8 @@ import "server-only"
 import { and, eq, gt, inArray, isNull, lt, or } from "drizzle-orm"
 
 import type { getDb } from "@/db"
-import { projectClientMeetings, projects, users } from "@/db/schema"
+import { projectClientMeetings, projects } from "@/db/schema"
+import { peopleView } from "@/lib/domain/identity/views"
 import { insertDailyLogIfAbsent } from "@/lib/domain/field/store"
 import { updateProjectClientMeeting } from "@/lib/domain/media/store"
 import { isRecord } from "@/lib/shared/guards"
@@ -12,6 +13,8 @@ import { getCompassGmailAccessToken } from "@/lib/email/compass-email"
 import { readFeatureSettings } from "@/lib/feature-settings/server"
 import { getProjectDocumentDriveContext } from "@/lib/google/project-document-drive"
 import { internalDomainSet, resolveRecordFolder } from "@/lib/paper-trail/folders"
+
+const accounts = peopleView()
 
 type Db = ReturnType<typeof getDb>
 
@@ -212,9 +215,9 @@ async function createTranscriptDailyLog(input: {
 }): Promise<string> {
   const { db, meeting } = input
   const host = await db
-    .select({ displayName: users.displayName, firstName: users.firstName, lastName: users.lastName, email: users.email })
-    .from(users)
-    .where(eq(users.id, meeting.organizerUserId))
+    .select({ displayName: accounts.displayName, firstName: accounts.firstName, lastName: accounts.lastName, email: accounts.email })
+    .from(accounts)
+    .where(eq(accounts.id, meeting.organizerUserId))
     .limit(1)
     .then((rows) => rows[0] ?? null)
   const hostName =

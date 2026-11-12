@@ -3,7 +3,7 @@
 import { and, asc, desc, eq, inArray, isNull, sql } from "drizzle-orm"
 import { z } from "zod/v4"
 
-import { users } from "@/db/schema"
+import { peopleView } from "@/lib/domain/identity/views"
 import {
   listeningPlaylistItems,
   listeningPlaylists,
@@ -39,6 +39,8 @@ import {
   revalidatePlaylistPaths,
   type PlaylistContext,
 } from "@/lib/listening-playlist-context"
+
+const people = peopleView()
 
 const channelIdSchema = z.string().trim().min(1).max(200)
 const playlistIdSchema = z.string().trim().min(1).max(200)
@@ -200,11 +202,11 @@ export async function getListeningPlaylists(
           name: listeningPlaylists.name,
           createdBy: listeningPlaylists.createdBy,
           updatedAt: listeningPlaylists.updatedAt,
-          creatorDisplayName: users.displayName,
-          creatorEmail: users.email,
+          creatorDisplayName: people.displayName,
+          creatorEmail: people.email,
         })
         .from(listeningPlaylists)
-        .leftJoin(users, eq(users.id, listeningPlaylists.createdBy))
+        .leftJoin(people, eq(people.id, listeningPlaylists.createdBy))
         .where(
           and(
             eq(listeningPlaylists.organizationId, context.channel.organizationId),

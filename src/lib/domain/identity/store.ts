@@ -13,11 +13,13 @@ import type { BatchItem } from "drizzle-orm/batch"
 import {
   accountDeletionRequests,
   organizationMembers,
+  organizations,
   projectAccessInvitations,
   teamMembers,
   teams,
   userAlternateEmails,
   users,
+  type NewOrganization,
   type NewOrganizationMember,
   type NewProjectAccessInvitation,
   type NewUser,
@@ -57,6 +59,14 @@ export async function updateUser(db: Db, userId: string, changes: UserChanges): 
 export function updateUserStatement(db: Db, userId: string, changes: UserChanges): Statement {
   assertListFields("users", changes, USER_LISTS)
   return db.update(users).set(changes).where(eq(users.id, userId))
+}
+
+// ---------------------------------------------------------------------------
+// Organizations
+// ---------------------------------------------------------------------------
+
+export async function insertOrganization(db: Db, row: NewOrganization): Promise<void> {
+  await db.insert(organizations).values(row).run()
 }
 
 // ---------------------------------------------------------------------------

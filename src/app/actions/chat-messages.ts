@@ -30,7 +30,7 @@ import {
   type NewMessageReaction,
   type NewMessageMention,
 } from "@/db/schema-conversations"
-import { users, organizationMembers } from "@/db/schema"
+import { membershipsView, peopleView } from "@/lib/domain/identity/views"
 import { getCurrentUser } from "@/lib/auth"
 import {
   getAttachmentsByMessage,
@@ -66,6 +66,9 @@ import {
   updateMessage,
   upsertChannelReadForUser,
 } from "@/lib/domain/conversations/store"
+
+const people = peopleView()
+const memberships = membershipsView()
 
 const MAX_MESSAGE_LENGTH = 4000
 const EMOJI_REGEX = /^[\p{Emoji}\u200d\uFE0F]+$/u
@@ -154,25 +157,22 @@ export async function searchMentionableUsers(
     const searchPattern = `%${query}%`
     const results = await db
       .select({
-        id: users.id,
-        displayName: users.displayName,
-        email: users.email,
-        avatarUrl: users.avatarUrl,
-        role: users.role,
+        id: people.id,
+        displayName: people.displayName,
+        email: people.email,
+        avatarUrl: people.avatarUrl,
+        role: people.role,
       })
-      .from(users)
-      .innerJoin(
-        organizationMembers,
-        eq(organizationMembers.userId, users.id)
-      )
+      .from(people)
+      .innerJoin(memberships, eq(memberships.userId, people.id))
       .where(
         and(
-          eq(organizationMembers.organizationId, organizationId),
+          eq(memberships.organizationId, organizationId),
           or(
-            like(users.displayName, searchPattern),
-            like(users.email, searchPattern),
-            like(users.firstName, searchPattern),
-            like(users.lastName, searchPattern)
+            like(people.displayName, searchPattern),
+            like(people.email, searchPattern),
+            like(people.firstName, searchPattern),
+            like(people.lastName, searchPattern)
           )
         )
       )
@@ -221,16 +221,16 @@ async function getChannelNotificationMembers(
 ): Promise<readonly ConversationNotificationRecipient[]> {
   return db
     .select({
-      userId: users.id,
-      email: users.email,
+      userId: people.id,
+      email: people.email,
       notifyLevel: channelMembers.notifyLevel,
     })
     .from(channelMembers)
-    .innerJoin(users, eq(users.id, channelMembers.userId))
+    .innerJoin(people, eq(people.id, channelMembers.userId))
     .where(
       and(
         eq(channelMembers.channelId, channelId),
-        eq(users.isActive, true)
+        eq(people.isActive, true)
       )
     )
     .then((rows) =>
@@ -286,22 +286,22 @@ async function resolveMentionNotificationRecipients(
     channel && !channel.isPrivate && directTargetIds.length > 0
       ? await db
           .select({
-            userId: users.id,
-            email: users.email,
-            role: organizationMembers.role,
+            userId: people.id,
+            email: people.email,
+            role: memberships.role,
           })
-          .from(users)
+          .from(people)
           .innerJoin(
-            organizationMembers,
+            memberships,
             and(
-              eq(organizationMembers.userId, users.id),
-              eq(organizationMembers.organizationId, channel.organizationId)
+              eq(memberships.userId, people.id),
+              eq(memberships.organizationId, channel.organizationId)
             )
           )
           .where(
             and(
-              inArray(users.id, directTargetIds),
-              eq(users.isActive, true)
+              inArray(people.id, directTargetIds),
+              eq(people.isActive, true)
             )
           )
           .then((rows) =>
@@ -429,18 +429,15 @@ export async function sendMessage(data: {
     if (isBuildertrendArchive && mentionedUserIds.length > 0) {
       const mentionedUsers = await db
         .select({
-          id: users.id,
-          organizationRole: organizationMembers.role,
+          id: people.id,
+          organizationRole: memberships.role,
         })
-        .from(users)
-        .innerJoin(
-          organizationMembers,
-          eq(organizationMembers.userId, users.id)
-        )
+        .from(people)
+        .innerJoin(memberships, eq(memberships.userId, people.id))
         .where(
           and(
-            eq(organizationMembers.organizationId, activityChannel.organizationId),
-            inArray(users.id, mentionedUserIds)
+            eq(memberships.organizationId, activityChannel.organizationId),
+            inArray(people.id, mentionedUserIds)
           )
         )
       const internalMentionedUserIds = new Set(
@@ -759,14 +756,14 @@ export async function sendMessage(data: {
         lastReplyAt: messages.lastReplyAt,
         createdAt: messages.createdAt,
         user: {
-          id: users.id,
+          id: people.id,
           displayName: messageSenderDisplayName,
-          email: users.email,
-          avatarUrl: users.avatarUrl,
+          email: people.email,
+          avatarUrl: people.avatarUrl,
         },
       })
       .from(messages)
-      .leftJoin(users, eq(users.id, messages.userId))
+      .leftJoin(people, eq(people.id, messages.userId))
       .where(eq(messages.id, messageId))
       .limit(1)
       .then((rows) => rows[0] ?? null)
@@ -893,14 +890,14 @@ export async function getThreadMessages(
         createdAt: messages.createdAt,
         ...importedMessageColumns,
         user: {
-          id: users.id,
+          id: people.id,
           displayName: messageSenderDisplayName,
-          email: users.email,
-          avatarUrl: users.avatarUrl,
+          email: people.email,
+          avatarUrl: people.avatarUrl,
         },
       })
       .from(messages)
-      .leftJoin(users, eq(users.id, messages.userId))
+      .leftJoin(people, eq(people.id, messages.userId))
       .where(
         and(
           eq(messages.threadId, parentMessageId),

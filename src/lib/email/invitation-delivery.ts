@@ -2,10 +2,11 @@ import "server-only"
 
 import { and, asc, desc, eq, inArray, lte } from "drizzle-orm"
 import type { getDb } from "@/db"
-import { organizationMembers, organizations, projectAccessInvitations, projectContacts, projects, users } from "@/db/schema"
+import { projectContacts, projects } from "@/db/schema"
+import { companiesView, invitationsView, membershipsView, peopleView } from "@/lib/domain/identity/views"
 import { type ActivityActor, recordActivityEvent } from "@/lib/activity-log"
 import { projectNumberAndName } from "@/lib/project-display-name"
-import { isInternalStaffRole } from "@/lib/user-roles"
+import { isInternalStaffRole, projectAudienceForRole } from "@/lib/user-roles"
 import { getCompassGmailSender, getCompassSystemSender, sendCompassEmail } from "./compass-email"
 import { emailRetryAt } from "./delivery-recovery"
 import { buildProjectAccessWelcomeHtml } from "./project-access-welcome"
@@ -24,8 +25,13 @@ import {
 } from "@/lib/domain/identity/store"
 import { getPermissions } from "@/lib/permissions"
 
+const memberships = membershipsView()
+const companies = companiesView()
+const invitations = invitationsView()
+const accounts = peopleView()
+
 type Db = ReturnType<typeof getDb>
-type Invitation = typeof projectAccessInvitations.$inferSelect
+type Invitation = typeof invitations.$inferSelect
 export type InvitationEmailState = { readonly status: string; readonly nextAttemptAt: string | null }
 const MAX_ATTEMPTS = 12
 
@@ -59,15 +65,15 @@ async function emailContext(db: Db, invitation: Invitation): Promise<{
   )).get()
   const project = await db.select({ name: projects.name, projectNumber: projects.projectNumber }).from(projects).where(and(eq(projects.id, invitation.projectId),
     eq(projects.organizationId, invitation.organizationId))).get()
-  const actor = await db.select({ id: users.id, email: users.email, firstName: users.firstName, lastName: users.lastName, displayName: users.displayName, role: users.role }).from(users).where(and(eq(users.id, invitation.invitedBy), eq(users.isActive, true))).get()
-  const membership = await db.select({ role: organizationMembers.role, type: organizations.type }).from(organizationMembers)
-    .innerJoin(organizations, eq(organizations.id, organizationMembers.organizationId))
-    .where(and(eq(organizationMembers.userId, invitation.invitedBy), eq(organizationMembers.organizationId, invitation.organizationId))).get()
+  const actor = await db.select({ id: accounts.id, email: accounts.email, firstName: accounts.firstName, lastName: accounts.lastName, displayName: accounts.displayName, role: accounts.role }).from(accounts).where(and(eq(accounts.id, invitation.invitedBy), eq(accounts.isActive, true))).get()
+  const membership = await db.select({ role: memberships.role, type: companies.type }).from(memberships)
+    .innerJoin(companies, eq(companies.id, memberships.organizationId))
+    .where(and(eq(memberships.userId, invitation.invitedBy), eq(memberships.organizationId, invitation.organizationId))).get()
   if (!contact || !project || !actor || !membership || membership.type !== "internal" || (!isInternalStaffRole(membership.role) || !getPermissions(membership.role, "project").includes("update"))) return null
-  const latest = await db.select({ id: projectAccessInvitations.id }).from(projectAccessInvitations)
-    .where(and(eq(projectAccessInvitations.projectId, invitation.projectId),
-      eq(projectAccessInvitations.projectContactId, invitation.projectContactId)))
-    .orderBy(desc(projectAccessInvitations.invitedAt), desc(projectAccessInvitations.id)).get()
+  const latest = await db.select({ id: invitations.id }).from(invitations)
+    .where(and(eq(invitations.projectId, invitation.projectId),
+      eq(invitations.projectContactId, invitation.projectContactId)))
+    .orderBy(desc(invitations.invitedAt), desc(invitations.id)).get()
   if (latest?.id !== invitation.id) return null
   const recipient = await currentInvitationRecipient(db, { projectId: invitation.projectId,
     contactId: invitation.projectContactId, organizationId: invitation.organizationId, role: invitation.role })
@@ -76,7 +82,7 @@ async function emailContext(db: Db, invitation: Invitation): Promise<{
 }
 
 async function notifyDeliveryProblem(db: Db, invitation: Invitation, status: string): Promise<void> {
-  const inviter = await db.select({ email: users.email }).from(users).where(eq(users.id, invitation.invitedBy)).get()
+  const inviter = await db.select({ email: accounts.email }).from(accounts).where(eq(accounts.id, invitation.invitedBy)).get()
   if (!inviter) return
   await createSystemNotificationEvent({ organizationId: invitation.organizationId, projectId: invitation.projectId,
     eventType: "project.invitation_email_problem", sourceType: "project_access_invitation", sourceId: invitation.id,
@@ -91,8 +97,9 @@ async function notifyDeliveryProblem(db: Db, invitation: Invitation, status: str
 async function invitationUrl(env: unknown, invitation: Invitation): Promise<string | null> {
   if (invitation.workosExpiresAt && Date.parse(invitation.workosExpiresAt) <= Date.now()) return null
   const base = envString(env, "COMPASS_APP_URL") ?? envString(env, "COMPASS_PUBLIC_BASE_URL") ?? "https://compass.openrangeconstruction.ltd"
-  const path = invitation.role === "owner" || invitation.role === "client" ? `/preview/projects/${invitation.projectId}/owner`
-    : invitation.role === "subcontractor" || invitation.role === "supplier" ? `/preview/projects/${invitation.projectId}/sub-vendor`
+  const audience = projectAudienceForRole(invitation.role)
+  const path = audience === "owner" ? `/preview/projects/${invitation.projectId}/owner`
+    : audience === "sub_vendor" ? `/preview/projects/${invitation.projectId}/sub-vendor`
       : `/dashboard/projects/${invitation.projectId}`
   const login = `${base.replace(/\/$/, "")}/login?from=${encodeURIComponent(path)}`
   if (!invitation.workosInvitationId || invitation.status === "accepted") return login
@@ -114,7 +121,7 @@ export async function deliverInvitationEmail(input: {
   readonly invitationId: string
 }): Promise<InvitationEmailState> {
   const { db, env } = input
-  const row = await db.select().from(projectAccessInvitations).where(eq(projectAccessInvitations.id, input.invitationId)).get()
+  const row = await db.select().from(invitations).where(eq(invitations.id, input.invitationId)).get()
   if (!row) return { status: "cancelled", nextAttemptAt: null }
   if (!["queued", "retrying"].includes(row.emailStatus)) return { status: row.emailStatus, nextAttemptAt: row.emailNextAttemptAt }
   const now = new Date().toISOString()
@@ -143,8 +150,8 @@ export async function deliverInvitationEmail(input: {
     // Persist the attempt before provider I/O. A crashed Worker must not blindly resend it.
     const attemptClaim = await recordInvitationEmailAttempt(db, { invitationId: row.id, token, attempts })
     if (attemptClaim.length === 0) {
-      const current = await db.select({ status: projectAccessInvitations.emailStatus, nextAttemptAt: projectAccessInvitations.emailNextAttemptAt })
-        .from(projectAccessInvitations).where(eq(projectAccessInvitations.id, row.id)).get()
+      const current = await db.select({ status: invitations.emailStatus, nextAttemptAt: invitations.emailNextAttemptAt })
+        .from(invitations).where(eq(invitations.id, row.id)).get()
       return current ?? { status: "cancelled", nextAttemptAt: null }
     }
     dispatched = true
@@ -199,9 +206,9 @@ export async function retryInvitationEmails(db: Db, env: unknown): Promise<{
     claimedBefore: new Date(Date.now() - 300_000).toISOString() })
   for (const invitation of stale) await notifyDeliveryProblem(db, invitation, "unknown")
   // One email per minute, with a shared mailbox slot for simultaneous user sends.
-  const due = await db.select({ id: projectAccessInvitations.id }).from(projectAccessInvitations)
-    .where(and(inArray(projectAccessInvitations.emailStatus, ["queued", "retrying"]), lte(projectAccessInvitations.emailNextAttemptAt, now)))
-    .orderBy(asc(projectAccessInvitations.emailNextAttemptAt)).limit(1)
+  const due = await db.select({ id: invitations.id }).from(invitations)
+    .where(and(inArray(invitations.emailStatus, ["queued", "retrying"]), lte(invitations.emailNextAttemptAt, now)))
+    .orderBy(asc(invitations.emailNextAttemptAt)).limit(1)
   for (const row of due) await deliverInvitationEmail({ db, env, invitationId: row.id })
   return { processed: due.length, needsReview: stale.length }
 }

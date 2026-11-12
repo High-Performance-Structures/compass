@@ -2,7 +2,9 @@ import type { AuthUser } from "./auth"
 import { isDemoOrg, isDemoUser } from "@/lib/demo"
 import {
   canManageUserAccessRole,
+  isGuestRole,
   isInternalStaffRole,
+  isOfficeLeadershipRole,
 } from "@/lib/user-roles"
 
 export type Resource =
@@ -599,7 +601,7 @@ export function can(
  * permission in the baseline matrix and remain denied here.
  */
 export function canUseAskCompass(user: AuthUser | null): boolean {
-  return user?.role !== "guest" && can(user, "agent", "read")
+  return !isGuestRole(user?.role) && can(user, "agent", "read")
 }
 
 export function canUseFieldDesk(user: AuthUser | null): boolean {
@@ -676,20 +678,7 @@ export function canManageWorkCalendarEvents(
     return false
   }
 
-  switch (user.role) {
-    case "admin":
-    case "secondary_admin":
-    case "executive":
-    case "office":
-    case "office_manager":
-    case "project_manager":
-    case "project_administrator":
-    case "assistant_project_manager":
-    case "coordinator":
-      return true
-    default:
-      return false
-  }
+  return isOfficeLeadershipRole(user.role)
 }
 
 export function requirePermission(

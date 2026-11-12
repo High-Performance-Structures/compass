@@ -390,7 +390,7 @@
       "src/lib/domain/record-statuses/store.ts"
     ],
     "organizations": [
-      "src/lib/auth.ts"
+      "src/lib/domain/identity/store.ts"
     ],
     "ownerProjectUpdates": [
       "src/lib/domain/field/store.ts"
@@ -985,20 +985,20 @@
     ]
   },
   "largeFiles": {
-    "src/app/actions/chat-messages.ts": 1157,
+    "src/app/actions/chat-messages.ts": 1154,
     "src/app/actions/cherish-pulse.ts": 912,
     "src/app/actions/contract-packets.ts": 1361,
-    "src/app/actions/greeting-cards.ts": 1104,
-    "src/app/actions/listening-room.ts": 1085,
+    "src/app/actions/greeting-cards.ts": 1102,
+    "src/app/actions/listening-room.ts": 1084,
     "src/app/actions/nutech-orders.ts": 892,
-    "src/app/actions/project-audience-preview.ts": 999,
+    "src/app/actions/project-audience-preview.ts": 998,
     "src/app/actions/project-change-orders.ts": 1311,
     "src/app/actions/project-documents.ts": 876,
     "src/app/actions/project-financial-workflows.ts": 1393,
-    "src/app/actions/schedule-confirmations.ts": 1344,
+    "src/app/actions/schedule-confirmations.ts": 1335,
     "src/app/actions/social-posts.ts": 1123,
     "src/app/actions/voice-sessions.ts": 982,
-    "src/app/api/google/project-manager-handoff/route.ts": 816,
+    "src/app/api/google/project-manager-handoff/route.ts": 813,
     "src/app/page.tsx": 1149,
     "src/components/agent/chat-view.tsx": 1047,
     "src/components/ai/prompt-input.tsx": 1287,
@@ -1019,13 +1019,12 @@
     "src/components/settings/ai-model-tab.tsx": 1379,
     "src/components/ui/sidebar.tsx": 916,
     "src/components/voice/realtimekit-meeting-window.tsx": 1060,
-    "src/lib/email/gmail-inbound.ts": 817,
-    "src/lib/email/project-inbound-routing.ts": 1037,
+    "src/lib/email/gmail-inbound.ts": 816,
+    "src/lib/email/project-inbound-routing.ts": 1033,
     "src/lib/estimates/sage-estimate-cost-code-catalog.ts": 1182,
     "src/lib/feature-settings/registry.ts": 938,
-    "src/lib/notifications/create-event.ts": 833,
-    "src/lib/notifications/events.ts": 952,
-    "src/lib/permissions.ts": 806,
+    "src/lib/notifications/create-event.ts": 830,
+    "src/lib/notifications/events.ts": 951,
     "src/lib/sage/square-payment.ts": 1333,
     "src/lib/sync/engine.ts": 864
   },

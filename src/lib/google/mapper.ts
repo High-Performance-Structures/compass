@@ -54,8 +54,8 @@ function mimeTypeToFileType(mimeType: string): FileType {
   return "unknown"
 }
 
-function mapPermissionRole(role: string): SharedRole {
-  if (role === "writer" || role === "owner") return "editor"
+function mapPermissionRole(driveRole: string): SharedRole {
+  if (driveRole === "writer" || driveRole === "owner") return "editor"
   return "viewer"
 }
 
@@ -68,7 +68,7 @@ export function mapDriveFileToFileItem(
   const sharedWith: SharedUser[] = (
     driveFile.permissions ?? []
   )
-    .filter(p => p.role !== "owner" && p.type === "user")
+    .filter(({ role: driveRole, type }) => driveRole !== "owner" && type === "user")
     .map(p => ({
       name: p.displayName ?? p.emailAddress ?? "Unknown",
       avatar: p.photoLink,

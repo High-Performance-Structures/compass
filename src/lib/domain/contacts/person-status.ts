@@ -21,9 +21,14 @@ import { and, eq, inArray, or, sql, type SQL } from "drizzle-orm"
 
 import { projectContacts } from "@/db/schema"
 import { USER_ROLES } from "@/lib/domain/identity/statuses"
+import { companiesView, membershipsView, peopleView } from "@/lib/domain/identity/views"
 import { isInternalStaffRole } from "@/lib/user-roles"
 
 import { contactDirectoryRecordReachable } from "./resolved-columns"
+
+const people = peopleView()
+const memberships = membershipsView()
+const companies = companiesView()
 
 export type ProjectContactPersonStatus = "current_staff" | "archived_person"
 
@@ -95,27 +100,27 @@ export function projectContactPersonStatusSql(): SQL<ProjectContactPersonStatus 
     when ${archivedDirectoryPerson()} then 'archived_person'
     when ${projectContacts.contactType} <> 'internal' then null
     when exists (
-      select 1 from users u
+      select 1 from ${people} u
       where ${matchedAccountWhere()}
         and u.is_active = 1
         and exists (
-          select 1 from organization_members om
+          select 1 from ${memberships} om
           where om.user_id = u.id
             and om.organization_id = ${organizationId}
             and om.role in (${sqlList(USER_ROLES.filter(isInternalStaffRole))})
         )
         and exists (
-          select 1 from organizations o
+          select 1 from ${companies} o
           where o.id = ${organizationId} and o.type in (${sqlList(STAFF_ORGANIZATION_TYPES)})
         )
     ) then 'current_staff'
-    when exists (select 1 from users u where ${matchedAccountWhere()})
+    when exists (select 1 from ${people} u where ${matchedAccountWhere()})
       and not exists (
-        select 1 from users u
+        select 1 from ${people} u
         where ${matchedAccountWhere()}
           and u.is_active = 1
           and exists (
-            select 1 from organization_members om
+            select 1 from ${memberships} om
             where om.user_id = u.id and om.organization_id = ${organizationId}
           )
       ) then 'archived_person'

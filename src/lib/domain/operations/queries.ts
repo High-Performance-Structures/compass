@@ -14,8 +14,8 @@ import {
   projects,
   scheduleTasks,
   vendors,
-  users,
 } from "@/db/schema"
+import { peopleView } from "@/lib/domain/identity/views"
 import { loadProjectCostCodeChoices } from "@/lib/cost-codes/catalog-server"
 import { chunkD1Values } from "@/lib/d1-query"
 import { cleanText } from "@/lib/shared/guards"
@@ -43,6 +43,8 @@ import type {
   ProjectTodoItem,
 } from "./types"
 import { resolvedContactColumns, withContactDirectory } from "@/lib/domain/contacts/resolved-columns"
+
+const people = peopleView()
 
 const TODO_RECORD_TYPES = [...PROJECT_TODO_RECORD_TYPES]
 
@@ -217,9 +219,9 @@ export async function loadProjectTodos(db: Db, projectId: string): Promise<reado
     ),
   )
   const scheduleTaskIds = new Set(groups.flat().map((row) => row.id))
-  const authors = await db.select({ todoId: projectTodoEvents.todoId, displayName: users.displayName, firstName: users.firstName, lastName: users.lastName })
+  const authors = await db.select({ todoId: projectTodoEvents.todoId, displayName: people.displayName, firstName: people.firstName, lastName: people.lastName })
     .from(projectTodoEvents)
-    .leftJoin(users, eq(projectTodoEvents.actorId, users.id))
+    .leftJoin(people, eq(projectTodoEvents.actorId, people.id))
     .where(and(eq(projectTodoEvents.projectId, projectId), eq(projectTodoEvents.kind, "created")))
     .orderBy(asc(projectTodoEvents.createdAt), asc(projectTodoEvents.id))
   const authorByTodo = new Map<string, string | null>()
