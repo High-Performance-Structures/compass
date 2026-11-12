@@ -182,6 +182,38 @@ export function isExternalProjectRole(role: string): boolean {
   ].includes(role)
 }
 
+/** An owner-side role: the client or owner of a job (the owner portal). */
+export function isOwnerRole(role: string | null | undefined): boolean {
+  return role === "client" || role === "owner"
+}
+
+/** A vendor role: subcontractor or supplier (the sub/vendor portal). */
+export function isVendorRole(role: string | null | undefined): boolean {
+  return role === "subcontractor" || role === "supplier"
+}
+
+/** Someone outside the company who signed up but has no project role yet. */
+export function isGuestRole(role: string | null | undefined): boolean {
+  return role === "guest"
+}
+
+/** The developer account: sees staff working views without being company staff. */
+export function isDeveloperRole(role: string | null | undefined): boolean {
+  return role === "developer"
+}
+
+/** Company staff, or the developer, who sees what staff see. */
+export function seesStaffViews(role: string): boolean {
+  return isInternalStaffRole(role) || isDeveloperRole(role)
+}
+
+/** The outside portal a project role opens: owner, sub/vendor, or none (staff, guest). */
+export function projectAudienceForRole(role: string | null | undefined): "owner" | "sub_vendor" | null {
+  if (isOwnerRole(role)) return "owner"
+  if (isVendorRole(role)) return "sub_vendor"
+  return null
+}
+
 /** A company whose staff run jobs. A demo company stands in for a real one. */
 export function isStaffOrganizationType(type: string | null | undefined): boolean {
   return type === "internal" || type === "demo"

@@ -14,11 +14,6 @@
       "count": 2
     }
   },
-  "src/app/actions/cherish-recipients.ts": {
-    "compass-core/owned-table-import": {
-      "count": 2
-    }
-  },
   "src/app/actions/client-company-join.ts": {
     "compass-core/owned-table-import": {
       "count": 1
