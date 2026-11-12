@@ -127,7 +127,7 @@ export async function addIndependentContactFromReview(
     .limit(1)
 
   const contactType = vendorJobContactType(vendor.category, (await readFeatureSettings(db, scope.organizationId, "vendor-types")).types)
-  if (contactType === null) return { success: false, error: "This company's vendor type has no role on jobs." }
+  if (contactType === null) return { success: false, error: "Banks and lenders aren't added to jobs." }
   const contactId =
     existing[0]?.id ??
     `project-contact-${sourceIdPart(scope.projectId)}-${sourceIdPart(contactType)}-${sourceIdPart(vendor.name)}`

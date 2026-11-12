@@ -5,13 +5,20 @@ import { z } from "zod/v4"
  * (named as in Sage, so the two match). Each type decides two things for
  * every vendor that has it:
  * - its job role: "subcontractor" (performs work), "supplier" (delivers
- *   material) or "none" (listed on the directory only, never invited);
+ *   material) or "none" (can still be picked for a job, never invited);
  * - the paperwork Compass requests: "none", "w9" (W-9 only) or "full"
  *   (trade docs and insurance; which documents is Settings › Trade docs).
  * Pure and client-safe.
  */
 export const VENDOR_JOB_ROLES = ["subcontractor", "supplier", "none"] as const
 export type VendorJobRole = (typeof VENDOR_JOB_ROLES)[number]
+
+/** How a vendor of each job role is listed on a job; a no-role vendor is listed as a subcontractor it can't invite. */
+export const JOB_ROLE_CONTACT_TYPE: Readonly<Record<VendorJobRole, "subcontractor" | "supplier">> = {
+  subcontractor: "subcontractor",
+  supplier: "supplier",
+  none: "subcontractor",
+}
 
 export const VENDOR_PAPERWORK_LEVELS = ["none", "w9", "full"] as const
 export type VendorPaperworkLevel = (typeof VENDOR_PAPERWORK_LEVELS)[number]
@@ -42,7 +49,7 @@ const DEFAULT_VENDOR_TYPES_SETTINGS: VendorTypesSettings = {
     { name: "Subcontractor", jobRole: "subcontractor", paperwork: "full", hidden: false },
     { name: "Material Supplier", jobRole: "supplier", paperwork: "w9", hidden: false },
     { name: "Professional Services", jobRole: "subcontractor", paperwork: "full", hidden: false },
-    { name: "Equipment and Rental", jobRole: "none", paperwork: "w9", hidden: false },
+    { name: "Equipment and Rental", jobRole: "supplier", paperwork: "w9", hidden: false },
     { name: "Government Agency", jobRole: "none", paperwork: "none", hidden: false },
     { name: "Technology and Software", jobRole: "none", paperwork: "w9", hidden: false },
     { name: "Miscellaneous", jobRole: "none", paperwork: "none", hidden: false },
@@ -52,7 +59,7 @@ const DEFAULT_VENDOR_TYPES_SETTINGS: VendorTypesSettings = {
 export const VENDOR_TYPES_SETTINGS_GROUP = {
   label: "Vendor types",
   description:
-    "The vendor types a company in the directory can have, named as in Sage. Each type sets its role on jobs (subcontractor, supplier or none) and the paperwork Compass requests (nothing, W-9 only, or trade docs and insurance).",
+    "The vendor types a company in the directory can have, named as in Sage. Each type sets its role on jobs (subcontractor, supplier, or none: can be picked for RFIs, RFQs, POs and to-dos but never invited) and the paperwork Compass requests (nothing, W-9 only, or trade docs and insurance).",
   defaults: DEFAULT_VENDOR_TYPES_SETTINGS,
   schema: vendorTypesSettingsSchema,
 }

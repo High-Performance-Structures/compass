@@ -25,7 +25,7 @@ const KEY = "vendor-types"
 const JOB_ROLE_LABELS: Readonly<Record<VendorJobRole, string>> = {
   subcontractor: "Subcontractor (performs work)",
   supplier: "Supplier (delivers material)",
-  none: "No job role (never invited)",
+  none: "No job role (pickable, never invited)",
 }
 
 const PAPERWORK_LABELS: Readonly<Record<VendorPaperworkLevel, string>> = {
