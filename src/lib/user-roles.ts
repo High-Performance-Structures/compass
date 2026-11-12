@@ -267,15 +267,9 @@ export function isInternalStaffRole(role: string): boolean {
   }
 }
 
-/** The full administrator only; secondary admins are excluded. */
 /** The full administrator only (not secondary_admin). */
 export function isAdminRole(role: string | null | undefined): boolean {
   return role === "admin"
-}
-
-/** The stored owner account role ("client") alone; isOwnerRole also accepts "owner". */
-export function isClientRole(role: string | null | undefined): boolean {
-  return role === "client"
 }
 
 /** Runs a job day to day: project manager or project administrator. */
@@ -283,25 +277,9 @@ export function isProjectLeadRole(role: string | null | undefined): boolean {
   return role === "project_manager" || role === "project_administrator"
 }
 
-/** A conversation channel member role that may moderate: the channel's owner or a moderator. */
-export function isChannelModeratorRole(role: string | null | undefined): boolean {
-  return role === "owner" || role === "moderator"
-}
-
-/** A subcontractor (trade doing work), not a supplier. */
-export function isSubcontractorRole(role: string | null | undefined): boolean {
-  return role === "subcontractor"
-/** A supplier (materials) rather than a subcontractor (work). */
-export function isSupplierRole(role: string | null | undefined): boolean {
-  return role === "supplier"
-const USER_ROLE_BADGE_VARIANTS: Readonly<Record<string, "default" | "secondary">> = { admin: "default", office: "secondary" }
-
-/** Badge style for a role in people lists: admin solid, office muted, everyone else outlined. */
-export function userRoleBadgeVariant(role: string): "default" | "secondary" | "outline" {
-  return USER_ROLE_BADGE_VARIANTS[role] ?? "outline"
-/** The "client" account role alone; "owner" is a project-role alias, not an account role. */
-export function isClientAccountRole(role: string | null | undefined): boolean {
-  return role === "client"
+/** The general "office" (Office Staff) role, which covers the office workflow roles. */
+export function isGeneralOfficeRole(role: string | null | undefined): boolean {
+  return role === "office"
 }
 
 /** The legacy catch-all "field" role, which covers both field workflow roles. */
@@ -309,7 +287,24 @@ export function isLegacyFieldRole(role: string | null | undefined): boolean {
   return role === "field"
 }
 
-/** The general "office" (Office Staff) role, which covers the office workflow roles. */
-export function isGeneralOfficeRole(role: string | null | undefined): boolean {
-  return role === "office"
+/** A subcontractor (trade doing work), not a supplier. */
+export function isSubcontractorRole(role: string | null | undefined): boolean {
+  return role === "subcontractor"
+}
+
+/** A supplier (materials) rather than a subcontractor (work). */
+export function isSupplierRole(role: string | null | undefined): boolean {
+  return role === "supplier"
+}
+
+/** A conversation channel member role that may moderate: the channel's owner or a moderator. */
+export function isChannelModeratorRole(role: string | null | undefined): boolean {
+  return role === "owner" || role === "moderator"
+}
+
+const USER_ROLE_BADGE_VARIANTS: Readonly<Record<string, "default" | "secondary">> = { admin: "default", office: "secondary" }
+
+/** Badge style for a role in people lists: admin solid, office muted, everyone else outlined. */
+export function userRoleBadgeVariant(role: string): "default" | "secondary" | "outline" {
+  return USER_ROLE_BADGE_VARIANTS[role] ?? "outline"
 }

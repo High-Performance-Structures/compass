@@ -5,7 +5,7 @@ import { companiesView, membershipsView, peopleView } from "@/lib/domain/identit
 import { projectMembersView } from "@/lib/domain/project/views"
 import { projectArchiveDocuments, projectArchiveRecipients, type ProjectArchiveDocument } from "@/db/schema-project-archives"
 import { canUseProjectAudience, type ProjectAudience } from "@/lib/project-audience-access"
-import { isClientAccountRole, isGuestRole, isInternalStaffRole, isVendorRole } from "@/lib/user-roles"
+import { isClientRole, isGuestRole, isInternalStaffRole, isVendorRole } from "@/lib/user-roles"
 import { insertArchiveEdition } from "@/lib/domain/documents/store"
 
 import { archivePublicationSchema, type ArchivePublication } from "@/lib/project-archive-model"
@@ -32,7 +32,7 @@ export async function archiveReaders(db: Db, projectId: string, organizationId: 
     .where(eq(projectMemberships.projectId, projectId))
   const readers: ArchiveReader[] = []
   for (const row of rows) {
-    if (isInternalStaffRole(row.role) || !(isClientAccountRole(row.role) || isVendorRole(row.role) || isGuestRole(row.role))) continue
+    if (isInternalStaffRole(row.role) || !(isClientRole(row.role) || isVendorRole(row.role) || isGuestRole(row.role))) continue
     const audience = canUseProjectAudience(row.projectRole, "owner") ? "owner" : canUseProjectAudience(row.projectRole, "sub_vendor") ? "sub_vendor" : null
     if (audience && !readers.some((reader) => reader.id === row.id && reader.audience === audience)) readers.push({ id: row.id, name: row.name ?? row.email, email: row.email, audience })
   }

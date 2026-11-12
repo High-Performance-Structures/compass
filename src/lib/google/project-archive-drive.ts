@@ -21,7 +21,7 @@ export async function verifyArchiveBoundary(drive: ArchiveDrive, fileId: string,
     const item = await drive.client.getFile(drive.googleEmail, current)
     if (item.trashed || item.driveId) throw new Error("Archive delivery requires a private My Drive folder.")
     const permissions = await drive.client.listPermissions(drive.googleEmail, current)
-    if (!permissions.length || permissions.some((p) => p.type !== "user" || p.role !== "owner" || p.emailAddress?.toLowerCase() !== drive.googleEmail.toLowerCase())) throw new Error("Archive files and folders must be private to the connected account.")
+    if (!permissions.length || permissions.some(({ role: driveRole, ...p }) => p.type !== "user" || driveRole !== "owner" || p.emailAddress?.toLowerCase() !== drive.googleEmail.toLowerCase())) throw new Error("Archive files and folders must be private to the connected account.")
     if (!file) file = item
     if (settings.deliveryRootIds.includes(current) && current !== fileId && item.mimeType === "application/vnd.google-apps.folder") allowed = true
     const parents = item.parents ?? []

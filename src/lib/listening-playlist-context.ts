@@ -8,7 +8,7 @@ import { getCloudflareContext } from "@/lib/db"
 import { isDemoUser } from "@/lib/demo"
 import { canManageListeningPlaylist } from "@/lib/listening-room"
 import { can } from "@/lib/permissions"
-import { isInternalStaffRole } from "@/lib/user-roles"
+import { isChannelModeratorRole, isInternalStaffRole } from "@/lib/user-roles"
 import {
   getVoiceChannelAccess,
   type VoiceChannelAccess,
@@ -51,8 +51,7 @@ export async function playlistContext(
     .get()
   const canModerate =
     can(user, "channels", "moderate") ||
-    membership?.role === "owner" ||
-    membership?.role === "moderator"
+    isChannelModeratorRole(membership?.role)
   return { db, user, channel, canModerate }
 }
 

@@ -38,7 +38,7 @@ import {
 import { holdingSageChange, holdingSageChanges } from "@/lib/sage/sage-held-fields"
 import { applySageLinkedValuesInCompass } from "@/lib/sage/sage-linked-local-apply"
 import type { Db } from "@/lib/server/action-context"
-import { isClientAccountRole, isInternalStaffRole, isVendorRole } from "@/lib/user-roles"
+import { isClientRole, isInternalStaffRole, isVendorRole } from "@/lib/user-roles"
 import { sameSageRecordId } from "@/lib/sage/record-id"
 
 /**
@@ -127,7 +127,7 @@ export async function requireSageContactEditAccess(
   if (!user.isActive) throw new Error("Inactive accounts cannot edit contacts.")
   if (linkedUserId === user.id && (
     (kind === "employee" && isInternalStaffRole(user.role)) ||
-    (kind === "client_person" && isClientAccountRole(user.role)) ||
+    (kind === "client_person" && isClientRole(user.role)) ||
     (kind === "vendor_person" && isVendorRole(user.role))
   )) return
   const feature = kind === "employee"

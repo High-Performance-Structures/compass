@@ -9,9 +9,10 @@ const MESSAGE = [
   "Do not disable this rule; see docs/development/architecture-standards.md (section 1a).",
 ].join("\n")
 
-// Google Calendar's ACL `accessRole` ("owner", "writer") is not a Compass role.
+// Google ACL roles ("owner", "writer") are not Compass roles: Calendar's
+// `accessRole`, and Drive permission roles, which callers name `driveRole`.
 function isRoleName(name) {
-  return /role$/i.test(name) && !/accessRole$/i.test(name)
+  return /role$/i.test(name) && !/(access|drive)Role$/i.test(name)
 }
 
 function isRoleExpression(node) {
