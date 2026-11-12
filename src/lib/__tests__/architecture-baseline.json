@@ -1374,7 +1374,6 @@
     "src/app/api/auth/accept-invite/route.ts": 1,
     "src/app/api/auth/login/route.ts": 2,
     "src/app/api/auth/reset-password/route.ts": 1,
-    "src/app/api/auth/signup/route.ts": 1,
     "src/app/api/auth/verify-email/route.ts": 1,
     "src/app/api/bridge/tools/route.ts": 1,
     "src/app/api/compass/dashboards/route.ts": 2,
