@@ -1,0 +1,40 @@
+{
+  "$comment": "Compass Core table ownership (issue #1329). Each table listed here is read AND written only inside its owning domain module; everything else calls that module. Enforced by eslint-rules/compass-core. Keys are the Drizzle export names, values the SQL table names.",
+  "modules": {
+    "identity": {
+      "path": "src/lib/domain/identity",
+      "hint": "Signed-in user/org: userContext / orgContext from @/lib/server/action-context. Anything else: use or add a read function in src/lib/domain/identity/.",
+      "tables": {
+        "users": "users",
+        "organizations": "organizations",
+        "organizationMembers": "organization_members",
+        "projectAccessInvitations": "project_access_invitations"
+      }
+    },
+    "project": {
+      "path": "src/lib/domain/project",
+      "hint": "Access check: projectContext from @/lib/server/action-context, or assertProjectAccess from @/lib/project-access. Member lists: use or add a read function in src/lib/domain/project/.",
+      "tables": {
+        "projectMembers": "project_members"
+      }
+    },
+    "contacts": {
+      "path": "src/lib/domain/contacts",
+      "hint": "Project contacts: resolvedProjectContacts from @/lib/domain/contacts/resolved-project-contacts. Directory people and companies: use or add a function in src/lib/domain/contacts/.",
+      "tables": {
+        "projectContacts": "project_contacts",
+        "customers": "customers",
+        "customerContacts": "customer_contacts",
+        "vendors": "vendors",
+        "vendorContacts": "vendor_contacts",
+        "internalContacts": "internal_contacts",
+        "contactMergeEvents": "contact_merge_events"
+      }
+    }
+  },
+  "roles": {
+    "$comment": "Role logic lives in one place. Literal role comparisons are allowed only in these paths.",
+    "allowedPaths": ["src/lib/domain/identity/", "src/lib/user-roles.ts"],
+    "hint": "Use a named role predicate from @/lib/user-roles (isInternalStaffRole, isExternalProjectRole, ...). If none fits, add one there."
+  }
+}

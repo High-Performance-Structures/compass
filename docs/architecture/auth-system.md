@@ -178,12 +178,18 @@ the RBAC system
 
 Authorization is handled by `src/lib/permissions.ts`, which defines a static permission matrix.
 
-**Four roles**, ordered from most to least access:
-
-- `admin` -- full access to everything, including user management and the AI agent
-- `office` -- create and manage most entities, but no deletion or user management
-- `field` -- mostly read-only, can update schedules and create change orders/documents
-- `client` -- read-only access to everything, no AI agent access
+**Roles.** The role list has one source: `USER_ROLES` in
+`src/lib/domain/identity/statuses.ts`, with labels, groups and the named
+predicates (`isInternalStaffRole`, `isExternalProjectRole`, ...) in
+`src/lib/user-roles.ts`. Roles fall into four groups: administration
+(`admin`, `secondary_admin`), internal staff (executive, project managers,
+accounting, office, field and estimating roles), development, and external
+project roles (`client`/owner, `subcontractor`, `supplier`, `guest`). Each
+role maps to a permission set in `src/lib/permissions.ts`; legacy roles
+(`office`, `field`, `coordinator`) are kept so old accounts and invite links
+keep working. Compare roles only through those predicates: the
+`compass-core/role-literal-compare` lint rule rejects literal role
+comparisons elsewhere (see architecture-standards.md, section 1a).
 
 **Thirteen resources:**
 
@@ -250,7 +256,7 @@ This error gets caught by the server action's try/catch wrapper and returned as 
 notable design decisions
 ---
 
-**Static over dynamic.** The permission matrix is a hardcoded object, not database rows. This means changing permissions requires a code change and deploy. The tradeoff is simplicity -- no admin UI for permission management, no risk of misconfiguration, no database queries to check permissions. For a product with four roles and a well-defined permission model, this is the right call. If the permission model becomes more dynamic (per-project permissions, custom roles), the matrix would need to move to the database.
+**Static over dynamic.** The permission matrix is a hardcoded object, not database rows. This means changing permissions requires a code change and deploy. The tradeoff is simplicity -- no admin UI for permission management, no risk of misconfiguration, no database queries to check permissions. For a product with a fixed role list and a well-defined permission model, this is the right call. If the permission model becomes more dynamic (per-project permissions, custom roles), the matrix would need to move to the database.
 
 **Roles on users, not sessions.** The user's role is stored in D1 and returned by `getCurrentUser()`. It's not embedded in the JWT. This means role changes take effect on the next request, not the next login. The tradeoff is an extra database read per request (to get the role), but `getCurrentUser()` already reads the database to update `lastLoginAt`, so the role lookup comes for free.
 

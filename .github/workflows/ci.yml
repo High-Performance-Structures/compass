@@ -24,6 +24,10 @@ jobs:
       - uses: oven-sh/setup-bun@v2
       - run: bun install --frozen-lockfile
       - run: bun run lint
+      # Compass Core ownership ratchet: eslint-suppressions.json may only
+      # shrink, and no inline directive may disable a compass-core rule.
+      - run: git fetch --no-tags --depth=1 origin main
+      - run: bun run core:check
 
   dead-code:
     name: Dead code

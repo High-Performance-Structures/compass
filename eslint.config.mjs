@@ -1,6 +1,8 @@
 import nextVitals from "eslint-config-next/core-web-vitals";
 import nextTypescript from "eslint-config-next/typescript";
 
+import compassCore from "./eslint-rules/compass-core/index.mjs";
+
 function withoutReactRules(config) {
 	if (!config.rules) return config;
 
@@ -43,6 +45,18 @@ const eslintConfig = [
 			"react-hooks/use-memo": "off",
 			"@typescript-eslint/no-require-imports": "off",
 		},
+	},
+	// Compass Core table ownership (issue #1329, architecture-standards.md
+	// section 1a). Existing violations live in eslint-suppressions.json, which
+	// may only shrink (scripts/check-core-suppressions.mjs). Tests are exempt:
+	// fixtures seed tables directly.
+	{
+		files: ["src/**/*.{ts,tsx,js,jsx,mjs}", "custom-worker.ts"],
+		ignores: ["src/**/__tests__/**", "src/**/*.test.{ts,tsx}", "src/test/**"],
+		plugins: { "compass-core": compassCore },
+		rules: Object.fromEntries(
+			Object.keys(compassCore.rules).map((rule) => [`compass-core/${rule}`, "error"]),
+		),
 	},
 ];
 

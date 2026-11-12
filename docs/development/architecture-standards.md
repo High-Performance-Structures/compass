@@ -72,6 +72,65 @@ vendors, directories), `field` (daily logs, photos, owner updates, weather),
 email, conversations), `record-statuses` (each company's statuses per record
 type, from Settings › Statuses).
 
+## 1a. Core tables are owned for reads too (lint-enforced)
+
+Some tables decide who a person is and what they may see: identity, project
+membership, project contacts and the contact directory. For these, owning the
+writes is not enough. Every file that queries them re-implements the rules,
+and the copies drift. So their owning module owns **reads as well as writes**,
+and the linter enforces it where the code is written.
+
+`src/lib/domain/table-ownership.json` lists each owned table and its module:
+
+| Module | Owns |
+|--------|------|
+| `identity` | `users`, `organizations`, `organization_members`, `project_access_invitations` |
+| `project` | `project_members` |
+| `contacts` | `project_contacts`, `customers`, `customer_contacts`, `vendors`, `vendor_contacts`, `internal_contacts`, `contact_merge_events` |
+
+The `compass-core` ESLint plugin (`eslint-rules/compass-core/`) fails `bun lint`
+on any non-test source file outside the owning module that:
+
+- imports an owned table from a schema module (type-only imports are fine),
+- imports a schema module as a namespace or dynamically,
+- uses `db.query.<ownedTable>`,
+- names an owned table in SQL text (`sql\`...\``, `.prepare()`, `.exec()`,
+  `.raw()`, or an uppercase `FROM`/`JOIN`/`INTO`/`UPDATE` string),
+- compares a role against a literal (`role === "client"`) outside the identity
+  module and `src/lib/user-roles.ts`, or
+- disables a `compass-core` rule with an inline directive.
+
+Each error names the owning module and the function to call instead. **When
+you hit one, move the access into the owning module** (add a read function
+there if none fits) and call it. Do not work around it.
+
+The ratchet:
+
+- Violations that existed when the rules landed are frozen in
+  `eslint-suppressions.json` (ESLint bulk suppressions).
+- A new violation fails `bun lint`.
+- Fixing a violation also fails `bun lint` until you prune the file with
+  `bunx eslint . --prune-suppressions`, which locks in the gain.
+- `bun run core:check` (CI) fails if `eslint-suppressions.json` gains an entry
+  or a count compared with `main`, or if any inline directive names a
+  `compass-core` rule. Never regenerate the file with `--suppress-all` or
+  `--suppress-rule`.
+- `src/lib/__tests__/core-lint-rules.test.ts` lints known-bad code through the
+  real `eslint.config.mjs`. Switching a rule off, lowering it to a warning, or
+  narrowing its files fails the test.
+
+**Status changes are explicit.** A status column on an owned table changes
+only through a declared state machine: `defineMachine` and `transition` in
+`src/lib/shared/state-machine.ts`. A machine lists every state and every event
+with the states it may leave from. Its test asserts `machineProblems()` is
+empty, which covers unreachable states, dead ends and terminal states with a
+way out. The owning store passes `transition()` a compare-and-set writer, so a
+change lands only if the row is still in the state it was read in.
+
+Tests are exempt from these lint rules, because fixtures seed tables directly.
+`scripts/` ops tools are out of scope for now. The program and its phases are
+tracked in issue #1329.
+
 ## 2. One action context
 
 Every server action and API route starts from the shared action context. It
