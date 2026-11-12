@@ -7,7 +7,7 @@
  * Functions named `…Statement` return a statement for the caller's
  * `db.batch`, so writes that must land together stay in one batch.
  */
-import { and, eq, inArray, lte, ne, notInArray, or, sql } from "drizzle-orm"
+import { and, eq, inArray, lte, ne, notInArray, or, sql, type SQL } from "drizzle-orm"
 import type { BatchItem } from "drizzle-orm/batch"
 
 import {
@@ -32,6 +32,7 @@ import type { Db } from "@/lib/server/action-context"
 import { assertListFields, requireListValue } from "@/lib/shared/statuses"
 
 import { crewExists, type CrewInput } from "./crews"
+import { invitationMachine, type InvitationEvent } from "./invitation-machine"
 import { deidentifiedUserValues, externalOrganizationRole } from "./rules"
 
 type Statement = BatchItem<"sqlite">
@@ -134,43 +135,70 @@ export async function insertProjectAccessInvitation(
   return db.insert(projectAccessInvitations).values(row).onConflictDoNothing().returning({ id: projectAccessInvitations.id })
 }
 
-export async function markProjectAccessInvitationExpired(db: Db, invitationId: string, now: string): Promise<void> {
-  await db
-    .update(projectAccessInvitations)
-    .set({ status: "expired", updatedAt: now })
-    .where(eq(projectAccessInvitations.id, invitationId))
-    .run()
+// Invitation status writes follow invitationMachine (invitation-machine.ts):
+// each one only lands on rows in a state the event may leave from, so a stale
+// read can't accept a revoked invitation or expire an accepted one.
+
+/** Rows `event` may move: their status is one of the event's source states. */
+function invitationStatusIn(event: InvitationEvent): SQL {
+  return inArray(projectAccessInvitations.status, [...invitationMachine.transitions[event].from])
 }
 
+/** Status after `event` where the machine allows it, else unchanged (for bulk writes). */
+function invitationStatusAfter(event: InvitationEvent): SQL {
+  return sql`CASE WHEN ${invitationStatusIn(event)} THEN ${invitationMachine.transitions[event].to} ELSE ${projectAccessInvitations.status} END`
+}
+
+/** expire: a sent invitation whose link lapsed. False when it was no longer sent. */
+export async function markProjectAccessInvitationExpired(db: Db, invitationId: string, now: string): Promise<boolean> {
+  const result = await db
+    .update(projectAccessInvitations)
+    .set({ status: invitationMachine.transitions.expire.to, updatedAt: now })
+    .where(and(eq(projectAccessInvitations.id, invitationId), invitationStatusIn("expire")))
+    .run()
+  return result.meta.changes > 0
+}
+
+/** accept: the invited person claimed it. False when it was no longer sent (revoked or expired meanwhile). */
 export async function markProjectAccessInvitationAccepted(
   db: Db,
   invitationId: string,
   acceptedBy: string,
   now: string,
-): Promise<void> {
-  await db
+): Promise<boolean> {
+  const result = await db
     .update(projectAccessInvitations)
-    .set({ status: "accepted", acceptedBy, acceptedAt: now, updatedAt: now })
-    .where(eq(projectAccessInvitations.id, invitationId))
+    .set({ status: invitationMachine.transitions.accept.to, acceptedBy, acceptedAt: now, updatedAt: now })
+    .where(and(eq(projectAccessInvitations.id, invitationId), invitationStatusIn("accept")))
     .run()
+  return result.meta.changes > 0
 }
 
-const REVOKED_WITH_CANCELLED_EMAIL = {
-  status: "revoked",
+/** Whether this invitation can still be accepted (it is still sent). */
+export async function invitationIsOpen(db: Db, invitationId: string): Promise<boolean> {
+  const row = await db
+    .select({ id: projectAccessInvitations.id })
+    .from(projectAccessInvitations)
+    .where(and(eq(projectAccessInvitations.id, invitationId), invitationStatusIn("accept")))
+    .get()
+  return row !== undefined
+}
+
+const CANCELLED_EMAIL = {
   emailStatus: "cancelled",
   emailNextAttemptAt: null,
   emailClaimToken: null,
   emailClaimedAt: null,
 } as const
 
-/** Revokes a contact's still-pending invitations and cancels their welcome emails (email changed). */
+/** revoke: a contact's still-pending invitations, with their welcome emails cancelled (email changed). */
 export async function revokePendingContactInvitations(
   db: Db,
   input: { readonly projectId: string; readonly contactId: string; readonly now: string },
 ): Promise<void> {
   await db
     .update(projectAccessInvitations)
-    .set({ ...REVOKED_WITH_CANCELLED_EMAIL, updatedAt: input.now })
+    .set({ ...CANCELLED_EMAIL, status: invitationMachine.transitions.revoke.to, updatedAt: input.now })
     .where(
       and(
         eq(projectAccessInvitations.projectId, input.projectId),
@@ -181,14 +209,17 @@ export async function revokePendingContactInvitations(
     .run()
 }
 
-/** Revokes every invitation for a contact being removed from the project. */
+/**
+ * revoke: every sent or accepted invitation for a contact being removed from
+ * the project. Expired ones stay expired; every welcome email is cancelled.
+ */
 export async function revokeContactInvitations(
   db: Db,
   input: { readonly projectId: string; readonly contactId: string; readonly now: string },
 ): Promise<void> {
   await db
     .update(projectAccessInvitations)
-    .set({ ...REVOKED_WITH_CANCELLED_EMAIL, updatedAt: input.now })
+    .set({ ...CANCELLED_EMAIL, status: invitationStatusAfter("revoke"), updatedAt: input.now })
     .where(
       and(
         eq(projectAccessInvitations.projectId, input.projectId),
@@ -200,8 +231,8 @@ export async function revokeContactInvitations(
 // Welcome-email queue on project_access_invitations. See
 // src/lib/email/invitation-delivery.ts for the delivery state machine.
 
-/** A superseded pending invitation becomes revoked; accepted access stays intact. */
-const REVOKE_IF_PENDING = sql`CASE WHEN ${projectAccessInvitations.status} = 'sent' THEN 'revoked' ELSE ${projectAccessInvitations.status} END`
+/** revoke, for a superseded pending invitation only; accepted access stays intact. */
+const REVOKE_IF_PENDING = sql`CASE WHEN ${projectAccessInvitations.status} = 'sent' THEN ${invitationMachine.transitions.revoke.to} ELSE ${projectAccessInvitations.status} END`
 
 /**
  * Cancels queued welcome emails whose invitation no longer matches the

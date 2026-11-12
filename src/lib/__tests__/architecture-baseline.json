@@ -1505,7 +1505,7 @@
     "src/db/schema-participants.ts": 9,
     "src/db/schema-plugins.ts": 3,
     "src/db/schema-project-families.ts": 1,
-    "src/db/schema-projects.ts": 11,
+    "src/db/schema-projects.ts": 10,
     "src/db/schema-rfqs.ts": 1,
     "src/db/schema-sage.ts": 18,
     "src/db/schema-schedule.ts": 1,
