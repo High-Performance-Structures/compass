@@ -1,9 +1,11 @@
 import { z } from "zod/v4"
 
 /**
- * Settings → Workflows → Trade docs: what each kind of vendor must have on
- * file. Vendor kinds are the directory's vendor categories ("Subcontractor",
- * "Supplier", ...), so every company can use its own.
+ * Settings → Workflows → Trade docs: which documents each paperwork level
+ * asks for. A vendor's paperwork level comes from its vendor type (Settings ›
+ * Company › Vendor types): "W-9 only" asks for documents at the w9 level,
+ * "Trade docs & insurance" for every document. A vendor whose type is not
+ * on that list yet falls back to `requiredFor` (vendor type names).
  */
 
 export const TRADE_DOC_BILL_MODES = ["flag", "hold", "off"] as const
@@ -19,8 +21,14 @@ const tradeDocTypeSchema = z.object({
   /** Stored on documents; never reuse an id for a different meaning. */
   id: z.string().regex(/^[a-z0-9-]{1,40}$/, "Use lowercase letters, numbers and dashes for the id."),
   label: z.string().trim().min(1).max(60),
-  /** Vendor categories that must have this document. */
+  /** Older rule: vendor type names that must have this document (types not on the vendor-types list). */
   requiredFor: z.array(z.string().trim().min(1).max(60)).max(20),
+  /**
+   * The lowest paperwork level that asks for this document: "w9" (W-9 only
+   * and up) or "full" (trade docs & insurance only). Null: the W-9 is "w9",
+   * everything else "full".
+   */
+  paperworkLevel: z.enum(["w9", "full"]).nullable().default(null),
   expires: z.boolean(),
   /** Days before expiry to start warning (and, later, to remind the vendor). */
   remindDaysBefore: z.number().int().min(0).max(180),
@@ -157,13 +165,19 @@ export const tradeDocSettingsSchema = z.object({
 })
 export type TradeDocSettings = z.infer<typeof tradeDocSettingsSchema>
 
+/** The lowest vendor paperwork level that asks for a document type. */
+export function docPaperworkLevel(type: Pick<TradeDocType, "id" | "paperworkLevel">): "w9" | "full" {
+  return type.paperworkLevel ?? (type.id === "w9" ? "w9" : "full")
+}
+
 export const DEFAULT_TRADE_DOC_TYPES: readonly TradeDocType[] = [
-  { id: "w9", label: "W-9", requiredFor: ["Subcontractor", "Supplier"], expires: false, remindDaysBefore: 0, waiverLabel: null, certificateChecks: false, active: true, formLink: null, waiverFormLink: null },
-  { id: "gl-certificate", label: "General liability certificate", requiredFor: ["Subcontractor"], expires: true, remindDaysBefore: 30, waiverLabel: null, certificateChecks: true, active: true, formLink: null, waiverFormLink: null },
+  { id: "w9", label: "W-9", requiredFor: ["Subcontractor", "Supplier"], paperworkLevel: null, expires: false, remindDaysBefore: 0, waiverLabel: null, certificateChecks: false, active: true, formLink: null, waiverFormLink: null },
+  { id: "gl-certificate", label: "General liability certificate", requiredFor: ["Subcontractor"], paperworkLevel: null, expires: true, remindDaysBefore: 30, waiverLabel: null, certificateChecks: true, active: true, formLink: null, waiverFormLink: null },
   {
     id: "wc-certificate",
     label: "Workers' comp certificate",
     requiredFor: ["Subcontractor"],
+    paperworkLevel: null,
     expires: true,
     remindDaysBefore: 30,
     waiverLabel: "No employees: coverage rejection and independent contractor declaration",
@@ -172,9 +186,9 @@ export const DEFAULT_TRADE_DOC_TYPES: readonly TradeDocType[] = [
     formLink: null,
     waiverFormLink: null,
   },
-  { id: "business-license", label: "Business license", requiredFor: ["Subcontractor"], expires: true, remindDaysBefore: 30, waiverLabel: null, certificateChecks: false, active: true, formLink: null, waiverFormLink: null },
-  { id: "trade-agreement", label: "Trade contractor agreement", requiredFor: ["Subcontractor"], expires: false, remindDaysBefore: 0, waiverLabel: null, certificateChecks: false, active: true, formLink: null, waiverFormLink: null },
-  { id: "info-sheet", label: "Subcontractor info sheet", requiredFor: ["Subcontractor"], expires: false, remindDaysBefore: 0, waiverLabel: null, certificateChecks: false, active: true, formLink: null, waiverFormLink: null },
+  { id: "business-license", label: "Business license", requiredFor: ["Subcontractor"], paperworkLevel: null, expires: true, remindDaysBefore: 30, waiverLabel: null, certificateChecks: false, active: true, formLink: null, waiverFormLink: null },
+  { id: "trade-agreement", label: "Trade contractor agreement", requiredFor: ["Subcontractor"], paperworkLevel: null, expires: false, remindDaysBefore: 0, waiverLabel: null, certificateChecks: false, active: true, formLink: null, waiverFormLink: null },
+  { id: "info-sheet", label: "Subcontractor info sheet", requiredFor: ["Subcontractor"], paperworkLevel: null, expires: false, remindDaysBefore: 0, waiverLabel: null, certificateChecks: false, active: true, formLink: null, waiverFormLink: null },
 ]
 
 const DEFAULT_CERTIFICATE_CHECKS: readonly string[] = [

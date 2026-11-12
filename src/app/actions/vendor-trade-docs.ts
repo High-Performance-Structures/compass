@@ -22,6 +22,7 @@ import { ensureVendorTradeDocsFolder } from "@/lib/trade-docs/drive"
 import { toTradeDocOnFile } from "@/lib/trade-docs/records"
 import { isTradeDocBillMode, type TradeDocBillMode } from "@/lib/trade-docs/settings"
 import { summarizeTradeDocs, type TradeDocOnFile, type TradeDocSummary } from "@/lib/trade-docs/status"
+import { readVendorTypes } from "@/lib/feature-settings/vendor-types-server"
 
 type Result<T> = { readonly success: true; readonly data: T } | { readonly success: false; readonly error: string }
 
@@ -124,7 +125,7 @@ export async function getVendorTradeDocs(vendorId: string): Promise<Result<Vendo
           billMode: isTradeDocBillMode(vendor.tradeDocsBillMode) ? vendor.tradeDocsBillMode : null,
           folderUrl: vendor.tradeDocsFolderId ? `https://drive.google.com/drive/folders/${vendor.tradeDocsFolderId}` : null,
         },
-        summary: summarizeTradeDocs({ docTypes: access.settings.docTypes, vendorCategory: vendor.category, docs: current, today: today() }),
+        summary: summarizeTradeDocs({ docTypes: access.settings.docTypes, vendorCategory: vendor.category, vendorTypes: await readVendorTypes(access.db, access.organizationId), docs: current, today: today() }),
         history,
         certificateChecks: access.settings.certificateChecks,
         billModeDefault: access.settings.billModeDefault,

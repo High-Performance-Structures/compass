@@ -28,7 +28,7 @@ function plan(
   docs: readonly TradeDocOnFile[], billMode: "flag" | "hold" | "off", warnOnly: boolean,
   sageNames: Readonly<Record<string, string>> = {}, sendToSage: Readonly<Record<string, boolean>> = {}
 ) {
-  const summary = summarizeTradeDocs({ docTypes: DEFAULT_TRADE_DOC_TYPES, vendorCategory: "Subcontractor", docs, today })
+  const summary = summarizeTradeDocs({ docTypes: DEFAULT_TRADE_DOC_TYPES, vendorCategory: "Subcontractor", vendorTypes: [], docs, today })
   return planSageCertificates({ summary, billMode, warnOnly, sageNames, sendToSage, missingExpiresOn: dayBefore(today) })
 }
 
@@ -44,7 +44,7 @@ describe("Sage certificate flags", () => {
 describe("planSageCertificates", () => {
   it("sends one row per required document, missing ones already expired", () => {
     const rows = plan([doc("w9"), doc("gl-certificate", { expiresOn: "2027-03-01" })], "hold", false)
-    const required = summarizeTradeDocs({ docTypes: DEFAULT_TRADE_DOC_TYPES, vendorCategory: "Subcontractor", docs: [], today }).lines.filter((line) => line.required)
+    const required = summarizeTradeDocs({ docTypes: DEFAULT_TRADE_DOC_TYPES, vendorCategory: "Subcontractor", vendorTypes: [], docs: [], today }).lines.filter((line) => line.required)
     expect(rows).toHaveLength(required.length)
     const w9 = rows.find((row) => row.docTypeId === "w9")
     expect(w9).toMatchObject({ desc: "W-9", expiryDate: SAGE_NEVER_EXPIRES, receivedDate: "2026-01-15", warn: "Y", stopPay: "Y" })

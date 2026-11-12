@@ -102,6 +102,7 @@ const HAND_BUILT_TABLES: Readonly<Record<string, Reason>> = {
   "src/components/settings/record-statuses-tab.tsx": "settings grid",
   "src/components/settings/trade-doc-info-sheet-settings.tsx": "settings grid",
   "src/components/settings/trade-doc-settings-section.tsx": "settings grid",
+  "src/components/settings/vendor-types-settings-section.tsx": "settings grid",
 
   "src/components/projects/project-audience-gantt.tsx": "chart grid",
   "src/components/schedule/schedule-baseline-view.tsx": "chart grid",

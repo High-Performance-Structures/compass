@@ -5,6 +5,7 @@ import { z } from "zod/v4"
 
 import { vendors } from "@/db/schema"
 import { vendorTradeDocuments } from "@/db/schema-trade-docs"
+import { readVendorTypes } from "@/lib/feature-settings/vendor-types-server"
 import { chunkD1Values } from "@/lib/d1-query"
 import { dayBefore, planSageCertificates } from "@/lib/domain/sage-bridge/certificate-rules"
 import { queueVendorCertificateSyncs } from "@/lib/domain/sage-bridge/store"
@@ -117,7 +118,7 @@ export async function buildVendorCertificatePayload(
   if (!vendor) return { success: false, error: "The vendor is no longer in the directory." }
   if (!settings.sage.enabled) return { success: false, error: "Sage certificate sync is turned off in Settings." }
   if (!vendor.sageVendorId || !vendor.sageVendorNumber) return { success: false, error: "The vendor isn't linked to Sage." }
-  const summary = summarizeTradeDocs({ docTypes: settings.docTypes, vendorCategory: vendor.category, docs: docRows.map(toTradeDocOnFile), today })
+  const summary = summarizeTradeDocs({ docTypes: settings.docTypes, vendorCategory: vendor.category, vendorTypes: await readVendorTypes(db, organizationId), docs: docRows.map(toTradeDocOnFile), today })
   const certificates = planSageCertificates({
     summary,
     billMode: isTradeDocBillMode(vendor.billMode) ? vendor.billMode : settings.billModeDefault,

@@ -386,6 +386,12 @@ export async function updateVendor(
     .where(and(eq(vendors.id, input.vendorId), eq(vendors.organizationId, input.organizationId)))
 }
 
+/** Moves every vendor of a renamed or removed type (any case) to another type; returns how many moved. */
+export async function moveVendorsToType(db: Db, input: { readonly organizationId: string; readonly from: string; readonly to: string; readonly now: string }): Promise<number> {
+  const where = and(eq(vendors.organizationId, input.organizationId), sql`lower(trim(${vendors.category})) = ${input.from.trim().toLowerCase()}`)
+  return (await db.update(vendors).set({ category: input.to, updatedAt: input.now }).where(where).returning({ id: vendors.id })).length
+}
+
 /**
  * "Use Sage name": renames a Sage-linked client or vendor company to the name
  * Sage holds. Fenced on the name and Sage link the caller read, so a

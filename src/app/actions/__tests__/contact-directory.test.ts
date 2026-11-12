@@ -55,8 +55,8 @@ describe("contact directory actions", () => {
     const visible = new Set(result.data.rows.map((row) => row.id))
     expect(Object.keys(statuses).length).toBeGreaterThan(0)
     expect(Object.keys(statuses).every((id) => visible.has(id))).toBe(true)
-    // Page, trade doc settings, and the page's documents.
-    expect(stats.queries).toBe(3)
+    // Page, trade doc settings, vendor types (which paperwork each type needs), and the page's documents.
+    expect(stats.queries).toBe(4)
     expect(stats.rows).toBeLessThan(100)
   })
 

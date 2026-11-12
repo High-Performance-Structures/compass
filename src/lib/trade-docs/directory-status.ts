@@ -1,6 +1,7 @@
 import { and, inArray, isNull, sql } from "drizzle-orm"
 
 import { vendorTradeDocuments } from "@/db/schema-trade-docs"
+import { readVendorTypes } from "@/lib/feature-settings/vendor-types-server"
 import { chunkD1Values } from "@/lib/d1-query"
 import type { Db } from "@/lib/server/action-context"
 import { toTradeDocOnFile } from "@/lib/trade-docs/records"
@@ -45,10 +46,12 @@ export async function tradeDocStatusesForVendors(input: {
     docsByVendor.set(row.vendorId, list)
   }
   const statuses: Record<string, VendorTradeDocStatus> = {}
+  const vendorTypes = await readVendorTypes(input.db, input.organizationId)
   for (const vendor of input.vendors) {
     const summary = summarizeTradeDocs({
       docTypes: input.docTypes,
       vendorCategory: vendor.category,
+      vendorTypes,
       docs: docsByVendor.get(vendor.id) ?? [],
       today: input.today,
     })

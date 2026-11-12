@@ -1,4 +1,4 @@
-import type { VendorTypeSetting } from "@/lib/feature-settings/vendor-types-settings"
+import { vendorTypeNamed, type VendorTypeSetting } from "@/lib/feature-settings/vendor-types-settings"
 
 export type VendorContactType = "internal" | "supplier" | "subcontractor"
 
@@ -13,7 +13,7 @@ export type VendorContactType = "internal" | "supplier" | "subcontractor"
 export function vendorJobContactType(category: string, types: readonly VendorTypeSetting[]): VendorContactType | null {
   const lower = category.trim().toLowerCase()
   if (lower.includes("internal")) return "internal"
-  const listed = types.find((type) => type.name.trim().toLowerCase() === lower)
+  const listed = vendorTypeNamed(types, category)
   if (listed) return listed.jobRole === "none" ? null : listed.jobRole
   if (lower.includes("bank") || lower.includes("lender")) return null
   return lower.includes("supplier") || lower.includes("miscellaneous") ? "supplier" : "subcontractor"
