@@ -40,6 +40,7 @@ import {
 } from "@/lib/project-contact-access-status"
 import { resolvedContactColumns, withContactDirectory } from "@/lib/domain/contacts/resolved-columns"
 import { updateProjectContactById } from "@/lib/domain/contacts/store"
+import { vendorInvitationBlock } from "@/lib/domain/contacts/vendor-invitability"
 import { insertProjectMember, updateProjectMembers } from "@/lib/domain/project/store"
 import { projectContactAddress } from "@/lib/project-contact-privacy"
 import { projectContactInvitationTarget } from "@/lib/project-contact-invitation-target"
@@ -297,6 +298,8 @@ export async function sendProjectAccessInvitation(
     if (!requestedRole) {
       return { success: false, error: "This contact type cannot be invited." }
     }
+    const vendorBlock = await vendorInvitationBlock(db, currentUser.organizationId, row.contact.id)
+    if (vendorBlock) return { success: false, error: vendorBlock }
 
     const existingUser = await db
       .select({

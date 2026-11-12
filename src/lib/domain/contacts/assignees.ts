@@ -273,7 +273,7 @@ export async function addDirectoryVendorForTask(
   if (!vendor) return { success: false, error: "Directory contact not found" }
   const contactType = vendorJobContactType(vendor.category, await vendorTypes(db, scope.organizationId))
   if (contactType === null) {
-    return { success: false, error: "This company's vendor type has no role on jobs." }
+    return { success: false, error: "Banks and lenders aren't added to jobs." }
   }
 
   const [existing] = await resolvedProjectContacts(db, {
