@@ -7,7 +7,7 @@ import { buildertrendArchiveFiles, buildertrendSourceRecords } from "@/db/schema
 import { isDemoUser } from "@/lib/demo"
 import { requireOrg } from "@/lib/org-scope"
 import { requireFeaturePermission } from "@/lib/permission-enforcement"
-import { assertProjectAccess } from "@/lib/project-access"
+import { assertProjectAccess } from "@/lib/domain/project/access"
 import { isInternalStaffRole } from "@/lib/user-roles"
 import { historicalRequestFromSource, type HistoricalSourceRow } from "@/lib/rfqs/historical-source"
 import type { RfqHistoricalScope } from "@/lib/rfqs/historical-requests"

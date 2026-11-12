@@ -30,7 +30,7 @@ import type { ClientEstimatePhase } from "@/lib/estimates/client-report"
 import { withPayApplicationProgress, type ProgressLine } from "@/lib/financials/budget-progress-overlay"
 import { loadBudgetViewProgress } from "@/lib/financials/budget-progress-server"
 import { requirePermission } from "@/lib/permissions"
-import { assertProjectAccess } from "@/lib/project-access"
+import { assertProjectAccess } from "@/lib/domain/project/access"
 import {
   effectiveProjectBudgetAudience,
   type ProjectBudgetAudience,

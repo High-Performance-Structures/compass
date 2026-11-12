@@ -43,7 +43,7 @@ import {
   canParticipantPerform,
   PARTICIPANT_CAPABILITIES,
 } from "@/lib/participant-access"
-import { assertProjectAccess } from "@/lib/project-access"
+import { assertProjectAccess } from "@/lib/domain/project/access"
 import { isPublishedScheduleAssignmentVisible } from "@/lib/schedule/confirmation"
 import {
   validateScheduleChangeProposal,

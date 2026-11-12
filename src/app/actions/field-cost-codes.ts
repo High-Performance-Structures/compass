@@ -14,7 +14,7 @@ import { fieldCostCodeIdsSchema, fieldCostCodeListSchema, type FieldCostCode } f
 import { legacyFieldJobCostCodes, loadFieldCostCodeList, loadProjectFieldAdditions } from "@/lib/field/cost-codes-server"
 import { requireOrg } from "@/lib/org-scope"
 import { canFeature, requireFeaturePermission } from "@/lib/permission-enforcement"
-import { getProjectAccessRecord } from "@/lib/project-access"
+import { getProjectAccessRecord } from "@/lib/domain/project/access"
 import { isInternalStaffRole } from "@/lib/user-roles"
 import { requireUserContext } from "@/lib/server/action-context"
 

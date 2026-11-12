@@ -20,8 +20,8 @@ import {
   notifyRfiCreated,
   notifyRfqResponseReceived,
 } from "@/lib/notifications/events"
-import { assertProjectAccess } from "@/lib/project-access"
-import { projectMemberRole } from "@/lib/project-member-role"
+import { assertProjectAccess } from "@/lib/domain/project/access"
+import { projectMemberRole } from "@/lib/domain/project/member-role"
 import type { ProjectAudienceViewerContact } from "@/lib/project-audience-viewer-contact"
 import { getProjectAudienceViewerContact } from "@/lib/project-audience-viewer-contact"
 import { getProjectAudienceStaff } from "@/lib/project-audience-staff"

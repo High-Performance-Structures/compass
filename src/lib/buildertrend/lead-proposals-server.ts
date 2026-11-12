@@ -16,7 +16,7 @@ import {
 import { chunkD1Values } from "@/lib/d1-query"
 import { isDemoUser } from "@/lib/demo"
 import { requireOrg } from "@/lib/org-scope"
-import { assertProjectAccess } from "@/lib/project-access"
+import { assertProjectAccess } from "@/lib/domain/project/access"
 import { requireUserContext, type Db } from "@/lib/server/action-context"
 import { isInternalStaffRole } from "@/lib/user-roles"
 

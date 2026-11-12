@@ -5,7 +5,7 @@ import { projects } from "@/db/schema"
 import { requireProjectAudienceReadUser, getProjectAudienceRequestScope } from "@/lib/project-audience-request-server"
 import { getCloudflareContext } from "@/lib/db"
 import { requirePermission } from "@/lib/permissions"
-import { assertProjectAccess } from "@/lib/project-access"
+import { assertProjectAccess } from "@/lib/domain/project/access"
 
 export type PrintProject = {
   readonly id: string

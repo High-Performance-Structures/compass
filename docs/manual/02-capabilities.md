@@ -37,7 +37,7 @@ A note on shared plumbing: to-dos, RFQs, purchase orders, pay-application mirror
   - Status changes are manual. They are made by `changeProjectJobStatus` (`src/lib/domain/project/job-status.ts`), which writes a project-audit row in the same batch and refuses demo accounts. Bulk changes go through `project-bulk-status.ts`.
 - **Leads.** `projects.client_status` is `lead` or `customer`.
 - **Sales pipeline.** The product sales department has a stage board (`src/lib/sales-pipeline/stages.ts`): intake, pricing, estimating, estimate sent, following up, awaiting payment, ordered, rentals out. Each stage groups job statuses, so moving a card sets a job status and the stage is always derived from the status.
-- **Visibility.** Internal staff in the owning organization see every project. Everyone else needs a `project_members` row (`src/lib/project-access.ts`). The registry hides merged duplicates, removed rows and route-aliased projects through one filter, `activeRegistryProject()`. Each project's portfolio-map visibility is `default`, `shown` or `hidden`.
+- **Visibility.** Internal staff in the owning organization see every project. Everyone else needs a `project_members` row (`src/lib/domain/project/access.ts`). The registry hides merged duplicates, removed rows and route-aliased projects through one filter, `activeRegistryProject()`. Each project's portfolio-map visibility is `default`, `shown` or `hidden`.
 - **Linked jobs and families.** See section 6.9.
   - `project_links` ties jobs for the same customer and site across departments (one row per pair).
   - `project_families` and `project_family_phases` group phased work under one base number. Family management is admin-only (`src/lib/domain/families/access.ts`).

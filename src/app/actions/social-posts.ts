@@ -20,7 +20,7 @@ import { getOrganizationDriveContext } from "@/lib/google/organization-drive"
 import { requireOrg } from "@/lib/org-scope"
 import { requireFeaturePermission } from "@/lib/permission-enforcement"
 import { dailyLogPhotoCollectionEligibility } from "@/lib/photos/collection-eligibility"
-import { getProjectAccessRecord } from "@/lib/project-access"
+import { getProjectAccessRecord } from "@/lib/domain/project/access"
 import {
   resolvedProjectDepartment,
   type ProjectDepartment,

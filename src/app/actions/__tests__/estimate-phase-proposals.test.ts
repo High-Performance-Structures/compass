@@ -40,7 +40,7 @@ const mocks = vi.hoisted(() => {
 vi.mock("@/db", () => ({ getDb: mocks.getDb }))
 vi.mock("@/lib/auth", () => ({ requireAuth: mocks.requireAuth, getCurrentUser: mocks.requireAuth }))
 vi.mock("@/lib/permissions", () => ({ requirePermission: mocks.requirePermission }))
-vi.mock("@/lib/project-access", () => ({ assertProjectAccess: mocks.assertProjectAccess }))
+vi.mock("@/lib/domain/project/access", () => ({ assertProjectAccess: mocks.assertProjectAccess }))
 vi.mock("@/lib/activity-log", () => ({
   recordActivityEvent: mocks.recordActivityEvent,
   activityActorName: () => "Estimator",

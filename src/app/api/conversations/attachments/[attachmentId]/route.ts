@@ -20,7 +20,7 @@ import { DriveClient } from "@/lib/google/client/drive-client"
 import { getExportExtension, getExportMimeType, isGoogleNativeFile } from "@/lib/google/mapper"
 import { isDriveItemWithinProjectFolder } from "@/lib/google/project-folder-boundary"
 
-import { assertProjectAccess } from "@/lib/project-access"
+import { assertProjectAccess } from "@/lib/domain/project/access"
 import { requireOrg } from "@/lib/org-scope"
 
 function validDriveId(value: string): string | null {

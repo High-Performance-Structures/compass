@@ -6,7 +6,7 @@ import { getProjectAudienceRequestScope, assertAudiencePreviewWriteAllowed } fro
 import { requireAuth, type AuthUser } from "@/lib/auth"
 import { isDemoUser } from "@/lib/demo"
 import { getCloudflareContext } from "@/lib/db"
-import { getProjectAccessRecord } from "@/lib/project-access"
+import { getProjectAccessRecord } from "@/lib/domain/project/access"
 import { getProjectAudienceStaff } from "@/lib/project-audience-staff"
 import { isInternalStaffRole } from "@/lib/user-roles"
 import type { CorrespondencePerson } from "./types"

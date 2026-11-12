@@ -20,7 +20,7 @@ import {
   type Statement,
 } from "@/lib/domain/estimates/store"
 import { requirePermission } from "@/lib/permissions"
-import { assertProjectAccess } from "@/lib/project-access"
+import { assertProjectAccess } from "@/lib/domain/project/access"
 import { isInternalStaffRole } from "@/lib/user-roles"
 import { requireUserContext } from "@/lib/server/action-context"
 

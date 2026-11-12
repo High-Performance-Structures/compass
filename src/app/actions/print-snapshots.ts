@@ -3,7 +3,7 @@
 import { lt } from "drizzle-orm"
 
 import { printSnapshots } from "@/db/schema"
-import { assertProjectAccess } from "@/lib/project-access"
+import { assertProjectAccess } from "@/lib/domain/project/access"
 import {
   PRINT_SNAPSHOT_LIFETIME_MS,
   PRINT_SNAPSHOT_MAX_HTML_LENGTH,

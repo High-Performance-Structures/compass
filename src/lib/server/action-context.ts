@@ -8,7 +8,7 @@ import { getCloudflareContext } from "@/lib/db"
 import { isDemoOrg, isDemoUser } from "@/lib/demo"
 import { canFeature } from "@/lib/permission-enforcement"
 import type { Action } from "@/lib/permissions"
-import { getProjectAccessRecord, type ProjectAccessRecord } from "@/lib/project-access"
+import { getProjectAccessRecord, type ProjectAccessRecord } from "@/lib/domain/project/access"
 
 /**
  * The one place a server action or API route resolves who is asking, for

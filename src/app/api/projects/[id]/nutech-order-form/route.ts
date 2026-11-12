@@ -9,7 +9,7 @@ import { getOrganizationDriveContext } from "@/lib/google/organization-drive"
 import { exportNuTechOrderFormPdf } from "@/lib/nutech/order-form-attachment"
 import { requireOrg } from "@/lib/org-scope"
 import { requireFeaturePermission } from "@/lib/permission-enforcement"
-import { getProjectAccessRecord } from "@/lib/project-access"
+import { getProjectAccessRecord } from "@/lib/domain/project/access"
 import { resolveProjectRouteId } from "@/lib/project-route-id"
 
 /**

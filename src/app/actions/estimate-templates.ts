@@ -53,7 +53,7 @@ import {
   isLegacyFeeCostCode,
 } from "@/lib/domain/financials/builder-fee-codes"
 import { can, requirePermission } from "@/lib/permissions"
-import { assertProjectAccess } from "@/lib/project-access"
+import { assertProjectAccess } from "@/lib/domain/project/access"
 import { orgContext, type OrgContext } from "@/lib/server/action-context"
 import { cleanText } from "@/lib/shared/guards"
 import { isInternalStaffRole } from "@/lib/user-roles"

@@ -42,7 +42,7 @@ import {
 } from "@/lib/notifications/events"
 import { requireOrg } from "@/lib/org-scope"
 import { requireFeaturePermission } from "@/lib/permission-enforcement"
-import { assertProjectAccess } from "@/lib/project-access"
+import { assertProjectAccess } from "@/lib/domain/project/access"
 import { requireProjectAudienceReadUser } from "@/lib/project-audience-request-server"
 import { getProjectAudienceViewerContact } from "@/lib/project-audience-viewer-contact"
 import { appendRfiCommunication } from "@/lib/rfis/communication"

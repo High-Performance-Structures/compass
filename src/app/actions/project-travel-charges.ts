@@ -28,7 +28,7 @@ import {
   parseTravelChargeSettings,
   type TravelChargeSettings,
 } from "@/lib/portfolio-map/travel-zones"
-import { getProjectAccessRecord } from "@/lib/project-access"
+import { getProjectAccessRecord } from "@/lib/domain/project/access"
 import { isInternalStaffRole } from "@/lib/user-roles"
 
 export type ProjectTravelChargeView = {

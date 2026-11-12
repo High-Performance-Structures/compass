@@ -10,7 +10,7 @@ const mocks = vi.hoisted(() => ({
 vi.mock("@/lib/auth", () => ({ getCurrentUser: mocks.getCurrentUser }))
 vi.mock("@/lib/db", () => ({ getCloudflareContext: mocks.getCloudflareContext }))
 vi.mock("@/lib/permission-enforcement", () => ({ canFeature: mocks.canFeature }))
-vi.mock("@/lib/project-access", () => ({ getProjectAccessRecord: mocks.getProjectAccessRecord }))
+vi.mock("@/lib/domain/project/access", () => ({ getProjectAccessRecord: mocks.getProjectAccessRecord }))
 const fakeDb = vi.hoisted(() => {
   const state: { orgProject: unknown } = { orgProject: undefined }
   const query = {

@@ -14,7 +14,7 @@ import { requireOrg } from "@/lib/org-scope"
 import { requireFeaturePermission } from "@/lib/permission-enforcement"
 import { canCreateProject } from "@/lib/permissions"
 import { isProjectDepartment, type ProjectDepartment } from "@/lib/project-branding"
-import { getProjectAccessRecord } from "@/lib/project-access"
+import { getProjectAccessRecord } from "@/lib/domain/project/access"
 import { isInternalStaffRole } from "@/lib/user-roles"
 
 type Result<T> = { readonly success: true; readonly data: T } | { readonly success: false; readonly error: string }

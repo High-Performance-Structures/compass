@@ -28,7 +28,7 @@ import {
   type ProjectAudience,
 } from "@/lib/project-audience-access"
 import { assertOwnerUpdateReadAccess } from "@/lib/owner-updates/access"
-import { assertProjectAccess } from "@/lib/project-access"
+import { assertProjectAccess } from "@/lib/domain/project/access"
 import { hasActiveExternalProjectResourceGrant } from "@/lib/project-external-resource-access"
 import { isInternalStaffRole } from "@/lib/user-roles"
 import {

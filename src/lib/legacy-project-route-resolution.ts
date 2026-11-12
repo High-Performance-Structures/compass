@@ -8,7 +8,7 @@ import {
   normalizedLegacyProjectId,
   scalarLegacyRouteSearchParam,
 } from "@/lib/legacy-project-route"
-import { getProjectAccessRecord } from "@/lib/project-access"
+import { getProjectAccessRecord } from "@/lib/domain/project/access"
 import {
   projectRouteAliasDestination,
   resolveProjectRouteAliasTarget,

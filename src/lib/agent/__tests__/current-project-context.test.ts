@@ -5,7 +5,7 @@ const mocks = vi.hoisted(() => ({
   getProjectAccessRecord: vi.fn(),
 }))
 vi.mock("@/lib/project-route-id", () => ({ resolveProjectRouteId: mocks.resolveProjectRouteId }))
-vi.mock("@/lib/project-access", () => ({ getProjectAccessRecord: mocks.getProjectAccessRecord }))
+vi.mock("@/lib/domain/project/access", () => ({ getProjectAccessRecord: mocks.getProjectAccessRecord }))
 
 import {
   currentProjectPrompt,

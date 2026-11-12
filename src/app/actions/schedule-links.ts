@@ -11,7 +11,7 @@ import {
 import { recordActivityEvent } from "@/lib/activity-log"
 import { scheduleReadContext, scheduleWriteContext } from "@/lib/domain/schedule/access"
 import { deleteTaskLink, insertTaskLink } from "@/lib/domain/schedule/store"
-import { assertProjectAccess } from "@/lib/project-access"
+import { assertProjectAccess } from "@/lib/domain/project/access"
 import {
   isScheduleLinkType,
   safeScheduleLinkHref,

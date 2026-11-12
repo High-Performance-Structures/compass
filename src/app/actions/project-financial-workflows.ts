@@ -47,8 +47,8 @@ import {
   type PayApplicationOwnerDetail,
 } from "@/lib/financials/pay-application-detail"
 import { requireOrg } from "@/lib/org-scope"
-import { assertProjectAccess } from "@/lib/project-access"
-import { projectMemberRole } from "@/lib/project-member-role"
+import { assertProjectAccess } from "@/lib/domain/project/access"
+import { projectMemberRole } from "@/lib/domain/project/member-role"
 import { isInternalStaffRole } from "@/lib/user-roles"
 import { requirePermission } from "@/lib/permissions"
 import {

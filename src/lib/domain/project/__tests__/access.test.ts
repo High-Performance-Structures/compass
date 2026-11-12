@@ -2,7 +2,7 @@ import Database from "better-sqlite3"
 import { describe, expect, it } from "vitest"
 
 import { getDb } from "@/db"
-import { assertProjectAccess } from "@/lib/project-access"
+import { assertProjectAccess } from "@/lib/domain/project/access"
 import type { AuthUser } from "@/lib/auth"
 
 type D1Statement = Readonly<{

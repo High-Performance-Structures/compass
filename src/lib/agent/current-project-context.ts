@@ -3,7 +3,7 @@ import { eq } from "drizzle-orm"
 import type { getDb } from "@/db"
 import { projects } from "@/db/schema"
 import type { AuthUser } from "@/lib/auth"
-import { getProjectAccessRecord } from "@/lib/project-access"
+import { getProjectAccessRecord } from "@/lib/domain/project/access"
 import { resolveProjectRouteId } from "@/lib/project-route-id"
 
 type Db = ReturnType<typeof getDb>

@@ -77,7 +77,7 @@ Overrides are read once per request, through React `cache`. Every override chang
 
 ## 8.5 Project membership
 
-`getProjectAccessRecord` (`src/lib/project-access.ts`) grants access in three cases:
+`getProjectAccessRecord` (`src/lib/domain/project/access.ts`) grants access in three cases:
 
 - internal staff whose active organization owns the project and whose role has organization-wide project scope;
 - staff previewing a pending invitation (`project_access_invitations.status = sent` for this project);
