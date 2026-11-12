@@ -1,4 +1,5 @@
-import type { TradeDocType } from "@/lib/trade-docs/settings"
+import { vendorTypeNamed, type VendorTypeSetting } from "@/lib/feature-settings/vendor-types-settings"
+import { docPaperworkLevel, type TradeDocType } from "@/lib/trade-docs/settings"
 
 /** A vendor's current (not superseded) document of one type. */
 export type TradeDocOnFile = {
@@ -51,7 +52,14 @@ function dayNumber(isoDate: string): number | null {
   return Math.floor(Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3])) / DAY_MS)
 }
 
-function isRequiredFor(type: TradeDocType, vendorCategory: string | null): boolean {
+/**
+ * A vendor whose type is on the company's vendor-types list needs the
+ * document when its paperwork level reaches the document's level. A type not
+ * on the list keeps the older rule: its name in the document's requiredFor.
+ */
+function isRequiredFor(type: TradeDocType, vendorCategory: string | null, vendorTypes: readonly VendorTypeSetting[]): boolean {
+  const listed = vendorTypeNamed(vendorTypes, vendorCategory)
+  if (listed) return listed.paperwork === "full" || (listed.paperwork === "w9" && docPaperworkLevel(type) === "w9")
   const category = vendorCategory?.trim().toLowerCase() ?? ""
   return category.length > 0 && type.requiredFor.some((item) => item.trim().toLowerCase() === category)
 }
@@ -70,11 +78,13 @@ function stateOf(type: TradeDocType, doc: TradeDocOnFile | null, today: number):
 
 /**
  * Where a vendor stands on trade docs today: one line per active document
- * type that is required for its category or already on file.
+ * type its vendor type requires or that is already on file.
  */
 export function summarizeTradeDocs(input: {
   readonly docTypes: readonly TradeDocType[]
   readonly vendorCategory: string | null
+  /** The company's vendor types (Settings › Company › Vendor types). */
+  readonly vendorTypes: readonly VendorTypeSetting[]
   readonly docs: readonly TradeDocOnFile[]
   readonly today: string
 }): TradeDocSummary {
@@ -82,7 +92,7 @@ export function summarizeTradeDocs(input: {
   // Newest first, so a type's first match is its current document.
   const docs = [...input.docs].sort((a, b) => b.createdAt.localeCompare(a.createdAt))
   const lines = input.docTypes.flatMap((type): TradeDocLine[] => {
-    const required = type.active && isRequiredFor(type, input.vendorCategory)
+    const required = type.active && isRequiredFor(type, input.vendorCategory, input.vendorTypes)
     const doc = docs.find((item) => item.docType === type.id) ?? null
     if (!required && !doc) return []
     return [{ type, required, doc, ...stateOf(type, doc, today) }]

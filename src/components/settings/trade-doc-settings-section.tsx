@@ -24,6 +24,7 @@ import {
   DEFAULT_INFO_SHEET,
   DEFAULT_TRADE_DOC_SAGE_SETTINGS,
   DEFAULT_TRADE_LETTER_SETTINGS,
+  docPaperworkLevel,
   TRADE_DOC_BILL_MODES,
   TRADE_DOC_BILL_MODE_LABELS,
   driveFileIdFromInput,
@@ -37,8 +38,8 @@ import {
   type TradeLetterSettings,
 } from "@/lib/trade-docs/settings"
 
-/** Vendor categories offered as columns; any others already in use are added. */
-const COMMON_CATEGORIES = ["Subcontractor", "Supplier", "Consultant"] as const
+/** Which vendor paperwork level (Settings › Company › Vendor types) asks for a document. */
+const PAPERWORK_LEVEL_LABELS = { w9: "W-9 only and up", full: "Trade docs & insurance only" } as const
 
 function newTypeId(label: string, taken: ReadonlySet<string>): string {
   const base = label.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 32) || "document"
@@ -102,21 +103,12 @@ export function TradeDocSettingsSection(): React.ReactElement {
     void load()
   }, [load])
 
-  const categories = React.useMemo(() => {
-    const extra = types.flatMap((type) => type.requiredFor).filter((category) => !COMMON_CATEGORIES.some((common) => common.toLowerCase() === category.toLowerCase()))
-    return [...COMMON_CATEGORIES, ...new Set(extra)]
-  }, [types])
 
   function update(index: number, patch: Partial<TradeDocType>): void {
     setTypes((current) => current.map((type, i) => (i === index ? { ...type, ...patch } : type)))
   }
 
-  function toggleCategory(index: number, category: string, on: boolean): void {
-    const type = types[index]
-    if (!type) return
-    const rest = type.requiredFor.filter((item) => item.toLowerCase() !== category.toLowerCase())
-    update(index, { requiredFor: on ? [...rest, category] : rest })
-  }
+
 
   function addType(): void {
     setTypes((current) => [
@@ -124,7 +116,8 @@ export function TradeDocSettingsSection(): React.ReactElement {
       {
         id: newTypeId("New document", new Set(current.map((type) => type.id))),
         label: "New document",
-        requiredFor: ["Subcontractor"],
+        requiredFor: [],
+        paperworkLevel: "full",
         expires: false,
         remindDaysBefore: 30,
         waiverLabel: null,
@@ -211,7 +204,7 @@ export function TradeDocSettingsSection(): React.ReactElement {
       <div className="grid gap-1">
         <h3 className="text-sm font-semibold">Required documents</h3>
         <p className="max-w-prose text-sm text-muted-foreground">
-          What each kind of vendor must have on file. A vendor&apos;s kind is its category in the directory. Documents that
+          Which documents each paperwork level asks for. A vendor&apos;s paperwork level comes from its vendor type (Settings › Company › Vendor types). Documents that
           expire are flagged this many days ahead. Turn a document off instead of removing it, so ones already recorded
           keep their type.
         </p>
@@ -223,9 +216,7 @@ export function TradeDocSettingsSection(): React.ReactElement {
             <thead>
               <tr className="border-b text-left text-xs text-muted-foreground">
                 <th className="py-2 pr-4 font-medium">Document</th>
-                {categories.map((category) => (
-                  <th key={category} className="py-2 pr-4 font-medium">{category}</th>
-                ))}
+                <th className="py-2 pr-4 font-medium">Asked for at</th>
                 <th className="py-2 pr-4 font-medium">Expires</th>
                 <th className="py-2 pr-4 font-medium">Warn days before</th>
                 <th className="py-2 pr-4 font-medium">Certificate check</th>
@@ -240,15 +231,18 @@ export function TradeDocSettingsSection(): React.ReactElement {
                   <td className="py-2 pr-4">
                     <Input aria-label={`Name of document ${index + 1}`} className="h-8 w-52" value={type.label} maxLength={60} onChange={(event) => update(index, { label: event.target.value })} />
                   </td>
-                  {categories.map((category) => (
-                    <td key={category} className="py-2 pr-4">
-                      <Checkbox
-                        aria-label={`${category} must have ${type.label}`}
-                        checked={type.requiredFor.some((item) => item.toLowerCase() === category.toLowerCase())}
-                        onCheckedChange={(checked) => toggleCategory(index, category, checked === true)}
-                      />
-                    </td>
-                  ))}
+                  <td className="py-2 pr-4">
+                    <Select
+                      value={docPaperworkLevel(type)}
+                      onValueChange={(value) => update(index, { paperworkLevel: value === "w9" ? "w9" : "full" })}
+                    >
+                      <SelectTrigger aria-label={`Paperwork level that asks for ${type.label}`} className="h-8 w-56"><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="w9">{PAPERWORK_LEVEL_LABELS.w9}</SelectItem>
+                        <SelectItem value="full">{PAPERWORK_LEVEL_LABELS.full}</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </td>
                   <td className="py-2 pr-4">
                     <Checkbox aria-label={`${type.label} expires`} checked={type.expires} onCheckedChange={(checked) => update(index, { expires: checked === true })} />
                   </td>

@@ -333,3 +333,14 @@ export async function searchCompanyMergeCandidates(
     blockedReason: null,
   }))
 }
+
+/** Active vendors per vendor type (lowercased, trimmed), for Settings › Vendor types. */
+export async function vendorCountsByType(db: Db, organizationId: string): Promise<Record<string, number>> {
+  const type = sql<string>`lower(trim(${vendors.category}))`
+  const rows = await db
+    .select({ type, n: count() })
+    .from(vendors)
+    .where(and(eq(vendors.organizationId, organizationId), eq(vendors.directoryStatus, "active")))
+    .groupBy(type)
+  return Object.fromEntries(rows.map((row) => [row.type, row.n]))
+}

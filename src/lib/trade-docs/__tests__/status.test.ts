@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest"
 
+import { VENDOR_TYPES_SETTINGS_GROUP } from "@/lib/feature-settings/vendor-types-settings"
 import { DEFAULT_TRADE_DOC_TYPES, driveFolderIdFromInput } from "@/lib/trade-docs/settings"
 import { summarizeTradeDocs, tradeDocCountLabel, type TradeDocOnFile } from "@/lib/trade-docs/status"
 
@@ -26,6 +27,7 @@ describe("summarizeTradeDocs", () => {
     const summary = summarizeTradeDocs({
       docTypes: DEFAULT_TRADE_DOC_TYPES,
       vendorCategory: "Subcontractor",
+      vendorTypes: [],
       docs: [
         doc("w9"),
         doc("gl-certificate", { expiresOn: "2026-09-30" }),
@@ -49,7 +51,7 @@ describe("summarizeTradeDocs", () => {
   })
 
   it("needs only a W-9 from a supplier, matching the category without case", () => {
-    const summary = summarizeTradeDocs({ docTypes: DEFAULT_TRADE_DOC_TYPES, vendorCategory: "supplier", docs: [doc("w9")], today: "2026-10-28" })
+    const summary = summarizeTradeDocs({ docTypes: DEFAULT_TRADE_DOC_TYPES, vendorCategory: "supplier", vendorTypes: [], docs: [doc("w9")], today: "2026-10-28" })
     expect(summary.lines.map((line) => line.type.id)).toEqual(["w9"])
     expect(summary.complete).toBe(true)
   })
@@ -58,6 +60,7 @@ describe("summarizeTradeDocs", () => {
     const summary = summarizeTradeDocs({
       docTypes: DEFAULT_TRADE_DOC_TYPES,
       vendorCategory: "Subcontractor",
+      vendorTypes: [],
       docs: [
         doc("wc-certificate", { id: "old", expiresOn: "2025-01-01", createdAt: "2025-01-01T00:00:00.000Z" }),
         doc("wc-certificate", { id: "new", kind: "waiver", createdAt: "2026-10-20T00:00:00.000Z" }),
@@ -73,7 +76,7 @@ describe("summarizeTradeDocs", () => {
   })
 
   it("shows documents on file for vendors that need nothing", () => {
-    const summary = summarizeTradeDocs({ docTypes: DEFAULT_TRADE_DOC_TYPES, vendorCategory: "Consultant", docs: [doc("w9")], today: "2026-10-28" })
+    const summary = summarizeTradeDocs({ docTypes: DEFAULT_TRADE_DOC_TYPES, vendorCategory: "Consultant", vendorTypes: [], docs: [doc("w9")], today: "2026-10-28" })
     expect(summary.requiredCount).toBe(0)
     expect(summary.lines).toHaveLength(1)
     expect(tradeDocCountLabel(summary)).toBe("Not required")
@@ -86,5 +89,28 @@ describe("driveFolderIdFromInput", () => {
     expect(driveFolderIdFromInput("1AbCdEfGhIjKlMnOp")).toBe("1AbCdEfGhIjKlMnOp")
     expect(driveFolderIdFromInput("  ")).toBeNull()
     expect(driveFolderIdFromInput("not a folder")).toBeNull()
+  })
+})
+
+describe("paperwork levels from vendor types", () => {
+  const vendorTypes = VENDOR_TYPES_SETTINGS_GROUP.defaults.types
+  const required = (vendorCategory: string): string[] =>
+    summarizeTradeDocs({ docTypes: DEFAULT_TRADE_DOC_TYPES, vendorCategory, vendorTypes, docs: [], today: "2026-11-12" })
+      .lines.filter((line) => line.required)
+      .map((line) => line.type.id)
+
+  it("asks a trade docs & insurance type for every document", () => {
+    expect(required("Subcontractor")).toEqual(DEFAULT_TRADE_DOC_TYPES.map((type) => type.id))
+    expect(required("professional services")).toEqual(DEFAULT_TRADE_DOC_TYPES.map((type) => type.id))
+  })
+
+  it("asks a W-9 only type for the W-9 alone, and a no-paperwork type for nothing", () => {
+    expect(required("Material Supplier")).toEqual(["w9"])
+    expect(required("Equipment and Rental")).toEqual(["w9"])
+    expect(required("Government Agency")).toEqual([])
+  })
+
+  it("keeps the older rule for a type not on the list", () => {
+    expect(required("Supplier")).toEqual(["w9"])
   })
 })

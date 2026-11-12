@@ -18,6 +18,7 @@ import { sendTradeDocLink } from "@/lib/trade-docs/link-delivery"
 import { toTradeDocOnFile } from "@/lib/trade-docs/records"
 import { tradeDocRequestSubject } from "@/lib/trade-docs/request-email"
 import { summarizeTradeDocs } from "@/lib/trade-docs/status"
+import { readVendorTypes } from "@/lib/feature-settings/vendor-types-server"
 import { TRADE_DOC_REPLY_ACTION, certificateHolderLines } from "@/lib/trade-docs/vendor-link"
 
 type Result<T> = { readonly success: true; readonly data: T } | { readonly success: false; readonly error: string }
@@ -124,6 +125,7 @@ export async function getTradeDocRequestPanel(vendorId: string): Promise<Result<
     const summary = summarizeTradeDocs({
       docTypes: access.settings.docTypes,
       vendorCategory: vendor.category,
+      vendorTypes: await readVendorTypes(access.db, access.organizationId),
       docs: docRows.map(toTradeDocOnFile),
       today: new Date().toISOString().slice(0, 10),
     })

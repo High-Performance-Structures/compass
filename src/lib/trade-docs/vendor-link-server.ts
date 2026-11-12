@@ -5,6 +5,7 @@ import { and, desc, eq } from "drizzle-orm"
 import { getDb } from "@/db"
 import { users, vendors } from "@/db/schema"
 import { vendorTradeDocLinks, vendorTradeDocuments } from "@/db/schema-trade-docs"
+import { readVendorTypes } from "@/lib/feature-settings/vendor-types-server"
 import { readDepartmentProfiles } from "@/lib/department-profiles-server"
 import { readFeatureSettings } from "@/lib/feature-settings/server"
 import { brandForDepartment, type ProjectBrand } from "@/lib/project-branding"
@@ -124,6 +125,7 @@ export async function tradeDocLinkView(context: TradeDocLinkContext, uploadLimit
   const summary = summarizeTradeDocs({
     docTypes: context.types,
     vendorCategory: context.vendor.category,
+    vendorTypes: await readVendorTypes(context.db, context.organizationId),
     docs: current.map(toTradeDocOnFile),
     today: new Date().toISOString().slice(0, 10),
   })

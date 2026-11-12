@@ -165,7 +165,7 @@ export async function getTradeLetterBoard(projectId: string, estimateId: string)
           ? await loadTradeVendor(access.db, access.organizationId, linkedVendorId)
           : resolveVendor({ email: trade.recipientEmail, name: trade.vendor })
       }
-      const standing = vendor ? await vendorTradeStanding(access.db, settings, vendor) : null
+      const standing = vendor ? await vendorTradeStanding(access.db, access.organizationId, settings, vendor) : null
       const orders = ordersByRfq.get(trade.rfqId) ?? []
       return {
         trade,
@@ -254,7 +254,7 @@ export async function saveTradeLetter(projectId: string, estimateId: string, inp
       ? await loadTradeVendor(access.db, access.organizationId, input.vendorId)
       : (await tradeVendorResolver(access.db, access.organizationId))({ email: trade.recipientEmail, name: trade.vendor })
     if (input.vendorId && !vendor) return { success: false, error: "Vendor not found." }
-    const standing = vendor ? await vendorTradeStanding(access.db, settings, vendor) : null
+    const standing = vendor ? await vendorTradeStanding(access.db, access.organizationId, settings, vendor) : null
     const agreementId = settings.letters.agreementDocTypeId
     const agreementFile = agreementFormFileId(settings)
     // The agreement is signed once per trade; it only rides along when they don't have one.

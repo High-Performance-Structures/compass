@@ -15,7 +15,7 @@ describe("vendorJobContactType", () => {
   })
 
   it("lets the company's setting override a name", () => {
-    expect(vendorJobContactType("Material Supplier", [{ name: "Material Supplier", jobRole: "none", hidden: false }])).toBeNull()
+    expect(vendorJobContactType("Material Supplier", [{ name: "Material Supplier", jobRole: "none", paperwork: "w9", hidden: false }])).toBeNull()
   })
 
   it("keeps the older reading for names not on the list", () => {

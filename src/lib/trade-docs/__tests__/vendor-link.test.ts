@@ -65,6 +65,7 @@ describe("tradeDocLinkItemState", () => {
   const summary = summarizeTradeDocs({
     docTypes: DEFAULT_TRADE_DOC_TYPES,
     vendorCategory: "Subcontractor",
+    vendorTypes: [],
     docs: [
       { id: "a", docType: "w9", kind: "document", fileName: "w9.pdf", webUrl: null, effectiveOn: null, expiresOn: null, checks: [], notes: null, source: "import", createdAt: "2026-01-01", createdByName: "x" },
       { id: "b", docType: "gl-certificate", kind: "document", fileName: "gl.pdf", webUrl: null, effectiveOn: null, expiresOn: "2026-11-10", checks: [], notes: null, source: "import", createdAt: "2026-01-01", createdByName: "x" },

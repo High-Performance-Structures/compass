@@ -1,5 +1,6 @@
 import "server-only"
 
+import { readVendorTypes } from "@/lib/feature-settings/vendor-types-server"
 import { requestVendorCertificateSyncs } from "@/lib/sage/vendor-certificates"
 import { and, eq, isNull } from "drizzle-orm"
 
@@ -81,13 +82,13 @@ export async function loadTradeVendor(db: Db, organizationId: string, vendorId: 
 }
 
 /** A vendor's trade doc standing today, and their master agreement if one is on file. */
-export async function vendorTradeStanding(db: Db, settings: TradeDocSettings, vendor: TradeVendor): Promise<{ readonly summary: TradeDocSummary; readonly agreementSignedOn: string | null }> {
+export async function vendorTradeStanding(db: Db, organizationId: string, settings: TradeDocSettings, vendor: TradeVendor): Promise<{ readonly summary: TradeDocSummary; readonly agreementSignedOn: string | null }> {
   const rows = await db
     .select()
     .from(vendorTradeDocuments)
     .where(and(eq(vendorTradeDocuments.vendorId, vendor.id), isNull(vendorTradeDocuments.supersededAt)))
   const docs = rows.map(toTradeDocOnFile)
-  const summary = summarizeTradeDocs({ docTypes: settings.docTypes, vendorCategory: vendor.category, docs, today: new Date().toISOString().slice(0, 10) })
+  const summary = summarizeTradeDocs({ docTypes: settings.docTypes, vendorCategory: vendor.category, vendorTypes: await readVendorTypes(db, organizationId), docs, today: new Date().toISOString().slice(0, 10) })
   const agreementId = settings.letters.agreementDocTypeId
   const agreement = agreementId ? docs.find((doc) => doc.docType === agreementId) : undefined
   return { summary, agreementSignedOn: agreement ? agreement.effectiveOn ?? agreement.createdAt.slice(0, 10) : null }
@@ -138,7 +139,7 @@ export async function renderTradeLetterPdf(input: {
     profiles: await readDepartmentProfiles(db, letter.organizationId),
   })
   const vendor = letter.vendorId ? await loadTradeVendor(db, letter.organizationId, letter.vendorId) : null
-  const standing = vendor ? await vendorTradeStanding(db, settings, vendor) : null
+  const standing = vendor ? await vendorTradeStanding(db, letter.organizationId, settings, vendor) : null
   const owed = parseStringList(letter.owedJson)
   const projectLabel = [project.projectNumber, project.name].filter(Boolean).join(" ") + (project.address ? `, ${project.address}` : "")
   const kind: TradeLetterKind = letter.kind === "award" ? "award" : "intent"
