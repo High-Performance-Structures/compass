@@ -243,3 +243,15 @@ export function isInternalStaffRole(role: string): boolean {
       return false
   }
 }
+
+/** The full administrator only (not secondary_admin). */
+export function isAdminRole(role: string | null | undefined): boolean {
+  return role === "admin"
+}
+
+const USER_ROLE_BADGE_VARIANTS: Readonly<Record<string, "default" | "secondary">> = { admin: "default", office: "secondary" }
+
+/** Badge style for a role in people lists: admin solid, office muted, everyone else outlined. */
+export function userRoleBadgeVariant(role: string): "default" | "secondary" | "outline" {
+  return USER_ROLE_BADGE_VARIANTS[role] ?? "outline"
+}

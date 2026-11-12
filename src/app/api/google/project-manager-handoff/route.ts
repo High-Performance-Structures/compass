@@ -1,17 +1,13 @@
 import { and, asc, eq } from "drizzle-orm"
 
 import { getDb } from "@/db"
-import {
-  organizations,
-  projectExternalLinks,
-  projectOperations,
-  projects,
-} from "@/db/schema"
+import { projectExternalLinks, projectOperations, projects } from "@/db/schema"
 import {
   projectFamilies,
   projectFamilyPhases,
 } from "@/db/schema-project-families"
 import { getCloudflareContext } from "@/lib/db"
+import { companiesView } from "@/lib/domain/identity/views"
 import { insertOperations, updateOperationsReturning } from "@/lib/domain/operations/store"
 import { insertProjectFamilyPhase, updateProjectFamilyPhases } from "@/lib/domain/families/store"
 import {
@@ -314,10 +310,11 @@ async function organizationIdForHandoff(
   const configured = envValue(env, "GOOGLE_PROJECT_MANAGER_HANDOFF_ORG_ID")
   if (configured) return configured
 
+  const companies = companiesView()
   const [firstOrg] = await db
-    .select({ id: organizations.id })
-    .from(organizations)
-    .orderBy(asc(organizations.createdAt))
+    .select({ id: companies.id })
+    .from(companies)
+    .orderBy(asc(companies.createdAt))
     .limit(1)
 
   return firstOrg?.id ?? null

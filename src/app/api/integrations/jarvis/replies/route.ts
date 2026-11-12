@@ -2,7 +2,6 @@ import { and, eq } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 import { z } from "zod/v4"
 import { getDb } from "@/db"
-import { organizationMembers, users } from "@/db/schema"
 import {
   channelMembers,
   channels,
@@ -10,6 +9,7 @@ import {
 } from "@/db/schema-conversations"
 import { jarvisBridgeEvents } from "@/db/schema-jarvis"
 import { getCloudflareContext } from "@/lib/db"
+import { membershipsView, peopleView } from "@/lib/domain/identity/views"
 import {
   getJarvisBridgeSecrets,
   getJarvisEnvValue,
@@ -166,6 +166,8 @@ export async function POST(request: Request): Promise<Response> {
     )
   }
 
+  const people = peopleView()
+  const memberships = membershipsView()
   const [channel, serviceUser, orgMembership, channelMembership] =
     await Promise.all([
       db
@@ -174,18 +176,18 @@ export async function POST(request: Request): Promise<Response> {
         .where(eq(channels.id, target.channelId))
         .get(),
       db
-        .select({ id: users.id, isActive: users.isActive })
-        .from(users)
-        .where(eq(users.id, serviceUserId))
+        .select({ id: people.id, isActive: people.isActive })
+        .from(people)
+        .where(eq(people.id, serviceUserId))
         .get(),
       db
-        .select({ id: organizationMembers.id })
-        .from(organizationMembers)
+        .select({ id: memberships.id })
+        .from(memberships)
         .where(
           and(
-            eq(organizationMembers.userId, serviceUserId),
+            eq(memberships.userId, serviceUserId),
             eq(
-              organizationMembers.organizationId,
+              memberships.organizationId,
               target.organizationId,
             ),
           ),

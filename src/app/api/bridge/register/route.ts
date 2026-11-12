@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { eq } from "drizzle-orm"
 import { getCloudflareContext } from "@/lib/db"
 import { getDb } from "@/db"
-import { users } from "@/db/schema"
+import { peopleView } from "@/lib/domain/identity/views"
 import { validateApiKey } from "@/lib/mcp/auth"
 import { loadMemoriesForPrompt } from "@/lib/agent/memory"
 import { getAvailableTools } from "@/lib/mcp/tool-adapter"
@@ -48,10 +48,11 @@ export async function POST(
     )
   }
 
+  const people = peopleView()
   const userRow = await db
     .select()
-    .from(users)
-    .where(eq(users.id, result.userId))
+    .from(people)
+    .where(eq(people.id, result.userId))
     .get()
 
   if (!userRow) {

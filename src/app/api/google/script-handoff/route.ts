@@ -2,12 +2,12 @@ import { and, asc, eq } from "drizzle-orm"
 
 import { getDb } from "@/db"
 import {
-  organizations,
   projectExternalLinks,
   projectOperations,
   projects,
 } from "@/db/schema"
 import { getCloudflareContext } from "@/lib/db"
+import { companiesView } from "@/lib/domain/identity/views"
 import { insertOperations, updateOperationById } from "@/lib/domain/operations/store"
 import { insertProjectExternalLink, updateProjectExternalLinks } from "@/lib/domain/project/store"
 
@@ -155,10 +155,11 @@ async function organizationIdForHandoff(
   const configured = envValue(env, "GOOGLE_SCRIPT_HANDOFF_ORG_ID")
   if (configured) return configured
 
+  const companies = companiesView()
   const [firstOrg] = await db
-    .select({ id: organizations.id })
-    .from(organizations)
-    .orderBy(asc(organizations.createdAt))
+    .select({ id: companies.id })
+    .from(companies)
+    .orderBy(asc(companies.createdAt))
     .limit(1)
 
   return firstOrg?.id ?? null

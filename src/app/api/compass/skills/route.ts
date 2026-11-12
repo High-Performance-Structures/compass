@@ -1,5 +1,6 @@
 import { getCloudflareContext } from "@/lib/db"
 import { validateAgentAuth } from "@/lib/agent/api-auth"
+import { isAdminRole } from "@/lib/user-roles"
 import {
   installSkill as installSkillAction,
   uninstallSkill as uninstallSkillAction,
@@ -40,7 +41,7 @@ export async function POST(req: Request): Promise<Response> {
       }
 
       case "install": {
-        if (auth.role !== "admin") {
+        if (!isAdminRole(auth.role)) {
           return new Response(
             JSON.stringify({
               error: "admin role required to install skills",
@@ -70,7 +71,7 @@ export async function POST(req: Request): Promise<Response> {
       }
 
       case "toggle": {
-        if (auth.role !== "admin") {
+        if (!isAdminRole(auth.role)) {
           return new Response(
             JSON.stringify({ error: "admin role required" }),
             {
@@ -101,7 +102,7 @@ export async function POST(req: Request): Promise<Response> {
       }
 
       case "uninstall": {
-        if (auth.role !== "admin") {
+        if (!isAdminRole(auth.role)) {
           return new Response(
             JSON.stringify({ error: "admin role required" }),
             {

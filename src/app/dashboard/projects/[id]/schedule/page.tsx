@@ -3,7 +3,8 @@ export const dynamic = "force-dynamic"
 import { decodeProjectRouteId } from "@/lib/project-route-id"
 import { getCloudflareContext } from "@/lib/db"
 import { getDb } from "@/db"
-import { projectMembers, projects } from "@/db/schema"
+import { projects } from "@/db/schema"
+import { projectMembersView } from "@/lib/domain/project/views"
 import { and, eq } from "drizzle-orm"
 import { notFound } from "next/navigation"
 import {
@@ -26,7 +27,7 @@ import {
 } from "@/app/actions/schedule-publications"
 import { getCurrentUser } from "@/lib/auth"
 import { scheduleAssigneeTerms } from "@/lib/schedule/saved-views"
-import { isInternalStaffRole } from "@/lib/user-roles"
+import { isOwnerRole, isVendorRole, seesStaffViews } from "@/lib/user-roles"
 import { projectAudienceSectionHref } from "@/lib/project-audience-preview-routes"
 import { can } from "@/lib/permissions"
 import { isDemoUser } from "@/lib/demo"
@@ -74,18 +75,19 @@ export default async function SchedulePage({
   let publicationStatus: SchedulePublicationStatus | null = null
   const currentUser = await getCurrentUser()
 
-  if (currentUser && !isInternalStaffRole(currentUser.role) && currentUser.role !== "developer") {
+  if (currentUser && !seesStaffViews(currentUser.role)) {
     const { env } = await getCloudflareContext()
     const db = getDb(env.DB)
+    const members = projectMembersView()
     const membership = await db
-      .select({ role: projectMembers.role })
-      .from(projectMembers)
-      .where(and(eq(projectMembers.projectId, id), eq(projectMembers.userId, currentUser.id)))
+      .select({ role: members.role })
+      .from(members)
+      .where(and(eq(members.projectId, id), eq(members.userId, currentUser.id)))
       .get()
-    if (membership?.role === "client" || membership?.role === "owner") {
+    if (isOwnerRole(membership?.role)) {
       return <ClientRedirect href={projectAudienceSectionHref(id, "owner", "schedule")} />
     }
-    if (membership?.role === "subcontractor" || membership?.role === "supplier") {
+    if (isVendorRole(membership?.role)) {
       return <ClientRedirect href={projectAudienceSectionHref(id, "sub-vendor", "schedule")} />
     }
     notFound()
