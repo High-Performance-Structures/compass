@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache"
 import { NextRequest, NextResponse } from "next/server"
 
 import { getDb } from "@/db"
-import { projectMembers, projects } from "@/db/schema"
+import { projects } from "@/db/schema"
 import { projectWarrantyClaims } from "@/db/schema-warranty"
 import { recordActivityEvent } from "@/lib/activity-log"
 import { requireAuth } from "@/lib/auth"
@@ -12,6 +12,7 @@ import { getCloudflareContext } from "@/lib/db"
 import { isDemoUser } from "@/lib/demo"
 import { requireFeaturePermission } from "@/lib/permission-enforcement"
 import { assertProjectAccess } from "@/lib/domain/project/access"
+import { projectMembersView } from "@/lib/domain/project/views"
 import { canUseProjectAudience } from "@/lib/project-audience-access"
 import {
   MAX_PHOTO_UPLOAD_BATCH_BYTES,
@@ -99,13 +100,14 @@ export async function POST(
       await requireFeaturePermission(user, "warranty-claims", "update")
     }
     if (!viewerIsInternal) {
+      const members = projectMembersView()
       const membership = await db
-        .select({ role: projectMembers.role })
-        .from(projectMembers)
+        .select({ role: members.role })
+        .from(members)
         .where(
           and(
-            eq(projectMembers.projectId, projectId),
-            eq(projectMembers.userId, user.id)
+            eq(members.projectId, projectId),
+            eq(members.userId, user.id)
           )
         )
         .limit(1)

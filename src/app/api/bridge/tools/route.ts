@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { eq } from "drizzle-orm"
 import { getCloudflareContext } from "@/lib/db"
 import { getDb } from "@/db"
-import { users } from "@/db/schema"
+import { peopleView } from "@/lib/domain/identity/views"
 import { mcpUsage } from "@/db/schema-mcp"
 import {
   validateApiKey,
@@ -83,10 +83,11 @@ export async function POST(
   }
 
   // look up user role
+  const people = peopleView()
   const userRow = await db
-    .select({ role: users.role })
-    .from(users)
-    .where(eq(users.id, authResult.userId))
+    .select({ role: people.role })
+    .from(people)
+    .where(eq(people.id, authResult.userId))
     .get()
 
   const userRole = userRow?.role ?? "office"

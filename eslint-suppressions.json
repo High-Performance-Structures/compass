@@ -300,49 +300,9 @@
       "count": 1
     }
   },
-  "src/app/api/bridge/register/route.ts": {
-    "compass-core/owned-table-import": {
-      "count": 1
-    }
-  },
-  "src/app/api/bridge/tools/route.ts": {
-    "compass-core/owned-table-import": {
-      "count": 1
-    }
-  },
   "src/app/api/compass/query/route.ts": {
     "compass-core/owned-table-relational-query": {
       "count": 4
-    }
-  },
-  "src/app/api/compass/skills/route.ts": {
-    "compass-core/role-literal-compare": {
-      "count": 3
-    }
-  },
-  "src/app/api/conversations/attachments/[attachmentId]/route.ts": {
-    "compass-core/owned-table-import": {
-      "count": 1
-    }
-  },
-  "src/app/api/google/download/[fileId]/route.ts": {
-    "compass-core/owned-table-import": {
-      "count": 1
-    }
-  },
-  "src/app/api/google/project-manager-handoff/route.ts": {
-    "compass-core/owned-table-import": {
-      "count": 1
-    }
-  },
-  "src/app/api/google/script-handoff/route.ts": {
-    "compass-core/owned-table-import": {
-      "count": 1
-    }
-  },
-  "src/app/api/integrations/jarvis/replies/route.ts": {
-    "compass-core/owned-table-import": {
-      "count": 2
     }
   },
   "src/app/api/integrations/sage/client-project-writes/results/route.ts": {
@@ -355,57 +315,8 @@
       "count": 2
     }
   },
-  "src/app/api/projects/[id]/photos/[photoId]/route.ts": {
-    "compass-core/owned-table-import": {
-      "count": 1
-    }
-  },
-  "src/app/api/projects/[id]/warranty/[claimId]/attachments/[attachmentId]/download/route.ts": {
-    "compass-core/owned-table-import": {
-      "count": 1
-    }
-  },
-  "src/app/api/projects/[id]/warranty/[claimId]/attachments/route.ts": {
-    "compass-core/owned-table-import": {
-      "count": 1
-    }
-  },
-  "src/app/dashboard/page.tsx": {
-    "compass-core/role-literal-compare": {
-      "count": 3
-    }
-  },
   "src/app/dashboard/projects/[id]/page.tsx": {
     "compass-core/owned-table-import": {
-      "count": 2
-    },
-    "compass-core/role-literal-compare": {
-      "count": 4
-    }
-  },
-  "src/app/dashboard/projects/[id]/schedule/page.tsx": {
-    "compass-core/owned-table-import": {
-      "count": 1
-    },
-    "compass-core/role-literal-compare": {
-      "count": 5
-    }
-  },
-  "src/app/dashboard/schedule/page.tsx": {
-    "compass-core/owned-table-import": {
-      "count": 1
-    },
-    "compass-core/role-literal-compare": {
-      "count": 7
-    }
-  },
-  "src/components/people-table.tsx": {
-    "compass-core/role-literal-compare": {
-      "count": 2
-    }
-  },
-  "src/components/settings/square-alert-settings-section.tsx": {
-    "compass-core/role-literal-compare": {
       "count": 1
     }
   },

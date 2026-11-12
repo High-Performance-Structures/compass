@@ -31,11 +31,11 @@ import { getScheduleTaskAssigneeOptions } from "@/app/actions/project-contact-as
 import type { ProjectTaskAssigneeOption } from "@/lib/domain/contacts/types"
 import { getCurrentUser } from "@/lib/auth"
 import { scheduleAssigneeTerms } from "@/lib/schedule/saved-views"
-import { isInternalStaffRole } from "@/lib/user-roles"
+import { projectAudienceForRole, seesStaffViews } from "@/lib/user-roles"
 import { projectAudienceSectionHref } from "@/lib/project-audience-preview-routes"
 import { getCloudflareContext } from "@/lib/db"
 import { getDb } from "@/db"
-import { projectMembers } from "@/db/schema"
+import { projectMembersView } from "@/lib/domain/project/views"
 import { eq } from "drizzle-orm"
 import { notFound } from "next/navigation"
 import { can } from "@/lib/permissions"
@@ -112,20 +112,20 @@ export default async function SchedulePage({
       getProjects(),
       getCurrentUser(),
     ])
-    if (currentUser && !isInternalStaffRole(currentUser.role) && currentUser.role !== "developer") {
+    if (currentUser && !seesStaffViews(currentUser.role)) {
       const { env } = await getCloudflareContext()
       const db = getDb(env.DB)
+      const members = projectMembersView()
       const memberships = await db
-        .select({ projectId: projectMembers.projectId, role: projectMembers.role })
-        .from(projectMembers)
-        .where(eq(projectMembers.userId, currentUser.id))
+        .select({ projectId: members.projectId, role: members.role })
+        .from(members)
+        .where(eq(members.userId, currentUser.id))
       const projectIds = new Set(allProjects.map((project) => project.id))
-      const membership = memberships.find((row) => projectIds.has(row.projectId) && (
-        row.role === "client" || row.role === "owner" ||
-        row.role === "subcontractor" || row.role === "supplier"
-      ))
+      const membership = memberships.find((row) =>
+        projectIds.has(row.projectId) && projectAudienceForRole(row.role) !== null
+      )
       if (!membership) notFound()
-      const audience = membership.role === "client" || membership.role === "owner"
+      const audience = projectAudienceForRole(membership.role) === "owner"
         ? "owner"
         : "sub-vendor"
       return <ClientRedirect href={projectAudienceSectionHref(membership.projectId, audience, "schedule")} />

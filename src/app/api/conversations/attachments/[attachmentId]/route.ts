@@ -10,7 +10,8 @@ import {
   messageAttachments,
   messages,
 } from "@/db/schema-conversations"
-import { projectExternalLinks, projects, users } from "@/db/schema"
+import { projectExternalLinks, projects } from "@/db/schema"
+import { peopleView } from "@/lib/domain/identity/views"
 import { googleAuth } from "@/db/schema-google"
 import { getCurrentUser } from "@/lib/auth"
 import { decrypt } from "@/lib/crypto"
@@ -150,15 +151,16 @@ export async function GET(
     const driveFileId = storageDriveFileId(attachment.r2Path)
     if (!driveFileId) return new Response("Attachment not found", { status: 404 })
 
+    const people = peopleView()
     const auth = await db
       .select({
         serviceAccountKeyEncrypted: googleAuth.serviceAccountKeyEncrypted,
         sharedDriveId: googleAuth.sharedDriveId,
-        connectedByEmail: users.email,
-        connectedByGoogleEmail: users.googleEmail,
+        connectedByEmail: people.email,
+        connectedByGoogleEmail: people.googleEmail,
       })
       .from(googleAuth)
-      .innerJoin(users, eq(users.id, googleAuth.connectedBy))
+      .innerJoin(people, eq(people.id, googleAuth.connectedBy))
       .where(eq(googleAuth.organizationId, organizationId))
       .get()
     if (!auth) return new Response("Attachment storage unavailable", { status: 503 })
