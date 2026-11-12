@@ -29,14 +29,14 @@ export async function projectMemberRole(
 }
 
 /**
- * The person's project roles for sign-in (`resolveSessionRole`). Returned
- * unexecuted so it can join sign-in's `db.batch`. Limited to one unordered
- * row today; issue #1329 tracks making the choice deterministic.
+ * Each distinct role the person holds on any project, for sign-in
+ * (`resolveSessionRole` picks between them). Returned unexecuted so it can
+ * join sign-in's `db.batch`. Distinct keeps it to a handful of rows even for
+ * a vendor on hundreds of jobs.
  */
 export function projectRolesForUserQuery(db: Db, userId: string) {
   return db
-    .select({ role: projectMembers.role })
+    .selectDistinct({ role: projectMembers.role })
     .from(projectMembers)
     .where(eq(projectMembers.userId, userId))
-    .limit(1)
 }
