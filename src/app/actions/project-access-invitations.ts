@@ -34,6 +34,7 @@ import {
   projectContactNeedsPersonForInvitation,
 } from "@/lib/project-contact-access-status"
 import { resolvedContactColumns, withContactDirectory } from "@/lib/domain/contacts/resolved-columns"
+import { projectContactActiveCondition } from "@/lib/domain/contacts/resolved-project-contacts"
 import { updateProjectContactById } from "@/lib/domain/contacts/store"
 import { vendorInvitationBlock } from "@/lib/domain/contacts/vendor-invitability"
 import { upsertProjectMemberRole } from "@/lib/domain/project/store"
@@ -454,7 +455,16 @@ export async function sendProjectAccessInvitation(
           now,
         })
       }
-      if (!welcomeOnly) await upsertProjectMemberRole(db, { projectId: parsed.data.projectId, userId: activeExistingUser.id, role: membershipRole, now })
+      if (!welcomeOnly) {
+        // Only while the contact is still on the job: a removal by someone
+        // else since this request read it must not be undone here.
+        const grant = await upsertProjectMemberRole(
+          db,
+          { projectId: parsed.data.projectId, userId: activeExistingUser.id, role: membershipRole, now },
+          { onlyIf: projectContactActiveCondition(row.contact.id) },
+        )
+        if (!grant.written) return { success: false, error: "This contact was removed from the project. Refresh and try again." }
+      }
       accessStatus = "access_granted"
     } else if (!existingUser) {
       const workosApiKey = environmentString(env, "WORKOS_API_KEY")

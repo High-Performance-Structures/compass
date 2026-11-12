@@ -6,6 +6,11 @@ import {
   text,
   uniqueIndex,
 } from "drizzle-orm/sqlite-core"
+import {
+  PARTICIPANT_IDENTITY_STATUSES,
+  PARTICIPANT_MEMBERSHIP_STATUSES,
+  PARTICIPANT_REVIEW_STATUSES,
+} from "../lib/domain/documents/statuses"
 import { organizations, projectContacts, projects, scheduleTasks, teams, users } from "./schema"
 
 /**
@@ -40,9 +45,9 @@ export const projectSourceRecordParticipants = sqliteTable(
     userId: text("user_id").references(() => users.id, {
       onDelete: "set null",
     }),
-    identityStatus: text("identity_status").notNull().default("unmatched"),
-    membershipStatus: text("membership_status").notNull().default("pending"),
-    reviewStatus: text("review_status").notNull().default("unreviewed"),
+    identityStatus: text("identity_status", { enum: PARTICIPANT_IDENTITY_STATUSES }).notNull().default("unmatched"),
+    membershipStatus: text("membership_status", { enum: PARTICIPANT_MEMBERSHIP_STATUSES }).notNull().default("pending"),
+    reviewStatus: text("review_status", { enum: PARTICIPANT_REVIEW_STATUSES }).notNull().default("unreviewed"),
     active: integer("active", { mode: "boolean" }).notNull().default(true),
     createdAt: text("created_at").notNull(),
     updatedAt: text("updated_at").notNull(),

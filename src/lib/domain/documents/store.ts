@@ -1,4 +1,4 @@
-import { and, eq, isNull, lt, ne, sql, type SQL } from "drizzle-orm"
+import { and, eq, inArray, isNull, lt, ne, sql, type SQL } from "drizzle-orm"
 import type { BatchItem } from "drizzle-orm/batch"
 import type { SQLiteInsert, SQLiteUpdateSetSource } from "drizzle-orm/sqlite-core"
 
@@ -16,6 +16,14 @@ import { vendorTradeDocLinks, vendorTradeDocuments } from "@/db/schema-trade-doc
 import { chunkD1InsertRows } from "@/lib/d1-query"
 import { companyMoveGuard, type CompanyReferenceMove } from "@/lib/domain/contacts/company-merge-references"
 import type { Db } from "@/lib/server/action-context"
+
+import {
+  MANAGED_PARTICIPANT_STATUSES,
+  participantIdentityMachine,
+  participantReviewMachine,
+  RECORDED_PARTICIPANT_STATUSES,
+  type ParticipantIdentityEvent,
+} from "./participant-machines"
 
 /*
  * The documents domain store: the only code that inserts, updates or deletes
@@ -358,6 +366,8 @@ export function companyMergeTradeDocStatements(database: D1Database, move: Compa
 
 type ParticipantInsert = typeof projectSourceRecordParticipants.$inferInsert
 type ParticipantPatch = SQLiteUpdateSetSource<typeof projectSourceRecordParticipants>
+/** Statuses come from participant-machines.ts, never from a caller's patch. */
+type ParticipantReviewPatch = Omit<ParticipantPatch, "identityStatus" | "membershipStatus" | "reviewStatus">
 /** Awaitable on its own, or one statement in a batch. */
 type ParticipantUpsert = SQLiteInsert<typeof projectSourceRecordParticipants, "async", D1Result, undefined>
 
@@ -365,12 +375,18 @@ export function insertSourceRecordParticipantStatement(db: Db, values: Participa
   return db.insert(projectSourceRecordParticipants).values(values)
 }
 
-/** Inserts a participant, or updates `set` on the row with the same source identity. */
+/**
+ * Inserts a participant, or updates `set` on the row with the same source
+ * identity. `managed` also writes MANAGED_PARTICIPANT_STATUSES on that row:
+ * a staff assignment (RFI vendor) owns its row outright.
+ */
 export function upsertSourceRecordParticipantStatement(
   db: Db,
   values: ParticipantInsert,
-  set: ParticipantPatch,
+  patch: ParticipantReviewPatch,
+  options: { readonly managed?: boolean } = {},
 ): ParticipantUpsert {
+  const set = options.managed ? { ...patch, ...MANAGED_PARTICIPANT_STATUSES } : patch
   return db
     .insert(projectSourceRecordParticipants)
     .values(values)
@@ -392,8 +408,35 @@ export function insertSourceRecordParticipantIfMissingStatement(db: Db, values: 
   return db.insert(projectSourceRecordParticipants).values(values).onConflictDoNothing()
 }
 
-export function updateSourceRecordParticipantsStatement(db: Db, where: SQL | undefined, set: ParticipantPatch): Statement {
-  return db.update(projectSourceRecordParticipants).set(set).where(where)
+// Participant status changes follow participant-machines.ts: review is the
+// only update that touches them, and it lands only on rows still in a state
+// the events may leave from (compare-and-set), so a second reviewer or the
+// automatic resolver can't overwrite a decision already made.
+
+/**
+ * review (and, with `identity`, match or split): marks the `where` rows
+ * reviewed with `set`. Only rows still unreviewed, and in a state the
+ * identity event may leave from, change.
+ */
+export function reviewSourceRecordParticipantsStatement(
+  db: Db,
+  where: SQL | undefined,
+  change: { readonly identity?: ParticipantIdentityEvent; readonly set: ParticipantReviewPatch },
+): Statement {
+  const review = participantReviewMachine.transitions.review
+  const identity = change.identity ? participantIdentityMachine.transitions[change.identity] : null
+  return db
+    .update(projectSourceRecordParticipants)
+    .set({
+      ...change.set,
+      reviewStatus: review.to,
+      ...(identity ? { identityStatus: identity.to } : {}),
+    })
+    .where(and(
+      where,
+      inArray(projectSourceRecordParticipants.reviewStatus, [...review.from]),
+      identity ? inArray(projectSourceRecordParticipants.identityStatus, [...identity.from]) : undefined,
+    ))
 }
 
 /**
@@ -421,7 +464,9 @@ export function insertThreadParticipantsForMessagesStatement(
   return db.insert(projectSourceRecordParticipants).select(sql`
     SELECT 'review-thread-' || lower(hex(randomblob(16))), ${person.organizationId}, ${person.projectId}, c.source_system || '_message_thread', c.source_thread_id,
       ${person.participantKey}, NULL, ${person.name}, NULL, NULL, ${person.role}, '[]', ${person.audience}, ${person.projectContactId}, ${person.userId},
-      'matched', CASE WHEN c.audience = 'staff' THEN 'active' ELSE 'pending' END, 'reviewed', CASE WHEN c.audience = 'staff' THEN 1 ELSE 0 END,
+      ${MANAGED_PARTICIPANT_STATUSES.identityStatus},
+      CASE WHEN c.audience = 'staff' THEN ${MANAGED_PARTICIPANT_STATUSES.membershipStatus} ELSE ${RECORDED_PARTICIPANT_STATUSES.membershipStatus} END,
+      ${MANAGED_PARTICIPANT_STATUSES.reviewStatus}, CASE WHEN c.audience = 'staff' THEN 1 ELSE 0 END,
       ${person.now}, ${person.now}
     FROM channels c
     WHERE c.project_id = ${person.projectId} AND c.source_system IS NOT NULL AND c.source_thread_id IS NOT NULL

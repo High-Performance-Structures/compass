@@ -631,7 +631,7 @@ async function grantApprovedRequest(
       skipped.push(label)
       continue
     }
-    await grantProjectContactAccess(db, {
+    const granted = await grantProjectContactAccess(db, {
       organizationId,
       projectId: job.projectId,
       projectContactId: job.contactId,
@@ -643,6 +643,11 @@ async function grantApprovedRequest(
       invitedBy: actor.id,
       now,
     })
+    // Staff took the contact off this job while the request was approved.
+    if (!granted) {
+      skipped.push(label)
+      continue
+    }
     await recordActivityEvent({
       db,
       organizationId,

@@ -4,18 +4,17 @@ import type { getDb } from "@/db"
 import { buildertrendAccessCandidates } from "@/db/schema-buildertrend"
 import { projectContacts, projects } from "@/db/schema"
 import { invitationsView } from "@/lib/domain/identity/views"
-import { projectMembersView } from "@/lib/domain/project/views"
 import { recordActivityEvent, type ActivityActor } from "@/lib/activity-log"
 import { insertProjectContact, updateProjectContactById } from "@/lib/domain/contacts/store"
 import { resolvedContactColumns, withContactDirectory } from "@/lib/domain/contacts/resolved-columns"
+import { projectContactActiveCondition } from "@/lib/domain/contacts/resolved-project-contacts"
 import { insertProjectAccessInvitation } from "@/lib/domain/identity/store"
-import { insertProjectMember, updateProjectMembers } from "@/lib/domain/project/store"
+import { upsertProjectMemberRole } from "@/lib/domain/project/store"
 import { ensureProjectAudienceConversation } from "@/lib/project-audience-conversations"
 import { projectNumberAndName } from "@/lib/project-display-name"
 import { projectAudienceForRole } from "@/lib/user-roles"
 
 const invitations = invitationsView()
-const projectMemberships = projectMembersView()
 
 type Db = ReturnType<typeof getDb>
 type ProjectContact = typeof projectContacts.$inferSelect
@@ -198,6 +197,7 @@ async function contactOnProject(db: Db, input: {
  * a "sent" row that is claimed at sign-in. No email is sent here; the
  * caller's own invitation or approval email covers it. Used by an
  * invitation's extra Buildertrend projects and by approved access requests.
+ * False (nothing changed) when the contact was taken off the job meanwhile.
  */
 export async function grantProjectContactAccess(db: Db, input: {
   readonly organizationId: string
@@ -212,9 +212,19 @@ export async function grantProjectContactAccess(db: Db, input: {
   readonly workosExpiresAt: string | null
   readonly invitedBy: string
   readonly now: string
-}): Promise<void> {
+}): Promise<boolean> {
   const audience = projectAudienceForRole(input.role)
   const contactId = input.projectContactId
+  if (input.activeUserId) {
+    // One conditional write: concurrent grants can't collide, and nothing is
+    // granted if staff removed the contact from the job meanwhile.
+    const grant = await upsertProjectMemberRole(
+      db,
+      { projectId: input.projectId, userId: input.activeUserId, role: input.role, now: input.now },
+      { onlyIf: projectContactActiveCondition(contactId) },
+    )
+    if (!grant.written) return false
+  }
   await updateProjectContactById(db, {
     contactId,
     values: audience === "owner"
@@ -230,24 +240,6 @@ export async function grantProjectContactAccess(db: Db, input: {
       sql`lower(trim(${invitations.email})) = ${input.email}`,
     ))
     .get()
-  if (input.activeUserId) {
-    const membership = await db
-      .select({ id: projectMemberships.id })
-      .from(projectMemberships)
-      .where(and(eq(projectMemberships.projectId, input.projectId), eq(projectMemberships.userId, input.activeUserId)))
-      .get()
-    if (!membership) {
-      await insertProjectMember(db, {
-        id: crypto.randomUUID(),
-        projectId: input.projectId,
-        userId: input.activeUserId,
-        role: input.role,
-        assignedAt: input.now,
-      })
-    } else {
-      await updateProjectMembers(db, eq(projectMemberships.id, membership.id), { role: input.role })
-    }
-  }
   if (audience) {
     await ensureProjectAudienceConversation({
       db,
@@ -281,6 +273,7 @@ export async function grantProjectContactAccess(db: Db, input: {
       updatedAt: input.now,
     })
   }
+  return true
 }
 
 /**
@@ -322,7 +315,7 @@ export async function grantPriorProjectAccess(db: Db, input: {
       email: input.email,
       now: input.now,
     })
-    await grantProjectContactAccess(db, {
+    const opened = await grantProjectContactAccess(db, {
       organizationId: input.organizationId,
       projectId: project.projectId,
       projectContactId: contactId,
@@ -334,6 +327,7 @@ export async function grantPriorProjectAccess(db: Db, input: {
       invitedBy: input.invitedBy,
       now: input.now,
     })
+    if (!opened) continue
     await recordActivityEvent({
       db,
       organizationId: input.organizationId,

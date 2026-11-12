@@ -13,7 +13,7 @@ import { getCurrentUser } from "@/lib/auth"
 import { canManageUserAccess, requirePermission } from "@/lib/permissions"
 import { isDemoOrg, isDemoUser } from "@/lib/demo"
 import { crewsForUsers } from "@/lib/domain/identity/crews"
-import { insertProjectMember } from "@/lib/domain/project/store"
+import { insertProjectMembersIfAbsent } from "@/lib/domain/project/store"
 import { sendOrResendWorkOSInvitation } from "@/lib/workos-invitations"
 import { ensureInternalContactForStaff } from "@/lib/internal-contact-provisioning"
 import {
@@ -327,24 +327,18 @@ export async function grantContactsProjectAccess(
       return { success: false, error: "One or more accounts are unavailable, duplicated, or outside this organization." }
     }
 
-    const existing = await db
-      .select({ userId: projectMembers.userId })
-      .from(projectMembers)
-      .where(and(eq(projectMembers.projectId, projectId), inArray(projectMembers.userId, uniqueIds)))
-    const existingIds = new Set(existing.map((member) => member.userId))
-    const newMembers = members.filter((member) => !existingIds.has(member.userId))
-    if (newMembers.length > 0) {
-      await insertProjectMember(db, newMembers.map((member) => ({
-        id: crypto.randomUUID(),
-        projectId,
-        userId: member.userId,
-        role: member.role,
-        assignedAt: new Date().toISOString(),
-      })))
-    }
+    // Adds only the missing rows, so a concurrent assignment can't fail the batch.
+    const now = new Date().toISOString()
+    const added = await insertProjectMembersIfAbsent(db, members.map((member) => ({
+      id: crypto.randomUUID(),
+      projectId,
+      userId: member.userId,
+      role: member.role,
+      assignedAt: now,
+    })))
     revalidatePath("/dashboard/contacts")
     revalidatePath(`/dashboard/projects/${projectId}`)
-    return { success: true, added: newMembers.length, existing: uniqueIds.length - newMembers.length }
+    return { success: true, added, existing: uniqueIds.length - added }
   } catch (error) {
     return { success: false, error: error instanceof Error ? error.message : "Failed to grant project access" }
   }

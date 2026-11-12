@@ -1,4 +1,4 @@
-import { and, eq, type SQL } from "drizzle-orm"
+import { eq, sql, type SQL } from "drizzle-orm"
 import type { BatchItem } from "drizzle-orm/batch"
 import type { IndexColumn, SQLiteUpdateSetSource } from "drizzle-orm/sqlite-core"
 
@@ -84,38 +84,52 @@ export function deleteProjectsStatement(db: Db, where: SQL | undefined): Stateme
 // ---- projectMembers
 
 type ProjectMemberInsert = typeof projectMembers.$inferInsert
-type ProjectMemberPatch = SQLiteUpdateSetSource<typeof projectMembers>
 
 export function insertProjectMemberStatement(db: Db, values: ProjectMemberInsert | readonly ProjectMemberInsert[]): Statement {
   return isRows(values) ? db.insert(projectMembers).values([...values]) : db.insert(projectMembers).values(values)
 }
 
-export async function insertProjectMember(db: Db, values: ProjectMemberInsert | readonly ProjectMemberInsert[]): Promise<D1Result> {
-  return isRows(values) ? db.insert(projectMembers).values([...values]).run() : db.insert(projectMembers).values(values).run()
-}
-
-export async function updateProjectMembers(db: Db, where: SQL | undefined, patch: ProjectMemberPatch): Promise<D1Result> {
-  return db.update(projectMembers).set(patch).where(where).run()
-}
-
-/** Gives this person this role on the job, adding the membership if they had none. */
+/**
+ * Gives this person this role on the job, adding the membership if they had
+ * none. One statement, so two grants at once can't collide on the
+ * (project, user) pair.
+ *
+ * `onlyIf` makes the grant conditional: nothing is written unless it still
+ * holds when the statement runs (an invitation still open, a contact still on
+ * the job). That closes the gap between a caller's check and its write, so a
+ * grant can't land after staff removed the person.
+ *
+ * `written` is false when `onlyIf` failed. `createdId` is the new row's id
+ * when this call added the membership (null when it only changed the role),
+ * for `removeProjectMemberGrant` if the caller must undo it.
+ */
 export async function upsertProjectMemberRole(
   db: Db,
   member: { readonly projectId: string; readonly userId: string; readonly role: string; readonly now: string },
-): Promise<void> {
-  const existing = await db
-    .select({ id: projectMembers.id })
-    .from(projectMembers)
-    .where(and(eq(projectMembers.projectId, member.projectId), eq(projectMembers.userId, member.userId)))
-    .get()
-  if (existing) {
-    await db.update(projectMembers).set({ role: member.role }).where(eq(projectMembers.id, existing.id)).run()
-    return
-  }
-  await db
-    .insert(projectMembers)
-    .values({ id: crypto.randomUUID(), projectId: member.projectId, userId: member.userId, role: member.role, assignedAt: member.now })
-    .run()
+  options: { readonly onlyIf?: SQL } = {},
+): Promise<{ readonly written: boolean; readonly createdId: string | null }> {
+  const id = crypto.randomUUID()
+  // SQLite needs the WHERE on an INSERT … SELECT … ON CONFLICT (parse ambiguity).
+  const row = await db.get<{ id: string } | undefined>(sql`
+    INSERT INTO ${projectMembers} (id, project_id, user_id, role, assigned_at)
+    SELECT ${id}, ${member.projectId}, ${member.userId}, ${member.role}, ${member.now}
+    WHERE ${options.onlyIf ?? sql`1`}
+    ON CONFLICT (project_id, user_id) DO UPDATE SET role = excluded.role
+    RETURNING id`)
+  if (!row) return { written: false, createdId: null }
+  return { written: true, createdId: row.id === id ? id : null }
+}
+
+/** Adds these memberships; a person already on the job keeps their row. Returns how many were added. */
+export async function insertProjectMembersIfAbsent(db: Db, values: readonly ProjectMemberInsert[]): Promise<number> {
+  if (values.length === 0) return 0
+  const added = await db.insert(projectMembers).values([...values]).onConflictDoNothing().returning({ id: projectMembers.id })
+  return added.length
+}
+
+/** Undoes a grant this caller just created (by its `createdId`); a membership that existed before is never touched. */
+export async function removeProjectMemberGrant(db: Db, createdId: string): Promise<void> {
+  await db.delete(projectMembers).where(eq(projectMembers.id, createdId)).run()
 }
 
 export async function deleteProjectMembers(db: Db, where: SQL | undefined): Promise<D1Result> {

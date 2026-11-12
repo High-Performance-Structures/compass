@@ -184,6 +184,14 @@ export async function invitationIsOpen(db: Db, invitationId: string): Promise<bo
   return row !== undefined
 }
 
+/**
+ * SQL that holds while this invitation can still be accepted, for a grant
+ * that must not land once staff revoked it (see claimProjectAccessInvitations).
+ */
+export function invitationOpenCondition(invitationId: string): SQL {
+  return sql`EXISTS (SELECT 1 FROM ${projectAccessInvitations} WHERE ${projectAccessInvitations.id} = ${invitationId} AND ${invitationStatusIn("accept")})`
+}
+
 const CANCELLED_EMAIL = {
   emailStatus: "cancelled",
   emailNextAttemptAt: null,

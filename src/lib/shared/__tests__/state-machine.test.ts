@@ -53,9 +53,24 @@ describe("state machine", () => {
     })
     expect(machineProblems(broken)).toEqual([
       'terminal state "b" has outgoing events: back',
-      'state "orphan" cannot be reached from "a"',
+      'state "orphan" cannot be reached from "a" or an entry state',
       'state "orphan" is a dead end but not marked terminal',
       'state "stuck" is a dead end but not marked terminal',
+    ])
+  })
+
+  it("counts entry states as reachable", () => {
+    const imported = defineMachine({
+      name: "imported",
+      states: ["new", "found", "done"],
+      initial: "new",
+      entry: ["found"],
+      terminal: ["done"],
+      transitions: { finish: { from: ["new", "found"], to: "done" } },
+    })
+    expect(machineProblems(imported)).toEqual([])
+    expect(machineProblems({ ...imported, entry: [] })).toEqual([
+      'state "found" cannot be reached from "new" or an entry state',
     ])
   })
 
