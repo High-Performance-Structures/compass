@@ -45,11 +45,29 @@ describe("resolveSessionRole", () => {
     })
   })
 
-  // Pins today's behaviour (issue #1329): only the first project row counts,
-  // so the order the database returns decides between owner and vendor.
-  it("takes the first project role when a person has several", () => {
-    const base = { orgMemberships: [clientOfCompany], preferredOrgId: null, accountRole: "guest" }
-    expect(resolveSessionRole({ ...base, projectRoles: ["owner", "subcontractor"] }).role).toBe("client")
+  // Issue #1329: a vendor who hires the company for their own job is an owner
+  // there but stays in their vendor role, whatever order the rows come in.
+  it("lets vendor roles win over the owner role in any order", () => {
+    const base = { orgMemberships: [vendorOrg], preferredOrgId: null, accountRole: "guest" }
+    expect(resolveSessionRole({ ...base, projectRoles: ["owner", "subcontractor"] }).role).toBe("subcontractor")
     expect(resolveSessionRole({ ...base, projectRoles: ["subcontractor", "owner"] }).role).toBe("subcontractor")
+    expect(resolveSessionRole({ ...base, projectRoles: ["client", "supplier"] }).role).toBe("supplier")
+  })
+
+  it("ranks owner over guest", () => {
+    const base = { orgMemberships: [clientOfCompany], preferredOrgId: null, accountRole: "guest" }
+    expect(resolveSessionRole({ ...base, projectRoles: ["guest", "owner"] }).role).toBe("client")
+  })
+
+  it("ranks subcontractor over supplier over guest", () => {
+    const base = { orgMemberships: [vendorOrg], preferredOrgId: null, accountRole: "guest" }
+    expect(resolveSessionRole({ ...base, projectRoles: ["guest", "supplier", "subcontractor"] }).role).toBe("subcontractor")
+    expect(resolveSessionRole({ ...base, projectRoles: ["guest", "supplier"] }).role).toBe("supplier")
+  })
+
+  it("ignores project roles that are not outside roles", () => {
+    expect(
+      resolveSessionRole({ orgMemberships: [vendorOrg], preferredOrgId: null, projectRoles: ["office", "supplier"], accountRole: "guest" }).role,
+    ).toBe("supplier")
   })
 })

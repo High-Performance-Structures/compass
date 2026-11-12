@@ -8,6 +8,22 @@ import { isExternalProjectRole } from "@/lib/user-roles"
 
 import { externalOrganizationRole } from "./rules"
 
+/**
+ * Highest first. A vendor who hires the company for their own job stays in
+ * their vendor role, so vendor roles win over owner ("owner" / "client").
+ */
+const OUTSIDE_ROLE_PRECEDENCE = ["subcontractor", "supplier", "owner", "client", "guest"] as const
+
+/** The outside role that decides the portal, or undefined if none. */
+function governingOutsideRole(projectRoles: readonly string[]): string | undefined {
+  const outsideRoles = projectRoles.filter(isExternalProjectRole)
+  const rank = (role: string): number => {
+    const index = OUTSIDE_ROLE_PRECEDENCE.findIndex((candidate) => candidate === role)
+    return index === -1 ? OUTSIDE_ROLE_PRECEDENCE.length : index
+  }
+  return [...outsideRoles].sort((a, b) => rank(a) - rank(b))[0]
+}
+
 export type SessionOrgMembership = {
   readonly orgId: string
   readonly orgName: string
@@ -19,7 +35,7 @@ export type SessionRoleInput = {
   readonly orgMemberships: readonly SessionOrgMembership[]
   /** The org id from the "compass-active-org" cookie, if any. */
   readonly preferredOrgId: string | null
-  /** The roles from the person's project memberships, in query order. */
+  /** The roles from the person's project memberships, in any order. */
   readonly projectRoles: readonly string[]
   /** users.role, used when the person has no organization membership. */
   readonly accountRole: string
@@ -37,9 +53,10 @@ export type SessionRole = {
  *   internal company they were invited into.
  * - Otherwise the active organization's role, then users.role.
  *
- * Only the first project role counts today, and the project query has no
- * order, so a person who is an owner on one job and a vendor on another can
- * get either (issue #1329). Tests pin this; the fix is its own change.
+ * A person can hold different outside roles on different jobs. The highest
+ * in OUTSIDE_ROLE_PRECEDENCE wins, so a vendor who is also an owner on one
+ * job always signs in as the vendor (issue #1329). Project access is still
+ * checked per project; this only picks their portal.
  */
 export function resolveSessionRole(input: SessionRoleInput): SessionRole {
   const { orgMemberships, preferredOrgId, projectRoles, accountRole } = input
@@ -49,8 +66,8 @@ export function resolveSessionRole(input: SessionRoleInput): SessionRole {
   const isInternalStaff = orgMemberships.some(
     (membership) => membership.orgType === "internal" && !isExternalProjectRole(membership.memberRole),
   )
-  const projectRole = projectRoles[0]
-  if (isInternalStaff || projectRole === undefined || !isExternalProjectRole(projectRole)) {
+  const projectRole = governingOutsideRole(projectRoles)
+  if (isInternalStaff || projectRole === undefined) {
     return { role: defaultOrg?.memberRole ?? accountRole, activeOrg: defaultOrg }
   }
 
