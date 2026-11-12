@@ -16,15 +16,25 @@ const signupRequestSchema = z.object({
   lastName: lastNameSchema,
 })
 
+/** Shown when the email already has a sign-in (WorkOS only says "Could not create user."). */
+const EXISTING_ACCOUNT_MESSAGE =
+  "You already have a Compass sign-in with this email. Sign in instead, or use \"Forgot password\" to set a new password."
+
+function errorField(error: unknown, field: "code" | "message"): string | null {
+  if (typeof error !== "object" || error === null || !(field in error)) return null
+  const value: unknown = Reflect.get(error, field)
+  return typeof value === "string" ? value : null
+}
+
 function mapWorkOSError(error: unknown): string {
-  const err = error as { code?: string; message?: string }
-  switch (err.code) {
+  switch (errorField(error, "code")) {
     case "user_exists":
-      return "An account with this email already exists"
+    case "email_not_available":
+      return EXISTING_ACCOUNT_MESSAGE
     case "password_too_weak":
       return "Password does not meet security requirements"
     default:
-      return err.message || "An error occurred. Please try again."
+      return errorField(error, "message") || "An error occurred. Please try again."
   }
 }
 
@@ -60,6 +70,13 @@ export async function POST(request: NextRequest) {
     }
 
     const workos = getWorkOS()
+
+    // Someone invited earlier already has a sign-in; creating another fails
+    // with a bare "Could not create user.", so say what to do instead.
+    const existing = await workos.userManagement.listUsers({ email, limit: 1 })
+    if (existing.data.length > 0) {
+      return NextResponse.json({ success: false, error: EXISTING_ACCOUNT_MESSAGE }, { status: 409 })
+    }
 
     const user = await workos.userManagement.createUser({
       email,
