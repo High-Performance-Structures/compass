@@ -32,6 +32,10 @@ export const USER_ROLES = [
 ] as const
 export type UserRole = (typeof USER_ROLES)[number]
 
+/** Project access invitation lifecycle; transitions are in invitation-machine.ts. */
+export const PROJECT_ACCESS_INVITATION_STATUSES = ["sent", "accepted", "revoked", "expired"] as const
+export type ProjectAccessInvitationStatus = (typeof PROJECT_ACCESS_INVITATION_STATUSES)[number]
+
 export const ACCOUNT_DELETION_REQUEST_STATUSES = ["pending", "processing", "completed", "cancelled"] as const
 export type AccountDeletionRequestStatus = (typeof ACCOUNT_DELETION_REQUEST_STATUSES)[number]
 

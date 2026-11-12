@@ -32,6 +32,7 @@ import {
   SITE_LOCATION_STATUSES,
   WORKSPACE_KINDS,
 } from "../lib/domain/project/statuses"
+import { PROJECT_ACCESS_INVITATION_STATUSES } from "../lib/domain/identity/statuses"
 import { customers, projectContacts } from "./schema-contacts"
 import { ownerProjectUpdates } from "./schema-field"
 import { organizations, users } from "./schema-identity"
@@ -622,7 +623,7 @@ export const projectAccessInvitations = sqliteTable(
     ),
     email: text("email").notNull(),
     role: text("role").notNull(),
-    status: text("status").notNull().default("sent"),
+    status: text("status", { enum: PROJECT_ACCESS_INVITATION_STATUSES }).notNull().default("sent"),
     workosInvitationId: text("workos_invitation_id"),
     workosExpiresAt: text("workos_expires_at"),
     emailProvider: text("email_provider"),

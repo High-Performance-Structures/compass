@@ -9,6 +9,7 @@
  * inviting company as an outside member (staff keep their staff role), opens
  * the owner or sub/vendor conversation, and marks the invitation accepted.
  * An invitation whose WorkOS link has lapsed is marked expired instead.
+ * Status changes follow invitationMachine (invitation-machine.ts).
  */
 import { and, desc, eq, sql } from "drizzle-orm"
 
@@ -21,6 +22,7 @@ import { isExternalProjectRole, projectAudienceForRole } from "@/lib/user-roles"
 
 import {
   ensureExternalOrganizationMembership,
+  invitationIsOpen,
   markProjectAccessInvitationAccepted,
   markProjectAccessInvitationExpired,
   updateUser,
@@ -128,6 +130,10 @@ export async function claimProjectAccessInvitations(
       await markProjectAccessInvitationExpired(db, invitation.id, now)
       continue
     }
+    // The list was read earlier in the request; staff may have revoked it since.
+    // Re-check right before granting anything (invitationMachine: only a sent
+    // invitation can be accepted).
+    if (!(await invitationIsOpen(db, invitation.id))) continue
 
     const organizationMembership = await db
       .select({ role: organizationMembers.role })
@@ -164,7 +170,12 @@ export async function claimProjectAccessInvitations(
       })
     }
 
-    await markProjectAccessInvitationAccepted(db, invitation.id, account.id, now)
+    // Grants run before accept so a failure leaves the invitation open to retry
+    // on the next request; they are idempotent. Accept is compare-and-set.
+    if (!(await markProjectAccessInvitationAccepted(db, invitation.id, account.id, now))) {
+      console.warn(`[sign-in] invitation ${invitation.id} changed while being claimed; access was granted but it is no longer open`)
+      continue
+    }
     claimed ??= { organizationId: invitation.organizationId, role: assignedRole }
   }
   return claimed
