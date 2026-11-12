@@ -64,7 +64,7 @@ import {
 import { requireOrg } from "@/lib/org-scope"
 import { canFeature } from "@/lib/permission-enforcement"
 import { can, canManageWorkCalendarEvents, requirePermission } from "@/lib/permissions"
-import { isInternalStaffRole } from "@/lib/user-roles"
+import { isInternalStaffRole, seesStaffViews } from "@/lib/user-roles"
 import { dateKeyInTimeZone, isValidDateKey, resolveHOfficeProjectId, type WorkCalendarEventVisibility } from "@/lib/work-calendar"
 
 type WorkCalendarEventMutationResult =
@@ -85,7 +85,7 @@ async function calendarDatabase(): Promise<{ readonly db: ReturnType<typeof getD
 }
 
 function canUseManagedGoogleCalendarRole(role: string): boolean {
-  return isInternalStaffRole(role) || role === "developer"
+  return seesStaffViews(role)
 }
 
 export async function getWorkCalendar(

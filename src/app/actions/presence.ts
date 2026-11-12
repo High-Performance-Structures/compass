@@ -4,7 +4,7 @@ import { getCloudflareContext } from "@/lib/db"
 import { eq, and } from "drizzle-orm"
 import { getDb } from "@/db"
 import { userPresence } from "@/db/schema-conversations"
-import { organizationMembers, users } from "@/db/schema"
+import { membershipsView, peopleView } from "@/lib/domain/identity/views"
 import { getCurrentUser } from "@/lib/auth"
 import {
   teamAvailabilityFromRows,
@@ -184,6 +184,8 @@ export async function getOrganizationTeamAvailability(): Promise<
     const organizationId = requireOrg(user)
     const { env } = await getCloudflareContext()
     const db = getDb(env.DB)
+    const users = peopleView()
+    const organizationMembers = membershipsView()
     const rows = await db
       .select({
         userId: users.id,

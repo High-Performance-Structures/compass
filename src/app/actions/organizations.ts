@@ -2,7 +2,8 @@
 
 import { getCloudflareContext } from "@/lib/db"
 import { getDb } from "@/db"
-import { organizations, organizationMembers, type Organization } from "@/db/schema"
+import { type Organization } from "@/db/schema"
+import { companiesView, membershipsView } from "@/lib/domain/identity/views"
 import { getCurrentUser } from "@/lib/auth"
 import { requirePermission } from "@/lib/permissions"
 import { eq, and } from "drizzle-orm"
@@ -19,6 +20,8 @@ export async function getOrganizations(): Promise<Organization[]> {
     if (!env?.DB) return []
 
     const db = getDb(env.DB)
+    const organizations = companiesView()
+    const organizationMembers = membershipsView()
 
     // filter to orgs the user is a member of
     const userOrgs = await db
@@ -60,6 +63,8 @@ export async function getUserOrganizations(): Promise<
     if (!env?.DB) return []
 
     const db = getDb(env.DB)
+    const organizations = companiesView()
+    const organizationMembers = membershipsView()
     const results = await db
       .select({
         id: organizations.id,
@@ -97,6 +102,7 @@ export async function switchOrganization(
     }
 
     const db = getDb(env.DB)
+    const organizationMembers = membershipsView()
 
     // verify user is member of target org
     const membership = await db

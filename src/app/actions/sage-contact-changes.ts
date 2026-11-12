@@ -5,7 +5,7 @@ import { revalidatePath } from "next/cache"
 import { z } from "zod/v4"
 
 import { getDb } from "@/db"
-import { customerContacts, customers, internalContacts, users, vendorContacts, vendors } from "@/db/schema"
+import { customerContacts, customers, internalContacts, vendorContacts, vendors } from "@/db/schema"
 import {
   sageContactChangeProposals,
   sageContactReadRequests,
@@ -58,6 +58,9 @@ import { heldSageFields } from "@/lib/sage/sage-held-fields"
 import { applySageLinkedValuesInCompass } from "@/lib/sage/sage-linked-local-apply"
 import { orgContext, requireUserContext, type Db } from "@/lib/server/action-context"
 import { sameSageRecordId } from "@/lib/sage/record-id"
+import { peopleView } from "@/lib/domain/identity/views"
+
+const users = peopleView()
 
 const kindSchema = z.enum([
   "client_company", "client_person", "vendor_company", "vendor_person", "employee",

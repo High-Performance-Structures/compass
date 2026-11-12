@@ -8,7 +8,6 @@ import { getDb } from "@/db"
 import {
   projectDuplicateDecisions,
   projectExternalLinks,
-  projectMembers,
   projectNumberReservations,
   projectRegistryRemovals,
   projectRouteAliases,
@@ -59,6 +58,9 @@ import {
   canManageProjectRegistry,
   requirePermission,
 } from "@/lib/permissions"
+import { projectMembersView } from "@/lib/domain/project/views"
+
+const projectMembers = projectMembersView()
 
 type ProjectDuplicateActionResult =
   | { readonly success: true }

@@ -26,7 +26,7 @@ import {
   syncProjectCalendar,
 } from "@/lib/project-calendars/sync"
 import { getProjectAccessRecord } from "@/lib/domain/project/access"
-import { isInternalStaffRole } from "@/lib/user-roles"
+import { seesStaffViews } from "@/lib/user-roles"
 import { requireUserContext } from "@/lib/server/action-context"
 
 type Result<T> = { readonly success: true; readonly data: T } | { readonly success: false; readonly error: string }
@@ -69,7 +69,7 @@ type Context = {
 async function context(projectId: string): Promise<Context | null> {
   const { user, db, env } = await requireUserContext()
   // Project calendars are staff-only; clients and vendors never see them.
-  if (!isInternalStaffRole(user.role) && user.role !== "developer") return null
+  if (!seesStaffViews(user.role)) return null
   const organizationId = requireOrg(user)
   const access = await getProjectAccessRecord(db, user, projectId)
   if (!access || access.organizationId !== organizationId) return null

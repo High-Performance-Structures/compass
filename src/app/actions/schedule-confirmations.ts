@@ -8,14 +8,10 @@ import { revalidatePath } from "next/cache"
 
 import { getDb } from "@/db"
 import {
-  projectMembers,
-  projectAccessInvitations,
-  organizationMembers,
   projectContacts,
   projects,
   schedulePublications,
   scheduleTasks,
-  users,
 } from "@/db/schema"
 import {
   projectSourceRecordParticipants,
@@ -50,7 +46,7 @@ import {
   type ScheduleChangeProposalInput,
 } from "@/lib/schedule/change-proposal"
 import { parsePublishedScheduleSnapshot } from "@/lib/schedule/publications"
-import { isInternalStaffRole } from "@/lib/user-roles"
+import { isInternalStaffRole, projectAudienceForRole } from "@/lib/user-roles"
 import {
   isPublishedScheduleVisibleToAssignee,
   sameScheduleAssigneeSet,
@@ -60,6 +56,13 @@ import {
   type ScheduleAssigneeResponse,
 } from "@/lib/schedule/multi-assignee"
 import { requireUserContext } from "@/lib/server/action-context"
+import { invitationsView, membershipsView, peopleView } from "@/lib/domain/identity/views"
+import { projectMembersView } from "@/lib/domain/project/views"
+
+const projectMembers = projectMembersView()
+const projectAccessInvitations = invitationsView()
+const organizationMembers = membershipsView()
+const users = peopleView()
 
 type ConfirmationResponse = "confirmed" | "declined"
 
@@ -610,12 +613,7 @@ export async function respondToScheduleTaskConfirmation(
         )
       )
       .get()
-    if (
-      membership?.role !== "subcontractor" &&
-      membership?.role !== "supplier" &&
-      membership?.role !== "client" &&
-      membership?.role !== "owner"
-    ) {
+    if (!membership || projectAudienceForRole(membership.role) === null) {
       return {
         success: false,
         error: "Only the assigned owner or vendor can respond.",
@@ -725,12 +723,7 @@ export async function proposeScheduleTaskChange(
         )
       )
       .get()
-    if (
-      membership?.role !== "subcontractor" &&
-      membership?.role !== "supplier" &&
-      membership?.role !== "client" &&
-      membership?.role !== "owner"
-    ) {
+    if (!membership || projectAudienceForRole(membership.role) === null) {
       return {
         success: false,
         error: "Only the assigned owner or vendor can suggest dates.",
@@ -954,9 +947,7 @@ type AssignmentTarget = {
 function assignmentAudienceForProjectRole(
   role: string,
 ): ScheduleAssigneeAudience {
-  if (role === "client" || role === "owner") return "owner"
-  if (role === "subcontractor" || role === "supplier") return "sub_vendor"
-  return "internal"
+  return projectAudienceForRole(role) ?? "internal"
 }
 
 function assignmentAudienceForContactType(

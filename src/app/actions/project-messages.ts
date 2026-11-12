@@ -6,10 +6,8 @@ import { sendMessage } from "@/app/actions/chat-messages"
 import { createNotificationEvent } from "@/lib/notifications/events"
 import { getDb } from "@/db"
 import {
-  organizationMembers,
   projectContacts,
   projects,
-  users,
 } from "@/db/schema"
 import {
   channelMembers,
@@ -23,6 +21,10 @@ import { projectNumberAndName } from "@/lib/project-display-name"
 import { requireUserContext } from "@/lib/server/action-context"
 import { notArchivedPersonContact } from "@/lib/domain/contacts/person-status"
 import { resolvedContactColumns, withContactDirectory } from "@/lib/domain/contacts/resolved-columns"
+import { membershipsView, peopleView } from "@/lib/domain/identity/views"
+
+const organizationMembers = membershipsView()
+const users = peopleView()
 
 export type ProjectMessageRecipient =
   | { readonly kind: "channel" }

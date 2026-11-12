@@ -3,8 +3,6 @@
 import { eq, and, asc, desc } from "drizzle-orm"
 import {
   internalContacts,
-  organizationMembers,
-  users,
   vendorContacts,
   vendors,
 } from "@/db/schema"
@@ -48,6 +46,10 @@ import { sageVendorTypeCategoryError, vendorCategoryFromSage } from "@/lib/sage/
 import { requireUserContext } from "@/lib/server/action-context"
 import type { VendorContactItem, VendorDirectoryCompany } from "@/lib/domain/contacts/directory-page"
 import { addVendorPerson } from "@/lib/domain/contacts/directory-people"
+import { membershipsView, peopleView } from "@/lib/domain/identity/views"
+
+const organizationMembers = membershipsView()
+const users = peopleView()
 
 export type InternalDirectoryContact = {
   readonly id: string

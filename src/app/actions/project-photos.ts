@@ -14,7 +14,7 @@ import { projectContext, type ProjectContext } from "@/lib/server/action-context
 import { dailyLogPhotoCollectionEligibility } from "@/lib/photos/collection-eligibility"
 import { resolveProjectPhotoDate } from "@/lib/photos/date"
 import { PHOTO_CAPTION_MAX_LENGTH, PHOTO_DELETE_BATCH_LIMIT, SELECTION_PHOTO_KIND } from "@/lib/photos/review"
-import { isInternalStaffRole } from "@/lib/user-roles"
+import { seesStaffViews } from "@/lib/user-roles"
 
 export type ProjectPhotoLibraryItem = {
   readonly id: string
@@ -186,7 +186,7 @@ export async function getProjectPhotoLibrary(
     )
     .orderBy(desc(dailyLogPhotos.capturedAt), desc(dailyLogPhotos.createdAt))
 
-  const tasks = isInternalStaffRole(viewer.role) || viewer.role === "developer"
+  const tasks = seesStaffViews(viewer.role)
     ? await db
     .select({
       phase: scheduleTasks.phase,

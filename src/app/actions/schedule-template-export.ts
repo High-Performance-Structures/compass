@@ -20,7 +20,7 @@ import {
   SAVED_SCHEDULE_TEMPLATE_KIND,
   captureScheduleTemplate,
 } from "@/lib/templates/schedule-template-capture"
-import { isInternalStaffRole } from "@/lib/user-roles"
+import { seesStaffViews } from "@/lib/user-roles"
 
 export type SavedScheduleTemplateOption = {
   readonly id: string
@@ -47,7 +47,7 @@ async function scheduleTemplateContext(): Promise<OrgContext> {
 }
 
 function ensureStaff(role: string): string | null {
-  return isInternalStaffRole(role) || role === "developer"
+  return seesStaffViews(role)
     ? null
     : "Only internal staff can save schedule templates."
 }
