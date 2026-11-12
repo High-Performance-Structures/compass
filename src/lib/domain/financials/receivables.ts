@@ -1,6 +1,7 @@
 import { and, asc, desc, eq, isNull, notInArray, or, sql, type SQL } from "drizzle-orm"
 
-import { customers, projectBudgetApplications, projects, users } from "@/db/schema"
+import { customers, projectBudgetApplications, projects } from "@/db/schema"
+import { peopleView } from "@/lib/domain/identity/views"
 import {
   invoicePaymentAllocations,
   invoices,
@@ -28,6 +29,8 @@ import {
 } from "@/lib/domain/financials/rules"
 import type { ReceivableItemKind, ReceivablePaidState } from "@/lib/domain/financials/statuses"
 import type { Db } from "@/lib/server/action-context"
+
+const people = peopleView()
 
 /*
  * Reads for received payments applied to pay applications and invoices. All
@@ -106,11 +109,11 @@ async function readActivePrepaidMarks(db: Db, scope: ProjectReceivableScope): Pr
     .select({
       applicationId: payApplicationPrepaidMarks.applicationId,
       markedAt: payApplicationPrepaidMarks.markedAt,
-      markedByName: users.displayName,
+      markedByName: people.displayName,
       note: payApplicationPrepaidMarks.note,
     })
     .from(payApplicationPrepaidMarks)
-    .leftJoin(users, eq(users.id, payApplicationPrepaidMarks.markedBy))
+    .leftJoin(people, eq(people.id, payApplicationPrepaidMarks.markedBy))
     .where(and(
       eq(payApplicationPrepaidMarks.organizationId, scope.organizationId),
       eq(payApplicationPrepaidMarks.projectId, scope.projectId),
@@ -288,10 +291,10 @@ export async function readProjectReceivedPayments(db: Db, scope: ProjectReceivab
       billingScope: payments.billingScope,
       voidedAt: payments.voidedAt,
       voidReason: payments.voidReason,
-      voidedByName: users.displayName,
+      voidedByName: people.displayName,
     })
     .from(payments)
-    .leftJoin(users, eq(users.id, payments.voidedBy))
+    .leftJoin(people, eq(people.id, payments.voidedBy))
     .where(and(
       eq(payments.organizationId, scope.organizationId),
       eq(payments.projectId, scope.projectId),

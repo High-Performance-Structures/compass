@@ -8,13 +8,12 @@ import { and, eq, isNull, or, sql } from "drizzle-orm"
 import {
   customers,
   internalContacts,
-  organizationMembers,
   projectExternalLinks,
   projectNumberReservations,
   projectNumberRetirements,
   projects,
-  users,
 } from "@/db/schema"
+import { membershipsView, peopleView } from "@/lib/domain/identity/views"
 import {
   insertCustomerStatement,
   insertInternalContactStatement,
@@ -60,6 +59,9 @@ import {
   updateProjectsStatement,
   type Statement,
 } from "./store"
+
+const memberships = membershipsView()
+const people = peopleView()
 
 type SheetRows = ReadonlyArray<ReadonlyArray<unknown>>
 type Customer = typeof customers.$inferSelect
@@ -267,19 +269,19 @@ export async function resolveIntakeAssignee(
   const assigneeRows = assignedTo
     ? await db
         .select({
-          id: users.id,
-          displayName: users.displayName,
-          firstName: users.firstName,
-          lastName: users.lastName,
-          email: users.email,
-          phone: users.phone,
+          id: people.id,
+          displayName: people.displayName,
+          firstName: people.firstName,
+          lastName: people.lastName,
+          email: people.email,
+          phone: people.phone,
         })
-        .from(organizationMembers)
-        .innerJoin(users, eq(users.id, organizationMembers.userId))
+        .from(memberships)
+        .innerJoin(people, eq(people.id, memberships.userId))
         .where(
           and(
-            eq(organizationMembers.organizationId, organizationId),
-            eq(users.isActive, true)
+            eq(memberships.organizationId, organizationId),
+            eq(people.isActive, true)
           )
         )
     : []

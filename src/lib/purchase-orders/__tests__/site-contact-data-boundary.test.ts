@@ -20,10 +20,10 @@ describe("purchase order site contact data boundary", () => {
     expect(genericStart).toBeGreaterThan(-1)
     expect(siteContactStart).toBeGreaterThan(genericStart)
     expect(domain.slice(0, siteContactStart)).not.toContain(
-      "phone: users.phone"
+      "phone: peopleRows.phone"
     )
-    expect(domain.slice(siteContactEnd)).not.toContain("phone: users.phone")
-    expect(domain.slice(siteContactStart, siteContactEnd)).toContain("phone: users.phone")
+    expect(domain.slice(siteContactEnd)).not.toContain("phone: peopleRows.phone")
+    expect(domain.slice(siteContactStart, siteContactEnd)).toContain("phone: peopleRows.phone")
 
     const actions = source("src/app/actions/project-contact-assignees.ts")
     const siteContactAction = actions.slice(

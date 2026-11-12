@@ -290,4 +290,7 @@ export function isChannelModeratorRole(role: string | null | undefined): boolean
 /** A subcontractor (trade doing work), not a supplier. */
 export function isSubcontractorRole(role: string | null | undefined): boolean {
   return role === "subcontractor"
+/** A supplier (materials) rather than a subcontractor (work). */
+export function isSupplierRole(role: string | null | undefined): boolean {
+  return role === "supplier"
 }

@@ -2,7 +2,9 @@ import { and, eq, inArray, ne, or, sql } from "drizzle-orm"
 
 import type { getDb } from "@/db"
 import { buildertrendAccessCandidates } from "@/db/schema-buildertrend"
-import { projectAccessInvitations, projectContacts, projectMembers, projects } from "@/db/schema"
+import { projectContacts, projects } from "@/db/schema"
+import { invitationsView } from "@/lib/domain/identity/views"
+import { projectMembersView } from "@/lib/domain/project/views"
 import { recordActivityEvent, type ActivityActor } from "@/lib/activity-log"
 import { insertProjectContact, updateProjectContactById } from "@/lib/domain/contacts/store"
 import { resolvedContactColumns, withContactDirectory } from "@/lib/domain/contacts/resolved-columns"
@@ -10,6 +12,10 @@ import { insertProjectAccessInvitation } from "@/lib/domain/identity/store"
 import { insertProjectMember, updateProjectMembers } from "@/lib/domain/project/store"
 import { ensureProjectAudienceConversation } from "@/lib/project-audience-conversations"
 import { projectNumberAndName } from "@/lib/project-display-name"
+import { projectAudienceForRole } from "@/lib/user-roles"
+
+const invitations = invitationsView()
+const projectMemberships = projectMembersView()
 
 type Db = ReturnType<typeof getDb>
 type ProjectContact = typeof projectContacts.$inferSelect
@@ -207,9 +213,7 @@ export async function grantProjectContactAccess(db: Db, input: {
   readonly invitedBy: string
   readonly now: string
 }): Promise<void> {
-  const audience = input.role === "owner" || input.role === "client"
-    ? "owner"
-    : input.role === "subcontractor" || input.role === "supplier" ? "sub_vendor" : null
+  const audience = projectAudienceForRole(input.role)
   const contactId = input.projectContactId
   await updateProjectContactById(db, {
     contactId,
@@ -218,19 +222,19 @@ export async function grantProjectContactAccess(db: Db, input: {
       : { subVendorPortalVisible: true, updatedAt: input.now },
   })
   const open = await db
-    .select({ id: projectAccessInvitations.id })
-    .from(projectAccessInvitations)
+    .select({ id: invitations.id })
+    .from(invitations)
     .where(and(
-      eq(projectAccessInvitations.projectId, input.projectId),
-      eq(projectAccessInvitations.status, "sent"),
-      sql`lower(trim(${projectAccessInvitations.email})) = ${input.email}`,
+      eq(invitations.projectId, input.projectId),
+      eq(invitations.status, "sent"),
+      sql`lower(trim(${invitations.email})) = ${input.email}`,
     ))
     .get()
   if (input.activeUserId) {
     const membership = await db
-      .select({ id: projectMembers.id })
-      .from(projectMembers)
-      .where(and(eq(projectMembers.projectId, input.projectId), eq(projectMembers.userId, input.activeUserId)))
+      .select({ id: projectMemberships.id })
+      .from(projectMemberships)
+      .where(and(eq(projectMemberships.projectId, input.projectId), eq(projectMemberships.userId, input.activeUserId)))
       .get()
     if (!membership) {
       await insertProjectMember(db, {
@@ -241,7 +245,7 @@ export async function grantProjectContactAccess(db: Db, input: {
         assignedAt: input.now,
       })
     } else {
-      await updateProjectMembers(db, eq(projectMembers.id, membership.id), { role: input.role })
+      await updateProjectMembers(db, eq(projectMemberships.id, membership.id), { role: input.role })
     }
   }
   if (audience) {

@@ -8,17 +8,20 @@ import { and, asc, eq, gte, inArray, isNull, not, or, sql } from "drizzle-orm"
 import {
   dailyLogPhotos,
   dailyLogs,
-  organizations,
   ownerProjectUpdates,
   projectExternalLinks,
   projectExternalResourceGrants,
-  projectMembers,
   projects,
-  users,
 } from "@/db/schema"
+import { companiesView, peopleView } from "@/lib/domain/identity/views"
+import { projectMembersView } from "@/lib/domain/project/views"
 import type { AuthUser } from "@/lib/auth"
 import { dailyLogPhotoCollectionEligibility, notSelectionPhoto } from "@/lib/photos/collection-eligibility"
 import type { Db } from "@/lib/server/action-context"
+
+const companies = companiesView()
+const projectMemberships = projectMembersView()
+const people = peopleView()
 
 export type OwnerProjectUpdateReadRow = {
   readonly id: string
@@ -152,20 +155,20 @@ export async function loadOwnerUpdateRow(
       .from(ownerProjectUpdates)
       .innerJoin(projects, eq(projects.id, ownerProjectUpdates.projectId))
       .innerJoin(
-        projectMembers,
+        projectMemberships,
         and(
-          eq(projectMembers.projectId, projects.id),
-          eq(projectMembers.userId, viewer.id),
-          inArray(projectMembers.role, ["client", "owner"])
+          eq(projectMemberships.projectId, projects.id),
+          eq(projectMemberships.userId, viewer.id),
+          inArray(projectMemberships.role, ["client", "owner"])
         )
       )
       .innerJoin(
-        organizations,
+        companies,
         and(
-          eq(organizations.id, projects.organizationId),
-          eq(organizations.id, viewer.organizationId ?? ""),
-          eq(organizations.type, viewer.organizationType ?? ""),
-          eq(organizations.isActive, true)
+          eq(companies.id, projects.organizationId),
+          eq(companies.id, viewer.organizationId ?? ""),
+          eq(companies.type, viewer.organizationType ?? ""),
+          eq(companies.isActive, true)
         )
       )
       .where(
@@ -206,14 +209,14 @@ export async function loadOwnerUpdateLogRows(
       reviewStatus: dailyLogs.reviewStatus,
       isClientVisible: dailyLogs.isClientVisible,
       tags: dailyLogs.tags,
-      authorDisplayName: users.displayName,
-      authorFirstName: users.firstName,
-      authorLastName: users.lastName,
-      authorEmail: users.email,
-      authorIsActive: users.isActive,
+      authorDisplayName: people.displayName,
+      authorFirstName: people.firstName,
+      authorLastName: people.lastName,
+      authorEmail: people.email,
+      authorIsActive: people.isActive,
     })
     .from(dailyLogs)
-    .leftJoin(users, eq(dailyLogs.authorId, users.id))
+    .leftJoin(people, eq(dailyLogs.authorId, people.id))
     .where(
       and(
         eq(dailyLogs.projectId, projectId),
@@ -373,23 +376,23 @@ export async function loadOwnerUpdateAttachmentRows(
           )
         )
         .innerJoin(
-          organizations,
+          companies,
           and(
-            eq(organizations.id, projects.organizationId),
-            eq(organizations.id, viewer.organizationId ?? ""),
-            eq(organizations.type, viewer.organizationType ?? ""),
-            eq(organizations.isActive, true)
+            eq(companies.id, projects.organizationId),
+            eq(companies.id, viewer.organizationId ?? ""),
+            eq(companies.type, viewer.organizationType ?? ""),
+            eq(companies.isActive, true)
           )
         )
         .innerJoin(
-          projectMembers,
+          projectMemberships,
           and(
-            eq(projectMembers.projectId, projects.id),
-            eq(projectMembers.userId, viewer.id),
-            inArray(projectMembers.role, ["client", "owner"])
+            eq(projectMemberships.projectId, projects.id),
+            eq(projectMemberships.userId, viewer.id),
+            inArray(projectMemberships.role, ["client", "owner"])
           )
         )
-        .innerJoin(users, and(eq(users.id, viewer.id), eq(users.isActive, true)))
+        .innerJoin(people, and(eq(people.id, viewer.id), eq(people.isActive, true)))
         .where(
           and(
             eq(dailyLogPhotos.projectId, projectId),

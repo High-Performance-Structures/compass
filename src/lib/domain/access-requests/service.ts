@@ -19,12 +19,12 @@ import { and, eq, isNull, or, sql } from "drizzle-orm"
 import {
   customerContacts,
   customers,
-  organizationMembers,
   projectContacts,
   projects,
   vendorContacts,
   vendors,
 } from "@/db/schema"
+import { membershipsView } from "@/lib/domain/identity/views"
 import { organizationAccessRequests } from "@/db/schema-access-requests"
 import { recordActivityEvent, type ActivityActor } from "@/lib/activity-log"
 import { grantProjectContactAccess } from "@/lib/domain/contacts/prior-project-access"
@@ -32,7 +32,7 @@ import { contactAccountLinkStatements, insertCustomer, insertCustomerPerson, ins
 import { ensureExternalOrganizationMembership, insertOrganizationMember } from "@/lib/domain/identity/store"
 import { projectNumberAndName } from "@/lib/project-display-name"
 import type { Db } from "@/lib/server/action-context"
-import { isInternalStaffRole } from "@/lib/user-roles"
+import { isInternalStaffRole, isSupplierRole } from "@/lib/user-roles"
 
 import { companyAccessRequest, isOrganizationMember, requestableOrganization } from "./queries"
 import {
@@ -51,6 +51,8 @@ import {
 import { decideAccessRequest, insertAccessRequest, reopenAccessRequest, setAccessRequestProjectCount } from "./store"
 import type { AccessRequestKind } from "./statuses"
 import { resolvedContactColumns, withContactDirectory } from "@/lib/domain/contacts/resolved-columns"
+
+const memberships = membershipsView()
 
 type Failure = { readonly success: false; readonly error: string }
 type Result<T> = { readonly success: true; readonly data: T } | Failure
@@ -315,7 +317,7 @@ async function newDirectoryPerson(
   }
   await insertVendor(db, {
     id, organizationId, name: requester.companyName?.trim() || requester.name,
-    category: requester.vendorRole === "supplier" ? "Supplier" : "Subcontractor",
+    category: isSupplierRole(requester.vendorRole) ? "Supplier" : "Subcontractor",
     email: plainEmail(requester.email), phone: requester.phone, createdAt: now, updatedAt: now,
   })
   return vendorPersonForCompany(db, organizationId, id, requester, now)
@@ -436,9 +438,9 @@ export async function approveAccessRequest(
   if (!found.requesterActive) return fail("This person's Compass account is deactivated.")
 
   const existing = await db
-    .select({ role: organizationMembers.role })
-    .from(organizationMembers)
-    .where(and(eq(organizationMembers.organizationId, organizationId), eq(organizationMembers.userId, request.userId)))
+    .select({ role: memberships.role })
+    .from(memberships)
+    .where(and(eq(memberships.organizationId, organizationId), eq(memberships.userId, request.userId)))
     .get()
   // Never change a staff member's role from a request.
   if (existing && isInternalStaffRole(existing.role)) return fail("This person is already on your staff in Compass.")

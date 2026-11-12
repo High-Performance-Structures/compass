@@ -1,10 +1,15 @@
 import { and, eq } from "drizzle-orm"
 
-import { internalContacts, organizationMembers, projectAccessInvitations, projectContacts, users } from "@/db/schema"
+import { internalContacts, projectContacts } from "@/db/schema"
+import { invitationsView, membershipsView, peopleView } from "@/lib/domain/identity/views"
 import type { Db } from "@/lib/server/action-context"
 
 import { normalizeEmailKey } from "./rules"
 import { resolvedContactColumns, withContactDirectory } from "./resolved-columns"
+
+const memberships = membershipsView()
+const invitations = invitationsView()
+const people = peopleView()
 
 type Scope = { readonly db: Db; readonly organizationId: string; readonly projectId: string }
 
@@ -35,9 +40,9 @@ export async function loadProjectContactRemoval(
 
   const [invitationRows, linkedPerson, organizationUsers] = await Promise.all([
     db
-      .select({ acceptedBy: projectAccessInvitations.acceptedBy })
-      .from(projectAccessInvitations)
-      .where(and(eq(projectAccessInvitations.projectId, projectId), eq(projectAccessInvitations.projectContactId, contactId))),
+      .select({ acceptedBy: invitations.acceptedBy })
+      .from(invitations)
+      .where(and(eq(invitations.projectId, projectId), eq(invitations.projectContactId, contactId))),
     contact.internalContactId
       ? db
           .select({ userId: internalContacts.userId })
@@ -46,10 +51,10 @@ export async function loadProjectContactRemoval(
           .get()
       : undefined,
     db
-      .select({ id: users.id, email: users.email })
-      .from(organizationMembers)
-      .innerJoin(users, eq(users.id, organizationMembers.userId))
-      .where(eq(organizationMembers.organizationId, organizationId)),
+      .select({ id: people.id, email: people.email })
+      .from(memberships)
+      .innerJoin(people, eq(people.id, memberships.userId))
+      .where(eq(memberships.organizationId, organizationId)),
   ])
   const memberUserIds = new Set(
     invitationRows.map((invitation) => invitation.acceptedBy).filter((acceptedBy): acceptedBy is string => acceptedBy !== null)
@@ -95,12 +100,12 @@ export async function removableProjectMemberIds(
       .where(and(eq(projectContacts.projectId, projectId), eq(projectContacts.active, true))).$dynamic(), organizationId),
     db
       .select({
-        acceptedBy: projectAccessInvitations.acceptedBy,
-        email: projectAccessInvitations.email,
-        status: projectAccessInvitations.status,
+        acceptedBy: invitations.acceptedBy,
+        email: invitations.email,
+        status: invitations.status,
       })
-      .from(projectAccessInvitations)
-      .where(eq(projectAccessInvitations.projectId, projectId)),
+      .from(invitations)
+      .where(eq(invitations.projectId, projectId)),
   ])
   const remainingUserIds = new Set(
     remainingContacts.flatMap((contact) => [

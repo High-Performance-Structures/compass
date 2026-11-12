@@ -6,13 +6,15 @@ import {
 } from "@/lib/conversations/message-pagination"
 
 import { getDb } from "@/db"
-import { users } from "@/db/schema"
+import { peopleView } from "@/lib/domain/identity/views"
 import { messageAttachments, messageReactions, messages } from "@/db/schema-conversations"
 import { getCurrentUser } from "@/lib/auth"
 import { getConversationChannelAccess } from "@/lib/conversations/channel-access-server"
 import { conversationRequestViewer } from "@/lib/conversations/preview-viewer"
 import { getCloudflareContext } from "@/lib/db"
 import { importedMessageColumns, messageSenderDisplayName } from "./imported"
+
+const people = peopleView()
 
 /*
  * Conversation message reads shared by the chat actions and the screens that
@@ -156,14 +158,14 @@ export async function readChannelMessages(
         createdAt: messages.createdAt,
         ...importedMessageColumns,
         user: {
-          id: users.id,
+          id: people.id,
           displayName: messageSenderDisplayName,
-          email: users.email,
-          avatarUrl: users.avatarUrl,
+          email: people.email,
+          avatarUrl: people.avatarUrl,
         },
       })
       .from(messages)
-      .leftJoin(users, eq(users.id, messages.userId))
+      .leftJoin(people, eq(people.id, messages.userId))
       .where(
         and(
           eq(messages.channelId, channelId),

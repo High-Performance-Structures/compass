@@ -9,7 +9,8 @@
  */
 import { and, eq, gt, notInArray } from "drizzle-orm"
 
-import { organizationMembers, projectFinishSelections, projects } from "@/db/schema"
+import { projectFinishSelections, projects } from "@/db/schema"
+import { membershipsView } from "@/lib/domain/identity/views"
 import { projectSelectionChoices } from "@/db/schema-selection-choices"
 import { formatDate } from "@/lib/format"
 import type { Db } from "@/lib/server/action-context"
@@ -17,6 +18,8 @@ import type { Db } from "@/lib/server/action-context"
 import { loadLeadTimeContext, loadSelectionLeadTimeWarnings } from "./lead-time-read"
 import { leadTimeLabel } from "./lead-time-rules"
 import { ensureSelectionTodo } from "./selection-todos"
+
+const memberships = membershipsView()
 
 /** Selection statuses that can still need ordering; the rules skip the rest too. */
 const SETTLED: readonly ("ordered" | "installed" | "deferred" | "unavailable")[] = ["ordered", "installed", "deferred", "unavailable"]
@@ -42,7 +45,7 @@ export async function createLeadTimeTodos(
   db: Db,
   now: Date = new Date(),
 ): Promise<{ readonly companies: number; readonly projects: number; readonly created: number }> {
-  const orgs = await db.selectDistinct({ organizationId: organizationMembers.organizationId }).from(organizationMembers)
+  const orgs = await db.selectDistinct({ organizationId: memberships.organizationId }).from(memberships)
   const stamp = now.toISOString()
   let projectCount = 0
   let created = 0

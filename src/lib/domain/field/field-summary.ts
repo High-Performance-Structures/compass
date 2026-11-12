@@ -7,15 +7,14 @@ import { and, asc, desc, eq, gte, inArray, isNull, not, sql } from "drizzle-orm"
 import {
   dailyLogPhotos,
   dailyLogs,
-  organizations,
   ownerProjectUpdates,
   projectExternalLinks,
   projectExternalResourceGrants,
-  projectMembers,
   projects,
   scheduleTasks,
-  users,
 } from "@/db/schema"
+import { companiesView, peopleView } from "@/lib/domain/identity/views"
+import { projectMembersView } from "@/lib/domain/project/views"
 import type { AuthUser } from "@/lib/auth"
 import { dailyLogAuthorName } from "@/lib/daily-logs/imported-author"
 import {
@@ -27,10 +26,14 @@ import {
 import { ownerUpdateVisibleStatuses } from "@/lib/owner-updates/history"
 import { dailyLogPhotoCollectionEligibility } from "@/lib/photos/collection-eligibility"
 import type { Db } from "@/lib/server/action-context"
-import { isInternalStaffRole } from "@/lib/user-roles"
+import { seesStaffViews } from "@/lib/user-roles"
 
 import { isInternalFieldViewer } from "./access"
 import { latestPhotoOrder, personDisplayName, photoReviewPhotoCount } from "./rules"
+
+const companies = companiesView()
+const projectMemberships = projectMembersView()
+const people = peopleView()
 
 type LatestDailyLog = {
   readonly id: string
@@ -189,25 +192,25 @@ async function fieldSummaryPhotos(
             )
           )
           .innerJoin(
-            organizations,
+            companies,
             and(
-              eq(organizations.id, projects.organizationId),
-              eq(organizations.id, viewer.organizationId ?? ""),
-              eq(organizations.type, viewer.organizationType ?? ""),
-              eq(organizations.isActive, true)
+              eq(companies.id, projects.organizationId),
+              eq(companies.id, viewer.organizationId ?? ""),
+              eq(companies.type, viewer.organizationType ?? ""),
+              eq(companies.isActive, true)
             )
           )
           .innerJoin(
-            projectMembers,
+            projectMemberships,
             and(
-              eq(projectMembers.projectId, projects.id),
-              eq(projectMembers.userId, viewer.id),
-              inArray(projectMembers.role, ["client", "owner"])
+              eq(projectMemberships.projectId, projects.id),
+              eq(projectMemberships.userId, viewer.id),
+              inArray(projectMemberships.role, ["client", "owner"])
             )
           )
           .innerJoin(
-            users,
-            and(eq(users.id, viewer.id), eq(users.isActive, true))
+            people,
+            and(eq(people.id, viewer.id), eq(people.isActive, true))
           )
           .where(
             and(
@@ -288,20 +291,20 @@ async function fieldSummaryUpdates(
         .from(ownerProjectUpdates)
         .innerJoin(projects, eq(projects.id, ownerProjectUpdates.projectId))
         .innerJoin(
-          projectMembers,
+          projectMemberships,
           and(
-            eq(projectMembers.projectId, projects.id),
-            eq(projectMembers.userId, viewer.id),
-            inArray(projectMembers.role, ["client", "owner"])
+            eq(projectMemberships.projectId, projects.id),
+            eq(projectMemberships.userId, viewer.id),
+            inArray(projectMemberships.role, ["client", "owner"])
           )
         )
         .innerJoin(
-          organizations,
+          companies,
           and(
-            eq(organizations.id, projects.organizationId),
-            eq(organizations.id, viewer.organizationId ?? ""),
-            eq(organizations.type, viewer.organizationType ?? ""),
-            eq(organizations.isActive, true)
+            eq(companies.id, projects.organizationId),
+            eq(companies.id, viewer.organizationId ?? ""),
+            eq(companies.type, viewer.organizationType ?? ""),
+            eq(companies.isActive, true)
           )
         )
         .where(
@@ -333,14 +336,14 @@ export async function loadProjectFieldSummary(
       reviewStatus: dailyLogs.reviewStatus,
       isClientVisible: dailyLogs.isClientVisible,
       tags: dailyLogs.tags,
-      authorDisplayName: users.displayName,
-      authorFirstName: users.firstName,
-      authorLastName: users.lastName,
-      authorEmail: users.email,
-      authorIsActive: users.isActive,
+      authorDisplayName: people.displayName,
+      authorFirstName: people.firstName,
+      authorLastName: people.lastName,
+      authorEmail: people.email,
+      authorIsActive: people.isActive,
     })
     .from(dailyLogs)
-    .leftJoin(users, eq(dailyLogs.authorId, users.id))
+    .leftJoin(people, eq(dailyLogs.authorId, people.id))
     .where(
       and(
         eq(dailyLogs.projectId, projectId),
@@ -522,7 +525,7 @@ export async function loadProjectFieldSummary(
       : null,
     nextScheduleItem:
       viewer.organizationType === "internal" &&
-      (isInternalStaffRole(viewer.role) || viewer.role === "developer")
+      seesStaffViews(viewer.role)
         ? nextTask ?? null
         : null,
   }
@@ -572,20 +575,20 @@ export async function loadProjectOwnerUpdates(
         .from(ownerProjectUpdates)
         .innerJoin(projects, eq(projects.id, ownerProjectUpdates.projectId))
         .innerJoin(
-          projectMembers,
+          projectMemberships,
           and(
-            eq(projectMembers.projectId, projects.id),
-            eq(projectMembers.userId, viewer.id),
-            inArray(projectMembers.role, ["client", "owner"])
+            eq(projectMemberships.projectId, projects.id),
+            eq(projectMemberships.userId, viewer.id),
+            inArray(projectMemberships.role, ["client", "owner"])
           )
         )
         .innerJoin(
-          organizations,
+          companies,
           and(
-            eq(organizations.id, projects.organizationId),
-            eq(organizations.id, viewer.organizationId ?? ""),
-            eq(organizations.type, viewer.organizationType ?? ""),
-            eq(organizations.isActive, true)
+            eq(companies.id, projects.organizationId),
+            eq(companies.id, viewer.organizationId ?? ""),
+            eq(companies.type, viewer.organizationType ?? ""),
+            eq(companies.isActive, true)
           )
         )
         .where(
@@ -623,12 +626,12 @@ export async function loadOwnerUpdateProjectHeader(
         })
         .from(projects)
         .innerJoin(
-          organizations,
+          companies,
           and(
-            eq(organizations.id, projects.organizationId),
-            eq(organizations.id, viewer.organizationId ?? ""),
-            eq(organizations.type, "internal"),
-            eq(organizations.isActive, true)
+            eq(companies.id, projects.organizationId),
+            eq(companies.id, viewer.organizationId ?? ""),
+            eq(companies.type, "internal"),
+            eq(companies.isActive, true)
           )
         )
         .where(eq(projects.id, projectId))
@@ -642,20 +645,20 @@ export async function loadOwnerUpdateProjectHeader(
         })
         .from(projects)
         .innerJoin(
-          projectMembers,
+          projectMemberships,
           and(
-            eq(projectMembers.projectId, projects.id),
-            eq(projectMembers.userId, viewer.id),
-            inArray(projectMembers.role, ["client", "owner"])
+            eq(projectMemberships.projectId, projects.id),
+            eq(projectMemberships.userId, viewer.id),
+            inArray(projectMemberships.role, ["client", "owner"])
           )
         )
         .innerJoin(
-          organizations,
+          companies,
           and(
-            eq(organizations.id, projects.organizationId),
-            eq(organizations.id, viewer.organizationId ?? ""),
-            eq(organizations.type, viewer.organizationType ?? ""),
-            eq(organizations.isActive, true)
+            eq(companies.id, projects.organizationId),
+            eq(companies.id, viewer.organizationId ?? ""),
+            eq(companies.type, viewer.organizationType ?? ""),
+            eq(companies.isActive, true)
           )
         )
         .where(eq(projects.id, projectId))

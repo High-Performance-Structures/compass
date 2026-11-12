@@ -7,7 +7,6 @@ import { and, asc, desc, eq, isNull, like, or } from "drizzle-orm"
 
 import {
   customers,
-  organizationMembers,
   projectContacts,
   projectExternalLinks,
   projectFollowUps,
@@ -19,8 +18,8 @@ import {
   projectNumberRetirements,
   projectProfileSyncOperations,
   projects,
-  users,
 } from "@/db/schema"
+import { membershipsView, peopleView } from "@/lib/domain/identity/views"
 import { isDemoUser } from "@/lib/demo"
 import { updateCustomerByIdStatement } from "@/lib/domain/contacts/store"
 import { insertProjectNumberAliasIfAbsentStatement, insertProjectNumberReservationStatement, updateProjectNumberReservationsStatement } from "@/lib/domain/project/numbering-store"
@@ -56,6 +55,9 @@ import {
 import { cleanText } from "@/lib/shared/guards"
 import { validatePublicProjectIdentity } from "@/lib/social/privacy"
 import { resolvedContactColumns, withContactDirectory } from "@/lib/domain/contacts/resolved-columns"
+
+const memberships = membershipsView()
+const people = peopleView()
 
 type ProjectProfileNote = {
   readonly id: string
@@ -192,12 +194,12 @@ export async function loadProjectInformation(projectId: string): Promise<Project
       .select({
         id: projectNotes.id,
         body: projectNotes.content,
-        authorName: users.displayName,
+        authorName: people.displayName,
         createdAt: projectNotes.createdAt,
         updatedAt: projectNotes.updatedAt,
       })
       .from(projectNotes)
-      .leftJoin(users, eq(users.id, projectNotes.createdBy))
+      .leftJoin(people, eq(people.id, projectNotes.createdBy))
       .where(and(eq(projectNotes.projectId, projectId), isNull(projectNotes.deletedAt)))
       .orderBy(desc(projectNotes.createdAt)),
     db
@@ -208,11 +210,11 @@ export async function loadProjectInformation(projectId: string): Promise<Project
         summary: projectInteractions.summary,
         source: projectInteractions.source,
         occurredAt: projectInteractions.occurredAt,
-        authorName: users.displayName,
+        authorName: people.displayName,
         contactId: projectInteractions.projectContactId,
       })
       .from(projectInteractions)
-      .leftJoin(users, eq(users.id, projectInteractions.createdBy))
+      .leftJoin(people, eq(people.id, projectInteractions.createdBy))
       .where(
         and(
           eq(projectInteractions.projectId, projectId),
@@ -225,17 +227,17 @@ export async function loadProjectInformation(projectId: string): Promise<Project
       .select({
         nextFollowUpAt: projectFollowUps.nextFollowUpAt,
         ownerUserId: projectFollowUps.ownerUserId,
-        ownerName: users.displayName,
+        ownerName: people.displayName,
       })
       .from(projectFollowUps)
       .leftJoin(
-        organizationMembers,
+        memberships,
         and(
-          eq(organizationMembers.organizationId, organizationId),
-          eq(organizationMembers.userId, projectFollowUps.ownerUserId),
+          eq(memberships.organizationId, organizationId),
+          eq(memberships.userId, projectFollowUps.ownerUserId),
         ),
       )
-      .leftJoin(users, and(eq(users.id, organizationMembers.userId), eq(users.isActive, true)))
+      .leftJoin(people, and(eq(people.id, memberships.userId), eq(people.isActive, true)))
       .where(eq(projectFollowUps.projectId, projectId))
       .limit(1),
     db

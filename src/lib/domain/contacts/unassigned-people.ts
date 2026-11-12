@@ -1,11 +1,15 @@
 import { and, asc, eq, inArray, isNull, or, sql, type SQL } from "drizzle-orm"
 
-import { customers, projectAccessInvitations, projectContacts, projects, users, vendors } from "@/db/schema"
+import { customers, projectContacts, projects, vendors } from "@/db/schema"
+import { invitationsView, peopleView } from "@/lib/domain/identity/views"
 import type { Db } from "@/lib/server/action-context"
 
 import { normalizeCompanyName } from "./rules"
 import { unassignedPersonKeys } from "./unassigned-matching"
 import { resolvedContactColumns, withContactDirectory } from "./resolved-columns"
+
+const invitations = invitationsView()
+const peopleRows = peopleView()
 
 /*
  * People added from imported (Buildertrend) messages who are not connected to
@@ -86,7 +90,7 @@ export async function listUnassignedPeople(db: Db, organizationId: string): Prom
       projectId: projects.id,
       projectName: projects.name,
       projectNumber: projects.projectNumber,
-      accepted: sql<number>`exists (select 1 from ${projectAccessInvitations} inner join ${users} on ${users.id} = ${projectAccessInvitations.acceptedBy} where ${projectAccessInvitations.projectContactId} = ${projectContacts.id} and ${projectAccessInvitations.status} = 'accepted' and ${users.isActive} = 1)`,
+      accepted: sql<number>`exists (select 1 from ${invitations} inner join ${peopleRows} on ${peopleRows.id} = ${invitations.acceptedBy} where ${invitations.projectContactId} = ${projectContacts.id} and ${invitations.status} = 'accepted' and ${peopleRows.isActive} = 1)`,
     })
     .from(projectContacts)
     .innerJoin(projects, eq(projects.id, projectContacts.projectId))

@@ -493,7 +493,7 @@
   },
   "src/lib/domain/access-requests/queries.ts": {
     "compass-core/owned-table-import": {
-      "count": 7
+      "count": 4
     },
     "compass-core/owned-table-raw-sql": {
       "count": 1
@@ -501,10 +501,7 @@
   },
   "src/lib/domain/access-requests/service.ts": {
     "compass-core/owned-table-import": {
-      "count": 6
-    },
-    "compass-core/role-literal-compare": {
-      "count": 1
+      "count": 5
     }
   },
   "src/lib/domain/buildertrend/legacy-sources.ts": {
@@ -512,72 +509,9 @@
       "count": 1
     }
   },
-  "src/lib/domain/contacts/assignees.ts": {
-    "compass-core/owned-table-import": {
-      "count": 2
-    }
-  },
   "src/lib/domain/contacts/join-client-company.ts": {
     "compass-core/owned-table-raw-sql": {
       "count": 1
-    }
-  },
-  "src/lib/domain/contacts/pending-invitations.ts": {
-    "compass-core/owned-table-import": {
-      "count": 2
-    }
-  },
-  "src/lib/domain/contacts/people-search.ts": {
-    "compass-core/owned-table-import": {
-      "count": 2
-    }
-  },
-  "src/lib/domain/contacts/person-archive.ts": {
-    "compass-core/owned-table-import": {
-      "count": 4
-    }
-  },
-  "src/lib/domain/contacts/person-status.ts": {
-    "compass-core/owned-table-raw-sql": {
-      "count": 1
-    }
-  },
-  "src/lib/domain/contacts/prior-project-access.ts": {
-    "compass-core/owned-table-import": {
-      "count": 2
-    },
-    "compass-core/role-literal-compare": {
-      "count": 4
-    }
-  },
-  "src/lib/domain/contacts/remove-contact.ts": {
-    "compass-core/owned-table-import": {
-      "count": 3
-    }
-  },
-  "src/lib/domain/contacts/resolved-columns.ts": {
-    "compass-core/owned-table-import": {
-      "count": 2
-    }
-  },
-  "src/lib/domain/contacts/save-contact.ts": {
-    "compass-core/owned-table-import": {
-      "count": 4
-    }
-  },
-  "src/lib/domain/contacts/summary.ts": {
-    "compass-core/owned-table-import": {
-      "count": 3
-    }
-  },
-  "src/lib/domain/contacts/unassigned-people.ts": {
-    "compass-core/owned-table-import": {
-      "count": 2
-    }
-  },
-  "src/lib/domain/contacts/unassigned-person-edit.ts": {
-    "compass-core/owned-table-import": {
-      "count": 4
     }
   },
   "src/lib/domain/conversations/imported-participant-group-resolve.ts": {
@@ -595,30 +529,17 @@
   },
   "src/lib/domain/conversations/imported-sharing.ts": {
     "compass-core/owned-table-import": {
-      "count": 2
+      "count": 1
     }
   },
   "src/lib/domain/conversations/imported.ts": {
-    "compass-core/owned-table-import": {
-      "count": 1
-    },
     "compass-core/owned-table-raw-sql": {
-      "count": 1
-    }
-  },
-  "src/lib/domain/conversations/messages.ts": {
-    "compass-core/owned-table-import": {
       "count": 1
     }
   },
   "src/lib/domain/conversations/participant-auto-resolve.ts": {
     "compass-core/owned-table-import": {
-      "count": 8
-    }
-  },
-  "src/lib/domain/crm/follow-ups.ts": {
-    "compass-core/owned-table-import": {
-      "count": 2
+      "count": 6
     }
   },
   "src/lib/domain/crm/interactions.ts": {
@@ -626,14 +547,9 @@
       "count": 1
     }
   },
-  "src/lib/domain/documents/drive-connection-store.ts": {
-    "compass-core/owned-table-import": {
-      "count": 1
-    }
-  },
   "src/lib/domain/estimates/change-order-acceptance.ts": {
     "compass-core/owned-table-import": {
-      "count": 2
+      "count": 1
     }
   },
   "src/lib/domain/estimates/drafts.ts": {
@@ -656,42 +572,19 @@
       "count": 2
     }
   },
-  "src/lib/domain/field/access.ts": {
-    "compass-core/owned-table-import": {
-      "count": 2
-    }
-  },
-  "src/lib/domain/field/daily-log-workspace.ts": {
-    "compass-core/owned-table-import": {
-      "count": 1
-    }
-  },
   "src/lib/domain/field/field-app-access.ts": {
     "compass-core/owned-table-import": {
-      "count": 4
-    }
-  },
-  "src/lib/domain/field/field-summary.ts": {
-    "compass-core/owned-table-import": {
-      "count": 3
-    },
-    "compass-core/role-literal-compare": {
       "count": 1
-    }
-  },
-  "src/lib/domain/field/owner-update-rows.ts": {
-    "compass-core/owned-table-import": {
-      "count": 3
     }
   },
   "src/lib/domain/financials/receivables.ts": {
     "compass-core/owned-table-import": {
-      "count": 2
+      "count": 1
     }
   },
   "src/lib/domain/operations/queries.ts": {
     "compass-core/owned-table-import": {
-      "count": 3
+      "count": 2
     }
   },
   "src/lib/domain/operations/store.ts": {
@@ -701,7 +594,7 @@
   },
   "src/lib/domain/project/information.ts": {
     "compass-core/owned-table-import": {
-      "count": 4
+      "count": 2
     }
   },
   "src/lib/domain/project/intake-shell.ts": {
@@ -711,17 +604,17 @@
   },
   "src/lib/domain/project/intake.ts": {
     "compass-core/owned-table-import": {
-      "count": 4
+      "count": 2
     }
   },
   "src/lib/domain/project/listing.ts": {
     "compass-core/owned-table-import": {
-      "count": 3
+      "count": 1
     }
   },
   "src/lib/domain/project/profile-sync.ts": {
     "compass-core/owned-table-import": {
-      "count": 4
+      "count": 3
     }
   },
   "src/lib/domain/project/store.ts": {
@@ -729,22 +622,9 @@
       "count": 1
     }
   },
-  "src/lib/domain/schedule/access.ts": {
-    "compass-core/role-literal-compare": {
-      "count": 1
-    }
-  },
-  "src/lib/domain/schedule/assignment-notices.ts": {
-    "compass-core/owned-table-import": {
-      "count": 2
-    },
-    "compass-core/role-literal-compare": {
-      "count": 4
-    }
-  },
   "src/lib/domain/schedule/queries.ts": {
     "compass-core/owned-table-import": {
-      "count": 4
+      "count": 1
     }
   },
   "src/lib/domain/selections/choice-rfq-server.ts": {
@@ -754,17 +634,12 @@
   },
   "src/lib/domain/selections/choices-read.ts": {
     "compass-core/owned-table-import": {
-      "count": 2
-    }
-  },
-  "src/lib/domain/selections/lead-time-todos.ts": {
-    "compass-core/owned-table-import": {
       "count": 1
     }
   },
   "src/lib/domain/selections/round-signing.ts": {
     "compass-core/owned-table-import": {
-      "count": 2
+      "count": 1
     }
   },
   "src/lib/domain/selections/selection-sheet-read.ts": {
@@ -780,21 +655,6 @@
   "src/lib/domain/selections/workspace.ts": {
     "compass-core/owned-table-import": {
       "count": 1
-    }
-  },
-  "src/lib/domain/settings/saved-views.ts": {
-    "compass-core/owned-table-import": {
-      "count": 1
-    }
-  },
-  "src/lib/domain/work-calendar/assemble.ts": {
-    "compass-core/role-literal-compare": {
-      "count": 4
-    }
-  },
-  "src/lib/domain/work-calendar/loaders.ts": {
-    "compass-core/owned-table-import": {
-      "count": 3
     }
   },
   "src/lib/email/gmail-inbound.ts": {
