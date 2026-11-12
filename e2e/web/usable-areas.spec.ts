@@ -1118,7 +1118,7 @@ test.describe("usable Compass areas", () => {
       editDialog.getByRole("list", { name: "Assigned people" })
     ).toContainText("Demo User")
     await editDialog
-      .getByRole("button", { name: "Add another person..." })
+      .getByRole("button", { name: "Add another person or crew..." })
       .click()
     await expect(page.getByText("No matching contacts.")).toBeVisible()
     await expect(
