@@ -2,7 +2,8 @@ import "server-only"
 
 import { and, desc, eq, inArray, isNull } from "drizzle-orm"
 
-import { projects, users } from "@/db/schema"
+import { projects } from "@/db/schema"
+import { peopleView } from "@/lib/domain/identity/views"
 import { projectContractBudgetRevisions, projectEstimateLineCostItems, projectEstimateLines, projectEstimates } from "@/db/schema-estimates"
 import { sageClientProjectWriteOperations, sageEstimateExports, sageJobProposalReads } from "@/db/schema-sage"
 import { recordActivityEvent, type ActivityActor } from "@/lib/activity-log"
@@ -27,6 +28,8 @@ import { sageClientProjectWritesEnabled } from "@/lib/sage/client-project-write"
 import { sageEstimateWritePayload, sageEstimateWritesEnabled, type SageEstimateWritePayload } from "@/lib/sage/estimate-write"
 import { failedJobWriteClient } from "@/lib/sage/job-write-client"
 import type { Db } from "@/lib/server/action-context"
+
+const people = peopleView()
 
 /*
  * Accepted estimate → Sage: the job (created first through the existing job
@@ -365,9 +368,9 @@ export async function buildEstimateWriterRequest(
 export async function sageExportActor(db: Db, userId: string | null): Promise<ActivityActor | null> {
   if (!userId) return null
   const user = await db
-    .select({ id: users.id, email: users.email, displayName: users.displayName, firstName: users.firstName, lastName: users.lastName, role: users.role })
-    .from(users)
-    .where(eq(users.id, userId))
+    .select({ id: people.id, email: people.email, displayName: people.displayName, firstName: people.firstName, lastName: people.lastName, role: people.role })
+    .from(people)
+    .where(eq(people.id, userId))
     .get()
   return user ?? null
 }

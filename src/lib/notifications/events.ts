@@ -1,14 +1,9 @@
 import { and, eq, inArray } from "drizzle-orm"
 
 import { getDb } from "@/db"
-import {
-  emailReplyThreads,
-  organizationMembers,
-  projectContacts,
-  projectMembers,
-  projects,
-  users,
-} from "@/db/schema"
+import { emailReplyThreads, projectContacts, projects } from "@/db/schema"
+import { membershipsView, peopleView } from "@/lib/domain/identity/views"
+import { projectMembersView } from "@/lib/domain/project/views"
 import { channelMembers, channels, messages } from "@/db/schema-conversations"
 import { projectRfqEmailDeliveries } from "@/db/schema-rfqs"
 import type { AuthUser } from "@/lib/auth"
@@ -22,6 +17,10 @@ import { purchaseOrderRecordHref } from "@/lib/purchase-orders/record-href"
 import { portalPurchaseOrderVendorStatusLabel, type PortalPurchaseOrderVendorStatus } from "@/lib/purchase-orders/portal-response"
 import { isInternalStaffRole } from "@/lib/user-roles"
 import { resolvedContactColumns, withContactDirectory } from "@/lib/domain/contacts/resolved-columns"
+
+const memberships = membershipsView()
+const projectMemberships = projectMembersView()
+const people = peopleView()
 
 export {
   createNotificationEvent,
@@ -175,22 +174,22 @@ async function projectAssignmentRecipients(
 
   const orgUsers = await db
     .select({
-      id: users.id,
-      email: users.email,
-      googleEmail: users.googleEmail,
-      displayName: users.displayName,
-      firstName: users.firstName,
-      lastName: users.lastName,
+      id: people.id,
+      email: people.email,
+      googleEmail: people.googleEmail,
+      displayName: people.displayName,
+      firstName: people.firstName,
+      lastName: people.lastName,
     })
-    .from(users)
+    .from(people)
     .innerJoin(
-      organizationMembers,
-      eq(organizationMembers.userId, users.id)
+      memberships,
+      eq(memberships.userId, people.id)
     )
     .where(
       and(
-        eq(organizationMembers.organizationId, organizationId),
-        eq(users.isActive, true)
+        eq(memberships.organizationId, organizationId),
+        eq(people.isActive, true)
       )
     )
 
@@ -231,25 +230,25 @@ export async function projectInternalRecipients(
 ): Promise<readonly NotificationRecipientInput[]> {
   const members = await db
     .select({
-      userId: users.id,
-      email: users.email,
-      googleEmail: users.googleEmail,
-      userRole: users.role,
-      organizationRole: organizationMembers.role,
+      userId: people.id,
+      email: people.email,
+      googleEmail: people.googleEmail,
+      userRole: people.role,
+      organizationRole: memberships.role,
     })
-    .from(projectMembers)
-    .innerJoin(users, eq(users.id, projectMembers.userId))
+    .from(projectMemberships)
+    .innerJoin(people, eq(people.id, projectMemberships.userId))
     .innerJoin(
-      organizationMembers,
+      memberships,
       and(
-        eq(organizationMembers.userId, users.id),
-        eq(organizationMembers.organizationId, organizationId)
+        eq(memberships.userId, people.id),
+        eq(memberships.organizationId, organizationId)
       )
     )
     .where(
       and(
-        eq(projectMembers.projectId, projectId),
-        eq(users.isActive, true)
+        eq(projectMemberships.projectId, projectId),
+        eq(people.isActive, true)
       )
     )
 
@@ -303,13 +302,13 @@ async function withRecordSenders(
   const missing = [...senderIds].filter((id) => id !== record.excludedUserId && !recipients.has(id))
   if (missing.length > 0) {
     const senders = await db
-      .select({ userId: users.id, email: users.email, googleEmail: users.googleEmail })
-      .from(users)
+      .select({ userId: people.id, email: people.email, googleEmail: people.googleEmail })
+      .from(people)
       .innerJoin(
-        organizationMembers,
-        and(eq(organizationMembers.userId, users.id), eq(organizationMembers.organizationId, organizationId))
+        memberships,
+        and(eq(memberships.userId, people.id), eq(memberships.organizationId, organizationId))
       )
-      .where(and(inArray(users.id, missing), eq(users.isActive, true)))
+      .where(and(inArray(people.id, missing), eq(people.isActive, true)))
     for (const sender of senders) {
       recipients.set(sender.userId, { userId: sender.userId, email: sender.googleEmail?.trim() || sender.email })
     }
@@ -346,24 +345,24 @@ export async function notifyScheduleEndDateExtended(
       .then((rows) => rows[0] ?? null),
     db
       .select({
-        userId: users.id,
-        email: users.email,
-        googleEmail: users.googleEmail,
-        userRole: users.role,
-        organizationRole: organizationMembers.role,
+        userId: people.id,
+        email: people.email,
+        googleEmail: people.googleEmail,
+        userRole: people.role,
+        organizationRole: memberships.role,
       })
-      .from(organizationMembers)
-      .innerJoin(users, eq(users.id, organizationMembers.userId))
+      .from(memberships)
+      .innerJoin(people, eq(people.id, memberships.userId))
       .where(
         and(
-          eq(organizationMembers.organizationId, input.organizationId),
-          eq(users.isActive, true)
+          eq(memberships.organizationId, input.organizationId),
+          eq(people.isActive, true)
         )
       ),
     db
-      .select({ userId: projectMembers.userId, role: projectMembers.role })
-      .from(projectMembers)
-      .where(eq(projectMembers.projectId, input.projectId)),
+      .select({ userId: projectMemberships.userId, role: projectMemberships.role })
+      .from(projectMemberships)
+      .where(eq(projectMemberships.projectId, input.projectId)),
   ])
   const projectRoleByUserId = new Map(
     projectRoles.map((member) => [member.userId, member.role])
@@ -422,7 +421,7 @@ export async function notifyChannelMessage(
     .select({
       userId: channelMembers.userId,
       notifyLevel: channelMembers.notifyLevel,
-      email: users.email,
+      email: people.email,
       channelId: channels.id,
       channelAudience: channels.audience,
       channelIsPrivate: channels.isPrivate,
@@ -430,7 +429,7 @@ export async function notifyChannelMessage(
       channelDescription: channels.description,
     })
     .from(channelMembers)
-    .innerJoin(users, eq(users.id, channelMembers.userId))
+    .innerJoin(people, eq(people.id, channelMembers.userId))
     .innerJoin(channels, eq(channels.id, channelMembers.channelId))
     .where(eq(channelMembers.channelId, input.channelId))
 
@@ -571,19 +570,19 @@ export async function notifyRfiUpdated(
   if (mentionedUserIds.length > 0) {
     const mentionedUsers = await db
       .select({
-        userId: users.id,
-        email: users.email,
-        googleEmail: users.googleEmail,
+        userId: people.id,
+        email: people.email,
+        googleEmail: people.googleEmail,
       })
-      .from(users)
+      .from(people)
       .innerJoin(
-        organizationMembers,
+        memberships,
         and(
-          eq(organizationMembers.userId, users.id),
-          eq(organizationMembers.organizationId, input.organizationId)
+          eq(memberships.userId, people.id),
+          eq(memberships.organizationId, input.organizationId)
         )
       )
-      .where(and(inArray(users.id, mentionedUserIds), eq(users.isActive, true)))
+      .where(and(inArray(people.id, mentionedUserIds), eq(people.isActive, true)))
     for (const mentionedUser of mentionedUsers) {
       recipients.set(mentionedUser.userId, {
         userId: mentionedUser.userId,
@@ -799,17 +798,17 @@ export async function notifyWarrantyClaimCreated(
   const db = getDb(env.DB)
   const members = await db
     .select({
-      userId: users.id,
-      email: users.email,
-      googleEmail: users.googleEmail,
-      role: users.role,
+      userId: people.id,
+      email: people.email,
+      googleEmail: people.googleEmail,
+      role: people.role,
     })
-    .from(projectMembers)
-    .innerJoin(users, eq(users.id, projectMembers.userId))
+    .from(projectMemberships)
+    .innerJoin(people, eq(people.id, projectMemberships.userId))
     .where(
       and(
-        eq(projectMembers.projectId, input.projectId),
-        eq(users.isActive, true)
+        eq(projectMemberships.projectId, input.projectId),
+        eq(people.isActive, true)
       )
     )
   const recipients = members
@@ -851,12 +850,12 @@ export async function notifyWarrantyClaimUpdated(
   const db = getDb(env.DB)
   const claimant = await db
     .select({
-      userId: users.id,
-      email: users.email,
-      googleEmail: users.googleEmail,
+      userId: people.id,
+      email: people.email,
+      googleEmail: people.googleEmail,
     })
-    .from(users)
-    .where(and(eq(users.id, input.claimantUserId), eq(users.isActive, true)))
+    .from(people)
+    .where(and(eq(people.id, input.claimantUserId), eq(people.isActive, true)))
     .limit(1)
     .then((rows) => rows[0] ?? null)
   if (!claimant) return
@@ -920,9 +919,9 @@ export async function notifyProjectStaffOfOutsideEvent(
   }
   if (input.ownerUserId && !recipients.has(input.ownerUserId)) {
     const owner = await db
-      .select({ userId: users.id, email: users.email, googleEmail: users.googleEmail })
-      .from(users)
-      .where(and(eq(users.id, input.ownerUserId), eq(users.isActive, true)))
+      .select({ userId: people.id, email: people.email, googleEmail: people.googleEmail })
+      .from(people)
+      .where(and(eq(people.id, input.ownerUserId), eq(people.isActive, true)))
       .limit(1)
       .then((rows) => rows[0] ?? null)
     if (owner) {

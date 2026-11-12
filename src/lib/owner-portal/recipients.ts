@@ -1,8 +1,13 @@
 import { and, eq, inArray } from "drizzle-orm"
 
 import type { getDb } from "@/db"
-import { organizationMembers, projectMembers, users } from "@/db/schema"
+import { membershipsView, peopleView } from "@/lib/domain/identity/views"
+import { projectMembersView } from "@/lib/domain/project/views"
 import { isValidRecipientEmail, normalizeRecipientEmail } from "@/lib/email/recipient-options"
+
+const memberships = membershipsView()
+const projectMemberships = projectMembersView()
+const people = peopleView()
 
 export type OwnerPortalUser = {
   readonly userId: string
@@ -17,11 +22,11 @@ export async function projectOwnerPortalUsers(
   projectId: string
 ): Promise<readonly OwnerPortalUser[]> {
   const rows = await db
-    .select({ userId: users.id, name: users.displayName, email: users.email })
-    .from(projectMembers)
-    .innerJoin(users, eq(users.id, projectMembers.userId))
-    .innerJoin(organizationMembers, and(eq(organizationMembers.userId, users.id), eq(organizationMembers.organizationId, organizationId)))
-    .where(and(eq(projectMembers.projectId, projectId), inArray(projectMembers.role, ["owner", "client"]), eq(users.isActive, true)))
+    .select({ userId: people.id, name: people.displayName, email: people.email })
+    .from(projectMemberships)
+    .innerJoin(people, eq(people.id, projectMemberships.userId))
+    .innerJoin(memberships, and(eq(memberships.userId, people.id), eq(memberships.organizationId, organizationId)))
+    .where(and(eq(projectMemberships.projectId, projectId), inArray(projectMemberships.role, ["owner", "client"]), eq(people.isActive, true)))
   const seen = new Set<string>()
   return rows.flatMap((row) => {
     const email = normalizeRecipientEmail(row.email)

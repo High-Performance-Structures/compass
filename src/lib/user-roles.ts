@@ -299,4 +299,17 @@ const USER_ROLE_BADGE_VARIANTS: Readonly<Record<string, "default" | "secondary">
 /** Badge style for a role in people lists: admin solid, office muted, everyone else outlined. */
 export function userRoleBadgeVariant(role: string): "default" | "secondary" | "outline" {
   return USER_ROLE_BADGE_VARIANTS[role] ?? "outline"
+/** The "client" account role alone; "owner" is a project-role alias, not an account role. */
+export function isClientAccountRole(role: string | null | undefined): boolean {
+  return role === "client"
+}
+
+/** The legacy catch-all "field" role, which covers both field workflow roles. */
+export function isLegacyFieldRole(role: string | null | undefined): boolean {
+  return role === "field"
+}
+
+/** The general "office" (Office Staff) role, which covers the office workflow roles. */
+export function isGeneralOfficeRole(role: string | null | undefined): boolean {
+  return role === "office"
 }

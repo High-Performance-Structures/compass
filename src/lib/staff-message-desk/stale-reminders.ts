@@ -1,6 +1,7 @@
 import { and, eq, inArray, isNull, ne, or, sql } from "drizzle-orm"
 import type { getDb } from "@/db"
-import { staffMessageRecords, users } from "@/db/schema"
+import { staffMessageRecords } from "@/db/schema"
+import { peopleView } from "@/lib/domain/identity/views"
 import { readFeatureSettings } from "@/lib/feature-settings/server"
 import { createSystemNotificationEvent } from "@/lib/notifications/create-event"
 import {
@@ -9,6 +10,8 @@ import {
   type StaffMessageAgingThresholds,
 } from "@/lib/staff-message-desk/triage"
 import { updateStaffMessageRecords } from "@/lib/domain/feedback/inbound-store"
+
+const people = peopleView()
 
 const STALE_REMINDER_EVENT = "staff_message.stale"
 
@@ -48,11 +51,11 @@ async function openMessages(db: Db, organizationId: string) {
       lastActivityAt: staffMessageRecords.lastActivityAt,
       staleRemindedAt: staffMessageRecords.staleRemindedAt,
       assigneeUserId: staffMessageRecords.assigneeUserId,
-      assigneeEmail: users.email,
-      assigneeActive: users.isActive,
+      assigneeEmail: people.email,
+      assigneeActive: people.isActive,
     })
     .from(staffMessageRecords)
-    .innerJoin(users, eq(users.id, staffMessageRecords.assigneeUserId))
+    .innerJoin(people, eq(people.id, staffMessageRecords.assigneeUserId))
     .where(and(eq(staffMessageRecords.organizationId, organizationId), ne(staffMessageRecords.status, "closed")))
 }
 

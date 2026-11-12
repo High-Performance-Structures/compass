@@ -1,11 +1,13 @@
 import { and, eq } from "drizzle-orm"
 
 import { getDb } from "@/db"
-import { organizations } from "@/db/schema"
+import { companiesView } from "@/lib/domain/identity/views"
 import type { AuthUser } from "@/lib/auth"
 import { getCloudflareContext } from "@/lib/db"
 import { isDemoUser } from "@/lib/demo"
 import { isInternalStaffRole } from "@/lib/user-roles"
+
+const companies = companiesView()
 
 async function getActiveOrganizationDb(
   user: AuthUser,
@@ -21,13 +23,13 @@ async function getActiveOrganizationDb(
   const { env } = await getCloudflareContext()
   const db = getDb(env.DB)
   const [organization] = await db
-    .select({ id: organizations.id })
-    .from(organizations)
+    .select({ id: companies.id })
+    .from(companies)
     .where(
       and(
-        eq(organizations.id, user.organizationId),
-        eq(organizations.type, user.organizationType),
-        eq(organizations.isActive, true)
+        eq(companies.id, user.organizationId),
+        eq(companies.type, user.organizationType),
+        eq(companies.isActive, true)
       )
     )
     .limit(1)

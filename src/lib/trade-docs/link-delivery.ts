@@ -4,7 +4,7 @@ import { requestVendorCertificateSyncs } from "@/lib/sage/vendor-certificates"
 import { and, eq } from "drizzle-orm"
 
 import type { getDb } from "@/db"
-import { users } from "@/db/schema"
+import { peopleView } from "@/lib/domain/identity/views"
 import { recordActivityEvent, type ActivityActor } from "@/lib/activity-log"
 import { sendTrackedEmail } from "@/lib/email/tracked-send"
 import { vendorTradeDocsHref } from "@/lib/email/tracked-record-email"
@@ -18,6 +18,8 @@ import {
   supersedeCurrentTradeDocumentStatement,
   updateTradeDocLink,
 } from "@/lib/domain/documents/store"
+
+const people = peopleView()
 
 type Db = ReturnType<typeof getDb>
 
@@ -144,9 +146,9 @@ export async function notifyTradeDocLinkSender(input: {
 }): Promise<void> {
   try {
     const sender = await input.db
-      .select({ id: users.id, email: users.email, googleEmail: users.googleEmail })
-      .from(users)
-      .where(and(eq(users.id, input.senderUserId), eq(users.isActive, true)))
+      .select({ id: people.id, email: people.email, googleEmail: people.googleEmail })
+      .from(people)
+      .where(and(eq(people.id, input.senderUserId), eq(people.isActive, true)))
       .get()
     if (!sender) return
     await createSystemNotificationEvent({

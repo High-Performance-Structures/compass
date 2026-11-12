@@ -2,7 +2,8 @@ import { and, eq, inArray, lt, sql } from "drizzle-orm"
 import { z } from "zod/v4"
 
 import { getDb } from "@/db"
-import { notificationPreferences, users } from "@/db/schema"
+import { notificationPreferences } from "@/db/schema"
+import { peopleView } from "@/lib/domain/identity/views"
 import { feedbackServiceHealth } from "@/db/schema-jarvis"
 import { unrecoveredNotificationEvents } from "@/lib/domain/notifications/queries"
 import {
@@ -13,6 +14,8 @@ import {
 import { getJarvisEnvValue } from "@/lib/jarvis/auth"
 import { squareAlertRecipientIds } from "@/lib/sage/square-alert-recipients"
 import { insertFeedbackServiceHealth } from "@/lib/domain/feedback/store"
+
+const people = peopleView()
 
 export const squareAuthObservationSchema = z
   .object({
@@ -188,13 +191,13 @@ export async function notifySquareAuthHealth(
   // to SQUARE_AUTH_NOTIFICATION_USER_ID.
   const recipientIds = await squareAlertRecipientIds(db, env, organizationId, "connection")
   const developer = await db
-    .select({ userId: users.id, inApp: notificationPreferences.inAppEnabled })
-    .from(users)
+    .select({ userId: people.id, inApp: notificationPreferences.inAppEnabled })
+    .from(people)
     .leftJoin(
       notificationPreferences,
-      eq(notificationPreferences.userId, users.id)
+      eq(notificationPreferences.userId, people.id)
     )
-    .where(inArray(users.id, recipientIds.length > 0 ? [...recipientIds] : [""]))
+    .where(inArray(people.id, recipientIds.length > 0 ? [...recipientIds] : [""]))
   const recipients = developer.filter((recipient) => recipient.inApp !== false)
   const heartbeats = await db
     .select()

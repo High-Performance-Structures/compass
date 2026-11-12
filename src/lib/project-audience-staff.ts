@@ -2,14 +2,16 @@ import { and, asc, eq, or } from "drizzle-orm"
 
 import type { getDb } from "@/db"
 import {
-  organizationMembers,
   projectContacts,
   internalContacts,
-  users,
 } from "@/db/schema"
+import { membershipsView, peopleView } from "@/lib/domain/identity/views"
 import type { ProjectAudience } from "@/lib/project-audience-access"
 import { isVisibleAudienceTeamMember } from "@/lib/project-audience-team"
 import { resolvedContactColumns, withContactDirectory } from "@/lib/domain/contacts/resolved-columns"
+
+const memberships = membershipsView()
+const people = peopleView()
 
 export type ProjectAudienceStaffMember = {
   readonly contactId: string
@@ -45,13 +47,13 @@ export async function getProjectAudienceStaff(
   const rows = await withContactDirectory(db
     .select({
       contactId: projectContacts.id,
-      userId: users.id,
+      userId: people.id,
       contactDisplayName: resolvedContactColumns.displayName,
-      userDisplayName: users.displayName,
-      email: users.email,
+      userDisplayName: people.displayName,
+      email: people.email,
       companyName: resolvedContactColumns.companyName,
       contactRole: projectContacts.role,
-      organizationRole: organizationMembers.role,
+      organizationRole: memberships.role,
       trade: projectContacts.trade,
       csiDivision: projectContacts.csiDivision,
       csiDivisionName: projectContacts.csiDivisionName,
@@ -68,20 +70,20 @@ export async function getProjectAudienceStaff(
       )
     )
     .innerJoin(
-      users,
+      people,
       or(
         and(
           eq(projectContacts.sourceEntityType, "user"),
-          eq(projectContacts.sourceEntityId, users.id)
+          eq(projectContacts.sourceEntityId, people.id)
         ),
-        eq(internalContacts.userId, users.id)
+        eq(internalContacts.userId, people.id)
       )
     )
     .innerJoin(
-      organizationMembers,
+      memberships,
       and(
-        eq(organizationMembers.userId, users.id),
-        eq(organizationMembers.organizationId, input.organizationId)
+        eq(memberships.userId, people.id),
+        eq(memberships.organizationId, input.organizationId)
       )
     )
     .where(
@@ -89,14 +91,14 @@ export async function getProjectAudienceStaff(
         eq(projectContacts.projectId, input.projectId),
         eq(projectContacts.contactType, "internal"),
         eq(projectContacts.active, true),
-        eq(users.isActive, true),
+        eq(people.isActive, true),
         audienceVisibility
       )
     )
     .orderBy(
       asc(projectContacts.sortOrder),
       asc(resolvedContactColumns.displayName),
-      asc(users.email)
+      asc(people.email)
     ).$dynamic(), input.organizationId)
 
   return rows

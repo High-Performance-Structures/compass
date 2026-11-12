@@ -8,8 +8,8 @@ import {
   projectInteractions,
   projectOperations,
   projectTodoEvents,
-  users,
 } from "@/db/schema"
+import { peopleView } from "@/lib/domain/identity/views"
 import { equipmentLogEntries, equipmentMachines } from "@/db/schema-equipment"
 import { internalDutyEntries } from "@/db/schema-internal-duties"
 import { companyTimeZone } from "@/lib/daily-logs/log-followups-server"
@@ -28,6 +28,8 @@ import {
   type ProjectTimelineKind,
 } from "./model"
 import { resolvedContactColumns, withContactDirectory } from "@/lib/domain/contacts/resolved-columns"
+
+const people = peopleView()
 
 type Db = ReturnType<typeof getDb>
 
@@ -85,12 +87,12 @@ export async function loadProjectTimeline(
       workCompleted: dailyLogs.workCompleted,
       isClientVisible: dailyLogs.isClientVisible,
       createdAt: dailyLogs.createdAt,
-      displayName: users.displayName,
-      firstName: users.firstName,
-      lastName: users.lastName,
+      displayName: people.displayName,
+      firstName: people.firstName,
+      lastName: people.lastName,
     })
     .from(dailyLogs)
-    .leftJoin(users, eq(users.id, dailyLogs.authorId))
+    .leftJoin(people, eq(people.id, dailyLogs.authorId))
     .where(and(eq(dailyLogs.projectId, input.projectId), gte(dailyLogs.logDate, from), lte(dailyLogs.logDate, to)))
   const logIds = logs.map((log) => log.id)
   const lines = logIds.length === 0
@@ -181,13 +183,13 @@ export async function loadProjectTimeline(
             createdAt: projectTodoEvents.createdAt,
             title: projectOperations.title,
             assigneeName: projectOperations.assigneeName,
-            displayName: users.displayName,
-            firstName: users.firstName,
-            lastName: users.lastName,
+            displayName: people.displayName,
+            firstName: people.firstName,
+            lastName: people.lastName,
           })
           .from(projectTodoEvents)
           .innerJoin(projectOperations, eq(projectOperations.id, projectTodoEvents.todoId))
-          .leftJoin(users, eq(users.id, projectTodoEvents.actorId))
+          .leftJoin(people, eq(people.id, projectTodoEvents.actorId))
           .where(and(eq(projectTodoEvents.projectId, input.projectId), gte(projectTodoEvents.createdAt, fromIso), lte(projectTodoEvents.createdAt, toIso)))
       : Promise.resolve([]),
     shows("contact")
@@ -200,13 +202,13 @@ export async function loadProjectTimeline(
             occurredAt: projectInteractions.occurredAt,
             dailyLogId: projectInteractions.dailyLogId,
             contactName: resolvedContactColumns.displayName,
-            displayName: users.displayName,
-            firstName: users.firstName,
-            lastName: users.lastName,
+            displayName: people.displayName,
+            firstName: people.firstName,
+            lastName: people.lastName,
           })
           .from(projectInteractions)
           .leftJoin(projectContacts, eq(projectContacts.id, projectInteractions.projectContactId))
-          .leftJoin(users, eq(users.id, projectInteractions.createdBy))
+          .leftJoin(people, eq(people.id, projectInteractions.createdBy))
           .where(
             and(
               eq(projectInteractions.projectId, input.projectId),
@@ -226,12 +228,12 @@ export async function loadProjectTimeline(
             hours: internalDutyEntries.hours,
             notes: internalDutyEntries.notes,
             createdAt: internalDutyEntries.createdAt,
-            displayName: users.displayName,
-            firstName: users.firstName,
-            lastName: users.lastName,
+            displayName: people.displayName,
+            firstName: people.firstName,
+            lastName: people.lastName,
           })
           .from(internalDutyEntries)
-          .leftJoin(users, eq(users.id, internalDutyEntries.userId))
+          .leftJoin(people, eq(people.id, internalDutyEntries.userId))
           .where(
             and(
               eq(internalDutyEntries.relatedProjectId, input.projectId),

@@ -2,10 +2,12 @@ import { and, desc, eq, sql } from "drizzle-orm"
 
 import type { getDb } from "@/db"
 import {
-  projectAccessInvitations,
   projectContacts,
 } from "@/db/schema"
+import { invitationsView } from "@/lib/domain/identity/views"
 import { resolvedContactColumns, withContactDirectory } from "@/lib/domain/contacts/resolved-columns"
+
+const invitations = invitationsView()
 
 export type ProjectAudienceViewerContact = {
   readonly id: string
@@ -32,16 +34,16 @@ export async function getProjectAudienceViewerContact(
   viewer: { readonly id: string; readonly email: string }
 ): Promise<ProjectAudienceViewerContact | null> {
   const acceptedInvitation = await db
-    .select({ projectContactId: projectAccessInvitations.projectContactId })
-    .from(projectAccessInvitations)
+    .select({ projectContactId: invitations.projectContactId })
+    .from(invitations)
     .where(
       and(
-        eq(projectAccessInvitations.projectId, projectId),
-        eq(projectAccessInvitations.acceptedBy, viewer.id),
-        eq(projectAccessInvitations.status, "accepted")
+        eq(invitations.projectId, projectId),
+        eq(invitations.acceptedBy, viewer.id),
+        eq(invitations.status, "accepted")
       )
     )
-    .orderBy(desc(projectAccessInvitations.acceptedAt))
+    .orderBy(desc(invitations.acceptedAt))
     .limit(1)
     .then((rows) => rows[0] ?? null)
 
