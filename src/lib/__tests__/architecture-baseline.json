@@ -390,7 +390,7 @@
       "src/lib/domain/record-statuses/store.ts"
     ],
     "organizations": [
-      "src/lib/auth.ts"
+      "src/lib/domain/identity/store.ts"
     ],
     "ownerProjectUpdates": [
       "src/lib/domain/field/store.ts"
@@ -1025,7 +1025,6 @@
     "src/lib/feature-settings/registry.ts": 938,
     "src/lib/notifications/create-event.ts": 833,
     "src/lib/notifications/events.ts": 952,
-    "src/lib/permissions.ts": 806,
     "src/lib/sage/square-payment.ts": 1333,
     "src/lib/sync/engine.ts": 864
   },

@@ -9,13 +9,8 @@ import {
   customerContacts,
   customers,
   internalContacts,
-  projectAccessInvitations,
   projectContacts,
-  projectMembers,
-  organizationMembers,
-  organizations,
   projects,
-  users,
   vendorContacts,
   vendors,
 } from "@/db/schema"
@@ -41,13 +36,16 @@ import {
 import { resolvedContactColumns, withContactDirectory } from "@/lib/domain/contacts/resolved-columns"
 import { updateProjectContactById } from "@/lib/domain/contacts/store"
 import { vendorInvitationBlock } from "@/lib/domain/contacts/vendor-invitability"
-import { insertProjectMember, updateProjectMembers } from "@/lib/domain/project/store"
+import { upsertProjectMemberRole } from "@/lib/domain/project/store"
 import { projectContactAddress } from "@/lib/project-contact-privacy"
 import { projectContactInvitationTarget } from "@/lib/project-contact-invitation-target"
 import { projectContactInvitationDirectorySelection } from "@/lib/project-contact-invitation-select"
 import {
+  isClientRole,
   isExternalProjectRole,
   isInternalStaffRole,
+  isVendorRole,
+  projectAudienceForRole,
 } from "@/lib/user-roles"
 import { recordActivityEvent } from "@/lib/activity-log"
 import { getProjectAudienceViewerContact } from "@/lib/project-audience-viewer-contact"
@@ -57,6 +55,15 @@ import {
   priorBuildertrendProjects,
   type PriorProject,
 } from "@/lib/domain/contacts/prior-project-access"
+import { companiesView, invitationsView, membershipsView, peopleView } from "@/lib/domain/identity/views"
+import { projectMembersView } from "@/lib/domain/project/views"
+
+// Identity and project tables are read through their modules' views (issue #1329).
+const accounts = peopleView()
+const memberships = membershipsView()
+const companies = companiesView()
+const accessInvitations = invitationsView()
+const projectMemberRows = projectMembersView()
 
 const invitationSchema = z.object({
   projectId: z.string().trim().min(1),
@@ -93,38 +100,6 @@ function environmentString(env: unknown, key: string): string | null {
   if (typeof env !== "object" || env === null) return null
   const value = Reflect.get(env, key)
   return typeof value === "string" && value.trim() ? value.trim() : null
-}
-
-async function ensureProjectMembership(input: {
-  readonly db: ReturnType<typeof getDb>
-  readonly userId: string
-  readonly projectId: string
-  readonly role: string
-  readonly now: string
-}): Promise<void> {
-  const existing = await input.db
-    .select({ id: projectMembers.id })
-    .from(projectMembers)
-    .where(
-      and(
-        eq(projectMembers.userId, input.userId),
-        eq(projectMembers.projectId, input.projectId)
-      )
-    )
-    .get()
-
-  if (existing) {
-    await updateProjectMembers(input.db, eq(projectMembers.id, existing.id), { role: input.role })
-    return
-  }
-
-  await insertProjectMember(input.db, {
-    id: crypto.randomUUID(),
-    userId: input.userId,
-    projectId: input.projectId,
-    role: input.role,
-    assignedAt: input.now,
-  })
 }
 
 export async function sendProjectAccessInvitation(
@@ -212,14 +187,14 @@ export async function sendProjectAccessInvitation(
         )
       )
       .leftJoin(
-        users,
+        accounts,
         and(
           eq(projectContacts.sourceEntityType, "user"),
-          eq(projectContacts.sourceEntityId, users.id),
+          eq(projectContacts.sourceEntityId, accounts.id),
           sql`exists (
-            select 1 from ${organizationMembers}
-            where ${organizationMembers.userId} = ${users.id}
-              and ${organizationMembers.organizationId} = ${projects.organizationId}
+            select 1 from ${memberships}
+            where ${memberships.userId} = ${accounts.id}
+              and ${memberships.organizationId} = ${projects.organizationId}
           )`
         )
       )
@@ -303,18 +278,18 @@ export async function sendProjectAccessInvitation(
 
     const existingUser = await db
       .select({
-        id: users.id,
-        email: users.email,
-        role: users.role,
-        isActive: users.isActive,
-        phone: users.phone,
-        address: users.address,
+        id: accounts.id,
+        email: accounts.email,
+        role: accounts.role,
+        isActive: accounts.isActive,
+        phone: accounts.phone,
+        address: accounts.address,
       })
-      .from(users)
+      .from(accounts)
       .where(
         target.kind === "linked_user"
-          ? eq(users.id, target.userId)
-          : sql`lower(trim(${users.email})) = ${target.email}`
+          ? eq(accounts.id, target.userId)
+          : sql`lower(trim(${accounts.email})) = ${target.email}`
       )
       .get()
     if (target.kind === "linked_user" && !existingUser) {
@@ -322,21 +297,19 @@ export async function sendProjectAccessInvitation(
     }
     if (target.kind === "linked_user") {
       const membership = await db
-        .select({ role: organizationMembers.role })
-        .from(organizationMembers)
+        .select({ role: memberships.role })
+        .from(memberships)
         .where(
           and(
-            eq(organizationMembers.organizationId, row.organizationId),
-            eq(organizationMembers.userId, target.userId)
+            eq(memberships.organizationId, row.organizationId),
+            eq(memberships.userId, target.userId)
           )
         )
         .get()
       if (
         !membership ||
-        (row.contact.customerContactId && membership.role !== "client") ||
-        (row.contact.vendorContactId &&
-          membership.role !== "subcontractor" &&
-          membership.role !== "supplier")
+        (row.contact.customerContactId && !isClientRole(membership.role)) ||
+        (row.contact.vendorContactId && !isVendorRole(membership.role))
       ) {
         return { success: false, error: "The linked account no longer has the matching organization role. Review its contact-account link." }
       }
@@ -369,21 +342,21 @@ export async function sendProjectAccessInvitation(
     const pendingInvitation = !activeExistingUser
       ? await db
           .select({
-            id: projectAccessInvitations.id,
-            workosExpiresAt: projectAccessInvitations.workosExpiresAt,
+            id: accessInvitations.id,
+            workosExpiresAt: accessInvitations.workosExpiresAt,
           })
-          .from(projectAccessInvitations)
+          .from(accessInvitations)
           .where(
             and(
-              eq(projectAccessInvitations.projectId, parsed.data.projectId),
-              eq(projectAccessInvitations.status, "sent"),
+              eq(accessInvitations.projectId, parsed.data.projectId),
+              eq(accessInvitations.status, "sent"),
               or(
-                eq(projectAccessInvitations.projectContactId, row.contact.id),
-                sql`lower(trim(${projectAccessInvitations.email})) = ${inviteEmail}`
+                eq(accessInvitations.projectContactId, row.contact.id),
+                sql`lower(trim(${accessInvitations.email})) = ${inviteEmail}`
               )
             )
           )
-          .orderBy(desc(projectAccessInvitations.invitedAt))
+          .orderBy(desc(accessInvitations.invitedAt))
           .get()
       : null
     if (pendingInvitation) {
@@ -404,17 +377,17 @@ export async function sendProjectAccessInvitation(
     }
     const internalMembership = activeExistingUser
       ? await db
-          .select({ role: organizationMembers.role })
-          .from(organizationMembers)
+          .select({ role: memberships.role })
+          .from(memberships)
           .innerJoin(
-            organizations,
-            eq(organizations.id, organizationMembers.organizationId)
+            companies,
+            eq(companies.id, memberships.organizationId)
           )
           .where(
             and(
-              eq(organizationMembers.userId, activeExistingUser.id),
-              eq(organizations.id, row.organizationId),
-              eq(organizations.type, "internal")
+              eq(memberships.userId, activeExistingUser.id),
+              eq(companies.id, row.organizationId),
+              eq(companies.type, "internal")
             )
           )
           .get()
@@ -427,8 +400,8 @@ export async function sendProjectAccessInvitation(
     const verifiedOrganizationMembership =
       preservedOrganizationRole !== null
     const existingProjectMembership = welcomeOnly && activeExistingUser
-      ? await db.select({ role: projectMembers.role }).from(projectMembers).where(and(
-          eq(projectMembers.projectId, parsed.data.projectId), eq(projectMembers.userId, activeExistingUser.id))).get()
+      ? await db.select({ role: projectMemberRows.role }).from(projectMemberRows).where(and(
+          eq(projectMemberRows.projectId, parsed.data.projectId), eq(projectMemberRows.userId, activeExistingUser.id))).get()
       : null
     if (welcomeOnly && (!activeExistingUser || !existingProjectMembership || !internalMembership)) {
       return { success: false, error: "Welcome-only recovery requires an active account with existing project access. Review access before inviting." }
@@ -451,11 +424,11 @@ export async function sendProjectAccessInvitation(
     }
     await cancelObsoleteInvitationEmails(db, { projectId: parsed.data.projectId,
       contactId: row.contact.id, email: inviteEmail, role: membershipRole, now })
-    const queuedWelcome = await db.select({ status: projectAccessInvitations.emailStatus,
-      nextAttemptAt: projectAccessInvitations.emailNextAttemptAt }).from(projectAccessInvitations)
-      .where(and(eq(projectAccessInvitations.projectId, parsed.data.projectId),
-        eq(projectAccessInvitations.projectContactId, row.contact.id),
-        inArray(projectAccessInvitations.emailStatus, ["queued", "retrying", "sending"]))).get()
+    const queuedWelcome = await db.select({ status: accessInvitations.emailStatus,
+      nextAttemptAt: accessInvitations.emailNextAttemptAt }).from(accessInvitations)
+      .where(and(eq(accessInvitations.projectId, parsed.data.projectId),
+        eq(accessInvitations.projectContactId, row.contact.id),
+        inArray(accessInvitations.emailStatus, ["queued", "retrying", "sending"]))).get()
     if (queuedWelcome) return { success: true, accessStatus: activeExistingUser ? "access_granted" : "invited",
       warning: invitationEmailNotice(queuedWelcome.status, queuedWelcome.nextAttemptAt) }
     let workosInvitationId: string | null = null
@@ -481,13 +454,7 @@ export async function sendProjectAccessInvitation(
           now,
         })
       }
-      if (!welcomeOnly) await ensureProjectMembership({
-        db,
-        userId: activeExistingUser.id,
-        projectId: parsed.data.projectId,
-        role: membershipRole,
-        now,
-      })
+      if (!welcomeOnly) await upsertProjectMemberRole(db, { projectId: parsed.data.projectId, userId: activeExistingUser.id, role: membershipRole, now })
       accessStatus = "access_granted"
     } else if (!existingUser) {
       const workosApiKey = environmentString(env, "WORKOS_API_KEY")
@@ -514,12 +481,7 @@ export async function sendProjectAccessInvitation(
           : { subVendorPortalVisible: true, updatedAt: now }
     if (!welcomeOnly) await updateProjectContactById(db, { contactId: row.contact.id, values: visibility })
 
-    const audience =
-      requestedRole === "owner"
-        ? "owner"
-        : requestedRole === "subcontractor" || requestedRole === "supplier"
-          ? "sub_vendor"
-          : null
+    const audience = projectAudienceForRole(requestedRole)
     if (audience && !welcomeOnly) {
       await ensureProjectAudienceConversation({
         db,

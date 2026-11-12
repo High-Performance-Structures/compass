@@ -2,41 +2,33 @@ import { cache } from "react"
 import { withAuth } from "@workos-inc/authkit-nextjs"
 import { getCloudflareContext } from "@/lib/db"
 import { getDb } from "@/db"
-import {
-  users,
-  organizations,
-  organizationMembers,
-  projectAccessInvitations,
-  projectContacts,
-  projectMembers,
-} from "@/db/schema"
 import type { User } from "@/db/schema"
-import { and, desc, eq, sql } from "drizzle-orm"
 import { cookies } from "next/headers"
 import { DEMO_USER } from "@/lib/demo"
-import { insertProjectMember, updateProjectMembers } from "@/lib/domain/project/store"
 import {
   isDevAuthFallbackAllowed,
   isWorkOSConfigured,
 } from "@/lib/auth-config"
-import {
-  isExternalProjectRole,
-} from "@/lib/user-roles"
-import { ensureProjectAudienceConversation } from "@/lib/project-audience-conversations"
 import { recordActivityEvent } from "@/lib/activity-log"
 import { ensureInternalContactForStaff } from "@/lib/internal-contact-provisioning"
 import { organizationMembershipsQuery } from "@/lib/domain/identity/reads"
 import { resolveSessionRole } from "@/lib/domain/identity/session-role"
 import { projectRolesForUserQuery } from "@/lib/domain/project/member-role"
 import {
-  ensureExternalOrganizationMembership,
+  accountByEmail,
+  accountById,
+  accountByIdQuery,
+  claimInvitationsForAccount,
+  claimProjectAccessInvitations,
+  normalizedEmailAddress,
+  pendingInvitationsQuery,
+} from "@/lib/domain/identity/accounts"
+import {
+  insertOrganization,
   insertOrganizationMember,
   insertUser,
-  markProjectAccessInvitationAccepted,
-  markProjectAccessInvitationExpired,
   updateUser,
 } from "@/lib/domain/identity/store"
-import { resolvedContactColumns, withContactDirectory } from "@/lib/domain/contacts/resolved-columns"
 
 export type AuthUser = {
   readonly id: string
@@ -109,43 +101,6 @@ async function setActiveOrgCookie(orgId: string): Promise<void> {
   }
 }
 
-function normalizedEmailAddress(email: string): string {
-  return email.trim().toLowerCase()
-}
-
-function pendingInvitationsQuery(
-  db: ReturnType<typeof getDb>,
-  normalizedEmail: string
-) {
-  return withContactDirectory(db.select({
-      id: projectAccessInvitations.id,
-      organizationId: projectAccessInvitations.organizationId,
-      projectId: projectAccessInvitations.projectId,
-      projectContactId: projectAccessInvitations.projectContactId,
-      role: projectAccessInvitations.role,
-      invitedBy: projectAccessInvitations.invitedBy,
-      workosExpiresAt: projectAccessInvitations.workosExpiresAt,
-      contactPhone: resolvedContactColumns.phone,
-      contactAddress: resolvedContactColumns.address,
-    })
-    .from(projectAccessInvitations)
-    .leftJoin(
-      projectContacts,
-      eq(projectContacts.id, projectAccessInvitations.projectContactId)
-    )
-    .where(
-      and(
-        eq(projectAccessInvitations.status, "sent"),
-        sql`lower(trim(${projectAccessInvitations.email})) = ${normalizedEmail}`
-      )
-    )
-    .orderBy(desc(projectAccessInvitations.invitedAt)).$dynamic())
-}
-
-type PendingInvitation = Awaited<
-  ReturnType<typeof pendingInvitationsQuery>
->[number]
-
 /** The organization the person last switched to, if the cookie is readable. */
 async function preferredOrganizationId(): Promise<string | null> {
   try {
@@ -154,153 +109,6 @@ async function preferredOrganizationId(): Promise<string | null> {
   } catch {
     return null
   }
-}
-
-/** Looks up and claims an account's pending invitations (sign-in callbacks). */
-async function claimInvitationsForAccount(
-  db: ReturnType<typeof getDb>,
-  account: {
-    readonly id: string
-    readonly email: string
-    readonly phone: string | null
-    readonly address: string | null
-  },
-  now: string
-): Promise<{ readonly organizationId: string; readonly role: string } | null> {
-  const email = normalizedEmailAddress(account.email)
-  if (!email) return null
-  const invitations = await pendingInvitationsQuery(db, email)
-  return claimProjectAccessInvitations(db, account, invitations, now)
-}
-
-async function claimProjectAccessInvitations(
-  db: ReturnType<typeof getDb>,
-  currentIdentity: {
-    readonly id: string
-    readonly phone: string | null
-    readonly address: string | null
-  },
-  invitations: readonly PendingInvitation[],
-  now: string
-): Promise<{ readonly organizationId: string; readonly role: string } | null> {
-  // Nearly every request has nothing pending; skip all further work.
-  if (invitations.length === 0) return null
-  const userId = currentIdentity.id
-
-  const identityInvitation = invitations.find(
-    (invitation) =>
-      (!invitation.workosExpiresAt || invitation.workosExpiresAt > now) &&
-      (invitation.contactPhone || invitation.contactAddress)
-  )
-  if (
-    identityInvitation &&
-    ((!currentIdentity.phone && identityInvitation.contactPhone) ||
-      (!currentIdentity.address && identityInvitation.contactAddress))
-  ) {
-    await updateUser(db, userId, {
-      phone: currentIdentity.phone ?? identityInvitation.contactPhone,
-      address: currentIdentity.address ?? identityInvitation.contactAddress,
-      updatedAt: now,
-    })
-  }
-
-  let claimedInvitation: {
-    readonly organizationId: string
-    readonly role: string
-  } | null = null
-  for (const invitation of invitations) {
-    if (
-      invitation.workosExpiresAt &&
-      invitation.workosExpiresAt <= now
-    ) {
-      await markProjectAccessInvitationExpired(db, invitation.id, now)
-      continue
-    }
-
-    const organizationMembership = await db
-      .select({ role: organizationMembers.role })
-      .from(organizationMembers)
-      .where(
-        and(
-          eq(organizationMembers.userId, userId),
-          eq(
-            organizationMembers.organizationId,
-            invitation.organizationId
-          )
-        )
-      )
-      .get()
-    const preservedOrganizationRole =
-      organizationMembership &&
-      !isExternalProjectRole(organizationMembership.role)
-        ? organizationMembership.role
-        : null
-    const assignedRole = preservedOrganizationRole ?? invitation.role
-
-    if (
-      isExternalProjectRole(invitation.role) &&
-      !preservedOrganizationRole
-    ) {
-      await ensureExternalOrganizationMembership(db, {
-        organizationId: invitation.organizationId,
-        userId,
-        role: invitation.role,
-        now,
-      })
-    }
-
-    const projectMembership = await db
-      .select({ id: projectMembers.id })
-      .from(projectMembers)
-      .where(
-        and(
-          eq(projectMembers.projectId, invitation.projectId),
-          eq(projectMembers.userId, userId)
-        )
-      )
-      .get()
-
-    if (!projectMembership) {
-      await insertProjectMember(db, {
-        id: crypto.randomUUID(),
-        projectId: invitation.projectId,
-        userId,
-        role: assignedRole,
-        assignedAt: now,
-      })
-    } else {
-      await updateProjectMembers(db, eq(projectMembers.id, projectMembership.id), { role: assignedRole })
-    }
-
-    const audience =
-      invitation.role === "owner" || invitation.role === "client"
-        ? "owner"
-        : invitation.role === "subcontractor" ||
-            invitation.role === "supplier"
-          ? "sub_vendor"
-          : null
-    if (audience) {
-      await ensureProjectAudienceConversation({
-        db,
-        projectId: invitation.projectId,
-        organizationId: invitation.organizationId,
-        audience,
-        contactId: audience === "owner" ? null : invitation.projectContactId,
-        importedContactId: invitation.projectContactId,
-        externalUserId: userId,
-        createdBy: invitation.invitedBy,
-        now,
-      })
-    }
-
-    await markProjectAccessInvitationAccepted(db, invitation.id, userId, now)
-    claimedInvitation ??= {
-      organizationId: invitation.organizationId,
-      role: assignedRole,
-    }
-  }
-
-  return claimedInvitation
 }
 
 const LAST_LOGIN_WRITE_INTERVAL_MS = 15 * 60 * 1000
@@ -403,7 +211,7 @@ async function loadCurrentUser(): Promise<AuthUser | null> {
       prefetchedMemberships,
       prefetchedProjectMemberships,
     ] = await db.batch([
-      db.select().from(users).where(eq(users.id, workosUser.id)).limit(1),
+      accountByIdQuery(db, workosUser.id),
       pendingInvitationsQuery(db, workosEmail),
       organizationMembershipsQuery(db, workosUser.id),
       projectRolesForUserQuery(db, workosUser.id),
@@ -414,15 +222,7 @@ async function loadCurrentUser(): Promise<AuthUser | null> {
     const foundByWorkosId = dbUser !== undefined
 
     if (!dbUser) {
-      const emailMatch = await db
-        .select()
-        .from(users)
-        .where(
-          sql`lower(trim(${users.email})) = ${workosUser.email
-            .trim()
-            .toLowerCase()}`
-        )
-        .get()
+      const emailMatch = await accountByEmail(db, workosUser.email)
       const isPendingPlaceholder =
         emailMatch !== undefined &&
         !emailMatch.isActive &&
@@ -441,11 +241,7 @@ async function loadCurrentUser(): Promise<AuthUser | null> {
           updatedAt: new Date().toISOString(),
         })
         activatedPendingAccount = isPendingPlaceholder
-        dbUser = await db
-          .select()
-          .from(users)
-          .where(eq(users.id, emailMatch.id))
-          .get()
+        dbUser = await accountById(db, emailMatch.id)
       }
     }
 
@@ -582,14 +378,10 @@ export async function ensureUserExists(workosUser: {
 
   const db = getDb(env.DB)
   const now = new Date().toISOString()
-  const normalizedEmail = workosUser.email.trim().toLowerCase()
+  const normalizedEmail = normalizedEmailAddress(workosUser.email)
 
   // Check if user already exists
-  const existing = await db
-    .select()
-    .from(users)
-    .where(eq(users.id, workosUser.id))
-    .get()
+  const existing = await accountById(db, workosUser.id)
 
   if (existing) {
     // Existing vendors may receive another project invitation between sign-ins.
@@ -610,11 +402,7 @@ export async function ensureUserExists(workosUser: {
   // Imported and invited accounts may predate their WorkOS user ID. Preserve
   // the local primary key (and every membership that references it), then
   // reconcile the authenticated identity by normalized email.
-  const emailMatch = await db
-    .select()
-    .from(users)
-    .where(sql`lower(trim(${users.email})) = ${normalizedEmail}`)
-    .get()
+  const emailMatch = await accountByEmail(db, normalizedEmail)
   if (emailMatch) {
     const isPendingPlaceholder =
       !emailMatch.isActive &&
@@ -662,7 +450,7 @@ export async function ensureUserExists(workosUser: {
     return reconciledUser
   }
 
-  const newUser: typeof users.$inferInsert = {
+  const newUser: Parameters<typeof insertUser>[1] = {
     id: workosUser.id,
     email: workosUser.email,
     firstName: workosUser.firstName ?? null,
@@ -699,19 +487,16 @@ export async function ensureUserExists(workosUser: {
   const personalOrgId = crypto.randomUUID()
   const personalSlug = `${workosUser.id.slice(0, 8)}-personal`
 
-  await db
-    .insert(organizations)
-    .values({
-      id: personalOrgId,
-      name: `${workosUser.firstName ?? "User"}'s Workspace`,
-      slug: personalSlug,
-      type: "personal",
-      logoUrl: null,
-      isActive: true,
-      createdAt: now,
-      updatedAt: now,
-    })
-    .run()
+  await insertOrganization(db, {
+    id: personalOrgId,
+    name: `${workosUser.firstName ?? "User"}'s Workspace`,
+    slug: personalSlug,
+    type: "personal",
+    logoUrl: null,
+    isActive: true,
+    createdAt: now,
+    updatedAt: now,
+  })
 
   // add user as admin member
   await insertOrganizationMember(db, {

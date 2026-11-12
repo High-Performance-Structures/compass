@@ -187,6 +187,29 @@ export function isOwnerRole(role: string | null | undefined): boolean {
   return role === "client" || role === "owner"
 }
 
+/** The client role exactly (an owner-side company membership); see isOwnerRole for either owner-side role. */
+export function isClientRole(role: string | null | undefined): boolean {
+  return role === "client"
+}
+
+/** Office and project leadership: admins, executives, office staff and project managers (not field or design roles). */
+export function isOfficeLeadershipRole(role: string): boolean {
+  switch (role) {
+    case "admin":
+    case "secondary_admin":
+    case "executive":
+    case "office":
+    case "office_manager":
+    case "project_manager":
+    case "project_administrator":
+    case "assistant_project_manager":
+    case "coordinator":
+      return true
+    default:
+      return false
+  }
+}
+
 /** A vendor role: subcontractor or supplier (the sub/vendor portal). */
 export function isVendorRole(role: string | null | undefined): boolean {
   return role === "subcontractor" || role === "supplier"

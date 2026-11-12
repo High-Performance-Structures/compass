@@ -228,9 +228,6 @@
   },
   "src/app/actions/project-access-invitations.ts": {
     "compass-core/owned-table-import": {
-      "count": 11
-    },
-    "compass-core/role-literal-compare": {
       "count": 6
     }
   },
@@ -547,14 +544,6 @@
   "src/lib/archived-person-sql.ts": {
     "compass-core/owned-table-raw-sql": {
       "count": 1
-    }
-  },
-  "src/lib/auth.ts": {
-    "compass-core/owned-table-import": {
-      "count": 6
-    },
-    "compass-core/role-literal-compare": {
-      "count": 4
     }
   },
   "src/lib/buildertrend/identity-reconciliation.ts": {
@@ -1133,11 +1122,6 @@
       "count": 2
     }
   },
-  "src/lib/permissions.ts": {
-    "compass-core/role-literal-compare": {
-      "count": 10
-    }
-  },
   "src/lib/project-archive-context.ts": {
     "compass-core/owned-table-import": {
       "count": 2
@@ -1149,11 +1133,6 @@
     },
     "compass-core/role-literal-compare": {
       "count": 1
-    }
-  },
-  "src/lib/project-audience-access.ts": {
-    "compass-core/role-literal-compare": {
-      "count": 4
     }
   },
   "src/lib/project-audience-conversations.ts": {

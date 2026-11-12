@@ -1,4 +1,4 @@
-import type { SQL } from "drizzle-orm"
+import { and, eq, type SQL } from "drizzle-orm"
 import type { BatchItem } from "drizzle-orm/batch"
 import type { IndexColumn, SQLiteUpdateSetSource } from "drizzle-orm/sqlite-core"
 
@@ -95,6 +95,26 @@ export async function insertProjectMember(db: Db, values: ProjectMemberInsert | 
 
 export async function updateProjectMembers(db: Db, where: SQL | undefined, patch: ProjectMemberPatch): Promise<D1Result> {
   return db.update(projectMembers).set(patch).where(where).run()
+}
+
+/** Gives this person this role on the job, adding the membership if they had none. */
+export async function upsertProjectMemberRole(
+  db: Db,
+  member: { readonly projectId: string; readonly userId: string; readonly role: string; readonly now: string },
+): Promise<void> {
+  const existing = await db
+    .select({ id: projectMembers.id })
+    .from(projectMembers)
+    .where(and(eq(projectMembers.projectId, member.projectId), eq(projectMembers.userId, member.userId)))
+    .get()
+  if (existing) {
+    await db.update(projectMembers).set({ role: member.role }).where(eq(projectMembers.id, existing.id)).run()
+    return
+  }
+  await db
+    .insert(projectMembers)
+    .values({ id: crypto.randomUUID(), projectId: member.projectId, userId: member.userId, role: member.role, assignedAt: member.now })
+    .run()
 }
 
 export async function deleteProjectMembers(db: Db, where: SQL | undefined): Promise<D1Result> {
