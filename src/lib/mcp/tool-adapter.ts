@@ -3,7 +3,7 @@ import { getDb } from "@/db"
 import { saveMemory, searchMemories } from "@/lib/agent/memory"
 import { THEME_PRESETS } from "@/lib/theme/presets"
 import type { BridgeToolScope, BridgeToolMeta } from "@/lib/mcp/types"
-import { isInternalStaffRole } from "@/lib/user-roles"
+import { isAdminRole, seesStaffViews } from "@/lib/user-roles"
 
 function getString(
   args: Record<string, unknown>,
@@ -139,7 +139,7 @@ const bridgeToolRegistry: Readonly<
           return { data: rows, count: rows.length }
         }
         case "schedule_tasks": {
-          if (!isInternalStaffRole(userRole) && userRole !== "developer") {
+          if (!seesStaffViews(userRole)) {
             return { error: "Working schedule access is available to internal staff only" }
           }
           const rows =
@@ -336,7 +336,7 @@ const bridgeToolRegistry: Readonly<
     description:
       "Install a skill from GitHub (admin only)",
     handler: async (_userId, userRole, args, actions) => {
-      if (userRole !== "admin") {
+      if (!isAdminRole(userRole)) {
         return {
           error: "admin role required to install skills",
         }
@@ -352,7 +352,7 @@ const bridgeToolRegistry: Readonly<
     description:
       "Remove an installed skill (admin only)",
     handler: async (_userId, userRole, args, actions) => {
-      if (userRole !== "admin") {
+      if (!isAdminRole(userRole)) {
         return { error: "admin role required" }
       }
       const pluginId = getString(args, "pluginId")
@@ -366,7 +366,7 @@ const bridgeToolRegistry: Readonly<
     description:
       "Enable or disable an installed skill (admin only)",
     handler: async (_userId, userRole, args, actions) => {
-      if (userRole !== "admin") {
+      if (!isAdminRole(userRole)) {
         return { error: "admin role required" }
       }
       const pluginId = getString(args, "pluginId")

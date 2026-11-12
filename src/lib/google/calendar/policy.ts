@@ -1,5 +1,5 @@
 import { isDemoUser } from "@/lib/demo"
-import { isInternalStaffRole } from "@/lib/user-roles"
+import { canManageUserAccessRole, isDeveloperRole, seesStaffViews } from "@/lib/user-roles"
 
 export function canConnectGoogleCalendar(input: {
   readonly userId: string
@@ -7,16 +7,12 @@ export function canConnectGoogleCalendar(input: {
 }): boolean {
   return (
     !isDemoUser(input.userId) &&
-    (isInternalStaffRole(input.role) || input.role === "developer")
+    seesStaffViews(input.role)
   )
 }
 
 export function canManageOrganizationCalendars(role: string): boolean {
-  return (
-    role === "admin" ||
-    role === "secondary_admin" ||
-    role === "developer"
-  )
+  return canManageUserAccessRole(role) || isDeveloperRole(role)
 }
 
 export function canWriteGoogleCalendar(accessRole: string): boolean {

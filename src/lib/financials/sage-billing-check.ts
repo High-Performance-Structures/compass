@@ -2,7 +2,8 @@ import "server-only"
 
 import { and, asc, desc, eq } from "drizzle-orm"
 
-import { organizationMembers, organizations, projectBudgetApplications, projectBudgetLines, projects, users } from "@/db/schema"
+import { projectBudgetApplications, projectBudgetLines, projects } from "@/db/schema"
+import { companiesView, membershipsView, peopleView } from "@/lib/domain/identity/views"
 import { payApplicationSageChecks } from "@/db/schema-sage"
 import { recordActivityEvent, type ActivityActor } from "@/lib/activity-log"
 import {
@@ -30,6 +31,10 @@ import type { SageArInvoiceRead } from "@/lib/sage/pay-application-snapshot"
 import { loadChangeOrderParts, loadChangeOrderTax, loadContractTax, loadTaxDistrict } from "@/lib/sage/contract-tax-server"
 import type { Db } from "@/lib/server/action-context"
 import { isInternalStaffRole } from "@/lib/user-roles"
+
+const memberships = membershipsView()
+const companies = companiesView()
+const accounts = peopleView()
 
 /*
  * Pay requests built in Sage: the "Enter in Sage" checklist for each pay
@@ -188,11 +193,11 @@ export async function loadSageBillingCheck(
 /** Active office staff of the company with finance update access: who hears about a check that needs attention. */
 async function officeFinanceStaff(db: Db, organizationId: string): Promise<readonly { readonly userId: string; readonly email: string }[]> {
   const members = await db
-    .select({ userId: users.id, email: users.email, googleEmail: users.googleEmail, role: organizationMembers.role })
-    .from(organizationMembers)
-    .innerJoin(users, eq(users.id, organizationMembers.userId))
-    .innerJoin(organizations, eq(organizations.id, organizationMembers.organizationId))
-    .where(and(eq(organizationMembers.organizationId, organizationId), eq(organizations.type, "internal"), eq(users.isActive, true)))
+    .select({ userId: accounts.id, email: accounts.email, googleEmail: accounts.googleEmail, role: memberships.role })
+    .from(memberships)
+    .innerJoin(accounts, eq(accounts.id, memberships.userId))
+    .innerJoin(companies, eq(companies.id, memberships.organizationId))
+    .where(and(eq(memberships.organizationId, organizationId), eq(companies.type, "internal"), eq(accounts.isActive, true)))
   return members
     .filter((member) => isInternalStaffRole(member.role) && getPermissions(member.role, "finance").includes("update"))
     .map((member) => ({ userId: member.userId, email: member.googleEmail?.trim() || member.email }))

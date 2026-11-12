@@ -1,5 +1,5 @@
 import type { getDb } from "@/db"
-import { users } from "@/db/schema"
+import { peopleView } from "@/lib/domain/identity/views"
 import { googleAuth } from "@/db/schema-google"
 import { decrypt } from "@/lib/crypto"
 import { DriveClient } from "@/lib/google/client/drive-client"
@@ -9,6 +9,8 @@ import {
   parseServiceAccountKey,
 } from "@/lib/google/config"
 import { eq } from "drizzle-orm"
+
+const accounts = peopleView()
 
 type ProjectDocumentDb = ReturnType<typeof getDb>
 
@@ -37,9 +39,9 @@ export async function getProjectDocumentDriveContext(input: {
   if (!auth) throw new Error("Google Drive is not connected.")
 
   const connectedBy = await input.db
-    .select({ email: users.email, googleEmail: users.googleEmail })
-    .from(users)
-    .where(eq(users.id, auth.connectedBy))
+    .select({ email: accounts.email, googleEmail: accounts.googleEmail })
+    .from(accounts)
+    .where(eq(accounts.id, auth.connectedBy))
     .limit(1)
     .then((rows) => rows[0] ?? null)
   if (!connectedBy) throw new Error("Google Drive connection owner was not found.")

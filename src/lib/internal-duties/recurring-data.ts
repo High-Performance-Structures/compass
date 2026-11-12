@@ -1,9 +1,11 @@
 import { asc, desc, eq, inArray } from "drizzle-orm"
 import type { getDb } from "@/db"
-import { users } from "@/db/schema"
+import { peopleView } from "@/lib/domain/identity/views"
 import { recurringDuties, recurringDutyCompletions } from "@/db/schema-internal-duties"
 import { chunkD1Values } from "@/lib/d1-query"
 import { dutyStatus, type DutyCadence, type DutyStatus } from "@/lib/internal-duties/recurring"
+
+const accounts = peopleView()
 
 type Db = ReturnType<typeof getDb>
 
@@ -35,12 +37,12 @@ export async function loadRecurringDuties(db: Db, projectId: string, today = com
   const duties = await db
     .select({
       duty: recurringDuties,
-      displayName: users.displayName,
-      firstName: users.firstName,
-      lastName: users.lastName,
+      displayName: accounts.displayName,
+      firstName: accounts.firstName,
+      lastName: accounts.lastName,
     })
     .from(recurringDuties)
-    .leftJoin(users, eq(users.id, recurringDuties.ownerUserId))
+    .leftJoin(accounts, eq(accounts.id, recurringDuties.ownerUserId))
     .where(eq(recurringDuties.projectId, projectId))
     .orderBy(asc(recurringDuties.sortOrder), asc(recurringDuties.createdAt))
   if (duties.length === 0) return []

@@ -6,10 +6,11 @@
 import { sql, type AnyColumn, type SQL } from "drizzle-orm"
 
 import { ARCHIVED_USER_PREFIX } from "@/lib/archived-person"
+import { peopleView } from "@/lib/domain/identity/views"
 
 /** True when the Compass account `userId` exists and is inactive. */
 export function inactiveUserSql(userId: AnyColumn | SQL): SQL {
-  return sql`exists (select 1 from users archived_user where archived_user.id = ${userId} and archived_user.is_active = 0)`
+  return sql`exists (select 1 from ${peopleView()} archived_user where archived_user.id = ${userId} and archived_user.is_active = 0)`
 }
 
 /** `name`, or "Archived user – name" when `archived` holds. Empty names pass through. */

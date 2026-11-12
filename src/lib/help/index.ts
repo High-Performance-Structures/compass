@@ -7,7 +7,7 @@ import type {
   HelpSearchResult,
   HelpTopic,
 } from "@/lib/help/types"
-import type { UserRole } from "@/lib/user-roles"
+import { isClientRole, isGuestRole, isSubcontractorRole, isVendorRole, type UserRole } from "@/lib/user-roles"
 
 export { HELP_GUIDES }
 export type {
@@ -66,10 +66,9 @@ function routePatternMatches(pattern: string, pathname: string): boolean {
 }
 
 export function helpAudienceForRole(role: UserRole): HelpAudience | null {
-  if (role === "client") return "owner"
-  if (role === "subcontractor") return "subcontractor"
-  if (role === "supplier") return "supplier"
-  if (role === "guest") return "guest"
+  if (isClientRole(role)) return "owner"
+  if (isVendorRole(role)) return isSubcontractorRole(role) ? "subcontractor" : "supplier"
+  if (isGuestRole(role)) return "guest"
   return "staff"
 }
 

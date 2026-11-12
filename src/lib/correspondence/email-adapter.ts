@@ -1,7 +1,8 @@
 import { and, eq, isNull, sql } from "drizzle-orm"
 
 import type { getDb } from "@/db"
-import { organizationMembers, projectMembers, users } from "@/db/schema"
+import { membershipsView, peopleView } from "@/lib/domain/identity/views"
+import { projectMembersView } from "@/lib/domain/project/views"
 import {
   correspondence,
   correspondenceMessages,
@@ -30,9 +31,13 @@ import {
 import type { InboundCandidate } from "@/lib/email/gmail-message-parser"
 import { isReplyMessage } from "@/lib/email/reply-detection"
 import { USER_ROLES } from "@/lib/domain/identity/statuses"
-import { isInternalStaffRole } from "@/lib/user-roles"
+import { isInternalStaffRole, projectAudienceForRole } from "@/lib/user-roles"
 
 import { decideCorrespondenceInbound } from "./transport-policy"
+
+const memberships = membershipsView()
+const projectMemberships = projectMembersView()
+const accounts = peopleView()
 
 type Db = ReturnType<typeof getDb>
 
@@ -179,24 +184,24 @@ async function currentEmailParticipants(input: {
       name: correspondenceParticipants.name,
       email: correspondenceParticipants.email,
       role: correspondenceParticipants.role,
-      active: users.isActive,
-      organizationRole: organizationMembers.role,
-      projectRole: projectMembers.role,
+      active: accounts.isActive,
+      organizationRole: memberships.role,
+      projectRole: projectMemberships.role,
     })
     .from(correspondenceParticipants)
-    .innerJoin(users, eq(users.id, correspondenceParticipants.userId))
+    .innerJoin(accounts, eq(accounts.id, correspondenceParticipants.userId))
     .innerJoin(
-      organizationMembers,
+      memberships,
       and(
-        eq(organizationMembers.userId, users.id),
-        eq(organizationMembers.organizationId, input.organizationId)
+        eq(memberships.userId, accounts.id),
+        eq(memberships.organizationId, input.organizationId)
       )
     )
     .leftJoin(
-      projectMembers,
+      projectMemberships,
       and(
-        eq(projectMembers.userId, users.id),
-        eq(projectMembers.projectId, input.projectId)
+        eq(projectMemberships.userId, accounts.id),
+        eq(projectMemberships.projectId, input.projectId)
       )
     )
     .where(
@@ -209,10 +214,9 @@ async function currentEmailParticipants(input: {
     if (!row.active) return []
     const role = row.role
     const allowed =
-      (role === "staff" && isInternalStaffRole(row.organizationRole)) ||
-      (role === "owner" && ["owner", "client"].includes(row.projectRole ?? "")) ||
-      (role === "sub_vendor" &&
-        ["subcontractor", "supplier"].includes(row.projectRole ?? ""))
+      role === "staff"
+        ? isInternalStaffRole(row.organizationRole)
+        : projectAudienceForRole(row.projectRole) === role
     return allowed
       ? [{ userId: row.userId, name: row.name, email: row.email, role }]
       : []
@@ -529,9 +533,9 @@ function inboundWriteGuard(input: {
           AND c.project_id=${input.projectId})
       AND NOT EXISTS(SELECT 1 FROM json_each(${peopleJson}) person WHERE NOT EXISTS(
         SELECT 1 FROM correspondence_participants cp
-          JOIN users u ON u.id=cp.user_id
-          JOIN organization_members om ON om.user_id=u.id AND om.organization_id=${input.organizationId}
-          LEFT JOIN project_members pm ON pm.user_id=u.id AND pm.project_id=${input.projectId}
+          JOIN ${accounts} u ON u.id=cp.user_id
+          JOIN ${memberships} om ON om.user_id=u.id AND om.organization_id=${input.organizationId}
+          LEFT JOIN ${projectMemberships} pm ON pm.user_id=u.id AND pm.project_id=${input.projectId}
         WHERE cp.conversation_id=${input.conversationId}
           AND cp.user_id=json_extract(person.value,'$.userId')
           AND cp.revoked_at IS NULL

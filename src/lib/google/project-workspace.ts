@@ -1,13 +1,15 @@
 import { eq } from "drizzle-orm"
 
 import { getDb } from "@/db"
-import { users } from "@/db/schema"
+import { peopleView } from "@/lib/domain/identity/views"
 import { googleAuth } from "@/db/schema-google"
 import { decrypt } from "@/lib/crypto"
 import { DriveClient } from "@/lib/google/client/drive-client"
 import { getGoogleConfig, getGoogleCryptoSalt, parseServiceAccountKey } from "@/lib/google/config"
 import { SheetsClient } from "@/lib/google/client/sheets-client"
 import { resolveProjectIntakeIntegrationEmail } from "@/lib/google/project-intake-identity"
+
+const accounts = peopleView()
 
 export type ProjectWorkspaceClients = {
   readonly sheets: SheetsClient
@@ -23,11 +25,11 @@ export async function projectWorkspaceClients(input: {
   const authRows = await db
     .select({
       serviceAccountKeyEncrypted: googleAuth.serviceAccountKeyEncrypted,
-      connectorGoogleEmail: users.googleEmail,
-      connectorEmail: users.email,
+      connectorGoogleEmail: accounts.googleEmail,
+      connectorEmail: accounts.email,
     })
     .from(googleAuth)
-    .innerJoin(users, eq(users.id, googleAuth.connectedBy))
+    .innerJoin(accounts, eq(accounts.id, googleAuth.connectedBy))
     .where(eq(googleAuth.organizationId, input.organizationId))
     .limit(1)
   const auth = authRows[0]

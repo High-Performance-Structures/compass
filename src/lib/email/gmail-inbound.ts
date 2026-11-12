@@ -7,11 +7,10 @@ import { updateRfi } from "@/lib/domain/rfis/store"
 import {
   emailReplyThreads,
   inboundEmails,
-  organizationMembers,
   projectRfis,
   projects,
-  users,
 } from "@/db/schema"
+import { membershipsView, peopleView } from "@/lib/domain/identity/views"
 import { googleAuth } from "@/db/schema-google"
 import { channelMembers, channels } from "@/db/schema-conversations"
 import { COMPASS_GMAIL_READONLY_SCOPE, getCompassGmailAccessToken } from "@/lib/email/compass-email"
@@ -37,6 +36,9 @@ import { loadRecordStatusList } from "@/lib/domain/record-statuses/store"
 import { updateReplyThread, upsertInboundEmail } from "@/lib/domain/correspondence/email-store"
 import { inboundEmailStatuses } from "@/lib/domain/correspondence/queries"
 import { incrementUnreadForOthers, insertChannel, insertChannelMembers, insertMessageOnce, insertReadStates } from "@/lib/domain/conversations/store"
+
+const memberships = membershipsView()
+const accounts = peopleView()
 
 type Db = ReturnType<typeof getDb>
 
@@ -120,17 +122,14 @@ async function findSystemUser(input: {
 
   if (preferredEmails.length > 0) {
     const [preferred] = await input.db
-      .select({ id: users.id })
-      .from(users)
-      .innerJoin(
-        organizationMembers,
-        eq(organizationMembers.userId, users.id)
-      )
+      .select({ id: accounts.id })
+      .from(accounts)
+      .innerJoin(memberships, eq(memberships.userId, accounts.id))
       .where(
         and(
-          eq(organizationMembers.organizationId, input.organizationId),
-          inArray(users.email, preferredEmails),
-          eq(users.isActive, true)
+          eq(memberships.organizationId, input.organizationId),
+          inArray(accounts.email, preferredEmails),
+          eq(accounts.isActive, true)
         )
       )
       .limit(1)
@@ -138,14 +137,14 @@ async function findSystemUser(input: {
   }
 
   const [fallback] = await input.db
-    .select({ id: users.id })
-    .from(users)
-    .innerJoin(organizationMembers, eq(organizationMembers.userId, users.id))
+    .select({ id: accounts.id })
+    .from(accounts)
+    .innerJoin(memberships, eq(memberships.userId, accounts.id))
     .where(
       and(
-        eq(organizationMembers.organizationId, input.organizationId),
-        inArray(sql`${organizationMembers.role}`, ["admin", "owner", "office"]), // text compare: "owner" is a legacy role
-        eq(users.isActive, true)
+        eq(memberships.organizationId, input.organizationId),
+        inArray(sql`${memberships.role}`, ["admin", "owner", "office"]), // text compare: "owner" is a legacy role
+        eq(accounts.isActive, true)
       )
     )
     .limit(1)

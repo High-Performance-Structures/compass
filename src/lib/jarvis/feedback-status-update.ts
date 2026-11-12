@@ -1,7 +1,7 @@
 import { and, eq, isNotNull, isNull, or, sql } from "drizzle-orm"
 
 import type { getDb } from "@/db"
-import { organizationMembers, users } from "@/db/schema"
+import { membershipsView, peopleView } from "@/lib/domain/identity/views"
 import {
   feedbackDeskItems,
   type FeedbackDeskItem,
@@ -28,6 +28,9 @@ import {
 import { feedbackBugTransitionIsBlocked } from "@/lib/jarvis/feedback-lifecycle-evidence"
 import { createSystemNotificationEvent } from "@/lib/notifications/events"
 import { insertJarvisBridgeEventsFrom, updateFeedbackDeskItems } from "@/lib/domain/feedback/store"
+
+const memberships = membershipsView()
+const accounts = peopleView()
 
 type CompassDb = ReturnType<typeof getDb>
 
@@ -56,26 +59,26 @@ async function requesterRecipients(
   const reporterEmail = item.reporterEmail?.trim().toLowerCase() ?? null
   const filter = actorId && reporterEmail
     ? or(
-        eq(users.id, actorId),
-        sql`lower(${users.email}) = ${reporterEmail}`,
-        sql`lower(${users.googleEmail}) = ${reporterEmail}`,
+        eq(accounts.id, actorId),
+        sql`lower(${accounts.email}) = ${reporterEmail}`,
+        sql`lower(${accounts.googleEmail}) = ${reporterEmail}`,
       )
     : actorId
-      ? eq(users.id, actorId)
+      ? eq(accounts.id, actorId)
       : reporterEmail
         ? or(
-            sql`lower(${users.email}) = ${reporterEmail}`,
-            sql`lower(${users.googleEmail}) = ${reporterEmail}`,
+            sql`lower(${accounts.email}) = ${reporterEmail}`,
+            sql`lower(${accounts.googleEmail}) = ${reporterEmail}`,
           )
         : null
   if (!filter) return []
   return db
-    .select({ userId: users.id, email: users.email })
-    .from(organizationMembers)
-    .innerJoin(users, eq(users.id, organizationMembers.userId))
+    .select({ userId: accounts.id, email: accounts.email })
+    .from(memberships)
+    .innerJoin(accounts, eq(accounts.id, memberships.userId))
     .where(and(
-      eq(organizationMembers.organizationId, item.organizationId),
-      eq(users.isActive, true),
+      eq(memberships.organizationId, item.organizationId),
+      eq(accounts.isActive, true),
       filter,
     ))
 }
