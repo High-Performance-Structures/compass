@@ -45,6 +45,7 @@ import { rfiInsertStatement } from "@/lib/domain/rfis/store"
 import { validRfiPriority } from "@/lib/rfis/status"
 import { resolveSubVendorRfiRecipient } from "@/lib/rfis/sub-vendor-recipient"
 import { requireUserContext } from "@/lib/server/action-context"
+import { isVendorRole } from "@/lib/user-roles"
 
 type SubVendorActionResult =
   | { readonly success: true; readonly id: string }
@@ -131,10 +132,7 @@ async function getSubVendorWriteContext(
   if (!project.organizationId) throw new Error("Project organization is missing.")
 
   const membership = { role: await projectMemberRole(db, user.id, projectId) }
-  if (
-    membership?.role !== "subcontractor" &&
-    membership?.role !== "supplier"
-  ) {
+  if (!isVendorRole(membership?.role)) {
     throw new Error("Only an assigned sub/vendor can use this action.")
   }
 

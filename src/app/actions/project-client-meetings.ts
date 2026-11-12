@@ -6,10 +6,8 @@ import { revalidatePath } from "next/cache"
 import { getDb } from "@/db"
 import {
   dailyLogs,
-  organizationMembers,
   projectClientMeetings,
   projects,
-  users,
 } from "@/db/schema"
 import { googleAuth } from "@/db/schema-google"
 import { recordActivityEvent } from "@/lib/activity-log"
@@ -34,6 +32,10 @@ import { assertProjectAccess } from "@/lib/domain/project/access"
 import { projectNumberAndName } from "@/lib/project-display-name"
 import { isInternalStaffRole } from "@/lib/user-roles"
 import { requireUserContext } from "@/lib/server/action-context"
+import { membershipsView, peopleView } from "@/lib/domain/identity/views"
+
+const organizationMembers = membershipsView()
+const users = peopleView()
 
 const CALENDAR_EVENTS_SCOPE = "https://www.googleapis.com/auth/calendar.events"
 const MEET_SETTINGS_SCOPE = "https://www.googleapis.com/auth/meetings.space.settings"

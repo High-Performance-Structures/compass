@@ -3,10 +3,7 @@
 import { getCloudflareContext } from "@/lib/db"
 import { getDb } from "@/db"
 import {
-  users,
   projects,
-  organizationMembers,
-  projectMembers,
   groupMembers,
   groups,
   type User,
@@ -36,6 +33,12 @@ import {
 import { eq, and, getTableColumns, inArray, sql } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 import { updateUserRoleSchema, deactivateUserSchema, inviteUserSchema, assignUserToProjectSchema } from "@/lib/validations/users"
+import { membershipsView, peopleView } from "@/lib/domain/identity/views"
+import { projectMembersView } from "@/lib/domain/project/views"
+
+const users = peopleView()
+const organizationMembers = membershipsView()
+const projectMembers = projectMembersView()
 
 export type UserWithRelations = User & {
   teams: { id: string; name: string }[]

@@ -13,7 +13,7 @@ import { requireAuth } from "@/lib/auth"
 import { isDemoUser } from "@/lib/demo"
 import { requireOrg } from "@/lib/org-scope"
 import { requirePermission } from "@/lib/permissions"
-import { isInternalStaffRole } from "@/lib/user-roles"
+import { seesStaffViews } from "@/lib/user-roles"
 import { PHASE_LABELS, PHASE_ORDER } from "@/lib/schedule/phase-colors"
 import { userContext, type Db } from "@/lib/server/action-context"
 
@@ -62,7 +62,7 @@ async function verifyProject(input: {
   if (!context.success) throw new Error(context.error)
   const { user, db } = context.data
   requirePermission(user, "schedule", input.action)
-  if (!isInternalStaffRole(user.role) && user.role !== "developer") {
+  if (!seesStaffViews(user.role)) {
     throw new Error("Only internal project staff can access working schedule phases.")
   }
   const organizationId = requireOrg(user)

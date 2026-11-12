@@ -4,7 +4,7 @@ import { and, desc, eq, or } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 
 import { getDb } from "@/db"
-import { projectDuplicateDecisions, projectNumberAliases, projectNumberReservations, projectNumberRetirements, projectRegistryRemovals, projectRouteAliases, projects, users } from "@/db/schema"
+import { projectDuplicateDecisions, projectNumberAliases, projectNumberReservations, projectNumberRetirements, projectRegistryRemovals, projectRouteAliases, projects } from "@/db/schema"
 import { requireAuth } from "@/lib/auth"
 import { getCloudflareContext } from "@/lib/db"
 import {
@@ -17,6 +17,7 @@ import {
   deleteProjectRegistryRemovalsStatement,
 } from "@/lib/domain/project/registry-store"
 import { deleteProjectsStatement, updateProjectsStatement } from "@/lib/domain/project/store"
+import { peopleView } from "@/lib/domain/identity/views"
 import { recordProjectAudit } from "@/lib/domain/project-audit/store"
 import { requireOrg } from "@/lib/org-scope"
 import { canFeature } from "@/lib/permission-enforcement"
@@ -37,6 +38,7 @@ async function context(action: "read" | "update" | "delete") {
 export async function getArchivedRegistryProjects(): Promise<readonly ArchivedRegistryProject[]> {
   try {
     const { db, organizationId } = await context("read")
+    const users = peopleView()
     return db.select({ projectId: projectRegistryRemovals.projectId, projectNumber: projectRegistryRemovals.originalProjectNumber, name: projects.name, previousStatus: projectRegistryRemovals.originalStatus, removedAt: projectRegistryRemovals.removedAt, removedBy: users.displayName })
       .from(projectRegistryRemovals).innerJoin(projects, eq(projects.id, projectRegistryRemovals.projectId)).leftJoin(users, eq(users.id, projectRegistryRemovals.removedByUserId))
       .where(eq(projectRegistryRemovals.organizationId, organizationId)).orderBy(desc(projectRegistryRemovals.removedAt))

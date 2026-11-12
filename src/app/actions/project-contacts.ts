@@ -1,7 +1,6 @@
 "use server"
 
 import { and, eq, inArray } from "drizzle-orm"
-import { projectMembers } from "@/db/schema"
 import { recordActivityEvent } from "@/lib/activity-log"
 import { requireAuth } from "@/lib/auth"
 import { isDemoUser } from "@/lib/demo"
@@ -37,6 +36,9 @@ import { canFeature, requireFeaturePermission } from "@/lib/permission-enforceme
 import type { Db } from "@/lib/server/action-context"
 import { envString } from "@/lib/shared/env"
 import { queueProjectContactTrackerRefresh } from "@/lib/project-contact-tracker-refresh"
+import { projectMembersView } from "@/lib/domain/project/views"
+
+const projectMembers = projectMembersView()
 
 export async function getProjectContactsSummary(
   projectId: string,

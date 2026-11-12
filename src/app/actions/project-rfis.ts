@@ -62,7 +62,7 @@ import { inJsonList, vendorVisibleRfiSourceIds } from "@/lib/rfis/vendor-visibil
 import type { Db } from "@/lib/server/action-context"
 import { cleanText } from "@/lib/shared/guards"
 import { deleteSourceRecordParticipantsStatement } from "@/lib/domain/documents/store"
-import { isInternalStaffRole } from "@/lib/user-roles"
+import { isInternalStaffRole, isOwnerRole, isVendorRole } from "@/lib/user-roles"
 
 export type {
   CreateProjectRfiInput,
@@ -85,11 +85,11 @@ async function externalRfiVisibility(db: Db, projectId: string): Promise<ReturnT
   const user = await requireProjectAudienceReadUser(projectId)
   if (isInternalStaffRole(user.role)) return undefined
   const contact = await getProjectAudienceViewerContact(db, projectId, user)
-  if (user.role === "subcontractor" || user.role === "supplier" || contact?.contactType === "subcontractor" || contact?.contactType === "supplier") {
+  if (isVendorRole(user.role) || contact?.contactType === "subcontractor" || contact?.contactType === "supplier") {
     const ids = await vendorVisibleRfiSourceIds({ db, projectId, organizationId: requireOrg(user), viewerId: user.id, contact })
     return and(or(eq(projectRfis.audience, "sub_vendor"), eq(projectRfis.audience, "public")), or(inJsonList(projectRfis.id, ids), inJsonList(projectRfis.sourceRecordId, ids)))
   }
-  if (user.role === "client" || user.role === "owner") return or(eq(projectRfis.audience, "owner"), eq(projectRfis.audience, "public"))
+  if (isOwnerRole(user.role)) return or(eq(projectRfis.audience, "owner"), eq(projectRfis.audience, "public"))
   return inArray(projectRfis.id, [])
 }
 

@@ -6,11 +6,8 @@ import { revalidatePath } from "next/cache"
 import { getDb } from "@/db"
 import {
   gotoInboundEvents,
-  organizations,
-  organizationMembers,
   staffMessageEvents,
   staffMessageRecords,
-  users,
 } from "@/db/schema"
 import type { AuthUser } from "@/lib/auth"
 import {
@@ -35,6 +32,11 @@ import { countStaleMessagesForUser } from "@/lib/staff-message-desk/stale-remind
 import { clearStaleMessageReminders } from "@/lib/notifications/clear-on-read"
 import { insertStaffMessageEvents, insertStaffMessageRecords, updateStaffMessageRecords } from "@/lib/domain/feedback/inbound-store"
 import { requireUserContext } from "@/lib/server/action-context"
+import { companiesView, membershipsView, peopleView } from "@/lib/domain/identity/views"
+
+const organizations = companiesView()
+const organizationMembers = membershipsView()
+const users = peopleView()
 
 const MESSAGE_DESK_PATH = "/dashboard/office-maintenance/message-desk"
 

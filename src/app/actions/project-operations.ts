@@ -61,7 +61,7 @@ import { parseSpecification, selectionSpecification, specificationJson, type Sel
 import { orgContext, type Db } from "@/lib/server/action-context"
 import { cleanText } from "@/lib/shared/guards"
 import { findTemplatePlaceholders } from "@/lib/templates/template-bid-package"
-import { isInternalStaffRole } from "@/lib/user-roles"
+import { seesStaffViews } from "@/lib/user-roles"
 
 /*
  * The project operations overview, status changes, and RFQs. Staff of the
@@ -72,7 +72,7 @@ import { isInternalStaffRole } from "@/lib/user-roles"
 
 export async function getProjectOperationsSummary(projectId: string): Promise<ProjectOperationsSummary> {
   const { db, user, organizationId } = await operationsContext(projectId, "project-hub", false)
-  const canViewWorkingSchedule = isInternalStaffRole(user.role) || user.role === "developer"
+  const canViewWorkingSchedule = seesStaffViews(user.role)
   return loadOperationsSummary(db, organizationId, projectId, canViewWorkingSchedule)
 }
 

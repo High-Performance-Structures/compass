@@ -206,24 +206,9 @@
       "count": 1
     }
   },
-  "src/app/actions/organizations.ts": {
-    "compass-core/owned-table-import": {
-      "count": 2
-    }
-  },
   "src/app/actions/owner-document-notices.ts": {
     "compass-core/owned-table-import": {
       "count": 1
-    }
-  },
-  "src/app/actions/permission-overrides.ts": {
-    "compass-core/owned-table-import": {
-      "count": 2
-    }
-  },
-  "src/app/actions/presence.ts": {
-    "compass-core/owned-table-import": {
-      "count": 2
     }
   },
   "src/app/actions/project-access-invitations.ts": {
@@ -236,35 +221,10 @@
   },
   "src/app/actions/project-audience-preview.ts": {
     "compass-core/owned-table-import": {
-      "count": 2
-    }
-  },
-  "src/app/actions/project-audience-sub-vendor.ts": {
-    "compass-core/role-literal-compare": {
-      "count": 2
-    }
-  },
-  "src/app/actions/project-calendars.ts": {
-    "compass-core/role-literal-compare": {
       "count": 1
     }
   },
   "src/app/actions/project-change-orders.ts": {
-    "compass-core/owned-table-import": {
-      "count": 1
-    }
-  },
-  "src/app/actions/project-client-meetings.ts": {
-    "compass-core/owned-table-import": {
-      "count": 2
-    }
-  },
-  "src/app/actions/project-contacts.ts": {
-    "compass-core/owned-table-import": {
-      "count": 1
-    }
-  },
-  "src/app/actions/project-duplicates.ts": {
     "compass-core/owned-table-import": {
       "count": 1
     }
@@ -286,40 +246,10 @@
   },
   "src/app/actions/project-messages.ts": {
     "compass-core/owned-table-import": {
-      "count": 3
-    }
-  },
-  "src/app/actions/project-operations.ts": {
-    "compass-core/role-literal-compare": {
       "count": 1
-    }
-  },
-  "src/app/actions/project-photos.ts": {
-    "compass-core/role-literal-compare": {
-      "count": 1
-    }
-  },
-  "src/app/actions/project-registry-archive.ts": {
-    "compass-core/owned-table-import": {
-      "count": 1
-    }
-  },
-  "src/app/actions/project-rfis.ts": {
-    "compass-core/role-literal-compare": {
-      "count": 4
     }
   },
   "src/app/actions/project-sage-send.ts": {
-    "compass-core/owned-table-import": {
-      "count": 1
-    }
-  },
-  "src/app/actions/project-timeline.ts": {
-    "compass-core/role-literal-compare": {
-      "count": 1
-    }
-  },
-  "src/app/actions/rate-book.ts": {
     "compass-core/owned-table-import": {
       "count": 1
     }
@@ -336,7 +266,7 @@
   },
   "src/app/actions/sage-contact-changes.ts": {
     "compass-core/owned-table-import": {
-      "count": 6
+      "count": 5
     }
   },
   "src/app/actions/sage-contact-creates.ts": {
@@ -354,7 +284,7 @@
   },
   "src/app/actions/sage-directory-adds.ts": {
     "compass-core/owned-table-import": {
-      "count": 2
+      "count": 1
     }
   },
   "src/app/actions/sage-linked-edits.ts": {
@@ -369,35 +299,12 @@
   },
   "src/app/actions/schedule-confirmations.ts": {
     "compass-core/owned-table-import": {
-      "count": 5
-    },
-    "compass-core/role-literal-compare": {
-      "count": 12
-    }
-  },
-  "src/app/actions/schedule-phases.ts": {
-    "compass-core/role-literal-compare": {
       "count": 1
-    }
-  },
-  "src/app/actions/schedule-template-export.ts": {
-    "compass-core/role-literal-compare": {
-      "count": 1
-    }
-  },
-  "src/app/actions/staff-message-desk.ts": {
-    "compass-core/owned-table-import": {
-      "count": 3
     }
   },
   "src/app/actions/trade-letters.ts": {
     "compass-core/owned-table-import": {
       "count": 1
-    }
-  },
-  "src/app/actions/users.ts": {
-    "compass-core/owned-table-import": {
-      "count": 3
     }
   },
   "src/app/actions/vendor-trade-doc-import.ts": {
@@ -417,17 +324,7 @@
   },
   "src/app/actions/vendors.ts": {
     "compass-core/owned-table-import": {
-      "count": 5
-    }
-  },
-  "src/app/actions/voice-sessions.ts": {
-    "compass-core/owned-table-import": {
-      "count": 1
-    }
-  },
-  "src/app/actions/work-calendar.ts": {
-    "compass-core/role-literal-compare": {
-      "count": 1
+      "count": 3
     }
   },
   "src/app/api/bridge/register/route.ts": {
