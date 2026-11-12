@@ -114,7 +114,8 @@ function openDatabase(): InstanceType<typeof Database> {
     );
     CREATE TABLE project_members (
       id TEXT PRIMARY KEY, project_id TEXT NOT NULL, user_id TEXT NOT NULL,
-      role TEXT NOT NULL, assigned_at TEXT NOT NULL
+      role TEXT NOT NULL, assigned_at TEXT NOT NULL,
+      UNIQUE (project_id, user_id)
     );
     CREATE TABLE project_access_invitations (
       id TEXT PRIMARY KEY, organization_id TEXT NOT NULL, project_id TEXT NOT NULL,
