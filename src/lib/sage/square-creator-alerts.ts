@@ -1,6 +1,7 @@
 import { z } from "zod/v4"
 
 import { getDb } from "@/db"
+import { activeInternalCompanyMembers } from "@/lib/domain/identity/reads"
 import { insertInternalNotificationEventWhereStatement, insertNotificationRecipientWhereStatement, settleNotificationRecipientsWhereStatement } from "@/lib/domain/notifications/store"
 import { markSageSquareCreatorNotifiedStatement, recordSageSquareInvoiceCreatorStatement } from "@/lib/domain/sage-bridge/square-store"
 import { readFeatureSettings } from "@/lib/feature-settings/server"
@@ -132,20 +133,29 @@ export async function recordSquareInvoiceCreator(env: CloudflareEnv, config: Squ
   return true
 }
 
-type Recipient = { readonly id: string; readonly role: string; readonly in_app: number }
+type Recipient = { readonly id: string; readonly role: string }
 
 /** Active internal staff who can read finance and have in-app notifications on. */
 export async function authorizedFinanceStaff(env: CloudflareEnv, organizationId: string): Promise<readonly Recipient[]> {
   // Match the organization-scoped effective role used by auth/project access,
   // not a possibly stale or broader global account role.
-  const members = await env.DB.prepare(`SELECT u.id, m.role, COALESCE(pref.in_app_enabled, 1) AS in_app
-    FROM users u JOIN organization_members m ON m.user_id = u.id
-    JOIN organizations o ON o.id = m.organization_id
-    LEFT JOIN notification_preferences pref ON pref.user_id = u.id
-    WHERE m.organization_id = ? AND o.type = 'internal' AND o.is_active = 1 AND u.is_active = 1`)
-    .bind(organizationId).all<Recipient>()
-  return members.results.filter(member => isInternalStaffRole(member.role)
-    && getPermissions(member.role, "finance").includes("read") && member.in_app === 1)
+  const members = (await activeInternalCompanyMembers(env.DB, organizationId))
+    .filter(member => isInternalStaffRole(member.role) && getPermissions(member.role, "finance").includes("read"))
+  const inAppOff = await inAppDisabledUserIds(env.DB, members.map(member => member.id))
+  return members.filter(member => !inAppOff.has(member.id))
+}
+
+/** Users among these who turned in-app notifications off (no preference row means on). */
+async function inAppDisabledUserIds(database: D1Database, userIds: readonly string[]): Promise<ReadonlySet<string>> {
+  const off = new Set<string>()
+  // D1 allows 100 bound values per statement.
+  for (let start = 0; start < userIds.length; start += 90) {
+    const chunk = userIds.slice(start, start + 90)
+    const rows = await database.prepare(`SELECT user_id FROM notification_preferences
+      WHERE in_app_enabled = 0 AND user_id IN (${chunk.map(() => "?").join(", ")})`).bind(...chunk).all<{ user_id: string }>()
+    for (const row of rows.results) off.add(row.user_id)
+  }
+  return off
 }
 
 // Posted receipts retain succeeded status after a later refund/change warning.
