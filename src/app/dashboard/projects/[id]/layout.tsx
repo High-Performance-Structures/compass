@@ -11,7 +11,7 @@ import {
   decodedLegacyProjectId,
   legacyProjectDeepLinkFromRequestUrl,
 } from "@/lib/legacy-project-route"
-import { getProjectAccessRecord } from "@/lib/project-access"
+import { getProjectAccessRecord } from "@/lib/domain/project/access"
 import {
   isProjectRouteAliasRecoveryRequest,
   projectRouteAliasDestination,

@@ -25,7 +25,7 @@ import {
   removeProjectCalendar,
   syncProjectCalendar,
 } from "@/lib/project-calendars/sync"
-import { getProjectAccessRecord } from "@/lib/project-access"
+import { getProjectAccessRecord } from "@/lib/domain/project/access"
 import { isInternalStaffRole } from "@/lib/user-roles"
 import { requireUserContext } from "@/lib/server/action-context"
 

@@ -18,8 +18,8 @@ import {
   parseServiceAccountKey,
 } from "@/lib/google/config"
 import { canUseProjectAudience } from "@/lib/project-audience-access"
-import { assertProjectAccess } from "@/lib/project-access"
-import { projectMemberRole } from "@/lib/project-member-role"
+import { assertProjectAccess } from "@/lib/domain/project/access"
+import { projectMemberRole } from "@/lib/domain/project/member-role"
 import { isInternalStaffRole } from "@/lib/user-roles"
 
 const DEFAULT_COMPASS_GOOGLE_DOWNLOAD_USER = "compass@hps-colorado.com"

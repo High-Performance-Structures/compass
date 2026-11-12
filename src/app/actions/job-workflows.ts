@@ -24,7 +24,7 @@ import { loadProjectFollowUpSignals } from "@/lib/project-aging-server"
 import { projectDepartment, type ProjectDepartment } from "@/lib/project-branding"
 import type { ProjectFollowUpSignal } from "@/lib/project-follow-up"
 import { projectJobStatusLabel } from "@/lib/project-profile"
-import { getProjectAccessRecord } from "@/lib/project-access"
+import { getProjectAccessRecord } from "@/lib/domain/project/access"
 import { isInternalStaffRole } from "@/lib/user-roles"
 
 type Result<T> = { readonly success: true; readonly data: T } | { readonly success: false; readonly error: string }

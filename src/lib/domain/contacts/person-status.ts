@@ -4,7 +4,7 @@
  *
  * - "current_staff": internal staff of the project's own company. They reach
  *   every company job through organization scope (`usesOrganizationProjectScope`
- *   in `src/lib/project-access.ts`), so they need no project invitation.
+ *   in `src/lib/domain/project/access.ts`), so they need no project invitation.
  * - "archived_person": the person was removed from Contacts (their internal,
  *   client or vendor directory record is archived), or an internal contact
  *   whose Compass account is inactive or no longer in the company. Their job

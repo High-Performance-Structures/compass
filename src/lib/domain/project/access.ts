@@ -1,12 +1,17 @@
+/**
+ * Who may reach a project (issue #1329, phase 1). The project module owns
+ * project_members; every access decision that reads it lives here or in
+ * `member-role.ts`. Actions reach it through `projectContext` in
+ * @/lib/server/action-context.
+ */
 import { and, eq } from "drizzle-orm"
 
-import type { getDb } from "@/db"
-import { projectAccessInvitations, projectMembers, projects } from "@/db/schema"
+import { projectMembers, projects } from "@/db/schema"
 import type { AuthUser } from "@/lib/auth"
+import { openInvitationForProject } from "@/lib/domain/identity/reads"
 import { invitedPreviewInvitationId } from "@/lib/invited-preview"
+import type { Db } from "@/lib/server/action-context"
 import { canUseOrganizationProjectScopeRole } from "@/lib/user-roles"
-
-type Db = ReturnType<typeof getDb>
 
 export type ProjectAccessRecord = {
   readonly id: string
@@ -53,18 +58,7 @@ export async function getProjectAccessRecord(
   // in for the membership they'll get when they accept.
   const invitationId = invitedPreviewInvitationId(user.id)
   if (invitationId) {
-    const invitation = await db
-      .select({ id: projectAccessInvitations.id })
-      .from(projectAccessInvitations)
-      .where(
-        and(
-          eq(projectAccessInvitations.id, invitationId),
-          eq(projectAccessInvitations.projectId, projectId),
-          eq(projectAccessInvitations.status, "sent")
-        )
-      )
-      .limit(1)
-      .get()
+    const invitation = await openInvitationForProject(db, invitationId, projectId)
     return invitation ? project : null
   }
 

@@ -5,7 +5,7 @@ import { resolve } from "node:path"
 const mocks = vi.hoisted(() => ({ auth: vi.fn(), context: vi.fn(), access: vi.fn(), permission: vi.fn() }))
 vi.mock("@/lib/auth", () => ({ requireAuth: mocks.auth }))
 vi.mock("@/lib/db", () => ({ getCloudflareContext: mocks.context }))
-vi.mock("@/lib/project-access", () => ({ assertProjectAccess: mocks.access }))
+vi.mock("@/lib/domain/project/access", () => ({ assertProjectAccess: mocks.access }))
 vi.mock("@/lib/permission-enforcement", () => ({ requireFeaturePermission: mocks.permission }))
 
 import { getProjectWarrantySourceReview, loadProjectWarrantySourceReviewPage } from "../project-warranty-source-review"

@@ -19,7 +19,7 @@ vi.mock("@/lib/db", () => ({
 vi.mock("@/lib/permissions", () => ({
   requirePermission: mocks.requirePermission,
 }))
-vi.mock("@/lib/project-access", () => ({
+vi.mock("@/lib/domain/project/access", () => ({
   assertProjectAccess: mocks.assertProjectAccess,
 }))
 vi.mock("@/lib/user-roles", () => ({

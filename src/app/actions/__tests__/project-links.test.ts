@@ -21,7 +21,7 @@ vi.mock("@/lib/auth", () => ({ requireAuth: mocks.requireAuth, getCurrentUser: m
 vi.mock("@/lib/org-scope", () => ({ requireOrg: () => "org" }))
 vi.mock("@/lib/demo", () => ({ isDemoUser: (id: string) => id === "demo" }))
 vi.mock("@/lib/permissions", () => ({ can: mocks.can }))
-vi.mock("@/lib/project-access", () => ({
+vi.mock("@/lib/domain/project/access", () => ({
   assertProjectAccess: mocks.assertProjectAccess,
   getProjectAccessRecord: mocks.getProjectAccessRecord,
 }))

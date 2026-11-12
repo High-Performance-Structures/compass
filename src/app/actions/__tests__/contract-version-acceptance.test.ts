@@ -37,7 +37,7 @@ vi.mock("@/lib/permission-enforcement", () => ({
   requireFeaturePermission: mocks.requireFeaturePermission,
   canFeature: vi.fn(async () => true),
 }))
-vi.mock("@/lib/project-access", () => ({ assertProjectAccess: mocks.assertProjectAccess }))
+vi.mock("@/lib/domain/project/access", () => ({ assertProjectAccess: mocks.assertProjectAccess }))
 vi.mock("@/lib/activity-log", () => ({
   recordActivityEvent: mocks.recordActivityEvent,
   activityActorName: () => "Estimator",

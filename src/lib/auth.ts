@@ -25,7 +25,9 @@ import {
 import { ensureProjectAudienceConversation } from "@/lib/project-audience-conversations"
 import { recordActivityEvent } from "@/lib/activity-log"
 import { ensureInternalContactForStaff } from "@/lib/internal-contact-provisioning"
-import { externalOrganizationRole as normalizedExternalProjectRole } from "@/lib/domain/identity/rules"
+import { organizationMembershipsQuery } from "@/lib/domain/identity/reads"
+import { resolveSessionRole } from "@/lib/domain/identity/session-role"
+import { projectRolesForUserQuery } from "@/lib/domain/project/member-role"
 import {
   ensureExternalOrganizationMembership,
   insertOrganizationMember,
@@ -144,34 +146,14 @@ type PendingInvitation = Awaited<
   ReturnType<typeof pendingInvitationsQuery>
 >[number]
 
-function organizationMembershipsQuery(
-  db: ReturnType<typeof getDb>,
-  userId: string
-) {
-  return db
-    .select({
-      orgId: organizations.id,
-      orgName: organizations.name,
-      orgType: organizations.type,
-      memberRole: organizationMembers.role,
-    })
-    .from(organizationMembers)
-    .innerJoin(
-      organizations,
-      eq(organizations.id, organizationMembers.organizationId)
-    )
-    .where(eq(organizationMembers.userId, userId))
-}
-
-function firstProjectMembershipQuery(
-  db: ReturnType<typeof getDb>,
-  userId: string
-) {
-  return db
-    .select({ role: projectMembers.role })
-    .from(projectMembers)
-    .where(eq(projectMembers.userId, userId))
-    .limit(1)
+/** The organization the person last switched to, if the cookie is readable. */
+async function preferredOrganizationId(): Promise<string | null> {
+  try {
+    const cookieStore = await cookies()
+    return cookieStore.get("compass-active-org")?.value ?? null
+  } catch {
+    return null
+  }
 }
 
 /** Looks up and claims an account's pending invitations (sign-in callbacks). */
@@ -424,7 +406,7 @@ async function loadCurrentUser(): Promise<AuthUser | null> {
       db.select().from(users).where(eq(users.id, workosUser.id)).limit(1),
       pendingInvitationsQuery(db, workosEmail),
       organizationMembershipsQuery(db, workosUser.id),
-      firstProjectMembershipQuery(db, workosUser.id),
+      projectRolesForUserQuery(db, workosUser.id),
     ])
 
     let activatedPendingAccount = false
@@ -515,7 +497,7 @@ async function loadCurrentUser(): Promise<AuthUser | null> {
       ? [prefetchedMemberships, prefetchedProjectMemberships]
       : await db.batch([
           organizationMembershipsQuery(db, dbUser.id),
-          firstProjectMembershipQuery(db, dbUser.id),
+          projectRolesForUserQuery(db, dbUser.id),
         ])
 
     if (activatedPendingAccount) {
@@ -532,49 +514,12 @@ async function loadCurrentUser(): Promise<AuthUser | null> {
       }
     }
 
-    let activeOrg: {
-      readonly orgId: string
-      readonly orgName: string
-      readonly orgType: string
-      readonly memberRole: string
-    } | null = null
-
-    if (orgMemberships.length > 0) {
-      // check for cookie preference
-      try {
-        const cookieStore = await cookies()
-        const preferredOrg = cookieStore.get("compass-active-org")?.value
-        const match = orgMemberships.find((m) => m.orgId === preferredOrg)
-        activeOrg = match ?? orgMemberships[0]
-      } catch {
-        activeOrg = orgMemberships[0]
-      }
-    }
-
-    const projectMembership = projectMemberships[0]
-    const hasInternalStaffOrganization = orgMemberships.some(
-      (membership) =>
-        membership.orgType === "internal" &&
-        !isExternalProjectRole(membership.memberRole)
-    )
-    const effectiveRole =
-      !hasInternalStaffOrganization &&
-      projectMembership &&
-      isExternalProjectRole(projectMembership.role)
-        ? normalizedExternalProjectRole(projectMembership.role)
-        : activeOrg?.memberRole ?? dbUser.role
-    if (
-      !hasInternalStaffOrganization &&
-      projectMembership &&
-      isExternalProjectRole(projectMembership.role)
-    ) {
-      activeOrg =
-        orgMemberships.find(
-          (membership) =>
-            membership.orgType === "internal" &&
-            isExternalProjectRole(membership.memberRole)
-        ) ?? activeOrg
-    }
+    const { role: effectiveRole, activeOrg } = resolveSessionRole({
+      orgMemberships,
+      preferredOrgId: await preferredOrganizationId(),
+      projectRoles: projectMemberships.map((membership) => membership.role),
+      accountRole: dbUser.role,
+    })
 
     if (activatedPendingAccount && activeOrg) {
       await recordActivityEvent({

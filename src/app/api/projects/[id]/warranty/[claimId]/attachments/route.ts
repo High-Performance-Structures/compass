@@ -11,7 +11,7 @@ import { requireAuth } from "@/lib/auth"
 import { getCloudflareContext } from "@/lib/db"
 import { isDemoUser } from "@/lib/demo"
 import { requireFeaturePermission } from "@/lib/permission-enforcement"
-import { assertProjectAccess } from "@/lib/project-access"
+import { assertProjectAccess } from "@/lib/domain/project/access"
 import { canUseProjectAudience } from "@/lib/project-audience-access"
 import {
   MAX_PHOTO_UPLOAD_BATCH_BYTES,

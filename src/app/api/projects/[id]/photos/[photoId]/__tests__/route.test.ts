@@ -32,7 +32,7 @@ vi.mock("@/db", () => ({ getDb: mocks.getDb }))
 vi.mock("@/lib/project-route-id", () => ({
   resolveProjectRouteId: mocks.resolveProjectRouteId,
 }))
-vi.mock("@/lib/project-access", () => ({
+vi.mock("@/lib/domain/project/access", () => ({
   assertProjectAccess: mocks.assertProjectAccess,
 }))
 vi.mock("@/lib/owner-updates/access", () => ({

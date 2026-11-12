@@ -10,7 +10,7 @@ const mocks = vi.hoisted(() => ({
 vi.mock("@/lib/auth", () => ({ requireAuth: mocks.requireAuth, getCurrentUser: mocks.requireAuth }))
 vi.mock("@/lib/db", () => ({ getCloudflareContext: mocks.getCloudflareContext }))
 vi.mock("@/lib/permission-enforcement", () => ({ requireFeaturePermission: vi.fn() }))
-vi.mock("@/lib/project-access", () => ({ getProjectAccessRecord: mocks.getProjectAccessRecord }))
+vi.mock("@/lib/domain/project/access", () => ({ getProjectAccessRecord: mocks.getProjectAccessRecord }))
 vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }))
 
 import {

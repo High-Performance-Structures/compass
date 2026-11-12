@@ -19,8 +19,8 @@ import {
   canFeature,
   requireFeaturePermission,
 } from "@/lib/permission-enforcement"
-import { assertProjectAccess } from "@/lib/project-access"
-import { projectMemberRole } from "@/lib/project-member-role"
+import { assertProjectAccess } from "@/lib/domain/project/access"
+import { projectMemberRole } from "@/lib/domain/project/member-role"
 import { canUseProjectAudience } from "@/lib/project-audience-access"
 import { isInternalStaffRole } from "@/lib/user-roles"
 import { resolveWarrantyAssignee } from "@/lib/warranty/assignee"

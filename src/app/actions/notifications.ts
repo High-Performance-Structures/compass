@@ -40,8 +40,8 @@ import {
 } from "@/lib/notifications/sms-consent"
 import { isValidSmsQuietHoursTime } from "@/lib/notifications/sms-policy"
 import { requireOrg } from "@/lib/org-scope"
-import { assertProjectAccess } from "@/lib/project-access"
-import { projectMemberRole } from "@/lib/project-member-role"
+import { assertProjectAccess } from "@/lib/domain/project/access"
+import { projectMemberRole } from "@/lib/domain/project/member-role"
 import {
   canUseProjectAudience,
   type ProjectAudience,

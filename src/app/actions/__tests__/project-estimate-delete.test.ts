@@ -21,7 +21,7 @@ vi.mock("@/lib/permissions", () => ({
   can: mocks.can,
   requirePermission: mocks.requirePermission,
 }))
-vi.mock("@/lib/project-access", () => ({
+vi.mock("@/lib/domain/project/access", () => ({
   assertProjectAccess: mocks.assertProjectAccess,
 }))
 vi.mock("@/lib/user-roles", () => ({

@@ -18,7 +18,7 @@ vi.mock("@/lib/auth", () => ({
 vi.mock("@/lib/db", () => ({
   getCloudflareContext: mocks.getCloudflareContext,
 }))
-vi.mock("@/lib/project-access", () => ({
+vi.mock("@/lib/domain/project/access", () => ({
   assertProjectAccess: mocks.assertProjectAccess,
 }))
 vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }))

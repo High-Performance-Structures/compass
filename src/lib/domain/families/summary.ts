@@ -14,7 +14,7 @@ import {
   type ProjectFamilyPhaseRow,
   type ProjectFamilySummary,
 } from "@/lib/domain/families/rules"
-import { getProjectAccessRecord, usesOrganizationProjectScope } from "@/lib/project-access"
+import { getProjectAccessRecord, usesOrganizationProjectScope } from "@/lib/domain/project/access"
 import type { Db } from "@/lib/server/action-context"
 
 export async function loadProjectFamilySummary(

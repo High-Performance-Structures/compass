@@ -10,7 +10,7 @@ vi.mock("@/lib/auth", () => ({
   getCurrentUser: mocks.requireAuth,
 }))
 vi.mock("@/lib/db", () => ({ getCloudflareContext: mocks.getCloudflareContext }))
-vi.mock("@/lib/project-access", () => ({ assertProjectAccess: vi.fn() }))
+vi.mock("@/lib/domain/project/access", () => ({ assertProjectAccess: vi.fn() }))
 vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }))
 vi.mock("@/lib/notifications/events", () => ({
   isMissingNotificationTableError: () => false,

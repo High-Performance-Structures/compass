@@ -11,7 +11,7 @@ let database: CorrespondenceTestDatabase
 vi.mock("@/lib/auth", () => ({ requireAuth: mocks.auth, getCurrentUser: mocks.auth }))
 vi.mock("@/lib/db", () => ({ getCloudflareContext: async () => ({ env: { DB: database.d1 } }) }))
 vi.mock("@/lib/permission-enforcement", () => ({ requireFeaturePermission: vi.fn() }))
-vi.mock("@/lib/project-access", () => ({ getProjectAccessRecord: async () => ({ organizationId: "org-a" }) }))
+vi.mock("@/lib/domain/project/access", () => ({ getProjectAccessRecord: async () => ({ organizationId: "org-a" }) }))
 vi.mock("@/lib/feature-settings/server", () => ({ readFeatureSettings: async () => ({ templates: {} }) }))
 vi.mock("@/lib/department-profiles-server", async () => {
   const { DEFAULT_DEPARTMENT_PROFILES } = await import("@/lib/department-profiles")

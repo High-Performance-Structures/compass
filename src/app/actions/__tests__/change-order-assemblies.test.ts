@@ -37,7 +37,7 @@ vi.mock("@/lib/permission-enforcement", () => ({
   requireFeaturePermission: vi.fn(async () => undefined),
   canFeature: vi.fn(async () => true),
 }))
-vi.mock("@/lib/project-access", () => ({ assertProjectAccess: mocks.assertProjectAccess }))
+vi.mock("@/lib/domain/project/access", () => ({ assertProjectAccess: mocks.assertProjectAccess }))
 vi.mock("@/lib/activity-log", () => ({ recordActivityEvent: vi.fn(), activityActorName: () => "Estimator" }))
 vi.mock("@/lib/db", () => ({ getCloudflareContext: vi.fn(async () => ({ env: { DB: {} } })) }))
 vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }))

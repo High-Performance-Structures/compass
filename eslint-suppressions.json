@@ -1143,11 +1143,6 @@
       "count": 10
     }
   },
-  "src/lib/project-access.ts": {
-    "compass-core/owned-table-import": {
-      "count": 2
-    }
-  },
   "src/lib/project-archive-context.ts": {
     "compass-core/owned-table-import": {
       "count": 2
@@ -1207,11 +1202,6 @@
   "src/lib/project-follow-up-reminders.ts": {
     "compass-core/owned-table-import": {
       "count": 1
-    }
-  },
-  "src/lib/project-member-role.ts": {
-    "compass-core/owned-table-import": {
-      "count": 2
     }
   },
   "src/lib/project-timeline/server.ts": {

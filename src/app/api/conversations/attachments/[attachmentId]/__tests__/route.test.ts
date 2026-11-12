@@ -26,7 +26,7 @@ vi.mock("@/db", () => ({ getDb: mocks.getDb }))
 vi.mock("@/lib/conversations/channel-access-server", () => ({
   getConversationChannelAccess: mocks.getConversationChannelAccess,
 }))
-vi.mock("@/lib/project-access", () => ({ assertProjectAccess: mocks.assertProjectAccess }))
+vi.mock("@/lib/domain/project/access", () => ({ assertProjectAccess: mocks.assertProjectAccess }))
 vi.mock("@/lib/crypto", () => ({ decrypt: mocks.decrypt }))
 vi.mock("@/lib/google/config", () => ({
   getGoogleConfig: mocks.getGoogleConfig,

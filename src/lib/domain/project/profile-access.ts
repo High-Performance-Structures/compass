@@ -7,7 +7,7 @@
  * check on top of the shared org context.
  */
 import type { AuthUser } from "@/lib/auth"
-import { getProjectAccessRecord } from "@/lib/project-access"
+import { getProjectAccessRecord } from "@/lib/domain/project/access"
 import { CONTEXT_ERRORS, orgContext, type Db } from "@/lib/server/action-context"
 import { isInternalStaffRole } from "@/lib/user-roles"
 

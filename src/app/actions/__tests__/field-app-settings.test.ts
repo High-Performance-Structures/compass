@@ -5,7 +5,7 @@ import { d1, migratedSqlite, type Sqlite } from "@/lib/daily-logs/__tests__/sqli
 const mocks = vi.hoisted(() => ({ auth: vi.fn(), cloudflare: vi.fn(), access: vi.fn(), canFeature: vi.fn() }))
 vi.mock("@/lib/auth", () => ({ requireAuth: mocks.auth, getCurrentUser: mocks.auth }))
 vi.mock("@/lib/db", () => ({ getCloudflareContext: mocks.cloudflare }))
-vi.mock("@/lib/project-access", () => ({ getProjectAccessRecord: mocks.access }))
+vi.mock("@/lib/domain/project/access", () => ({ getProjectAccessRecord: mocks.access }))
 vi.mock("@/lib/permission-enforcement", () => ({ canFeature: mocks.canFeature, requireFeaturePermission: vi.fn() }))
 vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }))
 

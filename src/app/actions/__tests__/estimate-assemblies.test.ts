@@ -10,7 +10,7 @@ const mocks = vi.hoisted(() => ({ getDb: vi.fn(), requireAuth: vi.fn(), requireP
 vi.mock("@/db", () => ({ getDb: mocks.getDb }))
 vi.mock("@/lib/auth", () => ({ requireAuth: mocks.requireAuth, getCurrentUser: mocks.requireAuth }))
 vi.mock("@/lib/permissions", () => ({ requirePermission: mocks.requirePermission }))
-vi.mock("@/lib/project-access", () => ({ assertProjectAccess: mocks.assertProjectAccess }))
+vi.mock("@/lib/domain/project/access", () => ({ assertProjectAccess: mocks.assertProjectAccess }))
 vi.mock("@/lib/activity-log", () => ({ recordActivityEvent: mocks.recordActivityEvent }))
 vi.mock("@/lib/db", () => ({ getCloudflareContext: vi.fn(async () => ({ env: { DB: {} } })) }))
 vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }))

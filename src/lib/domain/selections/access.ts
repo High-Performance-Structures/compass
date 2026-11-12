@@ -15,13 +15,13 @@ import { getDb } from "@/db"
 import { requireAuth } from "@/lib/auth"
 import { getCloudflareContext } from "@/lib/db"
 import { requireFeaturePermission } from "@/lib/permission-enforcement"
-import { assertProjectAccess } from "@/lib/project-access"
+import { assertProjectAccess } from "@/lib/domain/project/access"
 import { canUseProjectAudience, type ProjectAudience } from "@/lib/project-audience-access"
 import {
   assertAudiencePreviewWriteAllowed,
   requireProjectAudienceReadUser,
 } from "@/lib/project-audience-request-server"
-import { projectMemberRole } from "@/lib/project-member-role"
+import { projectMemberRole } from "@/lib/domain/project/member-role"
 import { projectContext, type ProjectContext } from "@/lib/server/action-context"
 import { isInternalStaffRole } from "@/lib/user-roles"
 

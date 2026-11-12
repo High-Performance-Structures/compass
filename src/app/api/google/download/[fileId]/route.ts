@@ -19,7 +19,7 @@ import {
   getExportExtension,
 } from "@/lib/google/mapper"
 import { isInternalStaffRole } from "@/lib/user-roles"
-import { assertProjectAccess } from "@/lib/project-access"
+import { assertProjectAccess } from "@/lib/domain/project/access"
 import { isDriveItemWithinProjectFolder } from "@/lib/google/project-folder-boundary"
 import {
   PHOTO_RENDITION_LONGEST_SIDE_PX,

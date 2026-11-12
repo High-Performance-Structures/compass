@@ -10,7 +10,7 @@ import type { AuthUser } from "@/lib/auth"
 import { requireOrg } from "@/lib/org-scope"
 import { requireFeaturePermission } from "@/lib/permission-enforcement"
 import { assertAudiencePreviewWriteAllowed, requireProjectAudienceReadUser } from "@/lib/project-audience-request-server"
-import { assertProjectAccess } from "@/lib/project-access"
+import { assertProjectAccess } from "@/lib/domain/project/access"
 import { orgContext, projectContext, type Db } from "@/lib/server/action-context"
 
 export type RfiReadContext = {

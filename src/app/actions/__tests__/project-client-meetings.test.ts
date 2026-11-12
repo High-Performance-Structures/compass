@@ -14,7 +14,7 @@ const mocks = vi.hoisted(() => ({
 vi.mock("@/lib/auth", () => ({ requireAuth: mocks.requireAuth, getCurrentUser: mocks.requireAuth }))
 vi.mock("@/lib/db", () => ({ getCloudflareContext: mocks.getCloudflareContext }))
 vi.mock("@/lib/permission-enforcement", () => ({ requireFeaturePermission: vi.fn(async () => {}) }))
-vi.mock("@/lib/project-access", () => ({ assertProjectAccess: vi.fn(async () => ({})) }))
+vi.mock("@/lib/domain/project/access", () => ({ assertProjectAccess: vi.fn(async () => ({})) }))
 vi.mock("@/lib/email/compass-email", () => ({ getCompassGmailAccessToken: mocks.token }))
 vi.mock("@/lib/google/calendar/client", () => ({
   createGoogleCalendarEvent: mocks.createEvent,
