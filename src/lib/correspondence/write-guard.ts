@@ -2,6 +2,8 @@ import { sql, type SQL } from "drizzle-orm"
 import { writeGuardDeleteStatement, writeGuardInsertStatement } from "@/lib/domain/correspondence/store"
 import type { CorrespondenceContext } from "./access"
 import { USER_ROLES } from "@/lib/domain/identity/statuses"
+import { membershipsView, peopleView } from "@/lib/domain/identity/views"
+import { projectMembersView } from "@/lib/domain/project/views"
 import { isInternalStaffRole } from "@/lib/user-roles"
 import type { CorrespondencePerson } from "./types"
 
@@ -26,10 +28,13 @@ function createGuard(ctx: CorrespondenceContext, input: {
 }) {
   const peopleJson = JSON.stringify(input.people.map((person) => ({ userId: person.userId, role: person.role })))
   const staffRoles = JSON.stringify(USER_ROLES.filter(isInternalStaffRole))
+  const accounts = peopleView()
+  const memberships = membershipsView()
+  const projectMemberships = projectMembersView()
   const checks: SQL[] = [sql`EXISTS(SELECT 1 FROM projects WHERE id=${ctx.projectId} AND organization_id=${ctx.organizationId})`,
     sql`NOT EXISTS(SELECT 1 FROM json_each(${peopleJson}) person WHERE NOT EXISTS(
-      SELECT 1 FROM users u JOIN organization_members om ON om.user_id=u.id
-      LEFT JOIN project_members pm ON pm.user_id=u.id AND pm.project_id=${ctx.projectId}
+      SELECT 1 FROM ${accounts} u JOIN ${memberships} om ON om.user_id=u.id
+      LEFT JOIN ${projectMemberships} pm ON pm.user_id=u.id AND pm.project_id=${ctx.projectId}
       WHERE u.id=json_extract(person.value,'$.userId') AND u.is_active=1 AND om.organization_id=${ctx.organizationId}
       AND CASE json_extract(person.value,'$.role')
         WHEN 'owner' THEN pm.role IN ('owner','client')

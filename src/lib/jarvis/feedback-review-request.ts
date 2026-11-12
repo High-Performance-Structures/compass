@@ -2,7 +2,7 @@ import { and, eq } from "drizzle-orm"
 import { z } from "zod/v4"
 
 import { getDb } from "@/db"
-import { organizationMembers, users } from "@/db/schema"
+import { membershipsView, peopleView } from "@/lib/domain/identity/views"
 import { feedbackDeskItems, jarvisBridgeEvents } from "@/db/schema-jarvis"
 import { getCloudflareContext } from "@/lib/db"
 import { insertJarvisBridgeEvents } from "@/lib/domain/feedback/store"
@@ -14,6 +14,9 @@ import {
 } from "@/lib/jarvis/auth"
 import { createSystemNotificationEvent } from "@/lib/notifications/events"
 import { canManageUserAccessRole } from "@/lib/user-roles"
+
+const memberships = membershipsView()
+const accounts = peopleView()
 
 /*
  * Jarvis asks the Feedback Desk administrators to look at a request it
@@ -92,15 +95,15 @@ export async function handleFeedbackReviewRequest(
 
   const reviewers = (await db
     .select({
-      userId: users.id,
-      email: users.email,
-      role: organizationMembers.role,
+      userId: accounts.id,
+      email: accounts.email,
+      role: memberships.role,
     })
-    .from(organizationMembers)
-    .innerJoin(users, eq(users.id, organizationMembers.userId))
+    .from(memberships)
+    .innerJoin(accounts, eq(accounts.id, memberships.userId))
     .where(and(
-      eq(organizationMembers.organizationId, organizationId),
-      eq(users.isActive, true),
+      eq(memberships.organizationId, organizationId),
+      eq(accounts.isActive, true),
     )))
     .filter((member) => canManageUserAccessRole(member.role))
     .map(({ userId, email }) => ({ userId, email }))

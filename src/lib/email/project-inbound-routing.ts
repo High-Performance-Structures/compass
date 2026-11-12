@@ -10,15 +10,14 @@ import { recordActivityEvent } from "@/lib/activity-log"
 import { insertChangeOrderHistoryIfAbsent, insertChangeOrderIfAbsent } from "@/lib/domain/estimates/store"
 import {
   notificationPreferences,
-  organizationMembers,
   projectContacts,
   projectChangeOrders,
   projectOperations,
   projectRfis,
   projectVideos,
   projects,
-  users,
 } from "@/db/schema"
+import { membershipsView, peopleView } from "@/lib/domain/identity/views"
 import { insertProjectInteractionIfAbsent } from "@/lib/domain/crm/store"
 import {
   stripHtml,
@@ -51,6 +50,9 @@ import {
 import { routeInboundProjectMessage } from "@/lib/email/project-message-routing"
 import { PROJECT_TODO_RECORD_TYPES } from "@/lib/project-todos"
 import { resolvedContactColumns, withContactDirectory } from "@/lib/domain/contacts/resolved-columns"
+
+const memberships = membershipsView()
+const accounts = peopleView()
 
 type Db = ReturnType<typeof getDb>
 
@@ -242,19 +244,16 @@ async function senderCanEmailProject(input: {
   if (contact) return true
 
   const [member] = await input.db
-    .select({ id: users.id })
-    .from(users)
-    .innerJoin(
-      organizationMembers,
-      eq(organizationMembers.userId, users.id)
-    )
+    .select({ id: accounts.id })
+    .from(accounts)
+    .innerJoin(memberships, eq(memberships.userId, accounts.id))
     .where(
       and(
-        eq(organizationMembers.organizationId, input.organizationId),
-        eq(users.isActive, true),
+        eq(memberships.organizationId, input.organizationId),
+        eq(accounts.isActive, true),
         or(
-          sql`lower(${users.email}) = ${email}`,
-          sql`lower(${users.googleEmail}) = ${email}`
+          sql`lower(${accounts.email}) = ${email}`,
+          sql`lower(${accounts.googleEmail}) = ${email}`
         )
       )
     )
@@ -267,18 +266,15 @@ async function senderCanEmailProject(input: {
   const trustedDomains = trustedInternalEmailDomains(input.env)
   const activeMembers = await input.db
     .select({
-      email: users.email,
-      googleEmail: users.googleEmail,
+      email: accounts.email,
+      googleEmail: accounts.googleEmail,
     })
-    .from(users)
-    .innerJoin(
-      organizationMembers,
-      eq(organizationMembers.userId, users.id)
-    )
+    .from(accounts)
+    .innerJoin(memberships, eq(memberships.userId, accounts.id))
     .where(
       and(
-        eq(organizationMembers.organizationId, input.organizationId),
-        eq(users.isActive, true)
+        eq(memberships.organizationId, input.organizationId),
+        eq(accounts.isActive, true)
       )
     )
   return activeMembers.some((activeMember) =>
@@ -895,11 +891,11 @@ async function verifiedSmsSender(input: {
   const senderPhone = normalizedPhone(input.senderPhone)
   const internal = await input.db
     .select({
-      email: users.email,
-      displayName: users.displayName,
-      firstName: users.firstName,
-      lastName: users.lastName,
-      role: organizationMembers.role,
+      email: accounts.email,
+      displayName: accounts.displayName,
+      firstName: accounts.firstName,
+      lastName: accounts.lastName,
+      role: memberships.role,
       smsEnabled: notificationPreferences.smsEnabled,
       smsPhone: notificationPreferences.smsPhoneNumber,
       smsConsentAccepted: notificationPreferences.smsConsentAccepted,
@@ -907,16 +903,16 @@ async function verifiedSmsSender(input: {
         notificationPreferences.smsConsentDisclosureVersion,
       smsConsentPhoneNumber: notificationPreferences.smsConsentPhoneNumber,
     })
-    .from(organizationMembers)
-    .innerJoin(users, eq(users.id, organizationMembers.userId))
+    .from(memberships)
+    .innerJoin(accounts, eq(accounts.id, memberships.userId))
     .leftJoin(
       notificationPreferences,
-      eq(notificationPreferences.userId, users.id)
+      eq(notificationPreferences.userId, accounts.id)
     )
     .where(
       and(
-        eq(organizationMembers.organizationId, input.organizationId),
-        eq(users.isActive, true)
+        eq(memberships.organizationId, input.organizationId),
+        eq(accounts.isActive, true)
       )
     )
   const member = internal.find(

@@ -539,16 +539,6 @@
       "count": 1
     }
   },
-  "src/lib/agent/agent-user.ts": {
-    "compass-core/owned-table-import": {
-      "count": 3
-    }
-  },
-  "src/lib/archived-person-sql.ts": {
-    "compass-core/owned-table-raw-sql": {
-      "count": 1
-    }
-  },
   "src/lib/auth.ts": {
     "compass-core/owned-table-import": {
       "count": 6
@@ -562,71 +552,19 @@
       "count": 1
     }
   },
-  "src/lib/change-orders/access.ts": {
-    "compass-core/role-literal-compare": {
-      "count": 3
-    }
-  },
-  "src/lib/client-meetings/guest-meetings.ts": {
-    "compass-core/owned-table-import": {
-      "count": 1
-    }
-  },
-  "src/lib/client-meetings/transcripts.ts": {
-    "compass-core/owned-table-import": {
-      "count": 1
-    }
-  },
   "src/lib/contact-identity-ownership.ts": {
     "compass-core/owned-table-import": {
-      "count": 3
-    }
-  },
-  "src/lib/conversations/agent-messages.ts": {
-    "compass-core/owned-table-import": {
-      "count": 1
-    }
-  },
-  "src/lib/correspondence/access.ts": {
-    "compass-core/owned-table-import": {
-      "count": 4
-    },
-    "compass-core/role-literal-compare": {
-      "count": 9
-    }
-  },
-  "src/lib/correspondence/channel-threads.ts": {
-    "compass-core/owned-table-import": {
-      "count": 3
-    },
-    "compass-core/role-literal-compare": {
-      "count": 4
-    }
-  },
-  "src/lib/correspondence/email-adapter.ts": {
-    "compass-core/owned-table-import": {
-      "count": 3
-    },
-    "compass-core/owned-table-raw-sql": {
-      "count": 1
-    },
-    "compass-core/role-literal-compare": {
       "count": 1
     }
   },
   "src/lib/correspondence/write-guard.ts": {
     "compass-core/owned-table-raw-sql": {
-      "count": 2
+      "count": 1
     }
   },
   "src/lib/daily-logs/log-followups-server.ts": {
     "compass-core/owned-table-import": {
-      "count": 3
-    }
-  },
-  "src/lib/daily-logs/reminders-server.ts": {
-    "compass-core/owned-table-import": {
-      "count": 2
+      "count": 1
     }
   },
   "src/lib/domain/access-requests/queries.ts": {
@@ -935,47 +873,22 @@
       "count": 3
     }
   },
-  "src/lib/email/gmail-inbound.ts": {
-    "compass-core/owned-table-import": {
-      "count": 2
-    }
-  },
   "src/lib/email/invitation-delivery.ts": {
     "compass-core/owned-table-import": {
-      "count": 5
-    },
-    "compass-core/role-literal-compare": {
-      "count": 4
+      "count": 1
     }
   },
   "src/lib/email/invitation-recipient.ts": {
     "compass-core/owned-table-import": {
-      "count": 8
-    },
-    "compass-core/role-literal-compare": {
-      "count": 3
-    }
-  },
-  "src/lib/email/project-email-participants.ts": {
-    "compass-core/owned-table-import": {
-      "count": 4
-    },
-    "compass-core/owned-table-raw-sql": {
-      "count": 1
-    },
-    "compass-core/role-literal-compare": {
-      "count": 1
+      "count": 6
     }
   },
   "src/lib/email/project-inbound-routing.ts": {
     "compass-core/owned-table-import": {
-      "count": 3
+      "count": 1
     }
   },
   "src/lib/email/project-message-routing.ts": {
-    "compass-core/owned-table-import": {
-      "count": 3
-    },
     "compass-core/owned-table-raw-sql": {
       "count": 2
     }
@@ -985,22 +898,7 @@
       "count": 2
     }
   },
-  "src/lib/email/staff-sender.ts": {
-    "compass-core/owned-table-import": {
-      "count": 3
-    }
-  },
   "src/lib/email/tracked-record-replies.ts": {
-    "compass-core/owned-table-import": {
-      "count": 1
-    }
-  },
-  "src/lib/financials/sage-billing-check.ts": {
-    "compass-core/owned-table-import": {
-      "count": 3
-    }
-  },
-  "src/lib/financials/sage-pay-request-sync.ts": {
     "compass-core/owned-table-import": {
       "count": 1
     }
@@ -1015,21 +913,6 @@
       "count": 2
     }
   },
-  "src/lib/google/calendar/policy.ts": {
-    "compass-core/role-literal-compare": {
-      "count": 4
-    }
-  },
-  "src/lib/google/calendar/project-policy.ts": {
-    "compass-core/role-literal-compare": {
-      "count": 4
-    }
-  },
-  "src/lib/google/calendar/sync.ts": {
-    "compass-core/owned-table-import": {
-      "count": 1
-    }
-  },
   "src/lib/google/mapper.ts": {
     "compass-core/role-literal-compare": {
       "count": 2
@@ -1040,49 +923,19 @@
       "count": 1
     }
   },
-  "src/lib/google/project-document-drive.ts": {
-    "compass-core/owned-table-import": {
-      "count": 1
-    }
-  },
-  "src/lib/google/project-workspace.ts": {
-    "compass-core/owned-table-import": {
-      "count": 1
-    }
-  },
   "src/lib/goto/inbound.ts": {
     "compass-core/owned-table-import": {
-      "count": 3
-    }
-  },
-  "src/lib/help/index.ts": {
-    "compass-core/role-literal-compare": {
-      "count": 4
+      "count": 1
     }
   },
   "src/lib/internal-contact-provisioning.ts": {
     "compass-core/owned-table-import": {
-      "count": 2
-    }
-  },
-  "src/lib/internal-duties/recurring-data.ts": {
-    "compass-core/owned-table-import": {
       "count": 1
-    }
-  },
-  "src/lib/jarvis/feedback-review-request.ts": {
-    "compass-core/owned-table-import": {
-      "count": 2
-    }
-  },
-  "src/lib/jarvis/feedback-status-update.ts": {
-    "compass-core/owned-table-import": {
-      "count": 2
     }
   },
   "src/lib/job-workflows/server.ts": {
     "compass-core/owned-table-import": {
-      "count": 2
+      "count": 1
     }
   },
   "src/lib/listening-playlist-context.ts": {
@@ -1093,19 +946,6 @@
   "src/lib/mcp/tool-adapter.ts": {
     "compass-core/owned-table-relational-query": {
       "count": 4
-    },
-    "compass-core/role-literal-compare": {
-      "count": 4
-    }
-  },
-  "src/lib/morning-plan/server.ts": {
-    "compass-core/owned-table-import": {
-      "count": 2
-    }
-  },
-  "src/lib/my-compass-calendar/sync.ts": {
-    "compass-core/owned-table-import": {
-      "count": 3
     }
   },
   "src/lib/notifications/create-event.ts": {

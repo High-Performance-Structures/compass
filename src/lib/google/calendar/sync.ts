@@ -7,10 +7,10 @@ import {
   googleCalendarEvents,
   googleCalendarSelections,
   googleProjectCalendars,
-  users,
   workCalendarEventAttendees,
   workCalendarEvents,
 } from "@/db/schema"
+import { peopleView } from "@/lib/domain/identity/views"
 import { decrypt } from "@/lib/crypto"
 import { updateGoogleCalendarConnection, updateGoogleCalendarSelection } from "@/lib/domain/calendars/store"
 import { insertWorkCalendarEvent, updateWorkCalendarEvent } from "@/lib/domain/work-calendar/store"
@@ -28,6 +28,8 @@ import {
 } from "@/lib/google/calendar/client"
 import { refreshGoogleAccessToken } from "@/lib/google/calendar/oauth"
 import { googleEventIdForCompass } from "@/lib/google/calendar/sync-policy"
+
+const accounts = peopleView()
 
 type Database = ReturnType<typeof getDb>
 
@@ -491,9 +493,9 @@ export async function publishWorkCalendarEventToGoogle(
         )
       : null
   const attendeeRows = await db
-    .select({ email: users.email })
+    .select({ email: accounts.email })
     .from(workCalendarEventAttendees)
-    .innerJoin(users, eq(users.id, workCalendarEventAttendees.userId))
+    .innerJoin(accounts, eq(accounts.id, workCalendarEventAttendees.userId))
     .where(eq(workCalendarEventAttendees.eventId, eventId))
   const input: GoogleCalendarEventWrite = {
     summary: event.title,

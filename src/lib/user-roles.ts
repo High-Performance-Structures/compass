@@ -243,3 +243,18 @@ export function isInternalStaffRole(role: string): boolean {
       return false
   }
 }
+
+/** The full administrator only; secondary admins are excluded. */
+export function isAdminRole(role: string | null | undefined): boolean {
+  return role === "admin"
+}
+
+/** The stored owner account role ("client") alone; isOwnerRole also accepts "owner". */
+export function isClientRole(role: string | null | undefined): boolean {
+  return role === "client"
+}
+
+/** A subcontractor (trade doing work), not a supplier. */
+export function isSubcontractorRole(role: string | null | undefined): boolean {
+  return role === "subcontractor"
+}

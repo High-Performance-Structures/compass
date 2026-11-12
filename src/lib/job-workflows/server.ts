@@ -9,8 +9,8 @@ import {
   projectOperations,
   projects,
   scheduleTasks,
-  users,
 } from "@/db/schema"
+import { peopleView } from "@/lib/domain/identity/views"
 import { contractPackets } from "@/db/schema-contracts"
 import { projectEstimates } from "@/db/schema-estimates"
 import { projectWorkflowChecks } from "@/db/schema-job-workflows"
@@ -21,6 +21,8 @@ import type { WorkflowCheck, WorkflowFacts, WorkflowLayout, WorkflowOverrides } 
 import { resolvedProjectDepartment, type ProjectDepartment } from "@/lib/project-branding"
 import { contractEstimateConditions } from "@/lib/estimates/estimate-family"
 
+const accounts = peopleView()
+
 type Db = ReturnType<typeof getDb>
 
 /** Ticked items on a job, keyed by `${stepId}.${itemId}`. */
@@ -29,13 +31,13 @@ export async function loadWorkflowChecks(db: Db, organizationId: string, project
     .select({
       itemKey: projectWorkflowChecks.itemKey,
       checkedAt: projectWorkflowChecks.checkedAt,
-      displayName: users.displayName,
-      firstName: users.firstName,
-      lastName: users.lastName,
+      displayName: accounts.displayName,
+      firstName: accounts.firstName,
+      lastName: accounts.lastName,
       carriedFromNumber: projects.projectNumber,
     })
     .from(projectWorkflowChecks)
-    .leftJoin(users, eq(users.id, projectWorkflowChecks.checkedBy))
+    .leftJoin(accounts, eq(accounts.id, projectWorkflowChecks.checkedBy))
     .leftJoin(projects, eq(projects.id, projectWorkflowChecks.carriedFromProjectId))
     .where(and(eq(projectWorkflowChecks.projectId, projectId), eq(projectWorkflowChecks.organizationId, organizationId)))
   return new Map(

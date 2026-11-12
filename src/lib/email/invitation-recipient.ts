@@ -2,10 +2,14 @@ import "server-only"
 
 import { and, eq, sql } from "drizzle-orm"
 import type { getDb } from "@/db"
-import { customerContacts, customers, internalContacts, organizationMembers, projectContacts, projects, users, vendorContacts, vendors } from "@/db/schema"
+import { customerContacts, customers, internalContacts, projectContacts, projects, vendorContacts, vendors } from "@/db/schema"
+import { membershipsView, peopleView } from "@/lib/domain/identity/views"
 import { projectContactNeedsPersonForInvitation } from "@/lib/project-contact-access-status"
-import { isInternalStaffRole } from "@/lib/user-roles"
+import { isClientRole, isInternalStaffRole, isVendorRole } from "@/lib/user-roles"
 import { resolvedContactColumns, withContactDirectory } from "@/lib/domain/contacts/resolved-columns"
+
+const memberships = membershipsView()
+const accounts = peopleView()
 
 type Db = ReturnType<typeof getDb>
 type Person = { readonly email: string | null; readonly userId: string | null }
@@ -29,7 +33,7 @@ export async function currentInvitationRecipient(db: Db, input: {
   )).$dynamic(), input.organizationId).get()
   if (!contact || projectContactNeedsPersonForInvitation(contact)) return null
   if (!isInternalStaffRole(input.role) && contact.contactType !== input.role &&
-    !(input.role === "client" && contact.contactType === "owner")) return null
+    !(isClientRole(input.role) && contact.contactType === "owner")) return null
   let identity: Person | undefined = { email: contact.email, userId: null }
   if (contact.customerContactId) {
     const parentId = contact.customerId ?? (contact.sourceEntityType === "customer" ? contact.sourceEntityId : null)
@@ -66,19 +70,19 @@ export async function currentInvitationRecipient(db: Db, input: {
   }
   if (!identity) return null
   if (identity.userId) {
-    const linked = await db.select({ email: users.email, active: users.isActive, id: users.id, role: organizationMembers.role }).from(users)
-      .innerJoin(organizationMembers, and(eq(organizationMembers.userId, users.id), eq(organizationMembers.organizationId, input.organizationId)))
-      .where(eq(users.id, identity.userId)).get()
+    const linked = await db.select({ email: accounts.email, active: accounts.isActive, id: accounts.id, role: memberships.role }).from(accounts)
+      .innerJoin(memberships, and(eq(memberships.userId, accounts.id), eq(memberships.organizationId, input.organizationId)))
+      .where(eq(accounts.id, identity.userId)).get()
     if (!linked || (!linked.active && linked.id.startsWith("user_"))) return null
-    if (contact.contactType === "owner" && linked.role !== "client") return null
-    if (["supplier", "subcontractor"].includes(contact.contactType) && !["supplier", "subcontractor"].includes(linked.role)) return null
+    if (contact.contactType === "owner" && !isClientRole(linked.role)) return null
+    if (["supplier", "subcontractor"].includes(contact.contactType) && !isVendorRole(linked.role)) return null
     if (contact.contactType === "internal" && !isInternalStaffRole(linked.role)) return null
     return linked.email.trim().toLowerCase()
   }
   const email = identity.email?.trim().toLowerCase()
   if (!email) return null
-  const account = await db.select({ id: users.id, active: users.isActive }).from(users)
-    .where(sql`lower(trim(${users.email})) = ${email}`).get()
+  const account = await db.select({ id: accounts.id, active: accounts.isActive }).from(accounts)
+    .where(sql`lower(trim(${accounts.email})) = ${email}`).get()
   if (account && !account.active && account.id.startsWith("user_")) return null
   return email
 }

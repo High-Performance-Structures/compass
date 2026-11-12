@@ -3,13 +3,17 @@ import "server-only"
 import { and, eq } from "drizzle-orm"
 import { getWorkOS, withAuth } from "@workos-inc/authkit-nextjs"
 import type { getDb } from "@/db"
-import { organizationMembers, organizations, users } from "@/db/schema"
+import { companiesView, membershipsView, peopleView } from "@/lib/domain/identity/views"
 import { googleAuth } from "@/db/schema-google"
 import { isInternalStaffRole } from "@/lib/user-roles"
 import { isValidRecipientEmail, normalizeRecipientEmail } from "./recipient-options"
 import { replyMailboxEmail } from "./reply-tracking"
 import { getCompassSystemSender } from "./compass-email"
 import { findSenderAddressConflict } from "@/lib/sender-identity-guard"
+
+const memberships = membershipsView()
+const companies = companiesView()
+const accounts = peopleView()
 
 export type StaffEmailSender = {
   readonly address: string
@@ -28,18 +32,18 @@ export async function resolveStaffEmailSender(input: {
   | { readonly success: false; readonly error: string }
 > {
   const staff = await input.db.select({
-    email: users.email,
-    googleEmail: users.googleEmail,
-    name: users.displayName,
-    role: organizationMembers.role,
-    organizationType: organizations.type,
-  }).from(users)
-    .innerJoin(organizationMembers, and(
-      eq(organizationMembers.userId, users.id),
-      eq(organizationMembers.organizationId, input.organizationId),
+    email: accounts.email,
+    googleEmail: accounts.googleEmail,
+    name: accounts.displayName,
+    role: memberships.role,
+    organizationType: companies.type,
+  }).from(accounts)
+    .innerJoin(memberships, and(
+      eq(memberships.userId, accounts.id),
+      eq(memberships.organizationId, input.organizationId),
     ))
-    .innerJoin(organizations, eq(organizations.id, organizationMembers.organizationId))
-    .where(and(eq(users.id, input.userId), eq(users.isActive, true))).get()
+    .innerJoin(companies, eq(companies.id, memberships.organizationId))
+    .where(and(eq(accounts.id, input.userId), eq(accounts.isActive, true))).get()
   if (!staff || staff.organizationType !== "internal" || !isInternalStaffRole(staff.role)) {
     return { success: false, error: "Only active staff in this organization can send correspondence." }
   }

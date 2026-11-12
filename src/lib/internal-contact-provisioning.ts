@@ -1,9 +1,12 @@
 import { and, eq } from "drizzle-orm"
 
 import { getDb } from "@/db"
-import { internalContacts, organizations } from "@/db/schema"
+import { internalContacts } from "@/db/schema"
+import { companiesView } from "@/lib/domain/identity/views"
 import { insertInternalContactIfMissing } from "@/lib/domain/contacts/store"
 import { isInternalStaffRole } from "@/lib/user-roles"
+
+const companies = companiesView()
 
 /** Provision a directory identity once; later profile edits do not overwrite Sage-owned fields. */
 export async function ensureInternalContactForStaff(
@@ -19,9 +22,9 @@ export async function ensureInternalContactForStaff(
 ): Promise<void> {
   if (!isInternalStaffRole(input.role)) return
   const organization = await db
-    .select({ type: organizations.type })
-    .from(organizations)
-    .where(eq(organizations.id, input.organizationId))
+    .select({ type: companies.type })
+    .from(companies)
+    .where(eq(companies.id, input.organizationId))
     .get()
   if (organization?.type !== "internal") return
 
