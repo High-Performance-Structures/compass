@@ -15,8 +15,3 @@ export function statusLabel(value: string): string {
     .map((part) => `${part.slice(0, 1).toUpperCase()}${part.slice(1)}`)
     .join(" ")
 }
-
-export function purchaseOrderStatusAfterEmail(status: string): string {
-  const normalized = normalizedStatus(status)
-  return normalized === "draft" || normalized === "approved" ? "sent" : status
-}

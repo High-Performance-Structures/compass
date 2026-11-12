@@ -31,8 +31,10 @@ import {
 import {
   deleteOperations,
   insertOperations,
+  moveStatusAutomatically,
   operationInsertQuery,
   operationUpdateQuery,
+  setProcurementStatusByStaff,
   updateOperations,
   type OperationInsert,
 } from "@/lib/domain/operations/store"
@@ -91,6 +93,8 @@ export async function updateProjectOperationStatus(
   operationId: string,
   operationKind: ProjectOperationKind,
   requestedStatus: string,
+  /** The status the person saw; defaults to the one read here. */
+  expectedStatus?: string,
 ): Promise<ProjectOperationActionResult> {
   try {
     if (operationKind === "rfq" && requestedStatus === "awarded") {
@@ -131,15 +135,22 @@ export async function updateProjectOperationStatus(
       }
     }
 
-    await updateOperations(
-      db,
-      and(
-        eq(projectOperations.id, operationId),
-        eq(projectOperations.projectId, projectId),
-        eq(projectOperations.sourceRecordType, operationKind),
-      ),
-      { status: requestedStatus, updatedAt: new Date().toISOString() },
-    )
+    // Staff may pick any of the company's statuses; the write only lands if
+    // nobody changed the status since this person saw it.
+    const changed = await setProcurementStatusByStaff(db, {
+      kind: operationKind,
+      projectId,
+      operationId,
+      expected: expectedStatus ?? existing.status,
+      status: requestedStatus,
+      updatedAt: new Date().toISOString(),
+    })
+    if (!changed) {
+      return {
+        success: false,
+        error: `This ${operationKind === "purchase_order" ? "purchase order" : "RFQ"} changed. Refresh the page and try again.`,
+      }
+    }
     if (operationKind === "purchase_order") {
       await advanceSelectionsForPurchaseOrder(db, {
         projectId,
@@ -162,6 +173,31 @@ export async function updateProjectOperationStatus(
       await markPaperTrailDue(db, { projectId, recordType: "purchase_order", recordId: operationId })
     }
     return { success: true, id: operationId }
+  } catch (error) {
+    return { success: false, error: errorMessage(error, "Failed to update status.") }
+  }
+}
+
+/**
+ * Sharing a draft RFQ's page or printout marks it sent (the "send" event).
+ * Fails when the RFQ moved past draft or sent meanwhile (voided, awarded, ...).
+ */
+export async function markRfqSentForSharing(projectId: string, rfqId: string): Promise<ProjectOperationActionResult> {
+  try {
+    const { db } = await operationsContext(projectId, "rfqs", true)
+    const existing = await loadProjectOperation(db, projectId, rfqId, "rfq")
+    if (!existing) return { success: false, error: "RFQ not found." }
+    const sent = await moveStatusAutomatically(db, {
+      projectId,
+      operationId: rfqId,
+      automation: { kind: "rfq", event: "send" },
+      stored: existing.status,
+      updatedAt: new Date().toISOString(),
+    })
+    if (!sent) return { success: false, error: "This RFQ changed. Refresh the page before sharing it." }
+    revalidateRfqPaths(projectId)
+    revalidatePath(`/preview/projects/${projectId}/sub-vendor/rfqs`)
+    return { success: true, id: rfqId }
   } catch (error) {
     return { success: false, error: errorMessage(error, "Failed to update status.") }
   }

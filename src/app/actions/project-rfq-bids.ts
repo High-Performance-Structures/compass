@@ -24,7 +24,7 @@ import {
 import type { AuthUser } from "@/lib/auth"
 import { orgContext, type Db } from "@/lib/server/action-context"
 import {
-  operationUpdateQuery,
+  automaticStatusQuery,
   rfqBidApprovalFromSelectStatement,
   rfqBidImportFromSelectStatement,
   rfqBidImportLineFromSelectStatement,
@@ -292,23 +292,25 @@ export async function approveProjectRfqBid(
           WHERE ${projectRfqBidApprovals.rfqOperationId} = ${rfqOperationId}
         )`
     )
-    await access.db.batch([
-      approvalInsert,
-      operationUpdateQuery(
-        access.db,
-        and(
-          eq(projectOperations.id, rfqOperationId),
-          eq(projectOperations.projectId, projectId),
-          eq(projectOperations.status, "response_received"),
-          eq(projectOperations.updatedAt, rfq.updatedAt),
-          sql`EXISTS (
-            SELECT 1 FROM ${projectRfqBidApprovals}
-            WHERE ${projectRfqBidApprovals.id} = ${id}
-          )`
-        ),
-        { status: "awarded", updatedAt: now }
+    // Awarding lands with the approval or not at all (the approval must exist).
+    const award = automaticStatusQuery(access.db, {
+      projectId,
+      operationId: rfqOperationId,
+      automation: { kind: "rfq", event: "award" },
+      stored: rfq.status,
+      where: and(
+        eq(projectOperations.updatedAt, rfq.updatedAt),
+        sql`EXISTS (
+          SELECT 1 FROM ${projectRfqBidApprovals}
+          WHERE ${projectRfqBidApprovals.id} = ${id}
+        )`
       ),
-    ])
+      updatedAt: now,
+    })
+    if (award === null) {
+      return { success: false, error: "A submitted vendor quote is required before approval." }
+    }
+    await access.db.batch([approvalInsert, award])
     const completedApproval = await access.db
       .select({
         id: projectRfqBidApprovals.id,
