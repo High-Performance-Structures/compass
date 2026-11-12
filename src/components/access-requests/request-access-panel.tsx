@@ -156,7 +156,12 @@ function RequestForm({ data }: { readonly data: RequestAccessPageData }): React.
           placeholder="Choose a company"
           searchPlaceholder="Search companies"
           emptyMessage="No company by that name is taking requests."
-          options={data.companies.map((company) => ({ value: company.id, label: company.name }))}
+          options={data.companies.map((company) => ({
+            value: company.id,
+            label: company.name,
+            // People may know the company by a department name or dba; the search covers these too.
+            ...(company.alsoKnownAs.length > 0 ? { description: `Also known as ${company.alsoKnownAs.join(", ")}` } : {}),
+          }))}
           value={organizationId}
           onValueChange={setOrganizationId}
           disabled={pending}
