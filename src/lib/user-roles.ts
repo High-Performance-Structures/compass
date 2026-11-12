@@ -243,3 +243,18 @@ export function isInternalStaffRole(role: string): boolean {
       return false
   }
 }
+
+/** The client account role only; unlike isOwnerRole, not the project-level "owner". */
+export function isClientRole(role: string | null | undefined): boolean {
+  return role === "client"
+}
+
+/** Runs a job day to day: project manager or project administrator. */
+export function isProjectLeadRole(role: string | null | undefined): boolean {
+  return role === "project_manager" || role === "project_administrator"
+}
+
+/** A conversation channel member role that may moderate: the channel's owner or a moderator. */
+export function isChannelModeratorRole(role: string | null | undefined): boolean {
+  return role === "owner" || role === "moderator"
+}

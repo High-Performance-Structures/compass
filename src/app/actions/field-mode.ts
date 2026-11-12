@@ -15,11 +15,8 @@ import {
   getProjectDailyLogWorkspace,
 } from "@/app/actions/project-field"
 import { readProjectSchedule } from "@/lib/domain/schedule/access"
-import {
-  organizationMembers,
-  projectOperations,
-  users,
-} from "@/db/schema"
+import { projectOperations } from "@/db/schema"
+import { membershipsView, peopleView } from "@/lib/domain/identity/views"
 import { channels } from "@/db/schema-conversations"
 import { phoneDailyLogForm } from "@/lib/daily-logs/cost-code-lines"
 import { loadFieldMachines } from "@/lib/equipment/field"
@@ -38,6 +35,9 @@ import {
   isInternalStaffRole,
   userRoleLabel,
 } from "@/lib/user-roles"
+
+const people = peopleView()
+const memberships = membershipsView()
 
 type FieldMutationResult =
   | { readonly success: true }
@@ -100,23 +100,23 @@ export async function getFieldProjectPacket(
   const contactPromise = user.organizationId
     ? db
         .select({
-          id: users.id,
-          name: users.displayName,
-          email: users.email,
-          role: users.role,
+          id: people.id,
+          name: people.displayName,
+          email: people.email,
+          role: people.role,
         })
-        .from(users)
+        .from(people)
         .innerJoin(
-          organizationMembers,
-          eq(organizationMembers.userId, users.id)
+          memberships,
+          eq(memberships.userId, people.id)
         )
         .where(
           and(
-            eq(users.isActive, true),
-            eq(organizationMembers.organizationId, user.organizationId)
+            eq(people.isActive, true),
+            eq(memberships.organizationId, user.organizationId)
           )
         )
-        .orderBy(asc(users.displayName), asc(users.email))
+        .orderBy(asc(people.displayName), asc(people.email))
     : Promise.resolve([])
 
   const [schedule, operationTasks, dailyLogWorkspace, channelResult, fileResult, notificationResult, contactRows] =

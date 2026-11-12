@@ -5,7 +5,7 @@ import { revalidatePath } from "next/cache"
 import { z } from "zod/v4"
 
 import { getDb } from "@/db"
-import { organizationMembers, users } from "@/db/schema"
+import { membershipsView, peopleView } from "@/lib/domain/identity/views"
 import {
   feedbackDeskItems,
   feedbackMaintenanceRuns,
@@ -25,6 +25,9 @@ import { feedbackBugTransitionIsBlocked } from "@/lib/jarvis/feedback-lifecycle-
 import { canManageUserAccess } from "@/lib/permissions"
 import { isInternalStaffRole } from "@/lib/user-roles"
 import { insertJarvisBridgeEvents, updateFeedbackDeskItems } from "@/lib/domain/feedback/store"
+
+const people = peopleView()
+const memberships = membershipsView()
 
 const updateSchema = z.object({
   id: z.string().min(1),
@@ -155,17 +158,17 @@ export async function getFeedbackAdminOverview(): Promise<FeedbackAdminOverviewR
           eq(feedbackDeskItems.organizationId, admin.organizationId),
         ).orderBy(desc(feedbackDeskItems.updatedAt)).limit(500),
         db.select({
-          id: users.id,
-          displayName: users.displayName,
-          firstName: users.firstName,
-          lastName: users.lastName,
-          email: users.email,
-          role: organizationMembers.role,
-        }).from(organizationMembers)
-          .innerJoin(users, eq(users.id, organizationMembers.userId))
+          id: people.id,
+          displayName: people.displayName,
+          firstName: people.firstName,
+          lastName: people.lastName,
+          email: people.email,
+          role: memberships.role,
+        }).from(memberships)
+          .innerJoin(people, eq(people.id, memberships.userId))
           .where(and(
-            eq(organizationMembers.organizationId, admin.organizationId),
-            eq(users.isActive, true),
+            eq(memberships.organizationId, admin.organizationId),
+            eq(people.isActive, true),
           )),
         db.select().from(feedbackServiceHealth).where(
           eq(feedbackServiceHealth.organizationId, admin.organizationId),
@@ -523,16 +526,16 @@ export async function updateFeedbackAdminItem(
     if (evidenceError) return { success: false, error: evidenceError }
     const assignee = parsed.assignedToUserId
       ? await db.select({
-          id: users.id,
-          displayName: users.displayName,
-          email: users.email,
-          role: organizationMembers.role,
-        }).from(organizationMembers)
-          .innerJoin(users, eq(users.id, organizationMembers.userId))
+          id: people.id,
+          displayName: people.displayName,
+          email: people.email,
+          role: memberships.role,
+        }).from(memberships)
+          .innerJoin(people, eq(people.id, memberships.userId))
           .where(and(
-            eq(organizationMembers.organizationId, admin.organizationId),
-            eq(users.id, parsed.assignedToUserId),
-            eq(users.isActive, true),
+            eq(memberships.organizationId, admin.organizationId),
+            eq(people.id, parsed.assignedToUserId),
+            eq(people.isActive, true),
           )).get()
       : null
     if (

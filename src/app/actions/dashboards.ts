@@ -5,7 +5,7 @@ import { projects } from "@/db/schema"
 import { requireOrg } from "@/lib/org-scope"
 import { isDemoUser } from "@/lib/demo"
 import { insertCustomDashboard, updateCustomDashboard } from "@/lib/domain/settings/store"
-import { isInternalStaffRole } from "@/lib/user-roles"
+import { seesStaffViews } from "@/lib/user-roles"
 import { revalidatePath } from "next/cache"
 import {
   deleteCustomDashboardForUser,
@@ -271,7 +271,7 @@ export async function executeDashboardQueries(
           break
         }
         case "schedule_tasks": {
-          if (!isInternalStaffRole(user.role) && user.role !== "developer") {
+          if (!seesStaffViews(user.role)) {
             dataContext[q.key] = { data: [], count: 0 }
             break
           }

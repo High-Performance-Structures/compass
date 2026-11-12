@@ -7,11 +7,10 @@ import { getDb } from "@/db"
 import {
   customerContacts,
   customers,
-  organizationMembers,
-  users,
   vendorContacts,
   vendors,
 } from "@/db/schema"
+import { membershipsView, peopleView } from "@/lib/domain/identity/views"
 import { requireAuth } from "@/lib/auth"
 import { getCloudflareContext } from "@/lib/db"
 import { contactAccountLinkStatements } from "@/lib/domain/contacts/store"
@@ -19,6 +18,10 @@ import { isDemoUser } from "@/lib/demo"
 import { requireFeaturePermission } from "@/lib/permission-enforcement"
 import { canManageUserAccess } from "@/lib/permissions"
 import { requireOrg } from "@/lib/org-scope"
+import { isClientRole, isVendorRole } from "@/lib/user-roles"
+
+const people = peopleView()
+const memberships = membershipsView()
 
 export type DirectoryPersonKind = "client_person" | "vendor_person"
 
@@ -38,9 +41,7 @@ function featureFor(kind: DirectoryPersonKind): "customers" | "vendors" {
 }
 
 function allowedRole(kind: DirectoryPersonKind, role: string): boolean {
-  return kind === "client_person"
-    ? role === "client"
-    : role === "subcontractor" || role === "supplier"
+  return kind === "client_person" ? isClientRole(role) : isVendorRole(role)
 }
 
 async function requireLinkManager(kind: DirectoryPersonKind): Promise<{
@@ -63,15 +64,15 @@ export async function listDirectoryAccountOptions(
   const { env } = await getCloudflareContext()
   const db = getDb(env.DB)
   const rows = await db.select({
-    id: users.id,
-    displayName: users.displayName,
-    firstName: users.firstName,
-    lastName: users.lastName,
-    email: users.email,
-    role: organizationMembers.role,
-  }).from(organizationMembers)
-    .innerJoin(users, eq(users.id, organizationMembers.userId))
-    .where(eq(organizationMembers.organizationId, manager.organizationId))
+    id: people.id,
+    displayName: people.displayName,
+    firstName: people.firstName,
+    lastName: people.lastName,
+    email: people.email,
+    role: memberships.role,
+  }).from(memberships)
+    .innerJoin(people, eq(people.id, memberships.userId))
+    .where(eq(memberships.organizationId, manager.organizationId))
   return rows.filter((row) => allowedRole(kind, row.role)).map((row) => ({
     id: row.id,
     name: row.displayName?.trim() ||
@@ -119,11 +120,11 @@ export async function linkDirectoryPersonAccount(
     if (person.userId === nextUserId) return { success: true, userId: nextUserId }
 
     if (nextUserId !== null) {
-      const account = await db.select({ role: organizationMembers.role })
-        .from(organizationMembers)
+      const account = await db.select({ role: memberships.role })
+        .from(memberships)
         .where(and(
-          eq(organizationMembers.organizationId, manager.organizationId),
-          eq(organizationMembers.userId, nextUserId)
+          eq(memberships.organizationId, manager.organizationId),
+          eq(memberships.userId, nextUserId)
         )).get()
       if (!account || !allowedRole(kind, account.role)) {
         return { success: false, error: "Choose an account with the matching client or vendor role." }

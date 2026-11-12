@@ -4,11 +4,8 @@ import { and, desc, eq, or, sql } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 
 import { getDb } from "@/db"
-import {
-  cherishPulseResponses,
-  organizationMembers,
-  users,
-} from "@/db/schema"
+import { cherishPulseResponses } from "@/db/schema"
+import { membershipsView, peopleView } from "@/lib/domain/identity/views"
 import { getCloudflareContext } from "@/lib/db"
 import { requireAuth, type AuthUser } from "@/lib/auth"
 import { requireOrg } from "@/lib/org-scope"
@@ -16,6 +13,9 @@ import { canUseFieldDesk } from "@/lib/permissions"
 import { canFeature } from "@/lib/permission-enforcement"
 import { isInternalStaffRole } from "@/lib/user-roles"
 import type { CherishPulseResponseType, CherishValue } from "@/lib/cherish/pulse-types"
+
+const people = peopleView()
+const memberships = membershipsView()
 
 export type { CherishPulseResponseType, CherishValue } from "@/lib/cherish/pulse-types"
 
@@ -738,16 +738,16 @@ async function findEligibleRecipient(
 ): Promise<{ readonly id: string } | null> {
   const recipient = await db
     .select({
-      id: users.id,
-      role: organizationMembers.role,
+      id: people.id,
+      role: memberships.role,
     })
-    .from(organizationMembers)
-    .innerJoin(users, eq(users.id, organizationMembers.userId))
+    .from(memberships)
+    .innerJoin(people, eq(people.id, memberships.userId))
     .where(
       and(
-        eq(organizationMembers.organizationId, organizationId),
-        eq(organizationMembers.userId, recipientId),
-        eq(users.isActive, true),
+        eq(memberships.organizationId, organizationId),
+        eq(memberships.userId, recipientId),
+        eq(people.isActive, true),
       ),
     )
     .get()

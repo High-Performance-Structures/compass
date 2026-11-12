@@ -14,7 +14,8 @@ import {
   type NewChannelMember,
   type NewChannelReadState,
 } from "@/db/schema-conversations"
-import { organizationMembers, projects, users } from "@/db/schema"
+import { projects } from "@/db/schema"
+import { membershipsView, peopleView } from "@/lib/domain/identity/views"
 import { getCurrentUser } from "@/lib/auth"
 import { requirePermission } from "@/lib/permissions"
 import { revalidatePath } from "next/cache"
@@ -27,6 +28,9 @@ import {
 } from "@/lib/conversations/direct-channel"
 import { insertChannel, insertChannelMembers, insertReadStates } from "@/lib/domain/conversations/store"
 import { readChannelForViewer, readVisibleChannels } from "@/lib/domain/conversations/channels"
+
+const people = peopleView()
+const memberships = membershipsView()
 
 async function ensureChannelMember(
   db: ReturnType<typeof getDb>,
@@ -90,22 +94,22 @@ export async function listDirectMessageRecipients() {
     const db = getDb(env.DB)
     const rows = await db
       .select({
-        id: users.id,
-        name: users.displayName,
-        email: users.email,
-        avatarUrl: users.avatarUrl,
-        role: organizationMembers.role,
+        id: people.id,
+        name: people.displayName,
+        email: people.email,
+        avatarUrl: people.avatarUrl,
+        role: memberships.role,
       })
-      .from(users)
+      .from(people)
       .innerJoin(
-        organizationMembers,
+        memberships,
         and(
-          eq(organizationMembers.userId, users.id),
-          eq(organizationMembers.organizationId, organizationId)
+          eq(memberships.userId, people.id),
+          eq(memberships.organizationId, organizationId)
         )
       )
-      .where(and(ne(users.id, user.id), eq(users.isActive, true)))
-      .orderBy(users.displayName, users.email)
+      .where(and(ne(people.id, user.id), eq(people.isActive, true)))
+      .orderBy(people.displayName, people.email)
 
     return {
       success: true,
@@ -154,21 +158,21 @@ export async function createDirectMessage(targetUserIds: readonly string[]) {
     const db = getDb(env.DB)
     const targets = await db
       .select({
-        id: users.id,
-        name: users.displayName,
-        email: users.email,
-        role: organizationMembers.role,
+        id: people.id,
+        name: people.displayName,
+        email: people.email,
+        role: memberships.role,
       })
-      .from(users)
+      .from(people)
       .innerJoin(
-        organizationMembers,
+        memberships,
         and(
-          eq(organizationMembers.userId, users.id),
-          eq(organizationMembers.organizationId, organizationId)
+          eq(memberships.userId, people.id),
+          eq(memberships.organizationId, organizationId)
         )
       )
       .where(
-        and(inArray(users.id, requestedTargetIds), eq(users.isActive, true))
+        and(inArray(people.id, requestedTargetIds), eq(people.isActive, true))
       )
 
     if (

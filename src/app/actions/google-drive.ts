@@ -3,7 +3,7 @@
 import { and, eq } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 
-import { organizationMembers, users } from "@/db/schema"
+import { membershipsView, peopleView } from "@/lib/domain/identity/views"
 import { actionFailure, errorMessage } from "@/lib/action-result"
 import { recordActivityEvent } from "@/lib/activity-log"
 import { encrypt } from "@/lib/crypto"
@@ -25,6 +25,9 @@ import {
   normalizeEmailAddress,
 } from "@/lib/sender-identity-guard"
 import { requireUserContext, userContext } from "@/lib/server/action-context"
+
+const people = peopleView()
+const memberships = membershipsView()
 
 /*
  * Connecting Compass to the company's Google Workspace (Settings): the
@@ -158,17 +161,17 @@ export async function updateUserGoogleEmail(userId: string, googleEmail: string 
 
     const target = await db
       .select({
-        id: users.id,
-        email: users.email,
-        googleEmail: users.googleEmail,
-        isActive: users.isActive,
+        id: people.id,
+        email: people.email,
+        googleEmail: people.googleEmail,
+        isActive: people.isActive,
       })
-      .from(users)
+      .from(people)
       .innerJoin(
-        organizationMembers,
-        and(eq(organizationMembers.userId, users.id), eq(organizationMembers.organizationId, organizationId))
+        memberships,
+        and(eq(memberships.userId, people.id), eq(memberships.organizationId, organizationId))
       )
-      .where(eq(users.id, userId))
+      .where(eq(people.id, userId))
       .get()
     if (!target || !target.isActive) {
       return actionFailure("User not found in this organization")

@@ -1,19 +1,4 @@
 {
-  "src/app/actions/account-deletion-admin.ts": {
-    "compass-core/owned-table-import": {
-      "count": 1
-    }
-  },
-  "src/app/actions/chat-messages.ts": {
-    "compass-core/owned-table-import": {
-      "count": 2
-    }
-  },
-  "src/app/actions/cherish-pulse.ts": {
-    "compass-core/owned-table-import": {
-      "count": 2
-    }
-  },
   "src/app/actions/client-company-join.ts": {
     "compass-core/owned-table-import": {
       "count": 1
@@ -21,15 +6,12 @@
   },
   "src/app/actions/client-follow-up.ts": {
     "compass-core/owned-table-import": {
-      "count": 2
+      "count": 1
     }
   },
   "src/app/actions/contact-account-links.ts": {
     "compass-core/owned-table-import": {
-      "count": 6
-    },
-    "compass-core/role-literal-compare": {
-      "count": 3
+      "count": 4
     }
   },
   "src/app/actions/contact-directory.ts": {
@@ -52,16 +34,6 @@
       "count": 1
     }
   },
-  "src/app/actions/conversations-realtime.ts": {
-    "compass-core/owned-table-import": {
-      "count": 1
-    }
-  },
-  "src/app/actions/conversations.ts": {
-    "compass-core/owned-table-import": {
-      "count": 2
-    }
-  },
   "src/app/actions/customer-people.ts": {
     "compass-core/owned-table-import": {
       "count": 2
@@ -72,77 +44,14 @@
       "count": 1
     }
   },
-  "src/app/actions/dashboard-overview.ts": {
-    "compass-core/role-literal-compare": {
-      "count": 1
-    }
-  },
   "src/app/actions/dashboards.ts": {
     "compass-core/owned-table-relational-query": {
       "count": 4
-    },
-    "compass-core/role-literal-compare": {
-      "count": 1
-    }
-  },
-  "src/app/actions/equipment.ts": {
-    "compass-core/owned-table-import": {
-      "count": 1
-    }
-  },
-  "src/app/actions/estimate-line-pricing.ts": {
-    "compass-core/owned-table-import": {
-      "count": 2
-    }
-  },
-  "src/app/actions/feedback-admin.ts": {
-    "compass-core/owned-table-import": {
-      "count": 2
-    }
-  },
-  "src/app/actions/feedback-requests.ts": {
-    "compass-core/role-literal-compare": {
-      "count": 1
-    }
-  },
-  "src/app/actions/field-cost-codes.ts": {
-    "compass-core/role-literal-compare": {
-      "count": 2
-    }
-  },
-  "src/app/actions/field-mode.ts": {
-    "compass-core/owned-table-import": {
-      "count": 2
-    }
-  },
-  "src/app/actions/google-drive.ts": {
-    "compass-core/owned-table-import": {
-      "count": 2
     }
   },
   "src/app/actions/greeting-card-recipients.ts": {
     "compass-core/owned-table-import": {
-      "count": 7
-    }
-  },
-  "src/app/actions/greeting-cards.ts": {
-    "compass-core/owned-table-import": {
-      "count": 1
-    }
-  },
-  "src/app/actions/inbound-sms-review.ts": {
-    "compass-core/owned-table-import": {
-      "count": 2
-    }
-  },
-  "src/app/actions/internal-duties.ts": {
-    "compass-core/owned-table-import": {
-      "count": 2
-    }
-  },
-  "src/app/actions/invites.ts": {
-    "compass-core/owned-table-import": {
-      "count": 3
+      "count": 5
     }
   },
   "src/app/actions/job-emails.ts": {
@@ -150,40 +59,9 @@
       "count": 1
     }
   },
-  "src/app/actions/listening-playlists.ts": {
-    "compass-core/owned-table-import": {
-      "count": 1
-    }
-  },
-  "src/app/actions/listening-room.ts": {
-    "compass-core/owned-table-import": {
-      "count": 1
-    }
-  },
-  "src/app/actions/message-search.ts": {
-    "compass-core/owned-table-import": {
-      "count": 1
-    },
-    "compass-core/role-literal-compare": {
-      "count": 1
-    }
-  },
-  "src/app/actions/my-compass-calendar.ts": {
-    "compass-core/owned-table-import": {
-      "count": 2
-    }
-  },
   "src/app/actions/my-contact-records.ts": {
     "compass-core/owned-table-import": {
       "count": 5
-    },
-    "compass-core/role-literal-compare": {
-      "count": 2
-    }
-  },
-  "src/app/actions/notifications.ts": {
-    "compass-core/role-literal-compare": {
-      "count": 4
     }
   },
   "src/app/actions/nutech-emails.ts": {
@@ -197,11 +75,6 @@
     }
   },
   "src/app/actions/nutech-order-overview.ts": {
-    "compass-core/owned-table-import": {
-      "count": 1
-    }
-  },
-  "src/app/actions/office-alerts.ts": {
     "compass-core/owned-table-import": {
       "count": 1
     }

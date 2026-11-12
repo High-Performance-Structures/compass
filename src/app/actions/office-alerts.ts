@@ -6,10 +6,10 @@ import { getDb } from "@/db"
 import {
   dailyLogPhotos,
   ownerProjectUpdates,
-  projectMembers,
   projectRfis,
   projects,
 } from "@/db/schema"
+import { projectMembersView } from "@/lib/domain/project/views"
 import { requireAuth } from "@/lib/auth"
 import { getCloudflareContext } from "@/lib/db"
 import { requireOrg } from "@/lib/org-scope"
@@ -20,6 +20,8 @@ import { recentMissingDailyLogs } from "@/lib/daily-logs/reminders-server"
 import { isOpenRecordStatus, recordStatusColor, recordStatusLabel } from "@/lib/domain/record-statuses/rules"
 import type { RecordStatusColor } from "@/lib/domain/record-statuses/statuses"
 import { loadRecordStatusList } from "@/lib/domain/record-statuses/store"
+
+const projectMemberships = projectMembersView()
 
 type OfficeAlertRfi = {
   readonly id: string
@@ -137,11 +139,11 @@ export async function getOfficeAlertQueue(): Promise<OfficeAlertQueue> {
           name: projects.name,
           projectNumber: projects.projectNumber,
         })
-        .from(projectMembers)
-        .innerJoin(projects, eq(projectMembers.projectId, projects.id))
+        .from(projectMemberships)
+        .innerJoin(projects, eq(projectMemberships.projectId, projects.id))
         .where(
           and(
-            eq(projectMembers.userId, user.id),
+            eq(projectMemberships.userId, user.id),
             eq(projects.organizationId, orgId)
           )
         )
