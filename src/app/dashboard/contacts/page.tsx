@@ -15,7 +15,7 @@ import type { ContactsBootstrap } from "@/components/contacts/contacts-bootstrap
 import { DEFAULT_RECORD_PAGE_QUERY } from "@/lib/record-page"
 import { listSheetFirstPageQuery } from "@/lib/domain/settings/list-sheets"
 
-const EMPTY_SUMMARY = { customerCount: 0, vendorCount: 0, internalCount: 0, vendorCategories: [] }
+const EMPTY_SUMMARY = { customerCount: 0, vendorCount: 0, internalCount: 0, vendorCategories: [], vendorTypes: [] }
 
 /**
  * Everything the first view needs, read once on the server: access, tab

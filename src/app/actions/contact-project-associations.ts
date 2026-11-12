@@ -10,7 +10,8 @@ import { isDemoOrg, isDemoUser } from "@/lib/demo"
 import { requireOrg } from "@/lib/org-scope"
 import { requireFeaturePermission } from "@/lib/permission-enforcement"
 import { requirePermission } from "@/lib/permissions"
-import { isDirectoryAssignable, vendorCategoryToContactType } from "@/lib/contact-project-association"
+import { vendorJobContactType } from "@/lib/contact-project-association"
+import { readFeatureSettings } from "@/lib/feature-settings/server"
 import { queueProjectContactTrackerRefresh } from "@/lib/project-contact-tracker-refresh"
 import { insertProjectContactsIfMissing } from "@/lib/domain/contacts/store"
 import { requireUserContext } from "@/lib/server/action-context"
@@ -67,6 +68,7 @@ export async function addCompaniesToProject(input: {
     )).get()
     if (!project) return { success: false, error: "Project not found in this organization." }
 
+    const { types } = await readFeatureSettings(db, orgId, "vendor-types")
     const companyRows = input.kind === "vendor"
       ? (await db.select({
           id: vendors.id, name: vendors.name, company: vendors.name,
@@ -77,13 +79,16 @@ export async function addCompaniesToProject(input: {
           eq(vendors.organizationId, orgId),
           eq(vendors.directoryStatus, "active"),
           inArray(vendors.id, ids)
-        ))).map((vendor) => ({
-          id: vendor.id, name: vendor.name, company: vendor.company,
-          email: vendor.email, phone: vendor.phone, address: vendor.address,
-          contactType: vendorCategoryToContactType(vendor.category),
-          assignable: isDirectoryAssignable(vendor.category),
-          syncStatus: vendor.syncStatus, lastSyncedAt: vendor.lastSyncedAt,
-        }))
+        ))).map((vendor) => {
+          // A vendor type with no job role is never added to a job.
+          const role = vendorJobContactType(vendor.category, types)
+          return {
+            id: vendor.id, name: vendor.name, company: vendor.company,
+            email: vendor.email, phone: vendor.phone, address: vendor.address,
+            contactType: role ?? "subcontractor", assignable: role !== null,
+            syncStatus: vendor.syncStatus, lastSyncedAt: vendor.lastSyncedAt,
+          }
+        })
       : (await db.select({
           id: customers.id, name: customers.name, company: customers.company,
           email: customers.email, phone: customers.phone, address: customers.address,
