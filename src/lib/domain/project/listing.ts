@@ -1,12 +1,16 @@
 /** Read models for the project intake pickers. Scoped to one organization. */
 import { and, asc, eq, isNull } from "drizzle-orm"
 
-import { customers, organizationMembers, users } from "@/db/schema"
+import { customers } from "@/db/schema"
+import { membershipsView, peopleView } from "@/lib/domain/identity/views"
 import { sageClientLinkReviewIds } from "@/lib/sage/client-link-review"
 import type { Db } from "@/lib/server/action-context"
 
 import type { ProjectIntakeAssignee, ProjectIntakeCustomerOption } from "./intake-types"
 import { intakeAssigneeName } from "./rules"
+
+const memberships = membershipsView()
+const people = peopleView()
 
 export async function loadIntakeCustomerOptions(
   db: Db,
@@ -43,21 +47,21 @@ export async function loadIntakeAssignees(
 ): Promise<readonly ProjectIntakeAssignee[]> {
   const rows = await db
     .select({
-      id: users.id,
-      displayName: users.displayName,
-      firstName: users.firstName,
-      lastName: users.lastName,
-      email: users.email,
+      id: people.id,
+      displayName: people.displayName,
+      firstName: people.firstName,
+      lastName: people.lastName,
+      email: people.email,
     })
-    .from(organizationMembers)
-    .innerJoin(users, eq(users.id, organizationMembers.userId))
+    .from(memberships)
+    .innerJoin(people, eq(people.id, memberships.userId))
     .where(
       and(
-        eq(organizationMembers.organizationId, organizationId),
-        eq(users.isActive, true)
+        eq(memberships.organizationId, organizationId),
+        eq(people.isActive, true)
       )
     )
-    .orderBy(asc(users.displayName), asc(users.email))
+    .orderBy(asc(people.displayName), asc(people.email))
 
   return rows.map((row) => ({
     id: row.id,

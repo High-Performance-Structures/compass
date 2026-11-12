@@ -1,8 +1,10 @@
 import { and, eq } from "drizzle-orm"
 
-import { users } from "@/db/schema"
+import { peopleView } from "@/lib/domain/identity/views"
 import { googleAuth, googleStarredFiles } from "@/db/schema-google"
 import type { Db } from "@/lib/server/action-context"
+
+const people = peopleView()
 
 /*
  * The only code that writes the organization's Google Drive connection
@@ -81,9 +83,9 @@ export async function readConnectionWorkspaceDomain(db: Db, organizationId: stri
 /** The Google identity of whoever connected Drive (Field Mode reads as them). */
 export async function readConnectionOwnerGoogleEmail(db: Db, connectedBy: string): Promise<string | null> {
   const row = await db
-    .select({ email: users.email, googleEmail: users.googleEmail })
-    .from(users)
-    .where(eq(users.id, connectedBy))
+    .select({ email: people.email, googleEmail: people.googleEmail })
+    .from(people)
+    .where(eq(people.id, connectedBy))
     .get()
   return row ? (row.googleEmail ?? row.email) : null
 }

@@ -17,12 +17,11 @@ import { and, eq, isNull, ne, or, sql, type SQL } from "drizzle-orm"
 
 import {
   internalContacts,
-  organizationMembers,
-  organizations,
   projectJobStatuses,
-  projectMembers,
   projects,
 } from "@/db/schema"
+import { companiesView, membershipsView } from "@/lib/domain/identity/views"
+import { projectMembersView } from "@/lib/domain/project/views"
 import type { AuthUser } from "@/lib/auth"
 import type { FieldAppVisibility } from "@/lib/domain/project/statuses"
 import { readFeatureSettings } from "@/lib/feature-settings/server"
@@ -33,6 +32,10 @@ import type { Db } from "@/lib/server/action-context"
 import { isInternalStaffRole } from "@/lib/user-roles"
 
 import { fieldAppDecision, type FieldAppDecision, type FieldAppJob, type FieldAppRules } from "./field-app-rules"
+
+const companyMemberships = membershipsView()
+const companies = companiesView()
+const projectMemberships = projectMembersView()
 
 export const FIELD_PROJECT_NOT_ASSIGNED = "This project is not assigned to your Field account."
 export const FIELD_PROJECT_NOT_IN_APP = "This project is not in the field app."
@@ -131,23 +134,23 @@ function couldHaveEmployeeAccess(user: AuthUser): user is AuthUser & { readonly 
 async function hasActiveEmployeeFieldAccess(db: Db, user: AuthUser, rules: FieldAppRules): Promise<boolean> {
   if (!couldHaveEmployeeAccess(user) || !rules.settings.autoAccessForSageEmployees) return false
   const rows = await db
-    .select({ role: organizationMembers.role })
+    .select({ role: companyMemberships.role })
     .from(internalContacts)
     .innerJoin(
-      organizationMembers,
+      companyMemberships,
       and(
-        eq(organizationMembers.organizationId, internalContacts.organizationId),
-        eq(organizationMembers.userId, user.id),
+        eq(companyMemberships.organizationId, internalContacts.organizationId),
+        eq(companyMemberships.userId, user.id),
       ),
     )
-    .innerJoin(organizations, eq(organizations.id, internalContacts.organizationId))
+    .innerJoin(companies, eq(companies.id, internalContacts.organizationId))
     .where(
       and(
         eq(internalContacts.organizationId, user.organizationId),
         eq(internalContacts.userId, user.id),
         eq(internalContacts.active, true),
-        eq(organizations.type, "internal"),
-        eq(organizations.isActive, true),
+        eq(companies.type, "internal"),
+        eq(companies.isActive, true),
         or(
           sql`trim(coalesce(${internalContacts.sageEmployeeId}, '')) <> ''`,
           sql`trim(coalesce(${internalContacts.sageEmployeeNumber}, '')) <> ''`,
@@ -184,13 +187,13 @@ export async function listFieldAppProjects(db: Db, user: AuthUser): Promise<read
   const [memberRows, ownRules] = await Promise.all([
     db
       .select(fieldAppJobColumns)
-      .from(projectMembers)
-      .innerJoin(projects, eq(projects.id, projectMembers.projectId))
+      .from(projectMemberships)
+      .innerJoin(projects, eq(projects.id, projectMemberships.projectId))
       .leftJoin(
         projectJobStatuses,
         and(eq(projectJobStatuses.id, projects.jobStatusId), eq(projectJobStatuses.organizationId, projects.organizationId)),
       )
-      .where(and(eq(projectMembers.userId, user.id), notHiddenOrClosed())),
+      .where(and(eq(projectMemberships.userId, user.id), notHiddenOrClosed())),
     ownRulesPromise,
   ])
 
@@ -234,9 +237,9 @@ export async function assertFieldAppProjectAccess(db: Db, user: AuthUser, projec
   const [rows, membership] = await Promise.all([
     selectFieldAppJobs(db, eq(projects.id, projectId)).limit(1),
     db
-      .select({ projectId: projectMembers.projectId })
-      .from(projectMembers)
-      .where(and(eq(projectMembers.userId, user.id), eq(projectMembers.projectId, projectId)))
+      .select({ projectId: projectMemberships.projectId })
+      .from(projectMemberships)
+      .where(and(eq(projectMemberships.userId, user.id), eq(projectMemberships.projectId, projectId)))
       .limit(1),
   ])
   const row = rows[0]

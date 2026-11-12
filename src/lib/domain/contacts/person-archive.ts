@@ -13,7 +13,9 @@
  */
 import { and, countDistinct, eq, inArray, sql } from "drizzle-orm"
 
-import { customerContacts, internalContacts, organizationMembers, organizations, projectContacts, projectMembers, projects, users, vendorContacts } from "@/db/schema"
+import { customerContacts, internalContacts, projectContacts, projects, vendorContacts } from "@/db/schema"
+import { companiesView, membershipsView, peopleView } from "@/lib/domain/identity/views"
+import { projectMembersView } from "@/lib/domain/project/views"
 import { chunkD1Values } from "@/lib/d1-query"
 import { deleteProjectMembers } from "@/lib/domain/project/store"
 import type { Db } from "@/lib/server/action-context"
@@ -21,6 +23,11 @@ import { isInternalStaffRole, isStaffOrganizationType } from "@/lib/user-roles"
 
 import { directoryPersonProjectContactsWhere, type DirectoryPersonKind } from "./person-status"
 import { archivedPersonProjectContactsStatements } from "./store"
+
+const companyMemberships = membershipsView()
+const companies = companiesView()
+const projectMemberships = projectMembersView()
+const peopleRows = peopleView()
 
 export type { DirectoryPersonKind }
 
@@ -65,11 +72,11 @@ async function activeStaffUserIds(db: Db, organizationId: string, userIds: reado
   const rows = await Promise.all(
     chunkD1Values(userIds).map((ids) =>
       db
-        .select({ userId: users.id, role: organizationMembers.role, organizationType: organizations.type })
-        .from(users)
-        .innerJoin(organizationMembers, eq(organizationMembers.userId, users.id))
-        .innerJoin(organizations, eq(organizations.id, organizationMembers.organizationId))
-        .where(and(inArray(users.id, ids), eq(users.isActive, true), eq(organizationMembers.organizationId, organizationId)))
+        .select({ userId: peopleRows.id, role: companyMemberships.role, organizationType: companies.type })
+        .from(peopleRows)
+        .innerJoin(companyMemberships, eq(companyMemberships.userId, peopleRows.id))
+        .innerJoin(companies, eq(companies.id, companyMemberships.organizationId))
+        .where(and(inArray(peopleRows.id, ids), eq(peopleRows.isActive, true), eq(companyMemberships.organizationId, organizationId)))
     )
   )
   return new Set(
@@ -110,8 +117,8 @@ export async function removeArchivedPeopleFromJobs(
     await deleteProjectMembers(
       db,
       and(
-        inArray(projectMembers.userId, ids),
-        sql`${projectMembers.projectId} in (select id from projects where organization_id = ${input.organizationId})`
+        inArray(projectMemberships.userId, ids),
+        sql`${projectMemberships.projectId} in (select id from projects where organization_id = ${input.organizationId})`
       )
     )
   }

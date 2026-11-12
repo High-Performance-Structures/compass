@@ -12,10 +12,14 @@
  */
 import { and, eq, inArray, isNull, or, sql, type SQL } from "drizzle-orm"
 
-import { projectAccessInvitations, projectContacts, users } from "@/db/schema"
+import { projectContacts } from "@/db/schema"
+import { invitationsView, peopleView } from "@/lib/domain/identity/views"
 import type { Db } from "@/lib/server/action-context"
 
 import { normalizeEmailKey } from "./rules"
+
+const accessInvitations = invitationsView()
+const people = peopleView()
 
 export type PendingInvitationPerson =
   | { readonly kind: "vendor_contact"; readonly id: string }
@@ -45,14 +49,14 @@ export async function stalePendingInvitationCount(
   input: { readonly organizationId: string; readonly person: PendingInvitationPerson; readonly nextEmail: string | null; readonly now: string }
 ): Promise<number> {
   const rows = await db
-    .select({ email: projectAccessInvitations.email })
-    .from(projectAccessInvitations)
-    .innerJoin(projectContacts, eq(projectContacts.id, projectAccessInvitations.projectContactId))
+    .select({ email: accessInvitations.email })
+    .from(accessInvitations)
+    .innerJoin(projectContacts, eq(projectContacts.id, accessInvitations.projectContactId))
     .where(
       and(
-        eq(projectAccessInvitations.organizationId, input.organizationId),
-        eq(projectAccessInvitations.status, "sent"),
-        or(isNull(projectAccessInvitations.workosExpiresAt), sql`${projectAccessInvitations.workosExpiresAt} > ${input.now}`),
+        eq(accessInvitations.organizationId, input.organizationId),
+        eq(accessInvitations.status, "sent"),
+        or(isNull(accessInvitations.workosExpiresAt), sql`${accessInvitations.workosExpiresAt} > ${input.now}`),
         personMatch(input.person)
       )
     )
@@ -85,6 +89,6 @@ export async function loadLinkedUser(
   userId: string | null
 ): Promise<{ readonly id: string; readonly isActive: boolean; readonly email: string } | null> {
   if (!userId) return null
-  const row = await db.select({ id: users.id, isActive: users.isActive, email: users.email }).from(users).where(eq(users.id, userId)).get()
+  const row = await db.select({ id: people.id, isActive: people.isActive, email: people.email }).from(people).where(eq(people.id, userId)).get()
   return row ?? null
 }

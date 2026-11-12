@@ -8,7 +8,9 @@
 import { and, eq, inArray } from "drizzle-orm"
 
 import { getDb } from "@/db"
-import { organizations, projectMembers, projects } from "@/db/schema"
+import { projects } from "@/db/schema"
+import { companiesView } from "@/lib/domain/identity/views"
+import { projectMembersView } from "@/lib/domain/project/views"
 import { requireAuth, type AuthUser } from "@/lib/auth"
 import { canUseProjectDailyLogWorkspace } from "@/lib/daily-logs/workspace-access"
 import { getCloudflareContext } from "@/lib/db"
@@ -22,6 +24,9 @@ import { requireFeaturePermission } from "@/lib/permission-enforcement"
 import { requireProjectAudienceReadUser } from "@/lib/project-audience-request-server"
 import type { Db } from "@/lib/server/action-context"
 import { isInternalStaffRole } from "@/lib/user-roles"
+
+const companies = companiesView()
+const projectMemberships = projectMembersView()
 
 type FieldAccess = {
   readonly db: Db
@@ -78,12 +83,12 @@ export async function verifyOwnerUpdateReadAccess(projectId: string): Promise<Fi
       .select({ id: projects.id })
       .from(projects)
       .innerJoin(
-        organizations,
+        companies,
         and(
-          eq(organizations.id, projects.organizationId),
-          eq(organizations.id, viewer.organizationId),
-          eq(organizations.type, "internal"),
-          eq(organizations.isActive, true)
+          eq(companies.id, projects.organizationId),
+          eq(companies.id, viewer.organizationId),
+          eq(companies.type, "internal"),
+          eq(companies.isActive, true)
         )
       )
       .where(
@@ -100,20 +105,20 @@ export async function verifyOwnerUpdateReadAccess(projectId: string): Promise<Fi
       .select({ id: projects.id })
       .from(projects)
       .innerJoin(
-        projectMembers,
+        projectMemberships,
         and(
-          eq(projectMembers.projectId, projects.id),
-          eq(projectMembers.userId, viewer.id),
-          inArray(projectMembers.role, ["client", "owner"])
+          eq(projectMemberships.projectId, projects.id),
+          eq(projectMemberships.userId, viewer.id),
+          inArray(projectMemberships.role, ["client", "owner"])
         )
       )
       .innerJoin(
-        organizations,
+        companies,
         and(
-          eq(organizations.id, projects.organizationId),
-          eq(organizations.id, viewer.organizationId ?? ""),
-          eq(organizations.type, viewer.organizationType ?? ""),
-          eq(organizations.isActive, true)
+          eq(companies.id, projects.organizationId),
+          eq(companies.id, viewer.organizationId ?? ""),
+          eq(companies.type, viewer.organizationType ?? ""),
+          eq(companies.isActive, true)
         )
       )
       .where(eq(projects.id, projectId))

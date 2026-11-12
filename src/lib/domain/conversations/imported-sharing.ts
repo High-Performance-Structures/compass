@@ -1,6 +1,7 @@
 import { and, eq, sql } from "drizzle-orm"
 
-import { projectContacts, projects, users } from "@/db/schema"
+import { projectContacts, projects } from "@/db/schema"
+import { peopleView } from "@/lib/domain/identity/views"
 import { channels } from "@/db/schema-conversations"
 import { projectSourceRecordParticipants } from "@/db/schema-participants"
 import {
@@ -11,6 +12,8 @@ import {
 import type { Db } from "@/lib/server/action-context"
 import { isInternalStaffRole } from "@/lib/user-roles"
 import { resolvedContactColumns, withContactDirectory } from "@/lib/domain/contacts/resolved-columns"
+
+const peopleRows = peopleView()
 
 /*
  * Imported (Buildertrend) threads whose people could not all be identified
@@ -75,12 +78,12 @@ export async function planImportedThreadShare(input: {
       userId: projectSourceRecordParticipants.userId,
       projectContactId: projectSourceRecordParticipants.projectContactId,
       contactName: resolvedContactColumns.displayName,
-      userName: users.displayName,
+      userName: peopleRows.displayName,
       sourceName: projectSourceRecordParticipants.sourceContactName,
     })
     .from(projectSourceRecordParticipants)
     .leftJoin(projectContacts, eq(projectContacts.id, projectSourceRecordParticipants.projectContactId))
-    .leftJoin(users, eq(users.id, projectSourceRecordParticipants.userId))
+    .leftJoin(peopleRows, eq(peopleRows.id, projectSourceRecordParticipants.userId))
     .where(
       and(
         eq(projectSourceRecordParticipants.organizationId, input.organizationId),

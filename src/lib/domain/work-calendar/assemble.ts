@@ -20,6 +20,7 @@ import {
   projectTodoHref,
   scheduleItemHref,
 } from "@/lib/work-calendar"
+import { projectAudienceForRole } from "@/lib/user-roles"
 import { expandWorkCalendarRecurrence, isWorkCalendarRecurrence } from "@/lib/work-calendar-recurrence"
 
 import {
@@ -66,11 +67,7 @@ type ProjectAudience = "owner" | "sub_vendor"
 
 /** Members outside the company see the schedule published to their audience. */
 export function projectAudience(projectRole: string | undefined): ProjectAudience | null {
-  return projectRole === "client" || projectRole === "owner"
-    ? "owner"
-    : projectRole === "subcontractor" || projectRole === "supplier"
-      ? "sub_vendor"
-      : null
+  return projectAudienceForRole(projectRole)
 }
 
 type ScheduleRow = Omit<WorkingTaskRow, "projectId">

@@ -14,7 +14,9 @@
  */
 import { and, eq, inArray } from "drizzle-orm"
 
-import { organizationMembers, projectAccessInvitations, projectContacts, projectMembers, users } from "@/db/schema"
+import { projectContacts } from "@/db/schema"
+import { invitationsView, membershipsView, peopleView } from "@/lib/domain/identity/views"
+import { projectMembersView } from "@/lib/domain/project/views"
 import type { ActionFailure } from "@/lib/action-result"
 import { SIGN_IN_EMAIL_LOCK } from "@/lib/contact-identity-ownership"
 import type { Db } from "@/lib/server/action-context"
@@ -24,6 +26,11 @@ import { normalizeEmailKey } from "./rules"
 import { deactivateProjectContact, updateUnassignedPersonRows } from "./store"
 import { unassignedIdentityWhere, unassignedPersonWhere } from "./unassigned-people"
 import { resolvedContactColumns, withContactDirectory } from "./resolved-columns"
+
+const memberships = membershipsView()
+const accessInvitations = invitationsView()
+const projectMemberships = projectMembersView()
+const peopleRows = peopleView()
 
 export type UnassignedPersonInput = {
   readonly name: string
@@ -74,14 +81,14 @@ async function personRows(db: Db, organizationId: string, identity: string): Pro
 async function unassignedPersonHasAccount(db: Db, organizationId: string, rows: readonly Row[]): Promise<boolean> {
   if (rows.length === 0) return false
   const accepted = await db
-    .select({ id: projectAccessInvitations.id })
-    .from(projectAccessInvitations)
-    .innerJoin(users, eq(users.id, projectAccessInvitations.acceptedBy))
+    .select({ id: accessInvitations.id })
+    .from(accessInvitations)
+    .innerJoin(peopleRows, eq(peopleRows.id, accessInvitations.acceptedBy))
     .where(
       and(
-        inArray(projectAccessInvitations.projectContactId, rows.map((row) => row.id)),
-        eq(projectAccessInvitations.status, "accepted"),
-        eq(users.isActive, true)
+        inArray(accessInvitations.projectContactId, rows.map((row) => row.id)),
+        eq(accessInvitations.status, "accepted"),
+        eq(peopleRows.isActive, true)
       )
     )
     .limit(1)
@@ -89,15 +96,15 @@ async function unassignedPersonHasAccount(db: Db, organizationId: string, rows: 
   const emails = [...new Set(rows.map((row) => normalizeEmailKey(row.email)).filter(Boolean))]
   if (emails.length === 0) return false
   const members = await db
-    .select({ email: users.email, projectId: projectMembers.projectId })
-    .from(organizationMembers)
-    .innerJoin(users, eq(users.id, organizationMembers.userId))
-    .innerJoin(projectMembers, eq(projectMembers.userId, users.id))
+    .select({ email: peopleRows.email, projectId: projectMemberships.projectId })
+    .from(memberships)
+    .innerJoin(peopleRows, eq(peopleRows.id, memberships.userId))
+    .innerJoin(projectMemberships, eq(projectMemberships.userId, peopleRows.id))
     .where(
       and(
-        eq(organizationMembers.organizationId, organizationId),
-        eq(users.isActive, true),
-        inArray(projectMembers.projectId, [...new Set(rows.map((row) => row.projectId))])
+        eq(memberships.organizationId, organizationId),
+        eq(peopleRows.isActive, true),
+        inArray(projectMemberships.projectId, [...new Set(rows.map((row) => row.projectId))])
       )
     )
   return members.some((member) =>

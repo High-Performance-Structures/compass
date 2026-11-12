@@ -12,8 +12,8 @@ import {
   projectExternalLinks,
   projectProfileSyncOperations,
   projects,
-  users,
 } from "@/db/schema"
+import { peopleView } from "@/lib/domain/identity/views"
 import { googleAuth } from "@/db/schema-google"
 import { decrypt } from "@/lib/crypto"
 import { isDemoUser } from "@/lib/demo"
@@ -43,6 +43,8 @@ import type { AuthUser } from "@/lib/auth"
 import type { Db } from "@/lib/server/action-context"
 import { resolvedContactColumns, withContactDirectory } from "@/lib/domain/contacts/resolved-columns"
 
+const people = peopleView()
+
 type SyncClients = { readonly drive: DriveClient; readonly sheets: SheetsClient; readonly trackerEmail: string }
 
 async function projectSyncClients(input: {
@@ -54,11 +56,11 @@ async function projectSyncClients(input: {
   const authRows = await input.db
     .select({
       serviceAccountKeyEncrypted: googleAuth.serviceAccountKeyEncrypted,
-      connectorGoogleEmail: users.googleEmail,
-      connectorEmail: users.email,
+      connectorGoogleEmail: people.googleEmail,
+      connectorEmail: people.email,
     })
     .from(googleAuth)
-    .innerJoin(users, eq(users.id, googleAuth.connectedBy))
+    .innerJoin(people, eq(people.id, googleAuth.connectedBy))
     .where(eq(googleAuth.organizationId, input.organizationId))
     .limit(1)
   const auth = authRows[0]

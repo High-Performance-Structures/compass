@@ -8,9 +8,9 @@
  * owner-visible photos, and only owner-visible comments.
  */
 import { and, asc, desc, eq, inArray, isNull } from "drizzle-orm"
-import { alias } from "drizzle-orm/sqlite-core"
 
-import { dailyLogPhotos, projectFinishSelections, users, vendors } from "@/db/schema"
+import { dailyLogPhotos, projectFinishSelections, vendors } from "@/db/schema"
+import { peopleView } from "@/lib/domain/identity/views"
 import {
   projectSelectionChoiceDependents,
   projectSelectionChoices,
@@ -22,10 +22,12 @@ import { projectSelectionDecisions } from "@/db/schema-selection-decisions"
 import type { Db } from "@/lib/server/action-context"
 
 // The person who made a choice's current pick.
-const chooser = alias(users, "chooser")
+const chooser = peopleView("chooser")
 
 import { commentVisibleTo } from "./choice-rules"
 import type { SelectionAuthorAudience, SelectionChoiceStatus, SelectionCommentVisibility } from "./statuses"
+
+const people = peopleView()
 
 export type SelectionLinkView = {
   readonly id: string
@@ -215,14 +217,14 @@ export async function loadChoicePanels(
         visibility: projectSelectionComments.visibility,
         authorAudience: projectSelectionComments.authorAudience,
         authorUserId: projectSelectionComments.authorUserId,
-        authorDisplayName: users.displayName,
-        authorEmail: users.email,
+        authorDisplayName: people.displayName,
+        authorEmail: people.email,
         authorNameSnapshot: projectSelectionComments.authorNameSnapshot,
         sourceSystem: projectSelectionComments.sourceSystem,
         createdAt: projectSelectionComments.createdAt,
       })
       .from(projectSelectionComments)
-      .leftJoin(users, eq(users.id, projectSelectionComments.authorUserId))
+      .leftJoin(people, eq(people.id, projectSelectionComments.authorUserId))
       .where(and(eq(projectSelectionComments.projectId, projectId), inArray(projectSelectionComments.selectionId, ids)))
       .orderBy(asc(projectSelectionComments.createdAt)),
     db

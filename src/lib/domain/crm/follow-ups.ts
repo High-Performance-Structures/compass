@@ -5,13 +5,12 @@
 import { and, asc, desc, eq, isNull } from "drizzle-orm"
 
 import {
-  organizationMembers,
   projectFollowUps,
   projectInteractions,
   projectJobStatuses,
   projects,
-  users,
 } from "@/db/schema"
+import { membershipsView, peopleView } from "@/lib/domain/identity/views"
 import { isDemoUser } from "@/lib/demo"
 import { buildFollowUpQueue, followUpOwners, type ProjectFollowUpOwner, type ProjectFollowUpQueueItem } from "@/lib/domain/crm/rules"
 import { deleteProjectFollowUps, upsertProjectFollowUp } from "@/lib/domain/crm/store"
@@ -25,19 +24,22 @@ import type { Db } from "@/lib/server/action-context"
 import { cleanText } from "@/lib/shared/guards"
 import { isInternalStaffRole } from "@/lib/user-roles"
 
+const memberships = membershipsView()
+const people = peopleView()
+
 async function activeMemberOwners(db: Db, organizationId: string): Promise<readonly ProjectFollowUpOwner[]> {
   const members = await db
     .select({
-      id: users.id,
-      displayName: users.displayName,
-      email: users.email,
-      active: users.isActive,
-      role: organizationMembers.role,
+      id: people.id,
+      displayName: people.displayName,
+      email: people.email,
+      active: people.isActive,
+      role: memberships.role,
     })
-    .from(organizationMembers)
-    .innerJoin(users, eq(users.id, organizationMembers.userId))
-    .where(and(eq(organizationMembers.organizationId, organizationId), eq(users.isActive, true)))
-    .orderBy(asc(users.displayName), asc(users.email))
+    .from(memberships)
+    .innerJoin(people, eq(people.id, memberships.userId))
+    .where(and(eq(memberships.organizationId, organizationId), eq(people.isActive, true)))
+    .orderBy(asc(people.displayName), asc(people.email))
   return followUpOwners(members)
 }
 
@@ -69,18 +71,18 @@ export async function loadProjectFollowUpQueue(): Promise<readonly ProjectFollow
         jobStatusId: projects.jobStatusId,
         occurredAt: projectInteractions.occurredAt,
         nextFollowUpAt: projectFollowUps.nextFollowUpAt,
-        ownerName: users.displayName,
+        ownerName: people.displayName,
       })
       .from(projects)
       .leftJoin(projectFollowUps, eq(projectFollowUps.projectId, projects.id))
       .leftJoin(
-        organizationMembers,
+        memberships,
         and(
-          eq(organizationMembers.organizationId, organizationId),
-          eq(organizationMembers.userId, projectFollowUps.ownerUserId),
+          eq(memberships.organizationId, organizationId),
+          eq(memberships.userId, projectFollowUps.ownerUserId),
         ),
       )
-      .leftJoin(users, and(eq(users.id, organizationMembers.userId), eq(users.isActive, true)))
+      .leftJoin(people, and(eq(people.id, memberships.userId), eq(people.isActive, true)))
       .leftJoin(
         projectInteractions,
         and(
@@ -122,13 +124,13 @@ export async function scheduleProjectFollowUp(input: {
   if (isDemoUser(user.id)) return { success: false, error: "Demo data cannot be changed." }
   if (input.ownerUserId) {
     const ownerRows = await db
-      .select({ active: users.isActive, role: organizationMembers.role })
-      .from(organizationMembers)
-      .innerJoin(users, eq(users.id, organizationMembers.userId))
+      .select({ active: people.isActive, role: memberships.role })
+      .from(memberships)
+      .innerJoin(people, eq(people.id, memberships.userId))
       .where(
         and(
-          eq(organizationMembers.organizationId, organizationId),
-          eq(organizationMembers.userId, input.ownerUserId),
+          eq(memberships.organizationId, organizationId),
+          eq(memberships.userId, input.ownerUserId),
         ),
       )
       .limit(1)

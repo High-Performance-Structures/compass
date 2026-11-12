@@ -243,3 +243,8 @@ export function isInternalStaffRole(role: string): boolean {
       return false
   }
 }
+
+/** A supplier (materials) rather than a subcontractor (work). */
+export function isSupplierRole(role: string | null | undefined): boolean {
+  return role === "supplier"
+}

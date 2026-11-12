@@ -27,7 +27,11 @@
 import { getTableName, sql, type SQL } from "drizzle-orm"
 import { alias, type AnySQLiteColumn, type SQLiteSelect, type SQLiteTable } from "drizzle-orm/sqlite-core"
 
-import { customerContacts, customers, internalContacts, organizationMembers, projectContacts, projects, users, vendorContacts, vendors } from "@/db/schema"
+import { customerContacts, customers, internalContacts, projectContacts, projects, vendorContacts, vendors } from "@/db/schema"
+import { membershipsView, peopleView } from "@/lib/domain/identity/views"
+
+const memberships = membershipsView()
+const peopleRows = peopleView()
 
 /** A column of the table or of one of its aliases. */
 type Ref = AnySQLiteColumn
@@ -75,7 +79,7 @@ const DIRECTORY_SOURCES = {
   linkedVendorContacts: vendorContacts,
   vendorContacts,
   internalContacts,
-  users,
+  users: peopleRows,
 } as const
 
 type DirectoryKey = keyof typeof DIRECTORY_SOURCES
@@ -213,7 +217,7 @@ function joinConditions(pc: ContactRefs, dir: DirectoryRefs, organization: SQL):
     vendorContacts: sql`${dir.vendorContacts.id} = coalesce(${dir.linkedVendorContacts.mergedIntoPersonId}, ${dir.linkedVendorContacts.id})
       and ${dir.vendorContacts.vendorId} = ${dir.vendors.id} and ${dir.vendorContacts.active} = 1`,
     users: sql`${pc.sourceEntityType} = 'user' and ${pc.sourceEntityId} = ${dir.users.id}
-      and exists (select 1 from ${organizationMembers} where ${organizationMembers.userId} = ${dir.users.id} and ${organizationMembers.organizationId} = ${organization})`,
+      and exists (select 1 from ${memberships} where ${memberships.userId} = ${dir.users.id} and ${memberships.organizationId} = ${organization})`,
     internalContacts: sql`${pc.internalContactId} = ${dir.internalContacts.id}
       and ${dir.internalContacts.organizationId} = ${organization} and ${dir.internalContacts.active} = 1`,
   }
@@ -231,7 +235,7 @@ const JOINED_TABLES = {
   linkedVendorContacts: alias(vendorContacts, aliasName("dir", "linkedVendorContacts")),
   vendorContacts: alias(vendorContacts, aliasName("dir", "vendorContacts")),
   internalContacts: alias(internalContacts, aliasName("dir", "internalContacts")),
-  users: alias(users, aliasName("dir", "users")),
+  users: peopleView(aliasName("dir", "users")),
 } as const satisfies Record<DirectoryKey, SQLiteTable>
 
 /**
@@ -273,7 +277,7 @@ const CORRELATED_TABLES = {
   linkedVendorContacts: alias(vendorContacts, aliasName(CORRELATED_PREFIX, "linkedVendorContacts")),
   vendorContacts: alias(vendorContacts, aliasName(CORRELATED_PREFIX, "vendorContacts")),
   internalContacts: alias(internalContacts, aliasName(CORRELATED_PREFIX, "internalContacts")),
-  users: alias(users, aliasName(CORRELATED_PREFIX, "users")),
+  users: peopleView(aliasName(CORRELATED_PREFIX, "users")),
 } as const satisfies Record<DirectoryKey, SQLiteTable>
 
 /** `"table" "alias"`: in raw SQL an aliased table renders as its alias only. */

@@ -24,7 +24,8 @@
 import { and, asc, desc, eq, inArray, sql } from "drizzle-orm"
 import { cookies } from "next/headers"
 
-import { projectContacts, projectFinishSelections, projects, users } from "@/db/schema"
+import { projectContacts, projectFinishSelections, projects } from "@/db/schema"
+import { peopleView } from "@/lib/domain/identity/views"
 import { projectChangeOrderLines, projectChangeOrders } from "@/db/schema-change-orders"
 import { projectSelectionRoundSignatureItems, projectSelectionRoundSignatures } from "@/db/schema-selection-choices"
 import { projectSelectionDecisions } from "@/db/schema-selection-decisions"
@@ -61,6 +62,8 @@ import { loadChoicePanels } from "./choices-read"
 import { insertRoundSignatureStatements, updateRoundSignature, updateRoundSignatureStatement } from "./round-signature-store"
 import { updateFinishSelectionsStatement } from "./store"
 import { resolvedContactColumns, withContactDirectory } from "@/lib/domain/contacts/resolved-columns"
+
+const people = peopleView()
 
 type SignatureRow = typeof projectSelectionRoundSignatures.$inferSelect
 
@@ -582,7 +585,7 @@ export async function handleRoundSignatureEvent(input: {
   if (first) await db.batch([first, ...rest])
 
   const sender = signature.createdBy
-    ? await db.select({ id: users.id, role: users.role, displayName: users.displayName, email: users.email, firstName: users.firstName, lastName: users.lastName }).from(users).where(eq(users.id, signature.createdBy)).get()
+    ? await db.select({ id: people.id, role: people.role, displayName: people.displayName, email: people.email, firstName: people.firstName, lastName: people.lastName }).from(people).where(eq(people.id, signature.createdBy)).get()
     : undefined
   if (signature.changeOrderId && changeOrder?.recordType === "variance" && sender) {
     const approved = await approveVariance({ db, projectId: signature.projectId, changeOrderId: signature.changeOrderId, actor: sender })

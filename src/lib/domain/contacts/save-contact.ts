@@ -16,14 +16,12 @@ import {
   customerContacts,
   customers,
   internalContacts,
-  organizationMembers,
-  projectAccessInvitations,
   projectContacts,
-  projectMembers,
-  users,
   vendorContacts,
   vendors,
 } from "@/db/schema"
+import { invitationsView, membershipsView, peopleView } from "@/lib/domain/identity/views"
+import { projectMembersView } from "@/lib/domain/project/views"
 import type { ActionFailure } from "@/lib/action-result"
 import type { AuthUser } from "@/lib/auth"
 import { directoryIdentityManagedByActiveUser, SIGN_IN_EMAIL_LOCK, type ContactIdentityFields } from "@/lib/contact-identity-ownership"
@@ -48,6 +46,11 @@ import {
 } from "./store"
 import type { ProjectContactMutationInput, ProjectContactType } from "./types"
 import { resolvedContactColumns, withContactDirectory } from "./resolved-columns"
+
+const memberships = membershipsView()
+const accessInvitations = invitationsView()
+const projectMemberships = projectMembersView()
+const people = peopleView()
 
 type LinkState = {
   readonly sourceSystem: string
@@ -508,22 +511,22 @@ async function identityChangeGate(
   }
   const [activeInvitationRows, organizationUserRows] = await Promise.all([
     db
-      .select({ userId: users.id })
-      .from(projectAccessInvitations)
-      .innerJoin(users, eq(users.id, projectAccessInvitations.acceptedBy))
+      .select({ userId: people.id })
+      .from(accessInvitations)
+      .innerJoin(people, eq(people.id, accessInvitations.acceptedBy))
       .where(
         and(
-          eq(projectAccessInvitations.projectId, projectId),
-          eq(projectAccessInvitations.projectContactId, contactId),
-          eq(projectAccessInvitations.status, "accepted"),
-          eq(users.isActive, true)
+          eq(accessInvitations.projectId, projectId),
+          eq(accessInvitations.projectContactId, contactId),
+          eq(accessInvitations.status, "accepted"),
+          eq(people.isActive, true)
         )
       ),
     db
-      .select({ id: users.id, email: users.email })
-      .from(organizationMembers)
-      .innerJoin(users, eq(users.id, organizationMembers.userId))
-      .where(and(eq(organizationMembers.organizationId, orgId), eq(users.isActive, true))),
+      .select({ id: people.id, email: people.email })
+      .from(memberships)
+      .innerJoin(people, eq(people.id, memberships.userId))
+      .where(and(eq(memberships.organizationId, orgId), eq(people.isActive, true))),
   ])
   const linkedUserIds = new Set<string>()
   if (existing.sourceEntityType === "user" && existing.sourceEntityId) linkedUserIds.add(existing.sourceEntityId)
@@ -536,9 +539,9 @@ async function identityChangeGate(
   const linkedMembership =
     linkedUserIdList.length > 0
       ? await db
-          .select({ id: projectMembers.id })
-          .from(projectMembers)
-          .where(and(eq(projectMembers.projectId, projectId), inArray(projectMembers.userId, linkedUserIdList)))
+          .select({ id: projectMemberships.id })
+          .from(projectMemberships)
+          .where(and(eq(projectMemberships.projectId, projectId), inArray(projectMemberships.userId, linkedUserIdList)))
           .limit(1)
       : []
   if (!managedExistingIdentity && (activeInvitationRows.length > 0 || linkedMembership.length > 0)) {
@@ -546,13 +549,13 @@ async function identityChangeGate(
   }
 
   const pendingInvitations = await db
-    .select({ id: projectAccessInvitations.id, workosInvitationId: projectAccessInvitations.workosInvitationId })
-    .from(projectAccessInvitations)
+    .select({ id: accessInvitations.id, workosInvitationId: accessInvitations.workosInvitationId })
+    .from(accessInvitations)
     .where(
       and(
-        eq(projectAccessInvitations.projectId, projectId),
-        eq(projectAccessInvitations.projectContactId, contactId),
-        eq(projectAccessInvitations.status, "sent")
+        eq(accessInvitations.projectId, projectId),
+        eq(accessInvitations.projectContactId, contactId),
+        eq(accessInvitations.status, "sent")
       )
     )
   return { pendingInvitations }

@@ -2,7 +2,9 @@
 // invitation and account status, where each contact came from). Read only.
 import { and, desc, eq, inArray, ne, or, sql, type SQL } from "drizzle-orm"
 
-import { customers, projectAccessInvitations, projectContacts, projectContactSourceLinks, projectMembers, users, vendors } from "@/db/schema"
+import { customers, projectContacts, projectContactSourceLinks, vendors } from "@/db/schema"
+import { invitationsView, peopleView } from "@/lib/domain/identity/views"
+import { projectMembersView } from "@/lib/domain/project/views"
 import { activeDirectoryIdentityKeys } from "@/lib/contact-identity-ownership"
 import { chunkD1Values } from "@/lib/d1-query"
 import {
@@ -25,6 +27,10 @@ import type {
   ProjectContactsSummary,
   ProjectContactsSummaryOptions,
 } from "./types"
+
+const invitations = invitationsView()
+const projectMemberships = projectMembersView()
+const peopleRows = peopleView()
 
 type ContactRow = Awaited<ReturnType<typeof resolvedProjectContacts>>[number]
 type InvitationSnapshot = ProjectContactInvitationSnapshot & Pick<ProjectContactItem, "welcomeEmail">
@@ -173,16 +179,16 @@ async function vendorInvitesPendingElsewhere(
     chunkD1Values(emails).map((batch) =>
       db
         .select({
-          email: projectAccessInvitations.email,
-          workosExpiresAt: projectAccessInvitations.workosExpiresAt,
+          email: invitations.email,
+          workosExpiresAt: invitations.workosExpiresAt,
         })
-        .from(projectAccessInvitations)
+        .from(invitations)
         .where(
           and(
-            eq(projectAccessInvitations.organizationId, input.organizationId),
-            ne(projectAccessInvitations.projectId, input.projectId),
-            eq(projectAccessInvitations.status, "sent"),
-            inArray(sql<string>`lower(trim(${projectAccessInvitations.email}))`, [...batch])
+            eq(invitations.organizationId, input.organizationId),
+            ne(invitations.projectId, input.projectId),
+            eq(invitations.status, "sent"),
+            inArray(sql<string>`lower(trim(${invitations.email}))`, [...batch])
           )
         )
     )
@@ -232,30 +238,30 @@ async function loadProjectContactsSummary(
       activeDirectoryIdentityKeys({ db, organizationId, entityIds: directoryEntityIds(rows) }),
       db
         .select({
-          projectContactId: projectAccessInvitations.projectContactId,
-          email: projectAccessInvitations.email,
-          status: projectAccessInvitations.status,
-          workosExpiresAt: projectAccessInvitations.workosExpiresAt,
-          emailStatus: projectAccessInvitations.emailStatus,
-          emailNextAttemptAt: projectAccessInvitations.emailNextAttemptAt,
-          acceptedUserActive: users.isActive,
-          invitedAt: projectAccessInvitations.invitedAt,
+          projectContactId: invitations.projectContactId,
+          email: invitations.email,
+          status: invitations.status,
+          workosExpiresAt: invitations.workosExpiresAt,
+          emailStatus: invitations.emailStatus,
+          emailNextAttemptAt: invitations.emailNextAttemptAt,
+          acceptedUserActive: peopleRows.isActive,
+          invitedAt: invitations.invitedAt,
         })
-        .from(projectAccessInvitations)
-        .leftJoin(users, eq(users.id, projectAccessInvitations.acceptedBy))
-        .where(eq(projectAccessInvitations.projectId, projectId))
-        .orderBy(desc(projectAccessInvitations.invitedAt)),
+        .from(invitations)
+        .leftJoin(peopleRows, eq(peopleRows.id, invitations.acceptedBy))
+        .where(eq(invitations.projectId, projectId))
+        .orderBy(desc(invitations.invitedAt)),
       db
-        .select({ userId: users.id, email: users.email })
-        .from(projectMembers)
-        .innerJoin(users, eq(users.id, projectMembers.userId))
-        .where(and(eq(projectMembers.projectId, projectId), eq(users.isActive, true))),
+        .select({ userId: peopleRows.id, email: peopleRows.email })
+        .from(projectMemberships)
+        .innerJoin(peopleRows, eq(peopleRows.id, projectMemberships.userId))
+        .where(and(eq(projectMemberships.projectId, projectId), eq(peopleRows.isActive, true))),
       Promise.all(
         chunkD1Values(contactEmails).map((emails) =>
           db
-            .select({ id: users.id, email: users.email, isActive: users.isActive })
-            .from(users)
-            .where(inArray(sql<string>`lower(trim(${users.email}))`, [...emails]))
+            .select({ id: peopleRows.id, email: peopleRows.email, isActive: peopleRows.isActive })
+            .from(peopleRows)
+            .where(inArray(sql<string>`lower(trim(${peopleRows.email}))`, [...emails]))
         )
       ),
       db

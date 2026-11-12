@@ -12,11 +12,13 @@ import {
   savedViews,
   scheduleSavedViews,
   userViewPreferences,
-  users,
 } from "@/db/schema"
+import { peopleView } from "@/lib/domain/identity/views"
 import { savedViewDefaultValue, savedViewReadSource } from "@/lib/domain/settings/rules"
 import type { SavedViewScope, SavedViewVisibility } from "@/lib/domain/settings/statuses"
 import type { Db } from "@/lib/server/action-context"
+
+const people = peopleView()
 
 export type VisibleSavedView = {
   readonly id: string
@@ -38,11 +40,11 @@ async function consolidatedViews(db: Db, scope: SavedViewScope, reader: Reader):
         name: savedViews.name,
         visibility: savedViews.visibility,
         ownerUserId: savedViews.ownerUserId,
-        ownerName: users.displayName,
+        ownerName: people.displayName,
         definition: savedViews.definition,
       })
       .from(savedViews)
-      .innerJoin(users, eq(users.id, savedViews.ownerUserId))
+      .innerJoin(people, eq(people.id, savedViews.ownerUserId))
       .where(and(
         eq(savedViews.organizationId, reader.organizationId),
         eq(savedViews.scope, scope),
@@ -62,11 +64,11 @@ async function legacyProjectViews(db: Db, reader: Reader): Promise<readonly Visi
       name: projectSavedViews.name,
       visibility: projectSavedViews.visibility,
       ownerUserId: projectSavedViews.ownerUserId,
-      ownerName: users.displayName,
+      ownerName: people.displayName,
       definition: projectSavedViews.definition,
     })
     .from(projectSavedViews)
-    .innerJoin(users, eq(users.id, projectSavedViews.ownerUserId))
+    .innerJoin(people, eq(people.id, projectSavedViews.ownerUserId))
     .where(and(
       eq(projectSavedViews.organizationId, reader.organizationId),
       or(eq(projectSavedViews.ownerUserId, reader.userId), eq(projectSavedViews.visibility, "shared")),

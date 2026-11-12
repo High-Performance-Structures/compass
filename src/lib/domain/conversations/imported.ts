@@ -1,10 +1,12 @@
 import { sql } from "drizzle-orm"
 
-import { users } from "@/db/schema"
+import { peopleView } from "@/lib/domain/identity/views"
 import { messages } from "@/db/schema-conversations"
 import { archivedAwareNameSql } from "@/lib/archived-person-sql"
 import { projectContactPersonStatusSql } from "@/lib/domain/contacts/person-status"
 import { resolvedContactValueOf } from "@/lib/domain/contacts/resolved-columns"
+
+const people = peopleView()
 
 /*
  * Messages imported from an outside system (Buildertrend today) live in
@@ -32,7 +34,7 @@ export const importedMessageColumns = {
  * A native message sender's name, for the `user` object of message reads
  * (joined on `users`). An inactive account reads "Archived user – Name".
  */
-export const messageSenderDisplayName = archivedAwareNameSql(users.displayName, sql`${users.isActive} = 0`)
+export const messageSenderDisplayName = archivedAwareNameSql(people.displayName, sql`${people.isActive} = 0`)
 
 /**
  * Imported messages never notify anyone: they were delivered in the source

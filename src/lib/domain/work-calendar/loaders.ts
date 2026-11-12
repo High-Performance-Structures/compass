@@ -10,17 +10,16 @@ import {
   googleCalendarEvents,
   googleCalendarSelections,
   organizationCalendarSettings,
-  organizationMembers,
-  projectMembers,
   projectOperations,
   projectRfis,
   projects,
   schedulePublications,
   scheduleTasks,
-  users,
   workCalendarEventAttendees,
   workCalendarEvents,
 } from "@/db/schema"
+import { membershipsView, peopleView } from "@/lib/domain/identity/views"
+import { projectMembersView } from "@/lib/domain/project/views"
 import { chunkD1Values } from "@/lib/d1-query"
 import type { Db } from "@/lib/server/action-context"
 
@@ -38,6 +37,10 @@ import type {
   WorkCalendarEventAttendee,
   WorkingTaskRow,
 } from "./types"
+
+const companyMemberships = membershipsView()
+const projectMemberships = projectMembersView()
+const people = peopleView()
 
 type PersonRow = {
   readonly id: string
@@ -85,18 +88,18 @@ export async function loadCalendarProjects(
   }
   return db
     .select(calendarProjectColumns)
-    .from(projectMembers)
-    .innerJoin(projects, eq(projects.id, projectMembers.projectId))
-    .where(and(eq(projectMembers.userId, input.userId), eq(projects.organizationId, input.organizationId)))
+    .from(projectMemberships)
+    .innerJoin(projects, eq(projects.id, projectMemberships.projectId))
+    .where(and(eq(projectMemberships.userId, input.userId), eq(projects.organizationId, input.organizationId)))
     .orderBy(asc(projects.projectNumber), asc(projects.name))
 }
 
 /** The viewer's role on each project they belong to. */
 export async function loadProjectRoles(db: Db, userId: string): Promise<ReadonlyMap<string, string>> {
   const memberships = await db
-    .select({ projectId: projectMembers.projectId, role: projectMembers.role })
-    .from(projectMembers)
-    .where(eq(projectMembers.userId, userId))
+    .select({ projectId: projectMemberships.projectId, role: projectMemberships.role })
+    .from(projectMemberships)
+    .where(eq(projectMemberships.userId, userId))
   const roles = new Map<string, string>()
   for (const membership of memberships) roles.set(membership.projectId, membership.role)
   return roles
@@ -105,16 +108,16 @@ export async function loadProjectRoles(db: Db, userId: string): Promise<Readonly
 export async function loadActiveOrganizationPeople(db: Db, organizationId: string): Promise<readonly PersonRow[]> {
   return db
     .select({
-      id: users.id,
-      email: users.email,
-      displayName: users.displayName,
-      firstName: users.firstName,
-      lastName: users.lastName,
+      id: people.id,
+      email: people.email,
+      displayName: people.displayName,
+      firstName: people.firstName,
+      lastName: people.lastName,
     })
-    .from(organizationMembers)
-    .innerJoin(users, eq(users.id, organizationMembers.userId))
-    .where(and(eq(organizationMembers.organizationId, organizationId), eq(users.isActive, true)))
-    .orderBy(asc(users.displayName), asc(users.email))
+    .from(companyMemberships)
+    .innerJoin(people, eq(people.id, companyMemberships.userId))
+    .where(and(eq(companyMemberships.organizationId, organizationId), eq(people.isActive, true)))
+    .orderBy(asc(people.displayName), asc(people.email))
 }
 
 export async function loadConnectedGooglePeople(
@@ -124,21 +127,21 @@ export async function loadConnectedGooglePeople(
   return db
     .select({
       userId: googleCalendarConnections.userId,
-      email: users.email,
-      displayName: users.displayName,
-      firstName: users.firstName,
-      lastName: users.lastName,
+      email: people.email,
+      displayName: people.displayName,
+      firstName: people.firstName,
+      lastName: people.lastName,
     })
     .from(googleCalendarConnections)
-    .innerJoin(users, eq(users.id, googleCalendarConnections.userId))
+    .innerJoin(people, eq(people.id, googleCalendarConnections.userId))
     .where(
       and(
         eq(googleCalendarConnections.organizationId, organizationId),
         eq(googleCalendarConnections.status, "connected"),
-        eq(users.isActive, true),
+        eq(people.isActive, true),
       ),
     )
-    .orderBy(asc(users.displayName), asc(users.email))
+    .orderBy(asc(people.displayName), asc(people.email))
 }
 
 export async function loadGoogleDestinations(db: Db, organizationId: string): Promise<readonly DestinationRow[]> {
@@ -308,16 +311,16 @@ export async function loadEventAttendeeRows(db: Db, eventIds: readonly string[])
       db
         .select({
           eventId: workCalendarEventAttendees.eventId,
-          userId: users.id,
-          email: users.email,
-          displayName: users.displayName,
-          firstName: users.firstName,
-          lastName: users.lastName,
+          userId: people.id,
+          email: people.email,
+          displayName: people.displayName,
+          firstName: people.firstName,
+          lastName: people.lastName,
         })
         .from(workCalendarEventAttendees)
-        .innerJoin(users, eq(users.id, workCalendarEventAttendees.userId))
+        .innerJoin(people, eq(people.id, workCalendarEventAttendees.userId))
         .where(inArray(workCalendarEventAttendees.eventId, eventIdChunk))
-        .orderBy(asc(users.displayName), asc(users.email)),
+        .orderBy(asc(people.displayName), asc(people.email)),
     ),
   )
   return chunks.flat()
@@ -331,10 +334,10 @@ export async function loadPersonalGoogleEvents(
     .select({
       id: googleCalendarEvents.id,
       ownerUserId: googleCalendarConnections.userId,
-      ownerEmail: users.email,
-      ownerDisplayName: users.displayName,
-      ownerFirstName: users.firstName,
-      ownerLastName: users.lastName,
+      ownerEmail: people.email,
+      ownerDisplayName: people.displayName,
+      ownerFirstName: people.firstName,
+      ownerLastName: people.lastName,
       calendarName: googleCalendarSelections.summary,
       title: googleCalendarEvents.title,
       description: googleCalendarEvents.description,
@@ -354,7 +357,7 @@ export async function loadPersonalGoogleEvents(
     .from(googleCalendarEvents)
     .innerJoin(googleCalendarSelections, eq(googleCalendarSelections.id, googleCalendarEvents.selectionId))
     .innerJoin(googleCalendarConnections, eq(googleCalendarConnections.id, googleCalendarSelections.connectionId))
-    .innerJoin(users, eq(users.id, googleCalendarConnections.userId))
+    .innerJoin(people, eq(people.id, googleCalendarConnections.userId))
     .where(
       and(
         eq(googleCalendarConnections.organizationId, organizationId),
@@ -397,19 +400,19 @@ export async function loadActiveMemberAttendees(
     chunkD1Values(userIds).map((userIdChunk) =>
       db
         .select({
-          userId: users.id,
-          email: users.email,
-          displayName: users.displayName,
-          firstName: users.firstName,
-          lastName: users.lastName,
+          userId: people.id,
+          email: people.email,
+          displayName: people.displayName,
+          firstName: people.firstName,
+          lastName: people.lastName,
         })
-        .from(organizationMembers)
-        .innerJoin(users, eq(users.id, organizationMembers.userId))
+        .from(companyMemberships)
+        .innerJoin(people, eq(people.id, companyMemberships.userId))
         .where(
           and(
-            eq(organizationMembers.organizationId, organizationId),
-            eq(users.isActive, true),
-            inArray(organizationMembers.userId, userIdChunk),
+            eq(companyMemberships.organizationId, organizationId),
+            eq(people.isActive, true),
+            inArray(companyMemberships.userId, userIdChunk),
           ),
         ),
     ),
@@ -420,14 +423,14 @@ export async function loadActiveMemberAttendees(
 export async function loadEventAttendees(db: Db, eventId: string): Promise<readonly WorkCalendarEventAttendee[]> {
   const rows = await db
     .select({
-      userId: users.id,
-      email: users.email,
-      displayName: users.displayName,
-      firstName: users.firstName,
-      lastName: users.lastName,
+      userId: people.id,
+      email: people.email,
+      displayName: people.displayName,
+      firstName: people.firstName,
+      lastName: people.lastName,
     })
     .from(workCalendarEventAttendees)
-    .innerJoin(users, eq(users.id, workCalendarEventAttendees.userId))
+    .innerJoin(people, eq(people.id, workCalendarEventAttendees.userId))
     .where(eq(workCalendarEventAttendees.eventId, eventId))
   return rows.map(attendeeFromRow)
 }

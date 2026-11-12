@@ -1,6 +1,7 @@
 import { and, asc, eq } from "drizzle-orm"
 
-import { projectChangeOrderLines, projectChangeOrders, projectContacts, projects, users } from "@/db/schema"
+import { projectChangeOrderLines, projectChangeOrders, projectContacts, projects } from "@/db/schema"
+import { peopleView } from "@/lib/domain/identity/views"
 import { activityActorName, recordActivityEvent } from "@/lib/activity-log"
 import type { AuthUser } from "@/lib/auth"
 import { isChangeOrderKind } from "@/lib/change-orders/kinds"
@@ -21,6 +22,8 @@ import { rebuildProjectContractBudget } from "@/lib/financials/contract-budget-s
 import type { Db } from "@/lib/server/action-context"
 import { canManageUserAccessRole } from "@/lib/user-roles"
 import { resolvedContactColumns, withContactDirectory } from "@/lib/domain/contacts/resolved-columns"
+
+const peopleRows = peopleView()
 
 /*
  * Recording an owner's acceptance of a change order by written approval or a
@@ -92,9 +95,9 @@ export async function recordedChangeOrderAcceptance(
   if (!row.acceptanceMethod || !row.acceptedOn) return null
   const recorder = row.acceptanceRecordedBy
     ? await db
-        .select({ id: users.id, displayName: users.displayName, firstName: users.firstName, lastName: users.lastName, email: users.email, role: users.role })
-        .from(users)
-        .where(eq(users.id, row.acceptanceRecordedBy))
+        .select({ id: peopleRows.id, displayName: peopleRows.displayName, firstName: peopleRows.firstName, lastName: peopleRows.lastName, email: peopleRows.email, role: peopleRows.role })
+        .from(peopleRows)
+        .where(eq(peopleRows.id, row.acceptanceRecordedBy))
         .get()
     : undefined
   const recorded = {
