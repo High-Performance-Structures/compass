@@ -15,6 +15,7 @@ import {
   withdrawAccessRequest,
   type AccessRequestActor,
 } from "../service"
+import { reopenAccessRequest } from "../store"
 
 /*
  * The Request access workflow against every migration replayed on SQLite:
@@ -323,5 +324,67 @@ describe("deciding a request", () => {
     expect(row("SELECT status, decided_by, decided_at FROM organization_access_requests")).toEqual({ status: "declined", decided_by: "admin-a", decided_at: NOW })
     expect(row("SELECT count(*) AS n FROM organization_members WHERE user_id = 'user_rita' AND organization_id = 'org-a'")).toEqual({ n: 0 })
     expect(row("SELECT user_id FROM customer_contacts WHERE id = 'cc-1'")).toEqual({ user_id: null })
+  })
+})
+
+describe("deciding a request twice at once", () => {
+  const adminTwo = actor("admin-a2", "admin", "org-a")
+  beforeEach(() => {
+    sqlite.exec(`INSERT INTO users (id, email, display_name, role, created_at, updated_at) VALUES ('admin-a2', 'admin2@acme.test', 'Al Admin', 'admin', '${NOW}', '${NOW}');
+      INSERT INTO organization_members (id, organization_id, user_id, role, joined_at) VALUES ('m6', 'org-a', 'admin-a2', 'admin', '${NOW}');`)
+  })
+
+  it("two admins approving as a new client: one wins and only one client record is added", async () => {
+    const submitted = await submit(rita, "client")
+    if (!submitted.success) throw new Error(submitted.error)
+    const choice = { kind: "client" as const, requestId: submitted.data.requestId, customerContactId: "new" }
+    const results = await Promise.all([
+      approveAccessRequest(db, d1, adminA, choice, NOW),
+      approveAccessRequest(db, d1, adminTwo, choice, NOW),
+    ])
+    expect(results.filter((result) => result.success)).toHaveLength(1)
+    expect(results.find((result) => !result.success)).toEqual({ success: false, error: "This request was already decided." })
+    expect(row("SELECT count(*) AS n FROM customers WHERE organization_id = 'org-a'")).toEqual({ n: 2 })
+    expect(row("SELECT count(*) AS n FROM organization_members WHERE organization_id = 'org-a' AND user_id = 'user_rita'")).toEqual({ n: 1 })
+  })
+
+  it("approve racing decline ends with exactly one outcome", async () => {
+    const submitted = await submit(rita, "client")
+    if (!submitted.success) throw new Error(submitted.error)
+    const [approved, declined] = await Promise.all([
+      approveAccessRequest(db, d1, adminA, { kind: "client", requestId: submitted.data.requestId, customerContactId: "cc-1" }, NOW),
+      declineAccessRequest(db, adminTwo, submitted.data.requestId, NOW),
+    ])
+    expect([approved.success, declined.success].filter(Boolean)).toHaveLength(1)
+    const status = row<{ status: string }>("SELECT status FROM organization_access_requests")?.status
+    const members = row("SELECT count(*) AS n FROM organization_members WHERE organization_id = 'org-a' AND user_id = 'user_rita'")
+    expect(members).toEqual({ n: status === "approved" ? 1 : 0 })
+  })
+
+  it("a withdrawn request can't be approved, and nothing is granted", async () => {
+    const submitted = await submit(rita, "client")
+    if (!submitted.success) throw new Error(submitted.error)
+    const [withdrawn, approved] = await Promise.all([
+      withdrawAccessRequest(db, rita, submitted.data.requestId, NOW),
+      approveAccessRequest(db, d1, adminA, { kind: "client", requestId: submitted.data.requestId, customerContactId: "customer:cust-1" }, NOW),
+    ])
+    expect([withdrawn.success, approved.success].filter(Boolean)).toHaveLength(1)
+    if (withdrawn.success) {
+      expect(row("SELECT count(*) AS n FROM organization_members WHERE organization_id = 'org-a' AND user_id = 'user_rita'")).toEqual({ n: 0 })
+      expect(row("SELECT user_id FROM customer_contacts WHERE id = 'cc-1'")).toEqual({ user_id: null })
+    }
+  })
+
+  it("a failed grant reopens the request, unless the person has asked again since", async () => {
+    const submitted = await submit(rita, "client")
+    if (!submitted.success) throw new Error(submitted.error)
+    const id = submitted.data.requestId
+    sqlite.exec(`UPDATE organization_access_requests SET status = 'approved', granted_role = 'client' WHERE id = '${id}'`)
+    expect(await reopenAccessRequest(db, id, NOW)).toBe(true)
+    expect(row("SELECT status, granted_role FROM organization_access_requests")).toEqual({ status: "pending", granted_role: null })
+    sqlite.exec(`UPDATE organization_access_requests SET status = 'approved' WHERE id = '${id}'`)
+    expect((await submit(rita, "client")).success).toBe(true)
+    expect(await reopenAccessRequest(db, id, NOW)).toBe(false)
+    expect(row(`SELECT status FROM organization_access_requests WHERE id = '${id}'`)).toEqual({ status: "approved" })
   })
 })

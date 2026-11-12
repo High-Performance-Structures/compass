@@ -15,6 +15,7 @@
  * notifications are sent by ./notify.ts after these return.
  */
 import { and, eq, isNull, or, sql } from "drizzle-orm"
+import type { z } from "zod/v4"
 
 import {
   customerContacts,
@@ -30,6 +31,7 @@ import { recordActivityEvent, type ActivityActor } from "@/lib/activity-log"
 import { grantProjectContactAccess } from "@/lib/domain/contacts/prior-project-access"
 import { contactAccountLinkStatements, insertCustomer, insertCustomerPerson, insertVendor, insertVendorPersonStatement } from "@/lib/domain/contacts/store"
 import { ensureExternalOrganizationMembership, insertOrganizationMember } from "@/lib/domain/identity/store"
+import type { UserRole } from "@/lib/domain/identity/statuses"
 import { projectNumberAndName } from "@/lib/project-display-name"
 import type { Db } from "@/lib/server/action-context"
 import { isInternalStaffRole, isSupplierRole } from "@/lib/user-roles"
@@ -48,7 +50,7 @@ import {
   type AccessRequestInput,
   type ApproveAccessRequestInput,
 } from "./rules"
-import { decideAccessRequest, insertAccessRequest, reopenAccessRequest, setAccessRequestProjectCount } from "./store"
+import { closeAccessRequest, insertAccessRequest, markAccessRequestApproved, recordAccessRequestGrant, reopenAccessRequest } from "./store"
 import type { AccessRequestKind } from "./statuses"
 import { resolvedContactColumns, withContactDirectory } from "@/lib/domain/contacts/resolved-columns"
 
@@ -111,7 +113,6 @@ export async function submitAccessRequest(
     phone: value.phone,
     jobReference: value.jobReference,
     note: value.note,
-    status: "pending",
     createdAt: now,
     updatedAt: now,
   })
@@ -147,7 +148,7 @@ export async function withdrawAccessRequest(
     .where(eq(organizationAccessRequests.id, requestId))
     .get()
   if (!row || row.userId !== requester.id) return fail("Request not found.")
-  const changed = await decideAccessRequest(db, requestId, { status: "withdrawn", decidedBy: requester.id, now })
+  const changed = await closeAccessRequest(db, requestId, "withdraw", { decidedBy: requester.id, now })
   if (!changed) return fail("This request was already decided.")
   await recordActivityEvent({
     db,
@@ -412,11 +413,86 @@ async function personJobs(
   return [...linked, ...matched]
 }
 
+type ApprovalChoice = z.output<typeof approveAccessRequestSchema>
+type Requester = {
+  readonly name: string; readonly email: string; readonly phone: string | null
+  readonly companyName: string | null; readonly vendorRole: string | null
+}
+
+/** The admin's pick, as a directory id with no prefix. */
+function pickedId(choice: ApprovalChoice): string {
+  return choice.kind === "client" ? choice.customerContactId : choice.kind === "vendor" ? choice.vendorContactId : ""
+}
+
 /**
- * Approves a pending request. The request is claimed first (pending →
- * approved) so two admins can't both approve; if granting fails part way it
- * goes back to pending and the admin can try again. Each grant step is
- * idempotent, so a retry finishes the job.
+ * Checks the admin's pick before the request is claimed, without writing:
+ * a picked person must be live and not another login's; a picked client
+ * record or vendor company must be live. Returns an error, or null.
+ */
+async function checkPick(db: Db, organizationId: string, choice: ApprovalChoice, requesterUserId: string): Promise<string | null> {
+  if (choice.kind === "employee") return null
+  const picked = pickedId(choice)
+  if (picked === NEW_DIRECTORY_RECORD_OPTION) return null
+  const notFound = "That directory contact wasn't found or is inactive."
+  if (choice.kind === "client" && picked.startsWith(CLIENT_RECORD_OPTION_PREFIX)) {
+    const record = await db.select({ id: customers.id }).from(customers).where(and(
+      eq(customers.id, picked.slice(CLIENT_RECORD_OPTION_PREFIX.length)),
+      eq(customers.organizationId, organizationId),
+      isNull(customers.mergedIntoCustomerId),
+    )).get()
+    return record ? null : notFound
+  }
+  if (choice.kind === "vendor" && picked.startsWith(VENDOR_COMPANY_OPTION_PREFIX)) {
+    const company = await db.select({ id: vendors.id }).from(vendors).where(and(
+      eq(vendors.id, picked.slice(VENDOR_COMPANY_OPTION_PREFIX.length)),
+      eq(vendors.organizationId, organizationId),
+      eq(vendors.directoryStatus, "active"),
+      isNull(vendors.mergedIntoVendorId),
+    )).get()
+    return company ? null : notFound
+  }
+  const person = choice.kind === "client" ? await clientPerson(db, organizationId, picked) : await vendorPerson(db, organizationId, picked)
+  if (!person) return notFound
+  return person.userId && person.userId !== requesterUserId ? LINKED_ELSEWHERE : null
+}
+
+const LINKED_ELSEWHERE = "That directory contact is already linked to a different Compass login."
+
+/** The directory person an approval links, adding one when the admin picked a record, a company or "new". */
+async function resolvePerson(
+  db: Db,
+  organizationId: string,
+  choice: Exclude<ApprovalChoice, { readonly kind: "employee" }>,
+  requester: Requester,
+  now: string,
+): Promise<LinkedPerson | undefined> {
+  const picked = pickedId(choice)
+  if (picked === NEW_DIRECTORY_RECORD_OPTION) return newDirectoryPerson(db, organizationId, choice.kind, requester, now)
+  if (choice.kind === "client") {
+    return picked.startsWith(CLIENT_RECORD_OPTION_PREFIX)
+      ? clientPersonForRecord(db, organizationId, picked.slice(CLIENT_RECORD_OPTION_PREFIX.length), requester, now)
+      : clientPerson(db, organizationId, picked)
+  }
+  return picked.startsWith(VENDOR_COMPANY_OPTION_PREFIX)
+    ? vendorPersonForCompany(db, organizationId, picked.slice(VENDOR_COMPANY_OPTION_PREFIX.length), requester, now)
+    : vendorPerson(db, organizationId, picked)
+}
+
+/**
+ * Approves a pending request.
+ *
+ * Order matters (issue #1329): everything is checked read-only first, then
+ * the request is claimed (pending -> approved, compare-and-set), and only the
+ * admin who won the claim writes anything. So two admins approving at once,
+ * or an approval racing a decline or the person's withdrawal, end with one
+ * outcome, one set of grants and one email, and the loser never adds
+ * directory records or access. Claiming before granting (rather than
+ * granting, then claiming) means a request that ended declined or withdrawn
+ * never gave anyone access.
+ *
+ * If granting fails after the claim, the request goes back to pending and
+ * the admin can try again; each grant step is idempotent, so a retry
+ * finishes the job.
  */
 export async function approveAccessRequest(
   db: Db,
@@ -445,105 +521,29 @@ export async function approveAccessRequest(
   // Never change a staff member's role from a request.
   if (existing && isInternalStaffRole(existing.role)) return fail("This person is already on your staff in Compass.")
   if (existing && choice.kind === "employee") return fail("This person already has access. Change their role in People.")
+  const pickProblem = await checkPick(db, organizationId, choice, request.userId)
+  if (pickProblem) return fail(pickProblem)
 
-  const requester = {
+  const role = approvedOrganizationRole(choice)
+  const claimed = await markAccessRequestApproved(db, request.id, { decidedBy: actor.id, grantedRole: role, now })
+  if (!claimed) return fail("This request was already decided.")
+
+  const requester: Requester = {
     name: found.requesterName, email: found.requesterEmail, phone: request.phone,
     companyName: request.companyName, vendorRole: choice.kind === "vendor" ? choice.role : null,
   }
-  const picked = choice.kind === "client" ? choice.customerContactId : choice.kind === "vendor" ? choice.vendorContactId : ""
-  const person = choice.kind === "employee"
-    ? null
-    : picked === NEW_DIRECTORY_RECORD_OPTION
-      ? await newDirectoryPerson(db, organizationId, choice.kind, requester, now)
-      : choice.kind === "client"
-        ? picked.startsWith(CLIENT_RECORD_OPTION_PREFIX)
-          ? await clientPersonForRecord(db, organizationId, picked.slice(CLIENT_RECORD_OPTION_PREFIX.length), requester, now)
-          : await clientPerson(db, organizationId, picked)
-        : picked.startsWith(VENDOR_COMPANY_OPTION_PREFIX)
-          ? await vendorPersonForCompany(db, organizationId, picked.slice(VENDOR_COMPANY_OPTION_PREFIX.length), requester, now)
-          : await vendorPerson(db, organizationId, picked)
-  if (choice.kind !== "employee") {
-    if (!person) return fail("That directory contact wasn't found or is inactive.")
-    if (person.userId && person.userId !== request.userId) {
-      return fail("That directory contact is already linked to a different Compass login.")
-    }
-  }
-
-  const role = approvedOrganizationRole(choice)
-  const claimed = await decideAccessRequest(db, request.id, {
-    status: "approved",
-    decidedBy: actor.id,
-    now,
-    customerContactId: choice.kind === "client" && person ? person.id : null,
-    vendorContactId: choice.kind === "vendor" && person ? person.id : null,
-    grantedRole: role,
-  })
-  if (!claimed) return fail("This request was already decided.")
-
-  const opened: string[] = []
-  const skipped: string[] = []
+  let granted: Result<{ readonly opened: readonly string[]; readonly skipped: readonly string[] }>
   try {
-    if (choice.kind === "employee") {
-      await insertOrganizationMember(db, { id: crypto.randomUUID(), organizationId, userId: request.userId, role, joinedAt: now })
-    } else if (person) {
-      await ensureExternalOrganizationMembership(db, { organizationId, userId: request.userId, role, now })
-      if (person.userId !== request.userId) {
-        // The same compare-and-set link (with its audit row) the Contacts page uses.
-        const results = await database.batch(contactAccountLinkStatements(database, {
-          kind: choice.kind === "client" ? "client_person" : "vendor_person",
-          organizationId,
-          personId: person.id,
-          previousUserId: person.userId,
-          nextUserId: request.userId,
-          changedByUserId: actor.id,
-          now,
-        }))
-        if (results[0]?.meta.changes !== 1) throw new Error("The directory contact changed while you were approving. Reload and try again.")
-      }
-      const email = found.requesterEmail.trim().toLowerCase()
-      const jobs = await personJobs(db, organizationId, choice.kind, person.id, found.requesterEmail)
-      // One grant per job, as the project invitation does: each step reads and
-      // writes that job's membership, conversation and access rows.
-      for (const job of jobs) {
-        const label = job.projectNumber ? projectNumberAndName({ projectNumber: job.projectNumber, name: job.projectName }, " - ") : job.projectName
-        const projectRole = projectRoleForContactType(job.contactType)
-        if (!projectRole) continue
-        if (job.staffOnly) {
-          skipped.push(label)
-          continue
-        }
-        await grantProjectContactAccess(db, {
-          organizationId,
-          projectId: job.projectId,
-          projectContactId: job.contactId,
-          email,
-          role: projectRole,
-          activeUserId: request.userId,
-          workosInvitationId: null,
-          workosExpiresAt: null,
-          invitedBy: actor.id,
-          now,
-        })
-        await recordActivityEvent({
-          db,
-          organizationId,
-          projectId: job.projectId,
-          actor,
-          category: "access",
-          action: "project.access_granted",
-          entityType: "project_access_invitation",
-          entityId: job.contactId,
-          summary: `Granted ${found.requesterName} access to ${label} by approving their access request.`,
-          createdAt: now,
-        })
-        opened.push(label)
-      }
-    }
-    await setAccessRequestProjectCount(db, request.id, opened.length, now)
+    granted = await grantApprovedRequest(db, database, actor, { organizationId, requestId: request.id, userId: request.userId, choice, role, requester, now })
   } catch (error) {
-    await reopenAccessRequest(db, request.id, new Date().toISOString())
+    await reopenAfterFailedGrant(db, request.id)
     throw error
   }
+  if (!granted.success) {
+    await reopenAfterFailedGrant(db, request.id)
+    return granted
+  }
+  const { opened, skipped } = granted.data
 
   await recordActivityEvent({
     db,
@@ -575,6 +575,97 @@ export async function approveAccessRequest(
   }
 }
 
+async function reopenAfterFailedGrant(db: Db, requestId: string): Promise<void> {
+  const reopened = await reopenAccessRequest(db, requestId, new Date().toISOString())
+  if (!reopened) console.error("[access-requests] approval failed and could not reopen; a newer request is pending", requestId)
+}
+
+/** The claimed approval's writes: the directory person, membership, the link, then each job. Runs only for the admin who won the claim. */
+async function grantApprovedRequest(
+  db: Db,
+  database: D1Database,
+  actor: AccessRequestActor,
+  input: {
+    readonly organizationId: string; readonly requestId: string; readonly userId: string
+    readonly choice: ApprovalChoice; readonly role: UserRole; readonly requester: Requester; readonly now: string
+  },
+): Promise<Result<{ readonly opened: readonly string[]; readonly skipped: readonly string[] }>> {
+  const { organizationId, choice, role, now } = input
+  const opened: string[] = []
+  const skipped: string[] = []
+  if (choice.kind === "employee") {
+    await insertOrganizationMember(db, { id: crypto.randomUUID(), organizationId, userId: input.userId, role, joinedAt: now })
+    await recordAccessRequestGrant(db, input.requestId, { customerContactId: null, vendorContactId: null, projectCount: 0, now })
+    return { success: true, data: { opened, skipped } }
+  }
+
+  const person = await resolvePerson(db, organizationId, choice, input.requester, now)
+  if (!person) return fail("That directory contact wasn't found or is inactive.")
+  if (person.userId && person.userId !== input.userId) return fail(LINKED_ELSEWHERE)
+  // The membership comes first: the directory link requires the login to be
+  // a client or vendor member of the company (a database trigger).
+  await ensureExternalOrganizationMembership(db, { organizationId, userId: input.userId, role, now })
+  if (person.userId !== input.userId) {
+    // The same compare-and-set link (with its audit row) the Contacts page uses.
+    const results = await database.batch(contactAccountLinkStatements(database, {
+      kind: choice.kind === "client" ? "client_person" : "vendor_person",
+      organizationId,
+      personId: person.id,
+      previousUserId: person.userId,
+      nextUserId: input.userId,
+      changedByUserId: actor.id,
+      now,
+    }))
+    if (results[0]?.meta.changes !== 1) return fail("The directory contact changed while you were approving. Reload and try again.")
+  }
+
+  const email = input.requester.email.trim().toLowerCase()
+  const jobs = await personJobs(db, organizationId, choice.kind, person.id, input.requester.email)
+  // One grant per job, as the project invitation does: each step reads and
+  // writes that job's membership, conversation and access rows.
+  for (const job of jobs) {
+    const label = job.projectNumber ? projectNumberAndName({ projectNumber: job.projectNumber, name: job.projectName }, " - ") : job.projectName
+    const projectRole = projectRoleForContactType(job.contactType)
+    if (!projectRole) continue
+    if (job.staffOnly) {
+      skipped.push(label)
+      continue
+    }
+    await grantProjectContactAccess(db, {
+      organizationId,
+      projectId: job.projectId,
+      projectContactId: job.contactId,
+      email,
+      role: projectRole,
+      activeUserId: input.userId,
+      workosInvitationId: null,
+      workosExpiresAt: null,
+      invitedBy: actor.id,
+      now,
+    })
+    await recordActivityEvent({
+      db,
+      organizationId,
+      projectId: job.projectId,
+      actor,
+      category: "access",
+      action: "project.access_granted",
+      entityType: "project_access_invitation",
+      entityId: job.contactId,
+      summary: `Granted ${input.requester.name} access to ${label} by approving their access request.`,
+      createdAt: now,
+    })
+    opened.push(label)
+  }
+  await recordAccessRequestGrant(db, input.requestId, {
+    customerContactId: choice.kind === "client" ? person.id : null,
+    vendorContactId: choice.kind === "vendor" ? person.id : null,
+    projectCount: opened.length,
+    now,
+  })
+  return { success: true, data: { opened, skipped } }
+}
+
 /** Declines a pending request. Nothing is shared. */
 export async function declineAccessRequest(
   db: Db,
@@ -586,7 +677,7 @@ export async function declineAccessRequest(
   if (typeof organizationId !== "string") return organizationId
   const found = await companyAccessRequest(db, organizationId, requestId)
   if (!found) return fail("Request not found.")
-  const changed = await decideAccessRequest(db, requestId, { status: "declined", decidedBy: actor.id, now })
+  const changed = await closeAccessRequest(db, requestId, "decline", { decidedBy: actor.id, now })
   if (!changed) return fail("This request was already decided.")
   await recordActivityEvent({
     db,
