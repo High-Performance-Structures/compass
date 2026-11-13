@@ -133,8 +133,9 @@ export function machineProblems<State extends string, Event extends string>(
       }
     }
   }
+  const startsFrom = machine.entry?.length ? `"${machine.initial}" or an entry state` : `"${machine.initial}"`
   for (const state of machine.states) {
-    if (!reached.has(state)) problems.push(`state "${state}" cannot be reached from "${machine.initial}" or an entry state`)
+    if (!reached.has(state)) problems.push(`state "${state}" cannot be reached from ${startsFrom}`)
     const isTerminal = machine.terminal.includes(state)
     const exits = availableEvents(machine, state)
     if (isTerminal && exits.length > 0) problems.push(`terminal state "${state}" has outgoing events: ${exits.join(", ")}`)
