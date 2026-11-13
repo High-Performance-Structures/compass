@@ -618,6 +618,7 @@ export async function updateTask(
         now
       })
     )
+    let itemSaved = false
     try {
       if (assignmentChanged) {
         // Legacy scalar assignment changes invalidate normalized assignees. The
@@ -633,13 +634,29 @@ export async function updateTask(
       } else {
         await db.batch([taskUpdate, ...peopleQueries])
       }
+      itemSaved = true
       await persistScheduleDateUpdates(env.DB, task.projectId, ownMove, now, dateRules)
     } catch (error) {
-      // The accepted proposal goes back when the item's new dates didn't land.
-      if (acceptChangeProposal) await restoreConfirmationProposal(db, task, now)
+      // The accepted proposal goes back when the item's edit didn't land;
+      // a failed restore never hides the original error.
+      if (acceptChangeProposal && !itemSaved) {
+        await restoreConfirmationProposal(db, task, now).catch((restoreError: unknown) =>
+          console.error("Unable to restore the schedule proposal:", restoreError)
+        )
+      }
       throw error
     }
-    await persistScheduleDateUpdates(env.DB, task.projectId, successorMoves, now, dateRules)
+    // The items after it move in later batches. If one fails, the item and
+    // the groups before it are saved: the shift and Activity still record
+    // that, noting the partial move.
+    let successorsMoved = true
+    try {
+      await persistScheduleDateUpdates(env.DB, task.projectId, successorMoves, now, dateRules)
+    } catch (error) {
+      successorsMoved = false
+      console.error("Unable to move every schedule item after the edited one:", error)
+    }
+    const partialNote = successorsMoved ? "" : " Some items after it could not be moved."
     if (shiftReasonResult?.success) {
       await recordScheduleShift({
         db,
@@ -663,7 +680,8 @@ export async function updateTask(
       action: "schedule.item_updated",
       entityType: "schedule_item",
       entityId: taskId,
-      summary: `Updated schedule item “${data.title ?? task.title}”.`
+      summary: `Updated schedule item “${data.title ?? task.title}”.${partialNote}`,
+      ...(successorsMoved ? {} : { metadata: { partialMove: true } }),
     })
 
     if (acceptChangeProposal) {
@@ -690,6 +708,9 @@ export async function updateTask(
 
     if (scheduleDatesChanged) await recalcCriticalPath(db, task.projectId)
     for (const path of schedulePaths(task.projectId)) revalidatePath(path)
+    if (!successorsMoved) {
+      return { success: false, error: `Saved “${data.title ?? task.title}”, but some items after it could not be moved. Make the change again to move them.` }
+    }
     return { success: true }
   } catch (error) {
     console.error("Failed to update task:", error)

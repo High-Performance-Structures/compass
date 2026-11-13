@@ -204,24 +204,24 @@ export async function acceptConfirmationProposal(
 }
 
 /**
- * Puts back the proposal acceptConfirmationProposal took when the save it
- * belonged to failed before the item's new dates landed: only while nothing
- * else touched the item since (its updated_at is still the save's `now`, no
- * answer came in) and the same account is assigned.
+ * Puts back the proposal acceptConfirmationProposal took when the item edit
+ * it belonged to failed: only while nothing else touched the item since (its
+ * updated_at is still the save's `now`, no answer came in) and the same
+ * account is assigned. updated_at stays `now`.
  */
 export async function restoreConfirmationProposal(
   db: Db,
   before: Pick<
     typeof scheduleTasks.$inferSelect,
     | "id" | "assignedUserId" | "confirmationRequestedAt" | "confirmationRespondedAt" | "reminderSentAt"
-    | "proposedStartDate" | "proposedWorkdays" | "proposalNote" | "proposalSubmittedAt" | "updatedAt"
+    | "proposedStartDate" | "proposedWorkdays" | "proposalNote" | "proposalSubmittedAt"
   >,
   now: string
 ): Promise<boolean> {
-  const { id, assignedUserId, updatedAt, ...proposal } = before
+  const { id, assignedUserId, ...proposal } = before
   const result = await db
     .update(scheduleTasks)
-    .set({ ...proposal, confirmationStatus: confirmationMachine.transitions.propose.to, updatedAt })
+    .set({ ...proposal, confirmationStatus: confirmationMachine.transitions.propose.to, updatedAt: now })
     .where(
       and(
         eq(scheduleTasks.id, id),
@@ -370,7 +370,7 @@ function dateMoveStatements(database: D1Database, projectId: string, group: read
   const json = datesJson(group)
   const todoMoves = group.map(([scheduleTaskId, dates]) => ({ scheduleTaskId, nextStartDate: dates.startDate, nextEndDate: dates.endDateCalculated }))
   return [
-    ...(linkedTodos === "shift" ? [linkedTodoDateUpdateStatement(database, todoMoves, now)] : []),
+    ...(linkedTodos === "shift" ? [linkedTodoDateUpdateStatement(database, projectId, todoMoves, now)] : []),
     dateWriteStatement(database, projectId, json, now, rules),
     ...(rules.reaskOnDateMove ? [assigneeResetStatement(database, projectId, json, now)] : []),
   ]

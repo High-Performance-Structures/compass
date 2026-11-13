@@ -107,13 +107,22 @@ describe("updateTask accepting a date proposal", () => {
     expect(mocks.persistScheduleDateUpdates).toHaveBeenCalledTimes(2)
   })
 
-  it.each([
-    ["the item edit", () => mocks.batch.mockRejectedValueOnce(new Error("D1 down"))],
-    ["the item's own date move", () => mocks.persistScheduleDateUpdates.mockRejectedValueOnce(new Error("D1 down"))],
-  ])("puts the proposal back when %s fails after the accept landed", async (_label, fail) => {
-    fail()
+  it("puts the proposal back when the item edit fails after the accept landed", async () => {
+    mocks.batch.mockRejectedValueOnce(new Error("D1 down"))
     await expect(updateTask("task-1", accept)).resolves.toEqual({ success: false, error: "Failed to update schedule item" })
     expect(mocks.restoreConfirmationProposal).toHaveBeenCalledWith(expect.anything(), task, expect.any(String))
+  })
+
+  it("keeps the original error when the restore itself fails", async () => {
+    mocks.batch.mockRejectedValueOnce(new Error("D1 down"))
+    mocks.restoreConfirmationProposal.mockRejectedValueOnce(new Error("still down"))
+    await expect(updateTask("task-1", accept)).resolves.toEqual({ success: false, error: "Failed to update schedule item" })
+  })
+
+  it("doesn't restore once the item edit landed", async () => {
+    mocks.persistScheduleDateUpdates.mockRejectedValueOnce(new Error("D1 down"))
+    await expect(updateTask("task-1", accept)).resolves.toMatchObject({ success: false })
+    expect(mocks.restoreConfirmationProposal).not.toHaveBeenCalled()
   })
 })
 
@@ -135,6 +144,24 @@ describe("updateTask date moves", () => {
     // A changed confirmation rule still re-asks.
     await updateTask("task-1", { confirmationRequired: false })
     expect(mocks.resetTaskAssigneesQuery).toHaveBeenCalledTimes(1)
+  })
+
+  it("records the shift and Activity when a later group fails, noting the partial move", async () => {
+    const successor = { ...plain, id: "s1", startDate: "2026-09-17" }
+    mocks.readWorkingSchedule.mockResolvedValue({
+      tasks: [plain, successor],
+      dependencies: [{ id: "d1", predecessorId: "task-1", successorId: "s1", type: "FS", lagDays: 0 }],
+      exceptions: [],
+    })
+    mocks.persistScheduleDateUpdates.mockResolvedValueOnce(undefined).mockRejectedValueOnce(new Error("D1 down"))
+    const result = await updateTask("task-1", { startDate: "2026-09-28" })
+    expect(result).toEqual({ success: false, error: "Saved “Framing”, but some items after it could not be moved. Make the change again to move them." })
+    expect(mocks.recordActivityEvent).toHaveBeenCalledWith(expect.objectContaining({
+      action: "schedule.item_updated",
+      summary: "Updated schedule item “Framing”. Some items after it could not be moved.",
+      metadata: { partialMove: true },
+    }))
+    expect(mocks.recalcCriticalPath).toHaveBeenCalled()
   })
 
   it("accepts a cascade the size of the largest jobs (418 items)", async () => {

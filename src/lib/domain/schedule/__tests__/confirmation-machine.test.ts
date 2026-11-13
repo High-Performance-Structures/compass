@@ -167,7 +167,7 @@ describe("acceptConfirmationProposal", () => {
 describe("restoreConfirmationProposal", () => {
   const BEFORE = {
     id: "t1", assignedUserId: "u1", confirmationRequestedAt: "r0", confirmationRespondedAt: "s1", reminderSentAt: null,
-    proposedStartDate: "2026-09-21", proposedWorkdays: 4, proposalNote: "Crew free then", proposalSubmittedAt: "s1", updatedAt: "t0",
+    proposedStartDate: "2026-09-21", proposedWorkdays: 4, proposalNote: "Crew free then", proposalSubmittedAt: "s1",
   }
   const state = (sqlite: ReturnType<typeof sqliteDb>["sqlite"]): unknown =>
     sqlite.prepare("SELECT confirmation_status, confirmation_responded_at, proposal_submitted_at, proposed_start_date, updated_at FROM schedule_tasks").get()
@@ -177,7 +177,7 @@ describe("restoreConfirmationProposal", () => {
     sqlite.exec("UPDATE schedule_tasks SET confirmation_responded_at = 's1', proposal_submitted_at = 's1', proposed_start_date = '2026-09-21', proposed_workdays = 4")
     expect(await acceptConfirmationProposal(db, "t1", "s1", "accept_proposal", "t2")).toBe(true)
     expect(await restoreConfirmationProposal(db, BEFORE, "t2")).toBe(true)
-    expect(state(sqlite)).toEqual({ confirmation_status: "proposed", confirmation_responded_at: "s1", proposal_submitted_at: "s1", proposed_start_date: "2026-09-21", updated_at: "t0" })
+    expect(state(sqlite)).toEqual({ confirmation_status: "proposed", confirmation_responded_at: "s1", proposal_submitted_at: "s1", proposed_start_date: "2026-09-21", updated_at: "t2" })
   })
 
   it("leaves the item alone once something else changed it", async () => {
@@ -319,9 +319,15 @@ describe("date moves ask again", () => {
 })
 
 describe("schedule date writes", () => {
-  // A one-off Buildertrend import refresh, run by hand against a fresh copy
-  // of imported items before anyone was asked to confirm them.
-  const EXEMPT = new Set(["scripts/lib/buildertrend-schedule-refresh.mjs"])
+  const EXEMPT = new Set([
+    // One-off Buildertrend import refresh, run by hand against freshly
+    // imported items before anyone was asked to confirm them.
+    "scripts/lib/buildertrend-schedule-refresh.mjs",
+    // One-off O-58-3674 operational cutover; done and never re-run.
+    "scripts/lib/o-58-3674-operational-cutover.mjs",
+    // Local end-to-end fixtures (seeded into a local database only).
+    "scripts/seed-e2e-local.mjs",
+  ])
   const STORE = "src/lib/domain/schedule/store.ts"
   const storeText = readFileSync(STORE, "utf8")
   const helperStart = storeText.indexOf("function dateWriteStatement(")
@@ -333,8 +339,17 @@ describe("schedule date writes", () => {
   it("go through the store's date moves only, anywhere in src/ or scripts/", () => {
     expect(helper).toContain("start_date = ${next(\"start\")}, end_date_calculated = ${next(\"end\")}")
     // Raw SQL setting start_date, workdays or end_date_calculated (not proposed_/source_ columns).
-    const raw = /UPDATE\s+schedule_tasks\b[\s\S]{0,800}?\bSET\b[\s\S]{0,800}?(?<![\w.])(start_date|workdays|end_date_calculated)\s*=/i
-    expect(code.filter(({ text }) => raw.test(text)).map(({ path }) => path)).toEqual([])
+    const dateColumn = String.raw`(?<![\w.])(start_date|workdays|end_date_calculated)\s*=`
+    const raw = [
+      new RegExp(String.raw`UPDATE\s+schedule_tasks\b[\s\S]{0,800}?\bSET\b[\s\S]{0,800}?` + dateColumn, "i"),
+      // An upsert that rewrites an existing item's dates, or replaces the row outright.
+      new RegExp(String.raw`INSERT\s+(?:OR\s+\w+\s+)?INTO\s+schedule_tasks\b[\s\S]{0,3000}?ON\s+CONFLICT\b[\s\S]{0,400}?DO\s+UPDATE\s+SET\b[\s\S]{0,800}?` + dateColumn, "i"),
+      /(?:INSERT\s+OR\s+REPLACE|\bREPLACE)\s+INTO\s+schedule_tasks\b/i,
+    ]
+    expect(code.filter(({ text }) => raw.some((pattern) => pattern.test(text))).map(({ path }) => path)).toEqual([])
+    // Drizzle upserts that rewrite an item's dates.
+    const upsert = /\.insert\(scheduleTasks\)[\s\S]{0,1500}?onConflictDoUpdate\(\{[\s\S]{0,600}?\b(startDate|workdays|endDateCalculated)\b/
+    expect(code.filter(({ text }) => upsert.test(text)).map(({ path }) => path)).toEqual([])
     // Drizzle updates of schedule_tasks that set a date column.
     const drizzle = code.flatMap(({ path, text }) =>
       text.split(/\.update\(scheduleTasks\)/).slice(1)

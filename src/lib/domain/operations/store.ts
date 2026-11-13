@@ -321,7 +321,8 @@ export function templateBidPackageInsertStatement(
 /**
  * Moves the linked to-dos of several schedule items by the same number of
  * days as each item, in one statement. ?1 is a JSON object keyed by schedule
- * item id with its new [start, end] dates. Run before the schedule_tasks
+ * item id with its new [start, end] dates; ?3 the project (uses its index).
+ * Run before the schedule_tasks
  * update so offsets come from the items' previous dates.
  */
 export const LINKED_TODO_DATE_UPDATE_SQL = `UPDATE project_operations
@@ -344,7 +345,8 @@ due_date = CASE
   )
 END,
 updated_at = ?2
-WHERE source_record_id IN (SELECT key FROM json_each(?1))
+WHERE project_id = ?3
+  AND source_record_id IN (SELECT key FROM json_each(?1))
   AND project_id = (
     SELECT project_id FROM schedule_tasks WHERE id = project_operations.source_record_id
   )
@@ -359,11 +361,12 @@ WHERE source_record_id IN (SELECT key FROM json_each(?1))
 
 export function linkedTodoDateUpdateStatement(
   database: D1Database,
+  projectId: string,
   moves: readonly { readonly scheduleTaskId: string; readonly nextStartDate: string; readonly nextEndDate: string }[],
   updatedAt: string,
 ): D1PreparedStatement {
   const dates = Object.fromEntries(moves.map((move) => [move.scheduleTaskId, [move.nextStartDate, move.nextEndDate]]))
-  return database.prepare(LINKED_TODO_DATE_UPDATE_SQL).bind(JSON.stringify(dates), updatedAt)
+  return database.prepare(LINKED_TODO_DATE_UPDATE_SQL).bind(JSON.stringify(dates), updatedAt, projectId)
 }
 
 type SquareReceivableOperation = {

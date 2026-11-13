@@ -86,7 +86,8 @@ describe("linked to-do date synchronization", () => {
 
     database.prepare(LINKED_TODO_DATE_UPDATE_SQL).run(
       JSON.stringify({ "schedule-1": ["2026-08-20", "2026-08-24"] }),
-      "new"
+      "new",
+      "project-1"
     )
 
     const rows = database
