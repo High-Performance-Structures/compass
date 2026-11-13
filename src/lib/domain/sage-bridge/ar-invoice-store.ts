@@ -77,6 +77,17 @@ export async function confirmSageArExportNotInSage(
   return result.meta.changes > 0
 }
 
+/**
+ * SQL condition: no export of `sourceId` is possibly in Sage
+ * (POSSIBLY_IN_SAGE_SQL), for a write that must not land once Sage may have
+ * the invoice (taking a billing approval back, say).
+ */
+export function arExportNotPossiblyInSage(input: { readonly kind: keyof typeof AR_EXPORT_TABLES; readonly organizationId: string; readonly sourceId: string }): SQL {
+  const { table, source } = AR_EXPORT_TABLES[input.kind]
+  return sql`NOT EXISTS (SELECT 1 FROM ${sql.identifier(table)}
+    WHERE ${sql.identifier(table)}.${sql.identifier(source)} = ${input.sourceId} AND ${sql.identifier(table)}.organization_id = ${input.organizationId} AND ${sql.raw(POSSIBLY_IN_SAGE_SQL)})`
+}
+
 /** Whether Sage may have the invoice of `sourceId`'s export (see POSSIBLY_IN_SAGE_SQL); false with no export. */
 export async function arExportPossiblyInSage(
   db: Db,
@@ -283,15 +294,30 @@ export async function cancelSageArInvoiceExport(
     eq(sageArInvoiceExports.organizationId, input.organizationId)
   )
   // Fenced on the status, so a claim that lands first wins and this reports it.
-  const cancelled = await exportUpdate(db, and(forApplication, cancellable(sageArInvoiceExports)), {
-    status: "cancelled",
-    claimToken: null,
-    completedAt: input.now,
-    updatedAt: input.now,
-  }).returning({ id: sageArInvoiceExports.id })
+  const cancelled = await cancelSageArInvoiceExportStatement(db, input).returning({ id: sageArInvoiceExports.id })
   if (cancelled.length > 0) return true
   const row = await db.select({ id: sageArInvoiceExports.id }).from(sageArInvoiceExports).where(forApplication).get()
   return !row
+}
+
+/**
+ * The cancel of a pay request's export that never reached Sage, as one
+ * statement (for the batch that takes its billing back, so it lands only with
+ * the undo).
+ */
+export function cancelSageArInvoiceExportStatement(
+  db: Db,
+  input: { readonly organizationId: string; readonly applicationId: string; readonly now: string }
+) {
+  return exportUpdate(
+    db,
+    and(
+      eq(sageArInvoiceExports.applicationId, input.applicationId),
+      eq(sageArInvoiceExports.organizationId, input.organizationId),
+      cancellable(sageArInvoiceExports),
+    ),
+    { status: "cancelled", claimToken: null, completedAt: input.now, updatedAt: input.now },
+  )
 }
 
 // ---------------------------------------------------------------------------

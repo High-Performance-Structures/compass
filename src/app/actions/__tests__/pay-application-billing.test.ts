@@ -30,6 +30,8 @@ import {
 import { getProjectDepositRequests } from "@/app/actions/project-contract-deposits"
 
 let sqlite: InstanceType<typeof Database>
+// Runs once before the next batch: a write that lands between a read and its batch.
+let beforeNextBatch: (() => void) | null = null
 
 function createTable(table: SQLiteTable): void {
   const config = getTableConfig(table)
@@ -57,7 +59,12 @@ beforeEach(() => {
   db.insert(projectBudgetApplications).values(application("app-1", "internal_review", "2026-10-16")).run()
   mocks.getDb.mockReturnValue({
     select: db.select.bind(db), update: db.update.bind(db), insert: db.insert.bind(db), delete: db.delete.bind(db),
-    batch: async (queries: readonly { run(): unknown }[]) => sqlite.transaction(() => queries.map((query) => query.run()))(),
+    batch: async (queries: readonly { run(): unknown }[]) => {
+      const hook = beforeNextBatch
+      beforeNextBatch = null
+      hook?.()
+      return sqlite.transaction(() => queries.map((query) => query.run()))()
+    },
   })
   mocks.requireAuth.mockResolvedValue({ id: "user", role: "admin", organizationId: "org" })
 })
@@ -130,6 +137,57 @@ describe("approving a pay application for billing", () => {
     // Exactly one wins, and the row agrees with it.
     expect([undo.success, record.success].filter(Boolean)).toHaveLength(1)
     expect(row("app-1")).toMatchObject(undo.success ? { status: "internal_review", sage_invoice_number: null } : { status: "billed", sage_invoice_number: "25031" })
+  })
+
+  describe("taking back billing with a Sage AR invoice export", () => {
+    function exportRow(status: string, sageRecordId: string | null = null): void {
+      sqlite.prepare(
+        "INSERT INTO sage_ar_invoice_exports (id, organization_id, project_id, application_id, status, invoice_number, automatic, requested_at, attempt_count, sage_record_id, updated_at) VALUES ('exp', 'org', 'bishop', 'app-1', ?, 'H-430-1900-PR01', 1, 't', 0, ?, 't')"
+      ).run(status, sageRecordId)
+    }
+    function exportStatus(): unknown {
+      return sqlite.prepare("SELECT status FROM sage_ar_invoice_exports WHERE id = 'exp'").get()
+    }
+
+    it("cancels a queued export together with the undo", async () => {
+      await approveProjectOwnerPayApplicationForBilling("bishop", "app-1")
+      exportRow("queued")
+      expect((await undoProjectOwnerPayApplicationBilling("bishop", "app-1")).success).toBe(true)
+      expect(exportStatus()).toEqual({ status: "cancelled" })
+    })
+
+    it("leaves the queued export alone when the undo is refused", async () => {
+      await approveProjectOwnerPayApplicationForBilling("bishop", "app-1")
+      exportRow("queued")
+      // A Sage invoice number is recorded after the undo's checks, before its write.
+      beforeNextBatch = () => sqlite.prepare("UPDATE project_budget_applications SET sage_invoice_number = '25031' WHERE id = 'app-1'").run()
+      const result = await undoProjectOwnerPayApplicationBilling("bishop", "app-1")
+      expect(result.success).toBe(false)
+      expect(row("app-1")).toMatchObject({ status: "billed" })
+      expect(exportStatus()).toEqual({ status: "queued" })
+    })
+
+    it("refuses while the export is running, done, or recorded by Sage, and changes nothing", async () => {
+      for (const [status, sageRecordId] of [["running", null], ["succeeded", null], ["failed", "AR-77"]] as const) {
+        sqlite.prepare("DELETE FROM sage_ar_invoice_exports").run()
+        sqlite.prepare("UPDATE project_budget_applications SET status = 'internal_review'").run()
+        await approveProjectOwnerPayApplicationForBilling("bishop", "app-1")
+        exportRow(status, sageRecordId)
+        const result = await undoProjectOwnerPayApplicationBilling("bishop", "app-1")
+        expect(result).toMatchObject({ success: false, error: expect.stringMatching(/void the invoice in Sage/) })
+        expect(row("app-1")).toMatchObject({ status: "billed" })
+        expect(exportStatus()).toEqual({ status })
+      }
+    })
+
+    it("refuses when Sage starts adding the invoice after the undo's checks", async () => {
+      await approveProjectOwnerPayApplicationForBilling("bishop", "app-1")
+      exportRow("queued")
+      beforeNextBatch = () => sqlite.prepare("UPDATE sage_ar_invoice_exports SET status = 'running' WHERE id = 'exp'").run()
+      expect((await undoProjectOwnerPayApplicationBilling("bishop", "app-1")).success).toBe(false)
+      expect(row("app-1")).toMatchObject({ status: "billed" })
+      expect(exportStatus()).toEqual({ status: "running" })
+    })
   })
 
   it("refuses clients", async () => {

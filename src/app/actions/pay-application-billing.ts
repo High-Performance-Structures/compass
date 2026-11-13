@@ -10,7 +10,7 @@ import { batchGuardStatement, isBatchGuardFailure } from "@/lib/d1-query"
 import { compassDrawStatusIs, movePayApplicationStatus, updateBudgetApplicationsStatement } from "@/lib/domain/budget/store"
 import { payApplicationHasActivePayments } from "@/lib/domain/financials/receivables"
 import { operationUpdateQuery } from "@/lib/domain/operations/store"
-import { cancelSageArInvoiceExport } from "@/lib/domain/sage-bridge/ar-invoice-store"
+import { arExportNotPossiblyInSage, arExportPossiblyInSage, cancelSageArInvoiceExportStatement } from "@/lib/domain/sage-bridge/ar-invoice-store"
 import { queueArInvoiceSageExport } from "@/lib/sage/ar-invoice-sync"
 import type { AuthUser } from "@/lib/auth"
 import { requireOrg } from "@/lib/org-scope"
@@ -152,16 +152,17 @@ export async function undoProjectOwnerPayApplicationBilling(
     if (await payApplicationHasActivePayments(db, applicationId)) {
       throw new Error("Payments are recorded against this draw. Void them first.")
     }
-    const now = new Date().toISOString()
-    if (!(await cancelSageArInvoiceExport(db, { organizationId, applicationId, now }))) {
+    if (await arExportPossiblyInSage(db, { kind: "pay", organizationId, sourceId: applicationId })) {
       throw new Error("This draw is being sent to Sage as an AR invoice (or Sage already has it). Wait for it to finish, then void the invoice in Sage first.")
     }
+    const now = new Date().toISOString()
+    // The undo and the cancel of its queued Sage AR invoice land together, and
+    // only while no Sage invoice number is recorded and Sage hasn't started on it.
     const moved = await movePayApplicationStatus(db, {
       projectId,
       applicationId,
       event: "undo_billing",
-      // Not once a Sage invoice number was recorded meanwhile.
-      also: isNull(projectBudgetApplications.sageInvoiceNumber),
+      also: and(isNull(projectBudgetApplications.sageInvoiceNumber), arExportNotPossiblyInSage({ kind: "pay", organizationId, sourceId: applicationId })),
       values: { ownerVisible: false, billedAt: null, billedBy: null, syncStatus: "needs_review", updatedAt: now },
       alongWith: [
         operationUpdateQuery(db, operationFor(projectId, applicationId), {
@@ -169,9 +170,12 @@ export async function undoProjectOwnerPayApplicationBilling(
           syncStatus: "needs_review",
           updatedAt: now,
         }),
+        cancelSageArInvoiceExportStatement(db, { organizationId, applicationId, now }),
       ],
     })
-    if (!moved) throw new Error("This billing approval was already taken back, or a Sage invoice number was recorded meanwhile. Refresh to see where it stands.")
+    if (!moved) {
+      throw new Error("This billing approval was already taken back, or a Sage invoice number was recorded or Sage started adding the invoice meanwhile. Refresh to see where it stands.")
+    }
     await recordActivityEvent({
       db, organizationId, projectId, actor: user, category: "financial",
       action: "pay_application_billing_undone", entityType: "project_budget_application", entityId: applicationId,
