@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest"
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
 vi.mock("@/lib/notifications/events", () => ({ notifyProjectAssignment: vi.fn(async () => undefined) }))
 vi.mock("@/lib/notifications/clear-on-read", () => ({ clearOverdueFollowUpReminders: vi.fn(async () => undefined) }))
@@ -59,9 +59,16 @@ describe("daily log follow-ups on the server", () => {
   let db: ReturnType<typeof getDb>
 
   beforeEach(() => {
+    // The fixtures are dated NOW, and contact logs refuse dates over 30 days back.
+    vi.useFakeTimers({ toFake: ["Date"] })
+    vi.setSystemTime(new Date(NOW))
     sqlite = migratedSqlite()
     seed(sqlite)
     db = getDb(d1(sqlite))
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
   })
 
   it("lists open to-dos only", async () => {
