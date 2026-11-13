@@ -7,6 +7,7 @@ import type { ColumnDef } from "@tanstack/react-table"
 import { IconCash, IconSearch } from "@tabler/icons-react"
 
 import {
+  releasePaymentFromClosedInvoice,
   voidReceivedPaymentWithReason,
   type ProjectReceivablesData,
 } from "@/app/actions/received-payments"
@@ -169,11 +170,13 @@ export function billedItemColumns({ projectId, canRecord, canSettle, onRecord, o
 }
 
 /** The received payments sheet's columns (sheet "payments.received"). */
-export function receivedPaymentColumns({ canRecord, canVoid, onApply, onVoid }: {
+export function receivedPaymentColumns({ canRecord, canVoid, onApply, onVoid, onRelease }: {
   readonly canRecord: boolean
   readonly canVoid: boolean
   readonly onApply: (payment: ReceivedPaymentView) => void
   readonly onVoid: (payment: ReceivedPaymentView) => void
+  /** Takes the payment off a void or draft invoice so it can be applied elsewhere. */
+  readonly onRelease: (payment: ReceivedPaymentView, allocationId: string) => void
 }): ColumnDef<ReceivedPaymentView>[] {
   return [
     {
@@ -194,6 +197,15 @@ export function receivedPaymentColumns({ canRecord, canVoid, onApply, onVoid }: 
           {row.original.allocations.map((allocation) => (
             <li key={allocation.id} className={allocation.released ? "text-muted-foreground line-through" : undefined}>
               {allocation.itemLabel} {formatCents(allocation.cents)}
+              {allocation.onClosedInvoice && (
+                <span className="ml-1 text-xs text-muted-foreground">
+                  (invoice not open{canVoid ? "; " : ")"}
+                  {canVoid && (
+                    <Button size="sm" variant="link" className="h-auto p-0 text-xs" onClick={() => onRelease(row.original, allocation.id)}>take off to apply elsewhere</Button>
+                  )}
+                  {canVoid && ")"}
+                </span>
+              )}
             </li>
           ))}
           {row.original.allocations.length === 0 && <li>-</li>}
@@ -223,13 +235,14 @@ export function receivedPaymentColumns({ canRecord, canVoid, onApply, onVoid }: 
       enableSorting: false,
       cell: ({ row }) => {
         const payment = row.original
-        if (!canChange(payment)) return null
+        if (payment.voidedAt) return null
+        // Any payment's unapplied amount can be applied (a Square payment taken off a void invoice, say); only Compass-recorded ones are voided here.
         return (
           <div className="flex justify-end gap-2">
             {canRecord && payment.unappliedCents > 0 && (
               <Button size="sm" variant="outline" onClick={() => onApply(payment)}>Apply</Button>
             )}
-            {canVoid && <Button size="sm" variant="outline" onClick={() => onVoid(payment)}>Void</Button>}
+            {canVoid && canChange(payment) && <Button size="sm" variant="outline" onClick={() => onVoid(payment)}>Void</Button>}
           </div>
         )
       },
@@ -334,12 +347,14 @@ function PaymentsList({
   canVoid,
   onApply,
   onVoid,
+  onRelease,
 }: {
   readonly payments: readonly ReceivedPaymentView[]
   readonly canRecord: boolean
   readonly canVoid: boolean
   readonly onApply: (payment: ReceivedPaymentView) => void
   readonly onVoid: (payment: ReceivedPaymentView) => void
+  readonly onRelease: (payment: ReceivedPaymentView, allocationId: string) => void
 }): React.ReactElement {
   const [query, setQuery] = React.useState("")
   const visible = React.useMemo(
@@ -349,8 +364,8 @@ function PaymentsList({
     [payments, query],
   )
   const columns = React.useMemo(
-    () => receivedPaymentColumns({ canRecord, canVoid, onApply, onVoid }),
-    [canRecord, canVoid, onApply, onVoid],
+    () => receivedPaymentColumns({ canRecord, canVoid, onApply, onVoid, onRelease }),
+    [canRecord, canVoid, onApply, onVoid, onRelease],
   )
   const table = useRecordTable({ data: visible, columns, getRowId: (payment) => payment.id, resetKey: query, sheetId: "payments.received" })
   return (
@@ -399,6 +414,14 @@ export function ReceivedPaymentsPanel({
     setVoiding(payment)
   }, [])
 
+  const onRelease = React.useCallback((payment: ReceivedPaymentView, allocationId: string) => {
+    startTransition(async () => {
+      const result = await releasePaymentFromClosedInvoice(projectId, payment.id, allocationId)
+      setMessage(result.success ? "Payment taken off that invoice. Use Apply to put it on another item." : result.error)
+      if (result.success) router.refresh()
+    })
+  }, [projectId, router])
+
   function confirmVoid(): void {
     if (!voiding) return
     const payment = voiding
@@ -434,7 +457,7 @@ export function ReceivedPaymentsPanel({
       <PrepaidDrawDialog projectId={projectId} target={prepaidTarget} onClose={() => setPrepaidTarget(null)} onMessage={setMessage} />
       <div className="space-y-2">
         <h3 className="text-sm font-semibold">Payments</h3>
-        <PaymentsList payments={payments} canRecord={data.canRecord} canVoid={data.canVoid} onApply={onApply} onVoid={onVoid} />
+        <PaymentsList payments={payments} canRecord={data.canRecord} canVoid={data.canVoid} onApply={onApply} onVoid={onVoid} onRelease={onRelease} />
       </div>
 
       <RecordPaymentDialog

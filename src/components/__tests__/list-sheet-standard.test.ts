@@ -131,7 +131,7 @@ describe("list sheet standard", () => {
       "todos.job": () => projectTodoColumns({ statuses: defaultRecordStatusList("todo"), projectId: "p", canManage: true, developerModeEnabled: true, onOpen: noop }),
       "payments.billed": () => billedItemColumns({ projectId: "p", canRecord: true, canSettle: true, onRecord: noop, onPrepaid: noop }),
       "invoices.job": () => invoiceColumns(() => "/"),
-      "payments.received": () => receivedPaymentColumns({ canRecord: true, canVoid: true, onApply: noop, onVoid: noop }),
+      "payments.received": () => receivedPaymentColumns({ canRecord: true, canVoid: true, onApply: noop, onVoid: noop, onRelease: noop }),
       "nutech.orders": () => nuTechOrderColumns(),
       vendors: () => vendorColumns({ onView: noop }, {}, { selectable: true, developerMode: true }),
       customers: () => customerColumns({ onEdit: noop }, { selectable: true, developerMode: true }),
