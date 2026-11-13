@@ -235,10 +235,14 @@ export async function grantProjectContactAccess(db: Db, input: {
     // D1 commits each write on its own: take back a membership this grant
     // created so a failed job never leaves access nobody was told about.
     if (createdMembershipId && input.activeUserId) {
-      // Membership first: it is what opens the job.
-      await removeProjectMemberGrant(db, createdMembershipId)
-      await removeProjectChannelsJoinedAt(db, { projectId: input.projectId, userId: input.activeUserId, joinedAt: input.now })
-        .catch((cleanupError: unknown) => console.error("[project-access] conversation seats not removed", input.projectId, errorWithCauses(cleanupError)))
+      // Membership first: it is what opens the job. A cleanup failure is
+      // logged; the original error is what the caller needs.
+      try {
+        await removeProjectMemberGrant(db, createdMembershipId)
+        await removeProjectChannelsJoinedAt(db, { projectId: input.projectId, userId: input.activeUserId, joinedAt: input.now })
+      } catch (cleanupError) {
+        console.error("[project-access] failed grant not fully taken back", input.projectId, errorWithCauses(cleanupError))
+      }
     }
     throw error
   }

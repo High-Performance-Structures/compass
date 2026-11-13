@@ -114,7 +114,7 @@ export function ProjectContactInviteButton({
       }
 
       if (result.failedProjects) {
-        toast.error(`Couldn't open ${result.failedProjects.join(", ")}. Nothing was shared there; grant access from that job to try again.`)
+        toast.error(`Couldn't open ${result.failedProjects.join(", ")}. Access wasn't granted there; grant it from that job to try again.`)
       }
       if (result.additionalProjects) {
         toast.success(`${result.additionalProjects} more project${result.additionalProjects === 1 ? "" : "s"} added to this invitation`)

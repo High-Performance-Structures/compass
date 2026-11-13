@@ -714,7 +714,9 @@ async function grantApprovedRequest(
     projectCount: opened.length,
     now,
   })
-  return { success: true, data: { opened, skipped, failed } }
+  // A person listed twice on one job (e.g. as subcontractor and supplier) is
+  // opened if either listing worked.
+  return { success: true, data: { opened, skipped, failed: failed.filter((label) => !opened.includes(label)) } }
 }
 
 /** Declines a pending request. Nothing is shared. */
