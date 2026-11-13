@@ -6,6 +6,7 @@ import { ChannelView } from "@/components/conversations/channel-view"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { ConversationsProvider } from "@/contexts/conversations-context"
 import type { AuthUser } from "@/lib/auth"
 import {
   projectConversationFilter,
@@ -214,7 +215,10 @@ export async function ProjectConversationsTab({
               <Link className="text-sm underline" href={href({ channelId: null })}>Back to conversations</Link>
             </div>
             <div className="min-h-0 flex-1">
-              <ChannelView channel={channel} currentUser={currentUser} />
+              {/* The conversation's list, composer and threads read the same context as /dashboard/conversations. */}
+              <ConversationsProvider>
+                <ChannelView channel={channel} currentUser={currentUser} />
+              </ConversationsProvider>
             </div>
           </div>
         ) : (
