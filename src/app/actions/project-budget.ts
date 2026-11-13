@@ -3,6 +3,7 @@
 import { requireProjectAudienceReadUser } from "@/lib/project-audience-request-server"
 
 import { and, asc, desc, eq, ne, notInArray, sql } from "drizzle-orm"
+import { ownerPayApplicationsOnce } from "@/lib/domain/financials/rules"
 
 import { getDb } from "@/db"
 import {
@@ -551,7 +552,8 @@ export async function getProjectBudgetSummary(
   )
   const applications =
     effectiveAudience === "owner"
-      ? (
+      ? // An imported copy of a draw shows once (rules: ownerPayApplicationsOnce).
+        ownerPayApplicationsOnce(
           await access.db
             .select({
               id: projectBudgetApplications.id,

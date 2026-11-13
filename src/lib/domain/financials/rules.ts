@@ -9,6 +9,7 @@
 
 import { formatCents, parseDateOnly } from "@/lib/format"
 import type { ReceivableItemKind, ReceivablePaidState } from "@/lib/domain/financials/statuses"
+import { isListValue } from "@/lib/shared/statuses"
 
 export type LineItem = {
   description: string
@@ -607,39 +608,42 @@ export function paidCentsAfterRelease(paidCents: number, releasedCents: number):
 }
 
 // ---------------------------------------------------------------------------
-// Imported invoices shown once. A cutover from another system (Buildertrend,
-// Sage) records each owner invoice in the invoices table, where it is listed
-// with received payments, and also promoted the same source record into the
-// project's financial workflow list. The workflow copy is left out when the
-// invoice itself is listed, matched by source system and the source record's
-// id, or its number.
+// Imported bills shown once. A cutover from another system (Buildertrend,
+// Drive, Sage) promoted owner invoices and pay requests into the project's
+// financial workflow list, and the same bill is often also an invoice or a
+// pay application listed with received payments (sometimes recorded under
+// another source system, e.g. a "buildertrend_import" pay request that is a
+// Compass invoice). The workflow copy is left out when the bill itself is
+// listed, matched by its number (or a source record id), whatever system
+// each came from.
 // ---------------------------------------------------------------------------
 
-type ImportedInvoiceRow = {
-  readonly sourceSystem: string
-  readonly sourceExternalId: string | null
-  readonly invoiceNumber: string | null
-  readonly status: string
-  readonly invoiceKind: string | null
+/** Workflow rows promoted from another system; Compass's own workflow items are never hidden. */
+const IMPORTED_WORKFLOW_SOURCES = ["buildertrend", "buildertrend_import", "google_drive_g702_g703", "sage"] as const
+const IMPORTED_BILL_RECORD_TYPES = ["owner_invoice", "owner_pay_application"] as const
+
+/** A bill listed with received payments: its ids (row id, source record id) and numbers. */
+export type ListedBill = {
+  readonly ids: readonly (string | null)[]
+  readonly numbers: readonly (string | null)[]
 }
 
-function invoiceNumberKey(value: string): string {
+function billNumberKey(value: string): string {
   return value.trim().toLowerCase()
 }
 
-/** Keys of the imported invoices listed with received payments (payable, not credit memos). */
-export function listedImportedInvoiceKeys(rows: readonly ImportedInvoiceRow[]): ReadonlySet<string> {
+/** Match keys of the bills listed with received payments. */
+export function listedBillKeys(bills: readonly ListedBill[]): ReadonlySet<string> {
   const keys = new Set<string>()
-  for (const row of rows) {
-    if (row.sourceSystem === "compass" || !invoiceAcceptsPayments(row.status) || row.invoiceKind === "credit_memo") continue
-    if (row.sourceExternalId?.trim()) keys.add(`${row.sourceSystem}:id:${row.sourceExternalId.trim()}`)
-    if (row.invoiceNumber?.trim()) keys.add(`${row.sourceSystem}:number:${invoiceNumberKey(row.invoiceNumber)}`)
+  for (const bill of bills) {
+    for (const id of bill.ids) if (id?.trim()) keys.add(`id:${id.trim()}`)
+    for (const number of bill.numbers) if (number?.trim()) keys.add(`number:${billNumberKey(number)}`)
   }
   return keys
 }
 
-/** True for an imported workflow "owner invoice" whose invoice is already listed (see listedImportedInvoiceKeys). */
-export function isListedImportedInvoiceCopy(
+/** True for an imported workflow invoice or pay request whose bill is already listed (see listedBillKeys). */
+export function isListedImportedBillCopy(
   row: {
     readonly sourceSystem: string
     readonly sourceRecordType: string
@@ -648,7 +652,27 @@ export function isListedImportedInvoiceCopy(
   },
   listed: ReadonlySet<string>,
 ): boolean {
-  if (row.sourceRecordType !== "owner_invoice") return false
-  if (row.sourceRecordId?.trim() && listed.has(`${row.sourceSystem}:id:${row.sourceRecordId.trim()}`)) return true
-  return Boolean(row.sourceRecordNumber?.trim() && listed.has(`${row.sourceSystem}:number:${invoiceNumberKey(row.sourceRecordNumber ?? "")}`))
+  if (!isListValue(IMPORTED_WORKFLOW_SOURCES, row.sourceSystem)) return false
+  if (!isListValue(IMPORTED_BILL_RECORD_TYPES, row.sourceRecordType)) return false
+  if (row.sourceRecordId?.trim() && listed.has(`id:${row.sourceRecordId.trim()}`)) return true
+  return Boolean(row.sourceRecordNumber?.trim() && listed.has(`number:${billNumberKey(row.sourceRecordNumber ?? "")}`))
+}
+
+/**
+ * The owner's pay applications with each bill once: rows sharing a number
+ * (an imported copy of a draw built in Compass or synced from Sage) keep the
+ * live record (Compass, then Sage, then the import). Order is kept.
+ */
+export function ownerPayApplicationsOnce<T extends { readonly sourceSystem: string; readonly applicationNumber: string }>(
+  rows: readonly T[],
+): T[] {
+  const rank = (row: T): number => (row.sourceSystem === COMPASS_DRAW_SOURCE ? 0 : row.sourceSystem.startsWith("sage") ? 1 : 2)
+  const kept = new Map<string, T>()
+  for (const row of rows) {
+    const key = billNumberKey(row.applicationNumber)
+    const current = kept.get(key)
+    if (!current || rank(row) < rank(current)) kept.set(key, row)
+  }
+  const keep = new Set(kept.values())
+  return rows.filter((row) => keep.has(row))
 }

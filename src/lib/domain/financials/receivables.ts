@@ -18,7 +18,7 @@ import {
   importedDrawSourceLabel,
   invoiceAcceptsPayments,
   isImportedDraw,
-  listedImportedInvoiceKeys,
+  listedBillKeys,
   receivableOpenCents,
   receivablePaidState,
   receivableStaffStatus,
@@ -143,19 +143,39 @@ function billedDrawCondition(): SQL | undefined {
   )
 }
 
-/** Keys of the project's imported invoices that are listed with received payments (rules: listedImportedInvoiceKeys). */
-export async function readListedImportedInvoiceKeys(db: Db, scope: ProjectReceivableScope): Promise<ReadonlySet<string>> {
-  const rows = await db
-    .select({
-      sourceSystem: invoices.sourceSystem,
-      sourceExternalId: invoices.sourceExternalId,
-      invoiceNumber: invoices.invoiceNumber,
-      status: invoices.status,
-      invoiceKind: invoices.invoiceKind,
-    })
-    .from(invoices)
-    .where(and(eq(invoices.organizationId, scope.organizationId), eq(invoices.projectId, scope.projectId)))
-  return listedImportedInvoiceKeys(rows)
+/**
+ * Match keys of the bills listed with received payments on the project:
+ * payable invoices (any source) and billed draws (rules: listedBillKeys).
+ */
+export async function readListedBillKeys(db: Db, scope: ProjectReceivableScope): Promise<ReadonlySet<string>> {
+  const [invoiceRows, drawRows] = await Promise.all([
+    db
+      .select({
+        id: invoices.id,
+        sourceExternalId: invoices.sourceExternalId,
+        invoiceNumber: invoices.invoiceNumber,
+        status: invoices.status,
+        invoiceKind: invoices.invoiceKind,
+      })
+      .from(invoices)
+      .where(and(eq(invoices.organizationId, scope.organizationId), eq(invoices.projectId, scope.projectId))),
+    db
+      .select({
+        id: projectBudgetApplications.id,
+        sourceRecordId: projectBudgetApplications.sourceRecordId,
+        applicationNumber: projectBudgetApplications.applicationNumber,
+        sageInvoiceNumber: projectBudgetApplications.sageInvoiceNumber,
+      })
+      .from(projectBudgetApplications)
+      .where(and(eq(projectBudgetApplications.projectId, scope.projectId), billedDrawCondition())),
+  ])
+  return listedBillKeys([
+    // The same invoices readProjectReceivables lists.
+    ...invoiceRows
+      .filter((row) => invoiceAcceptsPayments(row.status) && row.invoiceKind !== "credit_memo")
+      .map((row) => ({ ids: [row.id, row.sourceExternalId], numbers: [row.invoiceNumber] })),
+    ...drawRows.map((row) => ({ ids: [row.id, row.sourceRecordId], numbers: [row.applicationNumber, row.sageInvoiceNumber] })),
+  ])
 }
 
 /**

@@ -29,9 +29,9 @@ import { getCloudflareContext } from "@/lib/db"
 import { chunkD1InsertRows, isBatchGuardFailure } from "@/lib/d1-query"
 import { budgetLineProgress, payApplicationLineEntry, retainageAtPercent, retainageAtRate } from "@/lib/domain/budget/rules"
 import { insertOperations, operationDeleteQuery } from "@/lib/domain/operations/store"
-import { readListedImportedInvoiceKeys } from "@/lib/domain/financials/receivables"
+import { readListedBillKeys } from "@/lib/domain/financials/receivables"
 import { returnPayApplicationToDraft, sendPayApplicationForReview } from "@/lib/domain/budget/pay-application-review"
-import { isListedImportedInvoiceCopy } from "@/lib/domain/financials/rules"
+import { isListedImportedBillCopy } from "@/lib/domain/financials/rules"
 import {
   deleteBudgetApplicationsStatement,
   deleteBudgetLinesStatement,
@@ -390,7 +390,7 @@ export async function getProjectFinancialWorkflowItems(
   projectId: string
 ): Promise<readonly ProjectFinancialWorkflowItem[]> {
   const { db, organizationId } = await verifyProjectReadAccess(projectId)
-  const [rows, applications, listedInvoices] = await Promise.all([
+  const [rows, applications, listedBills] = await Promise.all([
     db
       .select()
       .from(projectOperations)
@@ -434,7 +434,7 @@ export async function getProjectFinancialWorkflowItems(
       })
       .from(projectBudgetApplications)
       .where(eq(projectBudgetApplications.projectId, projectId)),
-    readListedImportedInvoiceKeys(db, { organizationId, projectId }),
+    readListedBillKeys(db, { organizationId, projectId }),
   ])
   const applicationsBySourceId = new Map(
     applications.flatMap((application) => {
@@ -445,8 +445,8 @@ export async function getProjectFinancialWorkflowItems(
     })
   )
 
-  // An imported invoice already listed with received payments shows once, there.
-  const shown = rows.filter((row) => !isListedImportedInvoiceCopy(row, listedInvoices))
+  // An imported bill already listed with received payments shows once, there.
+  const shown = rows.filter((row) => !isListedImportedBillCopy(row, listedBills))
   return shown.map((row) => {
     const isReadOnlyImportedFinancial =
       ["buildertrend", "sage"].includes(row.sourceSystem) &&
@@ -483,7 +483,7 @@ export async function getProjectFinancialWorkflowItems(
         safeHttpUrl(application?.sourceUrl ?? null),
       readOnly: isReadOnlyImportedFinancial,
       sourceLabel: row.sourceSystem === "sage" ? "Sage / Square" : null,
-      importedFrom: row.sourceSystem === "buildertrend" ? "buildertrend" : null,
+      importedFrom: row.sourceSystem.startsWith("buildertrend") ? "buildertrend" : null,
       updatedAt: row.updatedAt,
     }
   })

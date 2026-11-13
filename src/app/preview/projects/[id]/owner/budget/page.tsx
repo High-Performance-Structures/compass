@@ -41,6 +41,7 @@ import { projectAudienceMessageShortcut } from "@/lib/project-audience-direct-me
 import { projectBrandFor } from "@/lib/project-branding"
 import { budgetPaymentBreakdown } from "@/lib/project-budget-snapshot"
 import { PageHeader } from "@/components/page-header"
+import { SourceTag } from "@/components/shared/source-tag"
 
 function hasDigest(error: unknown): error is { readonly digest: string } {
   return typeof error === "object" && error !== null && "digest" in error
@@ -211,6 +212,7 @@ export default async function OwnerBudgetPage({
                         <div className="flex flex-wrap items-center gap-2">
                           <p className="font-medium">
                             Pay application {application.applicationNumber}
+                            {application.sourceSystem.startsWith("buildertrend") && <SourceTag source="buildertrend" className="ml-1" />}
                           </p>
                           {index === 0 && <Badge>{application.status === "paid_in_full" ? "Final" : "Current"}</Badge>}
                           <Badge variant="outline">
