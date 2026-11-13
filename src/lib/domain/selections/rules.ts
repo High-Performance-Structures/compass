@@ -272,8 +272,8 @@ export function summarizeSelections(
       sourceSheetName: selection.sourceSheetName,
       roomName: selection.roomName,
       roomType: selection.roomType,
-      // Rooms with no row of their own go last (as in roomRankSql, room-order.ts).
-      sortOrder: ROOMLESS_ORDER + roomMap.size,
+      // Rooms with no row of their own go last (as in room-order.ts).
+      sortOrder: ROOMLESS_ORDER,
       selectionCount: 0,
       selections: [selection]
     })
@@ -288,7 +288,9 @@ export function summarizeSelections(
       if (left.sortOrder !== right.sortOrder) {
         return left.sortOrder - right.sortOrder
       }
-      return left.roomName.localeCompare(right.roomName)
+      // Same tie-break as room-order.ts: the name, ignoring case.
+      const byName = left.roomName.toLowerCase().localeCompare(right.roomName.toLowerCase())
+      return byName !== 0 ? byName : left.roomName.localeCompare(right.roomName)
     })
 
   return {

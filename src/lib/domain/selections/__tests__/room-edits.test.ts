@@ -107,6 +107,14 @@ describe("delete a room", () => {
     expect(rows("SELECT id FROM project_finish_selections WHERE room_name = 'Bath 1'")).toHaveLength(2)
   })
 
+  it("deletes nothing when one selection is published to the owner", async () => {
+    sqlite.exec(`INSERT INTO project_selection_decisions (selection_id, project_id, revision, published, specification_json, last_mutation_id, updated_at) VALUES ('sink', 'p1', 1, 1, '{}', 'm1', '${NOW}')`)
+    const result = await deleteSelectionRoom(db, "p1", "Bath 1")
+    expect(result.ok).toBe(false)
+    expect(result.ok ? "" : result.error).toContain("Sink")
+    expect(rows("SELECT id FROM project_finish_selections WHERE room_name = 'Bath 1'")).toHaveLength(2)
+  })
+
   it("keeps a deleted workbook room as a deleted row, so a re-import leaves it out", async () => {
     sqlite.exec(`
       INSERT INTO project_finish_selection_rooms (id, project_id, source_system, source_workbook_id, source_sheet_id, source_sheet_name, room_name, sort_order, created_at, updated_at)
@@ -177,9 +185,23 @@ describe("duplicate", () => {
     expect((await duplicateSelection(db, "p1", "sink")).ok).toBe(false)
   })
 
-  it("copies one selection in its room as \"(copy)\"", async () => {
+  it("copies one selection in its room as \"(copy)\", opened by the same choice but opening nothing", async () => {
+    sqlite.exec(`
+      INSERT INTO project_finish_selections (id, project_id, room_name, name, category, created_at, updated_at) VALUES ('drain', 'p1', 'Bath 1', 'Drain', 'Plumbing', '${NOW}', '${NOW}');
+      INSERT INTO project_selection_choice_dependents (choice_id, selection_id, created_at) VALUES ('c-black', 'drain', '${NOW}');
+    `)
     expect(await duplicateSelection(db, "p1", "faucet")).toEqual({ ok: true })
-    expect(rows("SELECT room_name FROM project_finish_selections WHERE name = 'Faucet (copy)'")).toEqual([{ room_name: "Bath 1" }])
+    const [copy] = rows<{ id: string; room_name: string }>("SELECT id, room_name FROM project_finish_selections WHERE name = 'Faucet (copy)'")
+    expect(copy?.room_name).toBe("Bath 1")
+    expect(rows("SELECT choice_id FROM project_selection_choice_dependents WHERE selection_id = 'drain'")).toEqual([{ choice_id: "c-black" }])
+    expect(await duplicateSelection(db, "p1", "drain")).toEqual({ ok: true })
+    const [drainCopy] = rows<{ id: string }>("SELECT id FROM project_finish_selections WHERE name = 'Drain (copy)'")
+    expect(rows("SELECT choice_id FROM project_selection_choice_dependents WHERE selection_id = ?", drainCopy?.id)).toEqual([{ choice_id: "c-black" }])
+  })
+
+  it("puts a duplicated room right after the original, whatever its name", async () => {
+    await duplicateSelectionRoom(db, "p1", { fromName: "Kitchen", roomName: "A Kitchenette", roomType: null })
+    expect(await roomOrder()).toEqual(["Kitchen", "A Kitchenette", "Bath 1"])
   })
 })
 
@@ -212,6 +234,15 @@ describe("workbook re-import", () => {
         { sourceRowNumber: 2, sheetId: 8, sheetName: "Office", roomName: "Office", roomType: null, category: "Lighting", name: "Desk lamp", description: null, quantity: 1, manufacturer: null, model: null, colorFinish: null, notes: null, sortOrder: 1 },
       ],
     },
+  })
+
+  it("leaves a moved workbook selection where staff put it", async () => {
+    await applyFinishScheduleImport(db, "p1", loaded("Laundry"))
+    const [washer] = rows<{ id: string }>("SELECT id FROM project_finish_selections WHERE name = 'Washer'")
+    expect(await moveSelectionToRoom(db, "p1", { selectionId: washer?.id ?? "", roomName: "Kitchen" })).toEqual({ ok: true })
+    expect(await deleteSelectionRoom(db, "p1", "Laundry")).toEqual({ ok: true })
+    await applyFinishScheduleImport(db, "p1", loaded("Laundry"))
+    expect(rows("SELECT room_name FROM project_finish_selections WHERE id = ?", washer?.id)).toEqual([{ room_name: "Kitchen" }])
   })
 
   it("keeps a Compass rename and leaves a deleted room out unless asked", async () => {

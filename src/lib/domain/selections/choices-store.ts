@@ -470,3 +470,10 @@ export function relinkDuplicatedDependentsStatements(
     ),
   ])
 }
+
+/** Copied choices open no follow-ups (Duplicate selection: the copy is a sibling, not a second parent). */
+export function dropChoiceFollowUpsStatements(db: Db, choiceIds: readonly string[]): BatchItem<"sqlite">[] {
+  return Array.from({ length: Math.ceil(choiceIds.length / 90) }, (_, index) => choiceIds.slice(index * 90, index * 90 + 90)).map((ids) =>
+    db.delete(projectSelectionChoiceDependents).where(inArray(projectSelectionChoiceDependents.choiceId, ids)),
+  )
+}

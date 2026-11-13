@@ -9,7 +9,15 @@ import { sql, type SQL } from "drizzle-orm"
 
 export const ROOMLESS_ORDER = 1_000_000
 
+/**
+ * ORDER BY terms for project_finish_selections rows: the room's position,
+ * then its name ignoring case (as the staff page sorts ties).
+ */
+export function roomOrderBy(): SQL[] {
+  return [sql`${roomRankSql()} ASC`, sql`project_finish_selections.room_name COLLATE NOCASE ASC`]
+}
+
 /** A selection row's room position, for ORDER BY on project_finish_selections. */
-export function roomRankSql(): SQL<number> {
+function roomRankSql(): SQL<number> {
   return sql<number>`COALESCE((SELECT MIN(room.sort_order) FROM project_finish_selection_rooms AS room WHERE room.project_id = project_finish_selections.project_id AND room.room_name = project_finish_selections.room_name AND room.active = 1), ${ROOMLESS_ORDER})`
 }

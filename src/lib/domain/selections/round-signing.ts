@@ -58,7 +58,7 @@ import { outsidePhaseWork } from "./locks"
 import { insertRoundSignatureStatements, roundSignatureTransitionStatement, transitionRoundSignature, updateRoundSignature } from "./round-signature-store"
 import { updateFinishSelectionsWithEventStatement } from "./store"
 import { resolvedContactColumns, withContactDirectory } from "@/lib/domain/contacts/resolved-columns"
-import { roomRankSql } from "@/lib/domain/selections/room-order"
+import { roomOrderBy } from "@/lib/domain/selections/room-order"
 
 const people = peopleView()
 
@@ -137,7 +137,7 @@ export async function loadRoundSigningView(db: Db, projectId: string, organizati
       .from(projectFinishSelections)
       .leftJoin(projectSelectionDecisions, eq(projectSelectionDecisions.selectionId, projectFinishSelections.id))
       .where(and(eq(projectFinishSelections.projectId, projectId), eq(projectFinishSelections.roundKey, roundKey)))
-      .orderBy(asc(roomRankSql()), asc(projectFinishSelections.roomName), asc(projectFinishSelections.sortOrder), asc(projectFinishSelections.name)),
+      .orderBy(...roomOrderBy(), asc(projectFinishSelections.roomName), asc(projectFinishSelections.sortOrder), asc(projectFinishSelections.name)),
     withContactDirectory(db
       .select({ name: resolvedContactColumns.displayName, email: resolvedContactColumns.email })
       .from(projectContacts)

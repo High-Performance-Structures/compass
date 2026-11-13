@@ -27,7 +27,9 @@ import {
 } from "@/db/schema-selection-choices"
 import type { Db } from "@/lib/server/action-context"
 
-import { copyChoicesToReplacementStatements, relinkDuplicatedDependentsStatements } from "./choices-store"
+import { copyChoicesToReplacementStatements, dropChoiceFollowUpsStatements, relinkDuplicatedDependentsStatements } from "./choices-store"
+import { selectionDeletionAllowed } from "@/lib/selections/deletion"
+
 import { selectionLock } from "./locks"
 import {
   copyFinishSelectionStatement,
@@ -43,6 +45,8 @@ import { loadProjectSelections } from "./workspace"
 export type RoomEditResult = { readonly ok: true } | { readonly ok: false; readonly error: string }
 
 const MAX_ROOM_NAME = 120
+// One duplicate is one D1 batch; D1 runs at most 1,000 queries per request.
+const MAX_COPY_STATEMENTS = 600
 // D1 allows 100 bound values per statement.
 const ID_CHUNK = 90
 
@@ -191,12 +195,36 @@ export async function deleteSelectionRoom(db: Db, projectId: string, roomName: s
       error: `${roomName} can't be deleted: ${names}${more} ${blocked.length === 1 ? "is" : "are"} approved, ordered, installed or replaced and must stay on record. Move ${blocked.length === 1 ? "it" : "them"} to another room first, or use a change order.`,
     }
   }
-  const removed = await deleteRemovableSelections(db, selections.map((row) => row.id))
-  const kept = selections.length - removed.size
-  if (kept > 0) {
+  // The full deletion guard, read first, so a room is deleted whole or not at all.
+  const deletable = new Set<string>()
+  for (const ids of chunks(selections.map((row) => row.id))) {
+    const found = await Promise.all(
+      ids.map((id) =>
+        db
+          .select({ id: projectFinishSelections.id })
+          .from(projectFinishSelections)
+          .where(and(eq(projectFinishSelections.id, id), selectionDeletionAllowed(id)))
+          .limit(1),
+      ),
+    )
+    for (const row of found.flat()) deletable.add(row.id)
+  }
+  const kept = selections.filter((row) => !deletable.has(row.id))
+  if (kept.length > 0) {
+    const names = kept.slice(0, 3).map((row) => `"${row.name}"`).join(", ")
+    const more = kept.length > 3 ? ` and ${kept.length - 3} more` : ""
     return {
       ok: false,
-      error: `${removed.size} of ${selections.length} selections were deleted. ${kept} ${kept === 1 ? "has" : "have"} owner requests, owner comments, purchase links or a Selection Phase out for signature, so ${roomName} stays. Handle those first, then delete the room.`,
+      error: `${roomName} can't be deleted: ${names}${more} ${kept.length === 1 ? "is" : "are"} published to the owner, ${kept.length === 1 ? "has" : "have"} owner requests or comments, purchase links, or ${kept.length === 1 ? "is" : "are"} in a Selection Phase out for signature. Unpublish or handle ${kept.length === 1 ? "it" : "them"}, or move ${kept.length === 1 ? "it" : "them"} to another room, first.`,
+    }
+  }
+  const removed = await deleteRemovableSelections(db, selections.map((row) => row.id))
+  const left = selections.length - removed.size
+  if (left > 0) {
+    // Only when something changed between the check and the delete.
+    return {
+      ok: false,
+      error: `${removed.size} of ${selections.length} selections were deleted; ${left} changed meanwhile and must stay, so ${roomName} stays. Refresh the page.`,
     }
   }
   const now = new Date().toISOString()
@@ -258,7 +286,7 @@ async function copySelectionsStatements(
   },
 ): Promise<{ readonly statements: readonly Statement[]; readonly copied: number }> {
   const sourceIds = input.sources.map((source) => source.id)
-  const { choices, links, photos } = await readChildren(db, sourceIds)
+  const { choices, links, photos, followUps } = await readChildren(db, sourceIds)
   const newIds = new Map(input.sources.map((source) => [source.id, crypto.randomUUID()]))
   const newChoiceIds = new Map(choices.map((choice) => [choice.id, crypto.randomUUID()]))
   const statements: Statement[] = []
@@ -291,16 +319,20 @@ async function copySelectionsStatements(
     )
   }
   if (input.sources.length > 1) {
+    // Only copied follow-ups (selections a copied choice opens) need their links pointed at the copies.
     statements.push(
       ...relinkDuplicatedDependentsStatements(db, {
         pairs: input.sources.flatMap((source) => {
           const newId = newIds.get(source.id)
-          return newId ? [{ fromId: source.id, newId }] : []
+          return newId && followUps.has(source.id) ? [{ fromId: source.id, newId }] : []
         }),
         fromChoiceIds: [...newChoiceIds.keys()],
         newChoiceIds: [...newChoiceIds.values()],
       }),
     )
+  } else {
+    // A single copy is opened by the same choice as the original, but opens no follow-ups of its own.
+    statements.push(...dropChoiceFollowUpsStatements(db, [...newChoiceIds.values()]))
   }
   return { statements, copied: input.sources.length }
 }
@@ -311,12 +343,13 @@ type ChildRow = { readonly id: string; readonly selectionId: string; readonly ch
 async function readChildren(
   db: Db,
   selectionIds: readonly string[],
-): Promise<{ readonly choices: readonly ChildRow[]; readonly links: readonly ChildRow[]; readonly photos: readonly ChildRow[] }> {
+): Promise<{ readonly choices: readonly ChildRow[]; readonly links: readonly ChildRow[]; readonly photos: readonly ChildRow[]; readonly followUps: ReadonlySet<string> }> {
+  const followUps = new Set<string>()
   const choices: ChildRow[] = []
   const links: ChildRow[] = []
   const photos: ChildRow[] = []
   for (const ids of chunks(selectionIds)) {
-    const [choiceRows, linkRows, photoRows] = await Promise.all([
+    const [choiceRows, linkRows, photoRows, dependentRows] = await Promise.all([
       db
         .select({ id: projectSelectionChoices.id, selectionId: projectSelectionChoices.selectionId })
         .from(projectSelectionChoices)
@@ -330,12 +363,17 @@ async function readChildren(
         .select({ id: projectSelectionPhotos.id, selectionId: projectSelectionPhotos.selectionId, choiceId: projectSelectionPhotos.choiceId })
         .from(projectSelectionPhotos)
         .where(inArray(projectSelectionPhotos.selectionId, ids)),
+      db
+        .select({ selectionId: projectSelectionChoiceDependents.selectionId })
+        .from(projectSelectionChoiceDependents)
+        .where(inArray(projectSelectionChoiceDependents.selectionId, ids)),
     ])
+    for (const row of dependentRows) followUps.add(row.selectionId)
     choices.push(...choiceRows.map((row) => ({ ...row, choiceId: null })))
     links.push(...linkRows)
     photos.push(...photoRows)
   }
-  return { choices, links, photos }
+  return { choices, links, photos, followUps }
 }
 
 /** Selections in a room that may be copied: everything not replaced by another selection. */
@@ -369,8 +407,19 @@ export async function duplicateSelectionRoom(
   const now = new Date().toISOString()
   const sources = await copyableSelections(db, projectId, eq(projectFinishSelections.roomName, input.fromName))
   const copy = await copySelectionsStatements(db, { projectId, sources, roomName, roomType, rename: (name) => name, now })
-  // The copy sits right after the original (same order number; names break the tie).
-  await runBatch(db, [newRoomRow(db, { projectId, roomName, roomType, sortOrder: source.sortOrder, now }), ...copy.statements])
+  if (copy.statements.length > MAX_COPY_STATEMENTS) {
+    return { ok: false, error: `${input.fromName} is too large to duplicate in one step. Add a new room and duplicate its selections in smaller groups instead.` }
+  }
+  // The copy sits right after the original: later rooms move down one place.
+  await runBatch(db, [
+    updateSelectionRoomsStatement(
+      db,
+      and(eq(projectFinishSelectionRooms.projectId, projectId), eq(projectFinishSelectionRooms.active, true), sql`${projectFinishSelectionRooms.sortOrder} > ${source.sortOrder}`),
+      { sortOrder: sql`${projectFinishSelectionRooms.sortOrder} + 1` },
+    ),
+    newRoomRow(db, { projectId, roomName, roomType, sortOrder: source.sortOrder + 1, now }),
+    ...copy.statements,
+  ])
   return { ok: true, copied: copy.copied }
 }
 
@@ -434,7 +483,13 @@ export async function moveSelectionToRoom(
         sql`(${projectFinishSelections.id} = ${input.selectionId} OR ${projectFinishSelections.parentSelectionId} = ${input.selectionId} OR ${followUps})`,
         sql`NOT EXISTS (SELECT 1 FROM project_finish_selections AS replacement WHERE replacement.replaces_selection_id = ${projectFinishSelections.id})`,
       ),
-      { roomName: targetName, roomType: target?.roomType ?? null, updatedAt: now },
+      {
+        roomName: targetName,
+        roomType: target?.roomType ?? null,
+        // A workbook row moved by staff is a Compass edit: a re-import leaves it where staff put it.
+        syncStatus: sql`CASE WHEN ${projectFinishSelections.syncStatus} = 'imported' THEN 'manual_edit' ELSE ${projectFinishSelections.syncStatus} END`,
+        updatedAt: now,
+      },
     ),
   ]
   if (!target) {

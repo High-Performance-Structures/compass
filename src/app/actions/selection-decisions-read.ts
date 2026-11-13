@@ -30,7 +30,7 @@ import { replacedSelectionIds, signedSelectionIds } from "@/lib/domain/selection
 import { LOCKED_SELECTION_STATUSES } from "@/lib/domain/selections/locks"
 import { readProjectSelectionSettings } from "@/lib/domain/selections/project-settings"
 import { readProjectSelectionStatusLabels } from "@/lib/domain/selections/status-labels-server"
-import { roomRankSql } from "@/lib/domain/selections/room-order"
+import { roomOrderBy } from "@/lib/domain/selections/room-order"
 
 const PARTNER_VISIBLE_STATUSES: ReadonlySet<string> = new Set(["approved", "ordered", "installed"])
 // Ordered and installed selections keep their product (locks.ts): a room move keeps their decision current.
@@ -57,7 +57,7 @@ export async function getSelectionWorkspace(
       .from(projectFinishSelections)
       .where(eq(projectFinishSelections.projectId, projectId))
       .orderBy(
-        asc(roomRankSql()), asc(projectFinishSelections.roomName),
+        ...roomOrderBy(), asc(projectFinishSelections.roomName),
         asc(projectFinishSelections.sortOrder)
       ),
     db
