@@ -1,21 +1,23 @@
-import { readFileSync, readdirSync, statSync } from "node:fs"
 import { join, relative } from "node:path"
-import { describe, expect, it } from "vitest"
+import { beforeAll, describe, expect, it } from "vitest"
+
+import { preloadSources, readSource, SOURCE_SCAN_TIMEOUT_MS, sourceFiles as sharedSourceFiles } from "@/test/source-tree"
 
 import { driveIdFromInput } from "@/lib/google/drive-picker"
 
 const ROOT = process.cwd()
 
-function tsxFiles(dir: string): string[] {
-  return readdirSync(dir).flatMap((name) => {
-    const path = join(dir, name)
-    if (statSync(path).isDirectory()) return name === "__tests__" ? [] : tsxFiles(path)
-    return path.endsWith(".tsx") ? [path] : []
-  })
+const SOURCE_OPTIONS = { skipDirectories: ["__tests__"], include: /\.tsx$/ }
+
+function tsxFiles(dir: string): readonly string[] {
+  return sharedSourceFiles(dir, SOURCE_OPTIONS)
 }
 
+// Read the tree once for this file, as setup (see @/test/source-tree).
+beforeAll(() => preloadSources("src", SOURCE_OPTIONS), SOURCE_SCAN_TIMEOUT_MS)
+
 function source(file: string): string {
-  return readFileSync(join(ROOT, file), "utf8")
+  return readSource(join(ROOT, file))
 }
 
 // Text that only shows up on a box asking someone to paste a Drive link or id.

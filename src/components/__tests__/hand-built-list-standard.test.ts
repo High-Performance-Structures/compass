@@ -1,6 +1,7 @@
-import { readdirSync, readFileSync, statSync } from "node:fs"
 import { join, relative } from "node:path"
 import { describe, expect, it } from "vitest"
+
+import { readSource, sourceFiles as sharedSourceFiles } from "@/test/source-tree"
 
 /*
  * ui-standards.md "Record lists": a list that grows (records, people,
@@ -122,16 +123,11 @@ const GROWING_LIST_CEILING = 0
 const HAND_BUILT = /<table\b|<Table\b|\buseReactTable\(/
 
 function sourceFiles(dir: string): readonly string[] {
-  return readdirSync(dir).flatMap((entry) => {
-    if (entry === "__tests__" || entry === "node_modules") return []
-    const path = join(dir, entry)
-    if (statSync(path).isDirectory()) return sourceFiles(path)
-    return /\.(ts|tsx)$/.test(entry) ? [path] : []
-  })
+  return sharedSourceFiles(dir, { skipDirectories: ["__tests__", "node_modules"], include: /\.(ts|tsx)$/ })
 }
 
 const files = [...sourceFiles(join(ROOT, "src/components")), ...sourceFiles(join(ROOT, "src/app"))]
-  .map((path) => ({ path: relative(ROOT, path), text: readFileSync(path, "utf8") }))
+  .map((path) => ({ path: relative(ROOT, path), text: readSource(path) }))
 
 /** Hand-built tables outside the shared homes, except line editors on the shared reorder control. */
 const handBuilt = files.filter((file) =>

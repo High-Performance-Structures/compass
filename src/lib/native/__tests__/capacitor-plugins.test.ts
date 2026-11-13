@@ -1,17 +1,19 @@
-import { readdirSync, readFileSync, statSync } from "node:fs"
 import { join, relative } from "node:path"
-import { describe, expect, it } from "vitest"
+import { beforeAll, describe, expect, it } from "vitest"
+
+import { preloadSources, readSource, SOURCE_SCAN_TIMEOUT_MS, sourceFiles as sharedSourceFiles } from "@/test/source-tree"
 
 const SRC = join(process.cwd(), "src")
 const LOADER = "src/lib/native/capacitor-plugins.ts"
 
-function sourceFiles(directory: string): string[] {
-  return readdirSync(directory).flatMap((name) => {
-    const path = join(directory, name)
-    if (statSync(path).isDirectory()) return name === "__tests__" ? [] : sourceFiles(path)
-    return /\.(ts|tsx)$/.test(name) ? [path] : []
-  })
+const SOURCE_OPTIONS = { skipDirectories: ["__tests__"], include: /\.(ts|tsx)$/ }
+
+function sourceFiles(directory: string): readonly string[] {
+  return sharedSourceFiles(directory, SOURCE_OPTIONS)
 }
+
+// Read the tree once for this file, as setup (see @/test/source-tree).
+beforeAll(() => preloadSources("src", SOURCE_OPTIONS), SOURCE_SCAN_TIMEOUT_MS)
 
 describe("Capacitor plugin loading", () => {
   // A bare import() of a plugin from a client component is compiled into
@@ -21,7 +23,7 @@ describe("Capacitor plugin loading", () => {
       .map((path) => relative(process.cwd(), path))
       .filter((path) => path !== LOADER)
       .filter((path) => {
-        const source = readFileSync(path, "utf8")
+        const source = readSource(path)
         // Type-only imports are erased at build time and are fine.
         return (
           /import\(\s*["']@(?:capacitor|capgo)\//.test(source) ||

@@ -1,8 +1,8 @@
-import { readdirSync, readFileSync, statSync } from "node:fs"
 import { join, relative } from "node:path"
-import type { ColumnDef } from "@tanstack/react-table"
 import { createElement } from "react"
 import { describe, expect, it, vi } from "vitest"
+
+import { readSource, sourceFiles as sharedSourceFiles } from "@/test/source-tree"
 
 vi.mock("next/navigation", () => ({ useRouter: () => ({ push: vi.fn(), refresh: vi.fn() }) }))
 
@@ -52,6 +52,7 @@ import { warrantySourceColumns } from "@/components/projects/project-warranty-so
 import { archiveEditionColumns } from "@/components/projects/project-archive-library"
 import { defaultRecordStatusList } from "@/lib/domain/record-statuses/rules"
 import { LIST_SHEETS } from "@/lib/domain/settings/list-sheet-registry"
+import { NUTECH_2026_CATALOG_SOURCES } from "@/lib/nutech/resources"
 
 /*
  * ui-standards.md "Record lists": every sheet on the shared record table
@@ -62,16 +63,11 @@ const ROOT = process.cwd()
 const HOOK_HOMES = new Set(["src/components/record-table.tsx", "src/components/use-server-record-table.ts"])
 
 function sourceFiles(dir: string): readonly string[] {
-  return readdirSync(dir).flatMap((entry) => {
-    if (entry === "__tests__" || entry === "node_modules") return []
-    const path = join(dir, entry)
-    if (statSync(path).isDirectory()) return sourceFiles(path)
-    return /\.(ts|tsx)$/.test(entry) ? [path] : []
-  })
+  return sharedSourceFiles(dir, { skipDirectories: ["__tests__", "node_modules"], include: /\.(ts|tsx)$/ })
 }
 
 const files = [...sourceFiles(join(ROOT, "src/components")), ...sourceFiles(join(ROOT, "src/app"))]
-  .map((path) => ({ path: relative(ROOT, path), text: readFileSync(path, "utf8") }))
+  .map((path) => ({ path: relative(ROOT, path), text: readSource(path) }))
   .filter((file) => !HOOK_HOMES.has(file.path))
 
 describe("list sheet standard", () => {
@@ -115,8 +111,11 @@ describe("list sheet standard", () => {
 
   it("matches each registered sheet's table columns and sortability", () => {
     const noop = (): void => undefined
-    const catalogWorkspace: NuTechCatalogWorkspace = { canImport: true, canDelete: true, versions: [], activeVersionId: null, products: [], sageCostCodes: [], namedCostCodes: [] }
-    const builders: Readonly<Record<string, () => readonly ColumnDef<never>[]>> = {
+    const catalogWorkspace: NuTechCatalogWorkspace = { sources: NUTECH_2026_CATALOG_SOURCES, canImport: true, canDelete: true, versions: [], activeVersionId: null, products: [], sageCostCodes: [], namedCostCodes: [] }
+    // Every ColumnDef<Row> variant carries these; typing builders by them lets
+    // tables over different row types share one map.
+    type SheetColumn = { readonly id?: string; readonly enableSorting?: boolean }
+    const builders: Readonly<Record<string, () => readonly SheetColumn[]>> = {
       "purchase-orders.job": () => purchaseOrderColumns(false, "open", defaultRecordStatusList("purchase_order")),
       "purchase-orders.all-jobs": () => purchaseOrderColumns(true, "open", defaultRecordStatusList("purchase_order")),
       "rfis.job": () => rfiColumns("staff", { kind: "link", href: () => "/" }, defaultRecordStatusList("rfi")),
@@ -126,7 +125,7 @@ describe("list sheet standard", () => {
       "duty-log.workspace": () => dutyLogColumns({ canChange: () => true, pending: false, onEdit: noop, onDelete: noop }),
       "change-orders.job": () => changeOrderColumns(() => "/"),
       "selections.job": () => selectionColumns(),
-      "financials.queue": () => financialQueueColumns({ href: () => null, projectDriveUrl: null, developerModeEnabled: true }),
+      "financials.queue": () => financialQueueColumns({ href: () => null, quickLook: noop, projectDriveUrl: null, developerModeEnabled: true }),
       "rfqs.job": () => rfqColumns(() => "/", defaultRecordStatusList("rfq")),
       "todos.job": () => projectTodoColumns({ statuses: defaultRecordStatusList("todo"), projectId: "p", canManage: true, developerModeEnabled: true, onOpen: noop }),
       "payments.billed": () => billedItemColumns({ projectId: "p", canRecord: true, canSettle: true, onRecord: noop, onPrepaid: noop }),
