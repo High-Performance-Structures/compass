@@ -13,6 +13,7 @@
  * An invitation whose WorkOS link has lapsed is marked expired instead.
  * Status changes follow invitationMachine (invitation-machine.ts).
  */
+import { removeLostJobConversationAccess } from "@/lib/conversations/shared-client-conversations"
 import { and, desc, eq, sql } from "drizzle-orm"
 
 import { organizationMembers, projectAccessInvitations, users, type User } from "@/db/schema"
@@ -191,7 +192,10 @@ export async function claimProjectAccessInvitations(
     if (!(await markProjectAccessInvitationAccepted(db, invitation.id, account.id, now))) {
       // Revoked between the grant and the accept: undo a membership this claim
       // created (one that existed before is left alone).
-      if (grant.createdId) await removeProjectMemberGrant(db, grant.createdId)
+      if (grant.createdId) {
+        await removeProjectMemberGrant(db, grant.createdId)
+        await removeLostJobConversationAccess({ db, organizationId: invitation.organizationId, projectId: invitation.projectId, userIds: [account.id] })
+      }
       console.warn(`[sign-in] invitation ${invitation.id} changed while being claimed; the new job membership was withdrawn`)
       continue
     }

@@ -11,6 +11,7 @@
  *   reach every job through organization scope anyway).
  * - Restoring a person does not put them back on jobs.
  */
+import { removeLostJobConversationAccess } from "@/lib/conversations/shared-client-conversations"
 import { and, countDistinct, eq, inArray, sql } from "drizzle-orm"
 
 import { customerContacts, internalContacts, projectContacts, projects, vendorContacts } from "@/db/schema"
@@ -122,5 +123,7 @@ export async function removeArchivedPeopleFromJobs(
       )
     )
   }
+  // Off every job, so out of every job's client and vendor conversations too.
+  await removeLostJobConversationAccess({ db, organizationId: input.organizationId, projectId: null, userIds: leaving })
   return { jobCount: counts.reduce((total, count) => total + count, 0) }
 }

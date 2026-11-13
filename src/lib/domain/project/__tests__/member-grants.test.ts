@@ -30,6 +30,10 @@ const SCHEMA = `
     project_contact_id TEXT, email TEXT NOT NULL, role TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'sent',
     workos_expires_at TEXT, invited_by TEXT NOT NULL, invited_at TEXT NOT NULL, accepted_by TEXT, accepted_at TEXT,
     created_at TEXT NOT NULL, updated_at TEXT NOT NULL);
+  CREATE TABLE users (id TEXT PRIMARY KEY, role TEXT NOT NULL);
+  CREATE TABLE channels (id TEXT PRIMARY KEY, organization_id TEXT NOT NULL, project_id TEXT, audience TEXT NOT NULL);
+  CREATE TABLE channel_members (id TEXT PRIMARY KEY, channel_id TEXT NOT NULL, user_id TEXT NOT NULL);
+  CREATE TABLE channel_read_state (id TEXT PRIMARY KEY, channel_id TEXT NOT NULL, user_id TEXT NOT NULL);
   INSERT INTO project_contacts VALUES ('c1', 'p1', 1);
   INSERT INTO project_access_invitations (id, organization_id, project_id, project_contact_id, email, role, invited_by,
     invited_at, created_at, updated_at) VALUES ('i1', 'org', 'p1', 'c1', 'guest@example.test', 'guest', 'staff', 't0', 't0', 't0');

@@ -24,7 +24,7 @@ import {
   vendorContacts,
   vendors,
 } from "@/db/schema"
-import { messages } from "@/db/schema-conversations"
+import { channelMembers, channelReadState, channels, messages } from "@/db/schema-conversations"
 
 const mocks = vi.hoisted(() => ({ user: vi.fn(), db: vi.fn() }))
 vi.mock("@/db", () => ({ getDb: mocks.db }))
@@ -57,6 +57,9 @@ const TABLES: readonly SQLiteTable[] = [
   projectContactSourceLinks,
   userAlternateEmails,
   messages,
+  channels,
+  channelMembers,
+  channelReadState,
 ]
 
 const NOW = "2026-11-10T00:00:00.000Z"

@@ -1,5 +1,6 @@
 "use server"
 
+import { removeLostJobConversationAccess } from "@/lib/conversations/shared-client-conversations"
 import { and, eq, inArray } from "drizzle-orm"
 import { recordActivityEvent } from "@/lib/activity-log"
 import { requireAuth } from "@/lib/auth"
@@ -195,6 +196,8 @@ export async function removeProjectContact(
           inArray(projectMembers.userId, [...removableMemberIds])
         )
       )
+      // Without the job they keep none of its client or vendor conversations.
+      await removeLostJobConversationAccess({ db, organizationId: orgId, projectId, userIds: removableMemberIds })
     }
 
     await recordActivityEvent({

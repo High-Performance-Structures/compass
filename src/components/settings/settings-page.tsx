@@ -37,6 +37,7 @@ import { WorkflowsTab } from "@/components/settings/workflows-tab"
 import { RecordStatusesTab } from "@/components/settings/record-statuses-tab"
 import { ListsTab } from "@/components/settings/lists-tab"
 import { AccessRequestSettingsSection } from "@/components/settings/access-request-settings-section"
+import { ClientConversationSettingsSection } from "@/components/settings/client-conversation-settings-section"
 import { AccessRequestsCard } from "@/components/settings/access-requests-card"
 import { DepartmentProfilesSection } from "@/components/settings/department-profiles-section"
 import { InternalDepartmentSettingsSection } from "@/components/settings/internal-department-settings-section"
@@ -147,6 +148,7 @@ export function SettingsPageClient() {
           <div className="space-y-8">
             <AccessRequestSettingsSection />
             <AccessRequestsCard />
+            <ClientConversationSettingsSection />
             <CrewsSettingsSection />
           </div>
         )

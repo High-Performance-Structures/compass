@@ -10,6 +10,7 @@ import {
   openImportedChannelAudience,
 } from "@/lib/domain/conversations/store"
 import type { Db } from "@/lib/server/action-context"
+import { shareClientConversationsQuietly } from "@/lib/conversations/shared-client-conversations"
 import { isInternalStaffRole } from "@/lib/user-roles"
 import { resolvedContactColumns, withContactDirectory } from "@/lib/domain/contacts/resolved-columns"
 
@@ -129,5 +130,9 @@ export async function shareImportedThread(input: {
     userIds.map((userId) => ({ id: crypto.randomUUID(), userId, channelId: plan.channelId, lastReadMessageId: null, lastReadAt: input.now, unreadCount: 0 })),
     { ignoreConflict: true }
   )
+  // The job's other clients join too when the company shares client conversations.
+  if (input.audience === "clients") {
+    await shareClientConversationsQuietly({ db: input.db, organizationId: plan.organizationId, projectId: plan.projectId, now: input.now })
+  }
   return plan
 }
