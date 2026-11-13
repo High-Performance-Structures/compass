@@ -91,6 +91,7 @@ export async function confirmProjectDepositNotInSage(projectId: string, depositI
     if (!context.success) return context
     const { db, user, organizationId } = context.data
     requirePermission(user, "project", "update")
+    if (!canSendToSage(user)) return actionFailure("Only office staff with finance access can record a Sage check on deposit requests.")
     const deposit = await db
       .select({ id: projectContractDeposits.id })
       .from(projectContractDeposits)

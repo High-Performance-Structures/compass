@@ -35,6 +35,9 @@ const SOURCE_IS_VOID = {
 
 const VOIDED_WHILE_SENDING = "Voided while Sage was adding it; check Sage."
 
+/** How long the writer's claim on an AR export stays live before a poll may take it again. */
+export const AR_EXPORT_CLAIM_RETRY_MILLISECONDS = 10 * 60 * 1000
+
 /** The export's record isn't void, for the writer polls' candidate lists (same SQL as the claim's). */
 export function sageArExportSourceNotVoid(kind: keyof typeof SOURCE_IS_VOID): SQL {
   return sql`NOT ${SOURCE_IS_VOID[kind]}`
@@ -64,7 +67,13 @@ export const POSSIBLY_IN_SAGE_SQL = `(status IN ('running', 'succeeded') OR sage
  * Staff checked Sage and the invoice isn't there: the export stops counting
  * as possibly in Sage (its writer claim is let go), with who and when noted
  * on it. Not for an export Sage reads back (it has Sage's record) or one
- * running or done. True when it cleared one.
+ * running or done, nor one flagged "voided while sending" whose writer claim
+ * may still be live (the writer could still be adding it). True when it
+ * cleared one.
+ *
+ * Known trade-off (accepted): clearing the claim token means a late repeat of
+ * the writer's result for that claim no longer matches it, so the results
+ * route answers it as a lost claim (409) instead of 2xx.
  */
 export async function confirmSageArExportNotInSage(
   db: Db,
@@ -73,7 +82,8 @@ export async function confirmSageArExportNotInSage(
   const { table, source } = AR_EXPORT_TABLES[input.kind]
   const result = await db.run(sql`UPDATE ${sql.identifier(table)} SET claim_token = NULL, error_message = ${input.note}, updated_at = ${input.now}
     WHERE ${sql.identifier(source)} = ${input.sourceId} AND organization_id = ${input.organizationId}
-      AND status IN ('failed', 'needs_attention') AND sage_record_id IS NULL AND ${sql.raw(POSSIBLY_IN_SAGE_SQL)}`)
+      AND status IN ('failed', 'needs_attention') AND sage_record_id IS NULL AND ${sql.raw(POSSIBLY_IN_SAGE_SQL)}
+      AND NOT (error_message = ${VOIDED_WHILE_SENDING} AND (claimed_at IS NULL OR claimed_at >= ${new Date(Date.parse(input.now) - AR_EXPORT_CLAIM_RETRY_MILLISECONDS).toISOString()}))`)
   return result.meta.changes > 0
 }
 
@@ -131,12 +141,18 @@ export async function lateResultOnVoidedRecorded(
 }
 
 /**
- * cancel's fence: a source state of the event, and not in Sage. A row the
+ * cancel's fence: a source state of the event, and not (possibly) in Sage. A row the
  * writer added (needs_attention after Sage's total read back differently, say)
  * carries Sage's record id and is never cancelled; it is voided in Sage.
  */
 function cancellable(columns: { readonly status: SQLiteColumn; readonly sageRecordId: SQLiteColumn }): SQL | undefined {
-  return and(inArray(columns.status, [...arInvoiceExportMachine.transitions.cancel.from]), isNull(columns.sageRecordId))
+  return and(
+    inArray(columns.status, [...arInvoiceExportMachine.transitions.cancel.from]),
+    isNull(columns.sageRecordId),
+    // Nor one Sage may have (a writer failure that may have saved it): it stays,
+    // flagged, until staff check Sage ("I checked Sage: it isn't there").
+    sql`NOT ${sql.raw(POSSIBLY_IN_SAGE_SQL)}`,
+  )
 }
 
 /** The states the machine may move a row from into `status`: every update below is also fenced on them. */
