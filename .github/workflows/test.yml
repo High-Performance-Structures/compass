@@ -148,6 +148,17 @@ jobs:
       - name: Compile Electron app
         run: bun run desktop:compile
 
+      # macOS runners compile dev-server routes on demand for 40-100 s, and the
+      # preview popup's request waits behind any compile in progress (runs
+      # 43368018397, 43380715621). Serve a production build there instead.
+      - name: Build application (macOS)
+        if: matrix.os == 'macos-latest'
+        run: bun run build
+        env:
+          # next build's type-check pass exceeds Node's default ~4 GB heap
+          # (seen locally on macOS); the runner has 7 GB.
+          NODE_OPTIONS: --max-old-space-size=6144
+
       - name: Run desktop E2E tests (Ubuntu)
         if: matrix.os == 'ubuntu-latest'
         run: xvfb-run -a bun run test:e2e:desktop
@@ -159,6 +170,7 @@ jobs:
         run: bun run test:e2e:desktop
         env:
           ELECTRON: "true"
+          COMPASS_E2E_NEXT_START: ${{ matrix.os == 'macos-latest' && 'true' || 'false' }}
 
       - uses: actions/upload-artifact@v4
         if: always()

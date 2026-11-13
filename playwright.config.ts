@@ -9,7 +9,15 @@ const externalBaseUrl = process.env.PLAYWRIGHT_BASE_URL
 const localBaseURL = `http://127.0.0.1:${process.env.PORT ?? "3000"}`
 const baseURL = externalBaseUrl ?? localBaseURL
 const desktopBaseURL = externalBaseUrl ?? baseURL
-const localServerCommand = process.env.CI && !isElectron()
+// CI web jobs build first and serve that build. Desktop jobs use the dev
+// server unless their workflow built the app and set COMPASS_E2E_NEXT_START
+// (macOS: there `next dev` compiles routes on demand for 40-100 s and any
+// compile in progress holds the preview popup's request, so the
+// window-event wait timed the compiler, not Electron).
+const useBuiltServer =
+  Boolean(process.env.CI) &&
+  (!isElectron() || process.env.COMPASS_E2E_NEXT_START === "true")
+const localServerCommand = useBuiltServer
   ? "node node_modules/next/dist/bin/next start"
   : "node node_modules/next/dist/bin/next dev --webpack"
 
