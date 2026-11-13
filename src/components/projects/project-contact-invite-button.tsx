@@ -108,9 +108,14 @@ export function ProjectContactInviteButton({
       })
       if (!result.success) {
         toast.error(result.error)
+        // Part of the grant may have been saved; show the contact's current state.
+        router.refresh()
         return
       }
 
+      if (result.failedProjects) {
+        toast.error(`Couldn't open ${result.failedProjects.join(", ")}. Access wasn't granted there; grant it from that job to try again.`)
+      }
       if (result.additionalProjects) {
         toast.success(`${result.additionalProjects} more project${result.additionalProjects === 1 ? "" : "s"} added to this invitation`)
       }
