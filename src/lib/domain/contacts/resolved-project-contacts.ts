@@ -4,7 +4,7 @@
  * fallback), in one query. The column expressions and directory joins are in
  * resolved-columns.ts; every write goes through store.ts.
  */
-import { and, asc, eq, getTableColumns, inArray, type SQL } from "drizzle-orm"
+import { and, asc, eq, getTableColumns, inArray, sql, type SQL } from "drizzle-orm"
 
 import { projectContacts } from "@/db/schema"
 import type { Db } from "@/lib/server/action-context"
@@ -12,6 +12,15 @@ import type { Db } from "@/lib/server/action-context"
 import { resolvedContactColumns, withContactDirectory } from "./resolved-columns"
 
 type ProjectContactRow = typeof projectContacts.$inferSelect
+
+/**
+ * SQL that holds while this project contact is still on its job (not removed
+ * or archived), for a grant of access through it that must not land after
+ * staff took the person off the job.
+ */
+export function projectContactActiveCondition(contactId: string): SQL {
+  return sql`EXISTS (SELECT 1 FROM ${projectContacts} WHERE ${projectContacts.id} = ${contactId} AND ${projectContacts.active} = 1)`
+}
 
 type ResolvedOrder = "summary" | "type_then_name" | "name"
 

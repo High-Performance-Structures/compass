@@ -21,6 +21,11 @@ export type Machine<State extends string, Event extends string> = {
   readonly name: string
   readonly states: readonly State[]
   readonly initial: State
+  /**
+   * Other states a new row may be created in (an importer that records what
+   * it found, say). Omit when every row starts at `initial`.
+   */
+  readonly entry?: readonly State[]
   /** States with no way out (accepted, revoked, ...). */
   readonly terminal: readonly State[]
   readonly transitions: { readonly [E in Event]: TransitionRule<State> }
@@ -100,6 +105,9 @@ export function machineProblems<State extends string, Event extends string>(
   const declared = new Set<string>(machine.states)
   if (declared.size !== machine.states.length) problems.push("states are listed more than once")
   if (!declared.has(machine.initial)) problems.push(`initial state "${machine.initial}" is not declared`)
+  for (const state of machine.entry ?? []) {
+    if (!declared.has(state)) problems.push(`entry state "${state}" is not declared`)
+  }
   for (const state of machine.terminal) {
     if (!declared.has(state)) problems.push(`terminal state "${state}" is not declared`)
   }
@@ -113,7 +121,7 @@ export function machineProblems<State extends string, Event extends string>(
     }
   }
 
-  const reached = new Set<string>([machine.initial])
+  const reached = new Set<string>([machine.initial, ...(machine.entry ?? [])])
   let grew = true
   while (grew) {
     grew = false
@@ -125,8 +133,9 @@ export function machineProblems<State extends string, Event extends string>(
       }
     }
   }
+  const startsFrom = machine.entry?.length ? `"${machine.initial}" or an entry state` : `"${machine.initial}"`
   for (const state of machine.states) {
-    if (!reached.has(state)) problems.push(`state "${state}" cannot be reached from "${machine.initial}"`)
+    if (!reached.has(state)) problems.push(`state "${state}" cannot be reached from ${startsFrom}`)
     const isTerminal = machine.terminal.includes(state)
     const exits = availableEvents(machine, state)
     if (isTerminal && exits.length > 0) problems.push(`terminal state "${state}" has outgoing events: ${exits.join(", ")}`)

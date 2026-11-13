@@ -4,6 +4,7 @@ import type { getDb } from "@/db"
 import { projectContacts, projectRfis } from "@/db/schema"
 import { projectSourceRecordParticipants } from "@/db/schema-participants"
 import type { ProjectContactType } from "@/lib/domain/contacts/statuses"
+import { MANAGED_PARTICIPANT_STATUSES } from "@/lib/domain/documents/participant-machines"
 import { upsertSourceRecordParticipantStatement } from "@/lib/domain/documents/store"
 import { canViewRfi, PARTICIPANT_CAPABILITIES } from "@/lib/participant-access"
 import { resolvedContactColumns, withContactDirectory } from "@/lib/domain/contacts/resolved-columns"
@@ -108,13 +109,15 @@ export function rfiVendorAssignmentStatement(db: Db, input: {
     participantRole: RFI_VENDOR_ASSIGNEE_ROLE,
     capabilitiesJson: JSON.stringify([PARTICIPANT_CAPABILITIES.rfiView]),
     projectContactId: input.contact.id,
-    identityStatus: "matched",
-    membershipStatus: "active",
-    reviewStatus: "reviewed",
     active: true,
     updatedAt: input.now,
   }
-  return upsertSourceRecordParticipantStatement(db, { id: crypto.randomUUID(), ...key, ...assignment, createdAt: input.now }, assignment)
+  return upsertSourceRecordParticipantStatement(
+    db,
+    { id: crypto.randomUUID(), ...key, ...assignment, ...MANAGED_PARTICIPANT_STATUSES, createdAt: input.now },
+    assignment,
+    { managed: true },
+  )
 }
 
 /** Current vendor company per RFI id, for the staff RFI queue. */

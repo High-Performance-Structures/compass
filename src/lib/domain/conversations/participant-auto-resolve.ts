@@ -20,7 +20,7 @@ import type { DirectoryPerson } from "@/lib/domain/contacts/people-search"
 import { insertVendorPersonStatement } from "@/lib/domain/contacts/store"
 import {
   insertThreadParticipantsForMessagesStatement,
-  updateSourceRecordParticipantsStatement,
+  reviewSourceRecordParticipantsStatement,
   type Statement,
 } from "@/lib/domain/documents/store"
 import { readFeatureSettings } from "@/lib/feature-settings/server"
@@ -30,7 +30,6 @@ import { isInternalStaffRole } from "@/lib/user-roles"
 
 import { importedVendorContactId } from "./bt-participant-identity"
 import { audienceOf, knownContactKey, resolvePerson, type Resolved } from "./imported-participant-resolve"
-import { REVIEW_IDENTITY_STATUSES } from "./imported-participant-review"
 import { buildMatchDirectory, type BuiltDirectory, type DirectoryRows } from "./participant-directory"
 import {
   IDENTITY_KEY_SQL,
@@ -255,9 +254,9 @@ async function groupStatements(
       organizationId, projectId: group.projectId, participantKey: resolved.key, name: resolved.name, role: resolved.kind,
       audience: audienceOf(resolved.kind), projectContactId: resolved.contactId, userId: resolved.userId, now,
     }),
-    updateSourceRecordParticipantsStatement(db, sql`${projectSourceRecordParticipants.id} IN (SELECT p.id FROM project_source_record_participants p WHERE ${rows})`, {
-      projectContactId: resolved.contactId, userId: resolved.userId,
-      identityStatus: REVIEW_IDENTITY_STATUSES.matched, reviewStatus: "reviewed", updatedAt: now,
+    reviewSourceRecordParticipantsStatement(db, sql`${projectSourceRecordParticipants.id} IN (SELECT p.id FROM project_source_record_participants p WHERE ${rows})`, {
+      identity: "match",
+      set: { projectContactId: resolved.contactId, userId: resolved.userId, updatedAt: now },
     }),
   ]
   return { success: true, data: { statements: statements.filter((statement): statement is Statement => statement !== null), resolved } }
@@ -275,8 +274,8 @@ async function runBatches(db: Db, statements: readonly Statement[]): Promise<voi
 
 /** Marks every writable row of an identity reviewed with no person ("Leave as is"). */
 function leaveStatement(db: Db, organizationId: string, key: string, now: string, includeStaffOnlyProjects: boolean): Statement {
-  return updateSourceRecordParticipantsStatement(db, sql`${projectSourceRecordParticipants.id} IN (SELECT p.id FROM project_source_record_participants p
-      WHERE ${unresolvedPersonRows(organizationId)} AND ${KEY} = ${key} AND ${projectFilter(includeStaffOnlyProjects)})`, { reviewStatus: "reviewed", updatedAt: now })
+  return reviewSourceRecordParticipantsStatement(db, sql`${projectSourceRecordParticipants.id} IN (SELECT p.id FROM project_source_record_participants p
+      WHERE ${unresolvedPersonRows(organizationId)} AND ${KEY} = ${key} AND ${projectFilter(includeStaffOnlyProjects)})`, { set: { updatedAt: now } })
 }
 
 export type IdentityDecisionOutcome = {

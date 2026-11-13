@@ -1,6 +1,7 @@
 "use server"
 
 import { checkRfqVendorAnswer } from "@/lib/rfqs/vendor-response"
+import { MANAGED_PARTICIPANT_STATUSES } from "@/lib/domain/documents/participant-machines"
 import { insertSourceRecordParticipantStatement } from "@/lib/domain/documents/store"
 import { assertAudiencePreviewWriteAllowed } from "@/lib/project-audience-request-server"
 
@@ -231,7 +232,7 @@ export async function createSubVendorRfi(
         sourceRecordType: "rfi", sourceRecordId: inserted.id, sourceParticipantId: `compass-user:${context.user.id}`,
         participantRole: "requester", capabilitiesJson: JSON.stringify(["rfi.view"]),
         projectContactId: context.viewerContact.id, userId: context.user.id,
-        identityStatus: "matched", membershipStatus: "active", reviewStatus: "reviewed", active: true,
+        ...MANAGED_PARTICIPANT_STATUSES, active: true,
         createdAt: now, updatedAt: now,
       }),
     ])
@@ -496,7 +497,7 @@ export async function respondToSubVendorPurchaseOrder(
         sourceRecordType: "rfi", sourceRecordId: inserted.id, sourceParticipantId: `compass-user:${context.user.id}`,
         participantRole: "requester", capabilitiesJson: JSON.stringify(["rfi.view"]),
         projectContactId: context.viewerContact.id, userId: context.user.id,
-        identityStatus: "matched", membershipStatus: "active", reviewStatus: "reviewed", active: true,
+        ...MANAGED_PARTICIPANT_STATUSES, active: true,
         createdAt: now, updatedAt: now,
       }),
     ])

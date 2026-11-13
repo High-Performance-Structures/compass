@@ -11,9 +11,10 @@ import {
 } from "@/lib/domain/contacts/people-search"
 import { PROJECT_CONTACT_DIRECTORY_REQUIRED } from "@/lib/domain/contacts/rules"
 import { insertProjectContactIfMissingStatement } from "@/lib/domain/contacts/store"
+import { MANAGED_PARTICIPANT_STATUSES, RECORDED_PARTICIPANT_STATUSES } from "@/lib/domain/documents/participant-machines"
 import {
   insertSourceRecordParticipantIfMissingStatement,
-  updateSourceRecordParticipantsStatement,
+  reviewSourceRecordParticipantsStatement,
   type Statement,
 } from "@/lib/domain/documents/store"
 import { cleanText } from "@/lib/shared/guards"
@@ -291,21 +292,24 @@ export async function resolvePerson(db: Db, key: string, person: DirectoryPerson
 const notStaffOnlyProject = (projectId: string) =>
   sql`NOT EXISTS (SELECT 1 FROM projects WHERE id = ${projectId} AND imported_conversations_staff_only = 1)`
 
-/** Marks rows reviewed, only while still unreviewed and never on a staff-only project unless staff included those. */
+/**
+ * review (participant-machines.ts): marks rows reviewed, only while still
+ * unreviewed (the store's compare-and-set) and never on a staff-only project
+ * unless staff included those.
+ */
 function reviewRowsStatement(
   db: Db,
   group: ReviewGroup,
   rows: readonly ReviewGroupRow[],
-  set: Parameters<typeof updateSourceRecordParticipantsStatement>[2],
+  change: Parameters<typeof reviewSourceRecordParticipantsStatement>[2],
   includeStaffOnlyProjects: boolean,
 ): Statement | null {
   if (rows.length === 0) return null
-  return updateSourceRecordParticipantsStatement(db, and(
+  return reviewSourceRecordParticipantsStatement(db, and(
     eq(projectSourceRecordParticipants.organizationId, group.anchor.organizationId),
     inArray(projectSourceRecordParticipants.id, rows.map((row) => row.id)),
-    eq(projectSourceRecordParticipants.reviewStatus, "unreviewed"),
     includeStaffOnlyProjects ? undefined : notStaffOnlyProject(group.anchor.projectId),
-  ), set)
+  ), change)
 }
 
 export const audienceOf = (kind: string): string => (kind === "staff" || kind === "former_staff" ? "internal" : "external")
@@ -326,9 +330,7 @@ function threadRowStatement(db: Db, group: ReviewGroup, person: Resolved, now: s
     audience: audienceOf(person.kind),
     projectContactId: person.contactId,
     userId: person.userId,
-    identityStatus: REVIEW_IDENTITY_STATUSES.matched,
-    membershipStatus: staffOnly ? "active" : "pending",
-    reviewStatus: "reviewed",
+    ...(staffOnly ? MANAGED_PARTICIPANT_STATUSES : RECORDED_PARTICIPANT_STATUSES),
     active: staffOnly,
     createdAt: now,
     updatedAt: now,
@@ -378,7 +380,7 @@ export async function resolveImportedParticipant(input: ResolveInput): Promise<R
 
   if (decision.type === "leave") {
     if (unreviewed.length === 0) return recordedDecision(group) === "leave" ? repeat : fail(ALREADY_REVIEWED)
-    const statement = reviewRowsStatement(db, group, unreviewed, { reviewStatus: "reviewed", updatedAt: now }, include)
+    const statement = reviewRowsStatement(db, group, unreviewed, { set: { updatedAt: now } }, include)
     if (input.apply && statement) await db.batch([statement])
     return { success: true, data: { ...base, changed: input.apply, people: [], refs: [], rowsReviewed: unreviewed.length, pieces: [] } }
   }
@@ -398,8 +400,8 @@ export async function resolveImportedParticipant(input: ResolveInput): Promise<R
     const statements = [
       person.contactStatement,
       reviewRowsStatement(db, group, unreviewed, {
-        projectContactId: person.contactId, userId: person.userId,
-        identityStatus: REVIEW_IDENTITY_STATUSES.matched, reviewStatus: "reviewed", updatedAt: now,
+        identity: "match",
+        set: { projectContactId: person.contactId, userId: person.userId, updatedAt: now },
       }, include),
       threadRowStatement(db, group, person, now),
     ].filter((statement): statement is Statement => statement !== null)
@@ -446,9 +448,7 @@ export async function resolveImportedParticipant(input: ResolveInput): Promise<R
     audience: audienceOf(person.kind),
     projectContactId: person.contactId,
     userId: person.userId,
-    identityStatus: REVIEW_IDENTITY_STATUSES.matched,
-    membershipStatus: "pending",
-    reviewStatus: "reviewed",
+    ...RECORDED_PARTICIPANT_STATUSES,
     // Per-message rows never grant access.
     active: false,
     createdAt: now,
@@ -461,13 +461,13 @@ export async function resolveImportedParticipant(input: ResolveInput): Promise<R
   const statements = [
     ...contactStatements.values(),
     ...messageRows,
-    reviewRowsStatement(db, group, literalRows, { identityStatus: REVIEW_IDENTITY_STATUSES.split, reviewStatus: "reviewed", updatedAt: now }, include),
+    reviewRowsStatement(db, group, literalRows, { identity: "split", set: { updatedAt: now } }, include),
     sender && people.length === 1
       ? reviewRowsStatement(db, group, senderRows, {
-          projectContactId: sender.contactId, userId: sender.userId,
-          identityStatus: REVIEW_IDENTITY_STATUSES.matched, reviewStatus: "reviewed", updatedAt: now,
+          identity: "match",
+          set: { projectContactId: sender.contactId, userId: sender.userId, updatedAt: now },
         }, include)
-      : reviewRowsStatement(db, group, senderRows, { reviewStatus: "reviewed", updatedAt: now }, include),
+      : reviewRowsStatement(db, group, senderRows, { set: { updatedAt: now } }, include),
     ...people.map((person) => threadRowStatement(db, group, person, now)),
   ].filter((statement): statement is Statement => statement !== null)
   if (input.apply) await runBatch(db, statements)

@@ -34,6 +34,8 @@ beforeEach(() => {
   database = openCorrespondenceTestDatabase()
   for (const table of [projectContacts, projects, users, customers, customerContacts, vendors, vendorContacts, internalContacts, buildertrendAccessCandidates]) completeColumns(table)
   for (const file of ["0069_project_access_invitations.sql", "0074_activity_events.sql", "0261_invitation_email_recovery.sql"]) database.sqlite.exec(readFileSync(`drizzle/${file}`, "utf8"))
+  // As in production (0276): one membership per person per job; grants upsert on it.
+  database.sqlite.exec("CREATE UNIQUE INDEX project_members_project_user_unique ON project_members (project_id, user_id)")
   database.sqlite.exec("INSERT INTO customers(id,organization_id,name,email) VALUES('customer','org-a','Customer','owner-a@example.test'); INSERT INTO customer_contacts(id,customer_id,user_id,name,email,active) VALUES('person','customer','owner-a','Owner','owner-a@example.test',1); INSERT INTO project_contacts(id,project_id,contact_type,source_entity_type,source_entity_id,customer_id,customer_contact_id,display_name,email,active,owner_portal_visible) VALUES('contact','project-a','owner','customer','customer','customer','person','Owner','owner-a@example.test',1,0)")
   // Same BT owner on project A (this contact), project B (no Compass contact yet) and another company's project.
   database.sqlite.exec(access("a", "project-a", "contact", "Open") + access("b", "project-b", null, "Closed") + access("x", "project-other", null, "Open"))

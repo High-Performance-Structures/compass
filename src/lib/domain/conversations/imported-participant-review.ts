@@ -1,5 +1,6 @@
 import { sql, type SQL } from "drizzle-orm"
 
+import { participantIdentityMachine } from "@/lib/domain/documents/participant-machines"
 import { containsPattern, type RecordPage, type RecordPageQuery } from "@/lib/record-page"
 import { cleanText, field, finiteNumber, isRecord } from "@/lib/shared/guards"
 import type { Db } from "@/lib/server/action-context"
@@ -36,7 +37,10 @@ export const THREAD_RECORD_SUFFIX = "_message_thread"
 type ReviewKind = "ambiguous" | "run_together" | "not_full_name"
 
 /** identity_status values written by review (the importer writes `matched`, `unmatched`, `boundary_unproven:*`). */
-export const REVIEW_IDENTITY_STATUSES = { matched: "matched", split: "boundary_split" } as const
+export const REVIEW_IDENTITY_STATUSES = {
+  matched: participantIdentityMachine.transitions.match.to,
+  split: participantIdentityMachine.transitions.split.to,
+} as const
 
 const REVIEW_REASONS: Readonly<Record<ReviewKind, string>> = {
   ambiguous: "Not matched to one person",

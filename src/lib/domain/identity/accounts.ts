@@ -8,14 +8,16 @@
  * email gives the person the invited role on that job, joins them to the
  * inviting company as an outside member (staff keep their staff role), opens
  * the owner or sub/vendor conversation, and marks the invitation accepted.
+ * The membership is granted only while the invitation is open and its
+ * contact still on the job, so a revoke or removal mid sign-in wins.
  * An invitation whose WorkOS link has lapsed is marked expired instead.
  * Status changes follow invitationMachine (invitation-machine.ts).
  */
 import { and, desc, eq, sql } from "drizzle-orm"
 
 import { organizationMembers, projectAccessInvitations, users, type User } from "@/db/schema"
-import { projectContactPhoneAndAddress } from "@/lib/domain/contacts/resolved-project-contacts"
-import { upsertProjectMemberRole } from "@/lib/domain/project/store"
+import { projectContactActiveCondition, projectContactPhoneAndAddress } from "@/lib/domain/contacts/resolved-project-contacts"
+import { removeProjectMemberGrant, upsertProjectMemberRole } from "@/lib/domain/project/store"
 import { ensureProjectAudienceConversation } from "@/lib/project-audience-conversations"
 import type { Db } from "@/lib/server/action-context"
 import { isExternalProjectRole, projectAudienceForRole } from "@/lib/user-roles"
@@ -23,6 +25,7 @@ import { isExternalProjectRole, projectAudienceForRole } from "@/lib/user-roles"
 import {
   ensureExternalOrganizationMembership,
   invitationIsOpen,
+  invitationOpenCondition,
   markProjectAccessInvitationAccepted,
   markProjectAccessInvitationExpired,
   updateUser,
@@ -144,6 +147,21 @@ export async function claimProjectAccessInvitations(
       organizationMembership && !isExternalProjectRole(organizationMembership.role) ? organizationMembership.role : null
     const assignedRole = preservedOrganizationRole ?? invitation.role
 
+    // The job membership lands only while the invitation is still open and its
+    // contact is still on the job, checked in the same statement: staff who
+    // revoke the invitation or remove the contact mid sign-in always win.
+    const grant = await upsertProjectMemberRole(
+      db,
+      { projectId: invitation.projectId, userId: account.id, role: assignedRole, now },
+      {
+        onlyIf: and(
+          invitationOpenCondition(invitation.id),
+          invitation.projectContactId ? projectContactActiveCondition(invitation.projectContactId) : undefined,
+        ),
+      },
+    )
+    if (!grant.written) continue
+
     if (isExternalProjectRole(invitation.role) && !preservedOrganizationRole) {
       await ensureExternalOrganizationMembership(db, {
         organizationId: invitation.organizationId,
@@ -152,8 +170,6 @@ export async function claimProjectAccessInvitations(
         now,
       })
     }
-
-    await upsertProjectMemberRole(db, { projectId: invitation.projectId, userId: account.id, role: assignedRole, now })
 
     const audience = projectAudienceForRole(invitation.role)
     if (audience) {
@@ -173,7 +189,10 @@ export async function claimProjectAccessInvitations(
     // Grants run before accept so a failure leaves the invitation open to retry
     // on the next request; they are idempotent. Accept is compare-and-set.
     if (!(await markProjectAccessInvitationAccepted(db, invitation.id, account.id, now))) {
-      console.warn(`[sign-in] invitation ${invitation.id} changed while being claimed; access was granted but it is no longer open`)
+      // Revoked between the grant and the accept: undo a membership this claim
+      // created (one that existed before is left alone).
+      if (grant.createdId) await removeProjectMemberGrant(db, grant.createdId)
+      console.warn(`[sign-in] invitation ${invitation.id} changed while being claimed; the new job membership was withdrawn`)
       continue
     }
     claimed ??= { organizationId: invitation.organizationId, role: assignedRole }
