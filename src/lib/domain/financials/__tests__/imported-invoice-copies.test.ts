@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest"
 
-import { billSequence, listedBillFor, ownerPayApplicationHistory, ownerPayApplicationsOnce, receivablesOncePerBill, type BillRef } from "@/lib/domain/financials/bill-matching"
+import { billSequence, listedBillFor, receivablesShownAs, ownerPayApplicationHistory, ownerPayApplicationsOnce, receivablesOncePerBill, type BillRef } from "@/lib/domain/financials/bill-matching"
 
 /*
  * A job brought over from another system has bills twice: once as an
@@ -211,6 +211,59 @@ describe("LaCasse (O-58-3674)", () => {
       workflow({ sourceRecordType: "owner_pay_application", sourceRecordId: `bt-pr-${index + 1}`, sourceRecordNumber: String(index + 1), amount: 10_000 + index })
     )
     expect(copies.filter((copy) => match(copy, [], { projectNumber: "O-58-3674" }) !== null)).toEqual([])
+  })
+})
+
+describe("Loomis (O-170-2684): legacy invoices and the Drive draws they billed (owner rule 2026-11-13)", () => {
+  type Item = Parameters<typeof receivablesOncePerBill>[0][number]
+  const invoice = (number: string, amount: number, issued: string, paid = true): Item => ({
+    label: `Invoice ${number}`, bill: { kind: "invoice", ids: [`inv-${number}`], number, cents: dollars(amount) },
+    sourceSystem: "compass", paidCents: paid ? dollars(amount) : 0, prepaid: null, billDate: issued, legacyInvoice: true,
+  })
+  const draw = (number: number, due: number, periodTo: string): Item => ({
+    label: `Pay application ${number}`, bill: { kind: "draw", ids: [`draw-${number}`], number: String(number), cents: dollars(due) },
+    sourceSystem: "google_drive_g702_g703", paidCents: 0, prepaid: null, billDate: periodTo, legacyInvoice: false,
+  })
+  const invoices = [
+    invoice("O-170-0001", 6178.75, "2026-03-02"), invoice("O-170-0002", 1425, "2026-03-20"), invoice("O-170-0003", 50322.11, "2026-04-02"),
+    invoice("O-170-002", 18460.77, "2026-05-07"), invoice("O-170-003", 127452.82, "2026-06-05"), invoice("O-170-004", 109097.63, "2026-07-10"),
+    invoice("O-170-005", 93632.88, "2026-08-04"), invoice("O-170-O-170-001", 1576.25, "2026-02-10"),
+    invoice("O-170-PR5-31Aug26", 68614.43, "2026-08-31"), invoice("O-170-PR6-FINAL", 30944.17, "2026-10-01"),
+  ]
+  const draws = [
+    draw(1, 18460.77, "2026-04-29"), draw(2, 133149.11, "2026-05-31"), draw(3, 109097.63, "2026-06-30"),
+    draw(4, 99936.54, "2026-07-31"), draw(5, 68614.43, "2026-08-31"), draw(6, 0, "2026-09-30"),
+  ]
+
+  it("lists 16 items as 13: the three paid invoices stay, noting the draw each billed", () => {
+    const kept = receivablesOncePerBill([...invoices, ...draws])
+    expect(invoices.length + draws.length).toBe(16)
+    expect(kept).toHaveLength(13)
+    expect(kept.filter((entry) => entry.sameBillAs).map((entry) => [entry.row.label, entry.sameBillAs])).toEqual([
+      ["Invoice O-170-002", "Pay application 1"],
+      ["Invoice O-170-004", "Pay application 3"],
+      ["Invoice O-170-PR5-31Aug26", "Pay application 5"],
+    ])
+    // The Drive copies of draws 1 and 3 in the workflow queue still find the row they are shown under.
+    const shown = new Map(receivablesShownAs([...invoices, ...draws]).map((entry) => [entry.row.label, entry.shownAs]))
+    expect(shown.get("Pay application 1")).toBe("Invoice O-170-002")
+  })
+
+  it("keeps the draw when only the draw has payments", () => {
+    const kept = receivablesOncePerBill([invoice("O-170-002", 18460.77, "2026-05-07", false), { ...draw(1, 18460.77, "2026-04-29"), paidCents: 100 }])
+    expect(kept.map((entry) => [entry.row.label, entry.sameBillAs])).toEqual([["Pay application 1", "Invoice O-170-002"]])
+  })
+
+  it("leaves both listed: a cent off, 20 days apart, a Compass-built invoice, or two candidates", () => {
+    expect(receivablesOncePerBill([invoice("O-170-002", 18460.76, "2026-05-07"), draw(1, 18460.77, "2026-04-29")])).toHaveLength(2)
+    expect(receivablesOncePerBill([invoice("O-170-002", 18460.77, "2026-05-19"), draw(1, 18460.77, "2026-04-29")])).toHaveLength(2)
+    expect(receivablesOncePerBill([invoice("O-170-002", 18460.77, "2026-04-25"), draw(1, 18460.77, "2026-04-29")])).toHaveLength(2)
+    expect(receivablesOncePerBill([{ ...invoice("O-170-002", 18460.77, "2026-05-07"), legacyInvoice: false }, draw(1, 18460.77, "2026-04-29")])).toHaveLength(2)
+    // Two draws an invoice could have billed, or two invoices for one draw.
+    expect(receivablesOncePerBill([invoice("O-170-002", 18460.77, "2026-05-07"), draw(1, 18460.77, "2026-04-29"), draw(7, 18460.77, "2026-05-01")])).toHaveLength(3)
+    expect(receivablesOncePerBill([invoice("O-170-002", 18460.77, "2026-05-07"), invoice("O-170-002B", 18460.77, "2026-05-08"), draw(1, 18460.77, "2026-04-29")])).toHaveLength(3)
+    // Within 3 days before the period end still matches.
+    expect(receivablesOncePerBill([invoice("O-170-002", 18460.77, "2026-04-27"), draw(1, 18460.77, "2026-04-29")])).toHaveLength(1)
   })
 })
 

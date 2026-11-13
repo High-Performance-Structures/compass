@@ -138,7 +138,7 @@ export function billedItemColumns({ projectId, canRecord, canSettle, onRecord, o
             {row.original.sourceSystem.startsWith("buildertrend") && <SourceTag source="buildertrend" className="ml-1" />}
             {row.original.sageInvoiceNumber && <p className="text-xs text-muted-foreground">Sage invoice {row.original.sageInvoiceNumber}</p>}
             {row.original.sourceLabel && <p className="text-xs text-muted-foreground">{row.original.sourceLabel}</p>}
-            {row.original.sameBillAs && <p className="text-xs text-muted-foreground">Same bill as {row.original.sameBillAs} (listed once)</p>}
+            {row.original.sameBillAs && <p className="text-xs text-muted-foreground">Same bill as {row.original.sameBillAs}</p>}
             {row.original.paymentBlocker && !row.original.prepaid && <p className="text-xs text-muted-foreground">{row.original.paymentBlocker}</p>}
             {row.original.prepaid && <p className="text-xs text-muted-foreground">{prepaidText(row.original)}</p>}
             {row.original.sharedSageInvoiceWith && (

@@ -5,7 +5,7 @@
  */
 import { isListValue } from "@/lib/shared/statuses"
 
-import { BUDGET_PROJECTION_SOURCE, COMPASS_DRAW_SOURCE, storedDollarsToCents } from "./rules"
+import { BUDGET_PROJECTION_SOURCE, COMPASS_DRAW_SOURCE, SAGE_SNAPSHOT_SOURCE, storedDollarsToCents } from "./rules"
 
 // ---------------------------------------------------------------------------
 // Imported bills shown once. A cutover from another system (Buildertrend,
@@ -181,31 +181,90 @@ type ListedReceivable = {
   readonly sourceSystem: string
   readonly paidCents: number
   readonly prepaid: unknown
+  /** An invoice's issue date; a draw's period-to date. */
+  readonly billDate?: string | null
+  /** An invoice recorded before Compass built its own (no kind): a legacy or cutover invoice. */
+  readonly legacyInvoice?: boolean
+}
+
+// An invoice issued for an imported draw (owner rule, 2026-11-13): issued on or
+// up to 14 days after the draw's period-to date, or up to 3 days before it.
+const INVOICE_DAYS_AFTER_DRAW = 14
+const INVOICE_DAYS_BEFORE_DRAW = 3
+const IMPORTED_DRAW_SOURCES: readonly string[] = ["google_drive_g702_g703", SAGE_SNAPSHOT_SOURCE]
+
+function daysFrom(from: string, to: string): number | null {
+  const start = Date.parse(`${from.slice(0, 10)}T00:00:00Z`)
+  const end = Date.parse(`${to.slice(0, 10)}T00:00:00Z`)
+  return Number.isNaN(start) || Number.isNaN(end) ? null : Math.round((end - start) / 86_400_000)
+}
+
+/** Whether a legacy invoice billed an imported draw: the same amount due, issued around the draw's period end. */
+function invoiceBillsDraw(invoice: ListedReceivable, draw: ListedReceivable): boolean {
+  if (invoice.bill.kind !== "invoice" || invoice.legacyInvoice !== true || !invoice.billDate) return false
+  if (draw.bill.kind !== "draw" || !IMPORTED_DRAW_SOURCES.includes(draw.sourceSystem) || !draw.billDate) return false
+  if (invoice.bill.cents !== draw.bill.cents || invoice.bill.cents <= 0) return false
+  const days = daysFrom(draw.billDate, invoice.billDate)
+  return days !== null && days >= -INVOICE_DAYS_BEFORE_DRAW && days <= INVOICE_DAYS_AFTER_DRAW
+}
+
+/** Legacy invoices paired with the imported draw they billed: exactly one candidate on each side. */
+function invoiceDrawPairs<T extends ListedReceivable>(rows: readonly T[]): [T, T][] {
+  const pairs: [T, T][] = []
+  for (const invoice of rows) {
+    const draws = rows.filter((draw) => invoiceBillsDraw(invoice, draw))
+    const [draw] = draws
+    if (!draw || draws.length !== 1) continue
+    if (rows.filter((other) => invoiceBillsDraw(other, draw)).length === 1) pairs.push([invoice, draw])
+  }
+  return pairs
 }
 
 /**
- * Billed items with an imported copy of the same bill left out (a
- * Buildertrend invoice and a Drive G702 for one draw, say). The copy kept is
- * the one with payments, else the live (Compass or Sage) record, else the
- * draw; an item with payments, or billed in Compass or Sage, is never left
- * out. `sameBillAs` names the copy left out, for the kept row's note.
+ * Billed items with each bill once. A legacy invoice and the imported draw
+ * it billed (invoiceBillsDraw) keep the one with payments, else the invoice.
+ * Other imported copies of the same bill (a Buildertrend invoice and a Drive
+ * G702 for one draw, say) keep the one with payments, else the live (Compass
+ * or Sage) record, else the draw; there an item with payments, or billed in
+ * Compass or Sage, is never left out. `sameBillAs` names the copy left out,
+ * for the kept row's note.
  */
-export function receivablesOncePerBill<T extends ListedReceivable>(rows: readonly T[]): { readonly row: T; readonly sameBillAs: string | null }[] {
+function billGroups<T extends ListedReceivable>(rows: readonly T[]): { readonly left: ReadonlyMap<T, string>; readonly sameBillAs: ReadonlyMap<T, string> } {
   const keepFirst = (row: T): number =>
     (row.paidCents > 0 || row.prepaid ? 0 : 4) + (isLiveBillSource(row.sourceSystem) ? 0 : 2) + (row.bill.kind === "draw" ? 0 : 1)
   const removable = (row: T): boolean => row.paidCents === 0 && !row.prepaid && !isLiveBillSource(row.sourceSystem)
   const left = new Map<T, string>()
   const sameBillAs = new Map<T, string>()
+  // A legacy invoice and the imported draw it billed: keep the one with payments
+  // (the invoice when neither has any); both with payments stay listed.
+  const hasPayments = (row: T): boolean => row.paidCents > 0 || Boolean(row.prepaid)
+  for (const [invoice, draw] of invoiceDrawPairs(rows)) {
+    if (hasPayments(invoice) && hasPayments(draw)) continue
+    const [kept, hidden] = hasPayments(draw) ? [draw, invoice] : [invoice, draw]
+    left.set(hidden, kept.label)
+    sameBillAs.set(kept, hidden.label)
+  }
   const ordered = [...rows].sort((a, b) => keepFirst(a) - keepFirst(b))
   for (const [index, kept] of ordered.entries()) {
-    if (left.has(kept)) continue
+    if (left.has(kept) || sameBillAs.has(kept)) continue
     for (const other of ordered.slice(index + 1)) {
       if (left.has(other) || !removable(other) || !sameBill(kept.bill, other.bill)) continue
       left.set(other, kept.label)
       sameBillAs.set(kept, other.label)
     }
   }
+  return { left, sameBillAs }
+}
+
+export function receivablesOncePerBill<T extends ListedReceivable>(rows: readonly T[]): { readonly row: T; readonly sameBillAs: string | null }[] {
+  const { left, sameBillAs } = billGroups(rows)
   return rows.filter((row) => !left.has(row)).map((row) => ({ row, sameBillAs: sameBillAs.get(row) ?? null }))
+}
+
+/** Each listed item with the label it is shown under in received payments: its own, or the kept copy's. */
+export function receivablesShownAs<T extends ListedReceivable>(rows: readonly T[]): { readonly row: T; readonly shownAs: string }[] {
+  const { left } = billGroups(rows)
+  return rows.map((row) => ({ row, shownAs: left.get(row) ?? row.label }))
 }
 
 /** Statuses owners never see as billing: a draw still being written, a replaced budget revision, a voided or replaced import. */

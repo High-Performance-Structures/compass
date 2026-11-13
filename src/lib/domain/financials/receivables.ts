@@ -27,7 +27,7 @@ import {
   type ReceivableItem,
   type ReceivableStaffStatus,
 } from "@/lib/domain/financials/rules"
-import { receivablesOncePerBill, type BillRef } from "@/lib/domain/financials/bill-matching"
+import { receivablesOncePerBill, receivablesShownAs, type BillRef } from "@/lib/domain/financials/bill-matching"
 import { INVOICE_CLOSED_TO_PAYMENTS } from "@/lib/domain/financials/invoice-machines"
 import type { ReceivableItemKind, ReceivablePaidState } from "@/lib/domain/financials/statuses"
 import { isListValue } from "@/lib/shared/statuses"
@@ -191,8 +191,8 @@ export async function readListedBills(db: Db, scope: ProjectReceivableScope): Pr
   const importedInvoices = new Set(
     invoiceSources.filter((row) => row.sourceSystem !== "compass" || Boolean(row.source) || row.invoiceKind === null).map((row) => row.id)
   )
-  // The list as received payments shows it (each bill once), so the label names a row staff can find.
-  return receivablesOncePerBill(rows).map(({ row: { bill, label } }) => {
+  // Every listed bill, labelled as received payments shows it (a copy left out names the kept row).
+  return receivablesShownAs(rows).map(({ row: { bill }, shownAs: label }) => {
     const earned = bill.kind === "draw" ? bill.ids.flatMap((id) => (id && earnedCents.has(id) ? [earnedCents.get(id) ?? 0] : [])) : []
     const importedRecord = bill.kind === "invoice" && bill.ids.some((id) => id !== null && importedInvoices.has(id))
     return { ...bill, ids: [...bill.ids, ...bill.ids.map((id) => (id ? sourceIds.get(id) ?? null : null))], otherCents: earned, importedRecord, label }
@@ -206,10 +206,16 @@ type ListedReceivableRow = {
   readonly sourceSystem: string
   readonly paidCents: number
   readonly prepaid: PrepaidMark | null
+  readonly billDate: string | null
+  readonly legacyInvoice: boolean
 }
 
-function listed(item: ReceivableRow, bill: Omit<BillRef, "cents" | "number">): ListedReceivableRow {
-  return { item, bill: { ...bill, number: item.number, cents: item.billedCents }, label: item.label, sourceSystem: item.sourceSystem, paidCents: item.paidCents, prepaid: item.prepaid }
+function listed(
+  item: ReceivableRow,
+  bill: Omit<BillRef, "cents" | "number">,
+  dates: { readonly billDate: string | null; readonly legacyInvoice: boolean },
+): ListedReceivableRow {
+  return { item, bill: { ...bill, number: item.number, cents: item.billedCents }, label: item.label, sourceSystem: item.sourceSystem, paidCents: item.paidCents, prepaid: item.prepaid, ...dates }
 }
 
 async function listedReceivables(
@@ -286,7 +292,7 @@ async function listedReceivables(
       sourceLabel: importedDrawSourceLabel(application.sourceSystem),
       imported: isImportedDraw(application),
       prepaid: isImportedDraw(application) ? (prepaidMarks.get(application.id) ?? null) : null,
-    }), { kind: "draw", ids: [application.id] }))
+    }), { kind: "draw", ids: [application.id] }, { billDate: application.periodTo, legacyInvoice: false }))
   }
   for (const invoice of invoiceRows) {
     // A credit memo gives money back; it never takes a payment.
@@ -308,7 +314,7 @@ async function listedReceivables(
       sourceLabel: null,
       imported: false,
       prepaid: null,
-    }), { kind: "invoice", ids: [invoice.id] }))
+    }), { kind: "invoice", ids: [invoice.id] }, { billDate: invoice.issueDate, legacyInvoice: invoice.invoiceKind === null }))
   }
   return rows
 }
