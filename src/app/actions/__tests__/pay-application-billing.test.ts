@@ -24,10 +24,12 @@ vi.mock("@/lib/domain/project/access", () => ({ assertProjectAccess: mocks.asser
 
 import {
   approveProjectOwnerPayApplicationForBilling,
+  confirmProjectOwnerPayApplicationNotInSage,
   setProjectOwnerPayApplicationSageInvoice,
   undoProjectOwnerPayApplicationBilling,
 } from "@/app/actions/pay-application-billing"
 import { getProjectDepositRequests, saveProjectContractDeposit, voidProjectContractDeposit } from "@/app/actions/project-contract-deposits"
+import { confirmProjectDepositNotInSage } from "@/app/actions/project-deposit-sage"
 
 let sqlite: InstanceType<typeof Database>
 // Runs once before the next batch: a write that lands between a read and its batch.
@@ -59,6 +61,8 @@ beforeEach(() => {
   db.insert(projectBudgetApplications).values(application("app-1", "internal_review", "2026-10-16")).run()
   mocks.getDb.mockReturnValue({
     select: db.select.bind(db), update: db.update.bind(db), insert: db.insert.bind(db), delete: db.delete.bind(db),
+    // D1 reports a write's changes under meta.
+    all: db.all.bind(db), run: (query: Parameters<typeof db.run>[0]) => ({ meta: { changes: db.run(query).changes } }),
     batch: async (queries: readonly { run(): unknown }[]) => {
       const hook = beforeNextBatch
       beforeNextBatch = null
@@ -201,6 +205,37 @@ describe("approving a pay application for billing", () => {
       expect(row("app-1")).toMatchObject({ status: "billed" })
     })
 
+    it("a writer failure that may have reached Sage blocks undo until staff check Sage", async () => {
+      await approveProjectOwnerPayApplicationForBilling("bishop", "app-1", seen("app-1"))
+      exportRow("failed")
+      // The writer's own result (it holds its claim) for a run Sage may have taken.
+      sqlite.prepare("UPDATE sage_ar_invoice_exports SET claim_token = 'lease-1', error_message = 'Sage timed out after saving' WHERE id = 'exp'").run()
+      expect(await undoProjectOwnerPayApplicationBilling("bishop", "app-1")).toMatchObject({ success: false, error: expect.stringMatching(/void the invoice in Sage/) })
+      expect(row("app-1")).toMatchObject({ status: "billed" })
+
+      // "I checked Sage: it isn't there": staff only, recorded in Activity, nothing sent to Sage.
+      mocks.requireAuth.mockResolvedValueOnce({ id: "client", role: "client", organizationId: "client-org" })
+      expect((await confirmProjectOwnerPayApplicationNotInSage("bishop", "app-1")).success).toBe(false)
+      expect((await confirmProjectOwnerPayApplicationNotInSage("bishop", "app-1")).success).toBe(true)
+      expect(mocks.recordActivityEvent).toHaveBeenCalledWith(expect.objectContaining({ action: "pay_application_sage_checked_absent" }))
+      expect(sqlite.prepare("SELECT status, claim_token FROM sage_ar_invoice_exports WHERE id = 'exp'").get()).toEqual({ status: "failed", claim_token: null })
+      // A second check finds nothing to clear (compare-and-set on "possibly in Sage").
+      expect((await confirmProjectOwnerPayApplicationNotInSage("bishop", "app-1")).success).toBe(false)
+
+      expect((await undoProjectOwnerPayApplicationBilling("bishop", "app-1")).success).toBe(true)
+      expect(exportStatus()).toEqual({ status: "cancelled" })
+    })
+
+    it("the Sage check never clears an export Sage has or is adding", async () => {
+      await approveProjectOwnerPayApplicationForBilling("bishop", "app-1", seen("app-1"))
+      for (const [status, sageRecordId] of [["running", null], ["succeeded", "AR-77"], ["queued", null]] as const) {
+        sqlite.prepare("DELETE FROM sage_ar_invoice_exports").run()
+        exportRow(status, sageRecordId)
+        expect((await confirmProjectOwnerPayApplicationNotInSage("bishop", "app-1")).success).toBe(false)
+        expect(exportStatus()).toEqual({ status })
+      }
+    })
+
     it("refuses when Sage starts adding the invoice after the undo's checks", async () => {
       await approveProjectOwnerPayApplicationForBilling("bishop", "app-1", seen("app-1"))
       exportRow("queued")
@@ -262,6 +297,18 @@ describe("voiding and saving a deposit", () => {
   function depositExport(): unknown {
     return sqlite.prepare("SELECT status FROM sage_deposit_ar_exports WHERE id = 'dexp'").get()
   }
+
+  it("staff can record that a deposit invoice possibly in Sage isn't there; nothing else changes", async () => {
+    sqlite.prepare("UPDATE sage_deposit_ar_exports SET status = 'failed', claim_token = 'lease-1', error_message = 'Sage timed out after saving'").run()
+    mocks.requireAuth.mockResolvedValueOnce({ id: "client", role: "client", organizationId: "client-org" })
+    expect((await confirmProjectDepositNotInSage("bishop", "dep")).success).toBe(false)
+    expect(await confirmProjectDepositNotInSage("bishop", "dep")).toEqual({ success: true, data: { depositId: "dep" } })
+    expect(mocks.recordActivityEvent).toHaveBeenCalledWith(expect.objectContaining({ action: "deposit_sage_checked_absent" }))
+    expect(sqlite.prepare("SELECT status, claim_token FROM sage_deposit_ar_exports WHERE id = 'dexp'").get()).toEqual({ status: "failed", claim_token: null })
+    expect(deposit()).toEqual({ status: "requested" })
+    // Nothing left to clear.
+    expect((await confirmProjectDepositNotInSage("bishop", "dep")).success).toBe(false)
+  })
 
   it("withdraws the queued Sage AR invoice only once the void lands", async () => {
     expect((await voidProjectContractDeposit("bishop", "dep")).success).toBe(true)

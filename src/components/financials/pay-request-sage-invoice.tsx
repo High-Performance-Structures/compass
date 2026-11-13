@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation"
 import { IconAlertTriangle, IconRefresh, IconSend } from "@tabler/icons-react"
 import { toast } from "sonner"
 
+import { confirmProjectOwnerPayApplicationNotInSage } from "@/app/actions/pay-application-billing"
 import { sendPayRequestToSage, type PayRequestSageInvoiceState } from "@/app/actions/sage-ar-invoices"
 import { PayRequestFold } from "@/components/financials/pay-request-fold"
 import { Badge } from "@/components/ui/badge"
@@ -51,6 +52,19 @@ export function PayRequestSageInvoice({
   const invoice = state.invoice
   const billed = state.applicationStatus === "billed"
 
+  function confirmNotInSage(): void {
+    if (!window.confirm("You checked Sage and this pay request's invoice isn't there? Compass then lets you take the billing approval back as if it never reached Sage.")) return
+    startTransition(async () => {
+      const result = await confirmProjectOwnerPayApplicationNotInSage(projectId, applicationId)
+      if (!result.success) {
+        toast.error(result.error)
+        return
+      }
+      toast.success("Noted: the invoice isn't in Sage.")
+      router.refresh()
+    })
+  }
+
   function send(): void {
     startTransition(async () => {
       const result = await sendPayRequestToSage(projectId, applicationId)
@@ -92,6 +106,14 @@ export function PayRequestSageInvoice({
         </div>
       ) : null}
       {attention && state.export?.errorMessage ? <p className="text-sm text-destructive">{state.export.errorMessage}</p> : null}
+      {attention && state.export?.possiblyInSage && !state.export.sageRecordId ? (
+        <div className="flex flex-wrap items-center gap-2 text-sm">
+          <span className="text-muted-foreground">Sage may have this invoice. Check Sage before taking the billing approval back.</span>
+          <Button type="button" size="sm" variant="outline" disabled={pending} onClick={confirmNotInSage}>
+            I checked Sage: it isn&apos;t there
+          </Button>
+        </div>
+      ) : null}
       {invoice.blockers.length > 0 && !attention && status !== "succeeded" ? (
         <ul className="list-disc space-y-1 pl-5 text-sm text-destructive">
           {invoice.blockers.map((blocker) => (

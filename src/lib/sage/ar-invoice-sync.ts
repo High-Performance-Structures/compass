@@ -1,6 +1,6 @@
 import "server-only"
 
-import { and, asc, desc, eq, inArray } from "drizzle-orm"
+import { and, asc, desc, eq, inArray, sql } from "drizzle-orm"
 
 import { projectBudgetApplications, projectBudgetLines, projects } from "@/db/schema"
 import { sageArInvoiceExports } from "@/db/schema-sage"
@@ -9,7 +9,7 @@ import { loadProjectCostCodeCatalog } from "@/lib/cost-codes/catalog-server"
 import { getCloudflareContext } from "@/lib/db"
 import { COMPASS_DRAW_SOURCE } from "@/lib/domain/financials/rules"
 import { arInvoiceDescription, planSageArInvoice, type ArInvoicePlan } from "@/lib/domain/sage-bridge/ar-invoice-rules"
-import { upsertSageArInvoiceExport } from "@/lib/domain/sage-bridge/ar-invoice-store"
+import { POSSIBLY_IN_SAGE_SQL, upsertSageArInvoiceExport } from "@/lib/domain/sage-bridge/ar-invoice-store"
 import type { SageArInvoiceExportStatus } from "@/lib/domain/sage-bridge/statuses"
 import { incomeAccountFor } from "@/lib/feature-settings/sage-ar-invoice-settings"
 import { readFeatureSettings } from "@/lib/feature-settings/server"
@@ -256,11 +256,13 @@ export type ArInvoiceExportView = {
   readonly automatic: boolean
   readonly sageRecordId: string | null
   readonly sageTotalCents: number | null
+  /** Sage may have it (POSSIBLY_IN_SAGE_SQL): taking billing back is refused until staff check Sage. */
+  readonly possiblyInSage: boolean
 }
 
 /** The pay request's current export row, for the pay request page. */
 export async function loadArInvoiceExport(db: Db, projectId: string, applicationId: string): Promise<ArInvoiceExportView | undefined> {
-  return db
+  const row = await db
     .select({
       status: sageArInvoiceExports.status,
       invoiceNumber: sageArInvoiceExports.invoiceNumber,
@@ -270,9 +272,11 @@ export async function loadArInvoiceExport(db: Db, projectId: string, application
       automatic: sageArInvoiceExports.automatic,
       sageRecordId: sageArInvoiceExports.sageRecordId,
       sageTotalCents: sageArInvoiceExports.sageTotalCents,
+      possiblyInSage: sql<number>`${sql.raw(POSSIBLY_IN_SAGE_SQL)}`,
     })
     .from(sageArInvoiceExports)
     .where(and(eq(sageArInvoiceExports.projectId, projectId), eq(sageArInvoiceExports.applicationId, applicationId)))
     .orderBy(desc(sageArInvoiceExports.requestedAt))
     .get()
+  return row ? { ...row, possiblyInSage: Boolean(row.possiblyInSage) } : undefined
 }

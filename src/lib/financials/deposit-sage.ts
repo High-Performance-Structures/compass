@@ -1,6 +1,6 @@
 import "server-only"
 
-import { and, asc, eq, lt, or } from "drizzle-orm"
+import { and, asc, eq, lt, or, sql } from "drizzle-orm"
 
 import { projectContractDeposits } from "@/db/schema"
 import { sageDepositArExports } from "@/db/schema-sage"
@@ -9,6 +9,7 @@ import { depositNumberFormat, depositRequestSequences } from "@/lib/deposits/dep
 import type { ArInvoicePlan } from "@/lib/domain/sage-bridge/ar-invoice-rules"
 import {
   claimSageDepositArExport,
+  POSSIBLY_IN_SAGE_SQL,
   sageArExportSourceNotVoid,
   updateSageDepositArExportsStatement,
   upsertSageDepositArExport,
@@ -217,6 +218,8 @@ export type DepositSageExportView = {
   readonly errorMessage: string | null
   readonly completedAt: string | null
   readonly sageRecordId: string | null
+  /** Sage may have it (POSSIBLY_IN_SAGE_SQL): staff check Sage before treating it as never sent. */
+  readonly possiblyInSage: boolean
 }
 
 /** The project's deposit exports by deposit id. */
@@ -229,10 +232,11 @@ export async function loadDepositSageExports(db: Db, organizationId: string, pro
       errorMessage: sageDepositArExports.errorMessage,
       completedAt: sageDepositArExports.completedAt,
       sageRecordId: sageDepositArExports.sageRecordId,
+      possiblyInSage: sql<number>`${sql.raw(POSSIBLY_IN_SAGE_SQL)}`,
     })
     .from(sageDepositArExports)
     .where(and(eq(sageDepositArExports.organizationId, organizationId), eq(sageDepositArExports.projectId, projectId)))
-  return new Map(rows.map(({ depositId, ...view }) => [depositId, view]))
+  return new Map(rows.map(({ depositId, possiblyInSage, ...view }) => [depositId, { ...view, possiblyInSage: Boolean(possiblyInSage) }]))
 }
 
 /** The deposit's Sage export status, or null when it was never sent. Running or succeeded fixes its amount. */

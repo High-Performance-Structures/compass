@@ -11,7 +11,7 @@ import { batchGuardStatement, isBatchGuardFailure } from "@/lib/d1-query"
 import { compassDrawStatusIs, movePayApplicationStatus, updateBudgetApplicationsStatement } from "@/lib/domain/budget/store"
 import { drawHasNoActivePayments, payApplicationHasActivePayments } from "@/lib/domain/financials/receivables"
 import { operationUpdateQuery } from "@/lib/domain/operations/store"
-import { arExportNotPossiblyInSage, arExportPossiblyInSage, cancelSageArInvoiceExportStatement } from "@/lib/domain/sage-bridge/ar-invoice-store"
+import { arExportNotPossiblyInSage, arExportPossiblyInSage, cancelSageArInvoiceExportStatement, confirmSageArExportNotInSage } from "@/lib/domain/sage-bridge/ar-invoice-store"
 import { queueArInvoiceSageExport } from "@/lib/sage/ar-invoice-sync"
 import type { AuthUser } from "@/lib/auth"
 import { requireOrg } from "@/lib/org-scope"
@@ -253,3 +253,36 @@ export async function setProjectOwnerPayApplicationSageInvoice(
     return { success: false, error: error instanceof Error ? error.message : "Unable to record the Sage invoice number." }
   }
 }
+
+/**
+ * Staff checked Sage and this draw's AR invoice isn't there: its export stops
+ * counting as possibly in Sage (compare-and-set on that state), so the billing
+ * approval can be taken back. Nothing is sent to Sage.
+ */
+export async function confirmProjectOwnerPayApplicationNotInSage(
+  projectId: string,
+  applicationId: string
+): Promise<BillingActionResult> {
+  try {
+    const { db, user, organizationId } = await billingAccess(projectId)
+    const application = await compassApplication(db, projectId, applicationId)
+    if (!application) throw new Error("Pay application not found.")
+    const now = new Date().toISOString()
+    const who = user.displayName ?? user.email
+    const note = `${who} checked Sage on ${now.slice(0, 10)}: the invoice isn't there.`
+    if (!(await confirmSageArExportNotInSage(db, { kind: "pay", organizationId, sourceId: applicationId, note, now }))) {
+      throw new Error("This pay application isn't waiting on a Sage check (Sage has it, or it changed). Refresh to see where it is.")
+    }
+    await recordActivityEvent({
+      db, organizationId, projectId, actor: user, category: "financial",
+      action: "pay_application_sage_checked_absent", entityType: "project_budget_application", entityId: applicationId,
+      summary: `Pay application ${application.applicationNumber}: ${who} checked Sage and its AR invoice isn't there.`,
+      metadata: {},
+    })
+    revalidateBillingPaths(projectId, applicationId)
+    return { success: true, id: applicationId }
+  } catch (error) {
+    return { success: false, error: error instanceof Error ? error.message : "Unable to record the Sage check." }
+  }
+}
+

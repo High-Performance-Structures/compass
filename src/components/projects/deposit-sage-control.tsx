@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation"
 import { IconAlertTriangle, IconRefresh, IconSend } from "@tabler/icons-react"
 import { toast } from "sonner"
 
-import { sendProjectDepositToSage, type DepositSageRow } from "@/app/actions/project-deposit-sage"
+import { confirmProjectDepositNotInSage, sendProjectDepositToSage, type DepositSageRow } from "@/app/actions/project-deposit-sage"
 import {
   AlertDialog,
   AlertDialogAction,
@@ -56,6 +56,19 @@ export function DepositSageControl({
   useVisibleInterval(() => router.refresh(), SENDING_REFRESH_MS, { enabled: sending, immediate: false })
   const canSend = writesEnabled && (status === null || status === "cancelled" || attention)
 
+  function confirmNotInSage(): void {
+    if (!window.confirm("You checked Sage and this deposit request's invoice isn't there? Compass then treats it as never sent.")) return
+    startTransition(async () => {
+      const result = await confirmProjectDepositNotInSage(projectId, depositId)
+      if (!result.success) {
+        toast.error(result.error)
+        return
+      }
+      toast.success("Noted: the invoice isn't in Sage.")
+      router.refresh()
+    })
+  }
+
   function send(): void {
     startTransition(async () => {
       const result = await sendProjectDepositToSage(projectId, depositId)
@@ -89,6 +102,11 @@ export function DepositSageControl({
         ) : null}
       </div>
       {attention && row.export?.errorMessage ? <p className="text-xs text-destructive">{row.export.errorMessage}</p> : null}
+      {attention && row.export?.possiblyInSage && !row.export.sageRecordId ? (
+        <Button type="button" size="sm" variant="outline" disabled={pending} onClick={confirmNotInSage}>
+          I checked Sage: it isn&apos;t there
+        </Button>
+      ) : null}
       <AlertDialog open={confirm} onOpenChange={setConfirm}>
         <AlertDialogContent>
           <AlertDialogHeader>
