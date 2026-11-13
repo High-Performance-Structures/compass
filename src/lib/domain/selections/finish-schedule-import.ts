@@ -27,6 +27,7 @@ import {
   insertFinishSelectionStatement,
   insertSelectionRoomStatement,
   updateFinishSelectionsStatement,
+  updateFinishSelectionsWithEventStatement,
   updateSelectionRoomsStatement,
   type Statement,
 } from "./store"
@@ -302,16 +303,24 @@ export async function applyFinishScheduleImport(
     const approvalNeedsReview =
       (existing.ownerApproved || existing.status === "approved") &&
       importedSourceChanged(existing, sourceValues)
+    // The workbook changed an approved row: the approval no longer covers it,
+    // so it reopens (back to the owner). Otherwise the status is left alone,
+    // so a status staff set meanwhile is never overwritten by the import.
     statements.push(
-      updateFinishSelectionsStatement(db, eq(projectFinishSelections.id, existing.id), {
-        ...sourceValues,
-        sourceRecordId,
-        status: approvalNeedsReview ? "owner_review" : existing.status,
-        ownerApproved: approvalNeedsReview ? false : existing.ownerApproved,
-        approvedBy: approvalNeedsReview ? null : existing.approvedBy,
-        approvedAt: approvalNeedsReview ? null : existing.approvedAt,
-        syncStatus: approvalNeedsReview ? "selection_change_review" : "imported"
-      })
+      approvalNeedsReview
+        ? updateFinishSelectionsWithEventStatement(db, eq(projectFinishSelections.id, existing.id), "reopen", {
+            ...sourceValues,
+            sourceRecordId,
+            ownerApproved: false,
+            approvedBy: null,
+            approvedAt: null,
+            syncStatus: "selection_change_review"
+          })
+        : updateFinishSelectionsStatement(db, eq(projectFinishSelections.id, existing.id), {
+            ...sourceValues,
+            sourceRecordId,
+            syncStatus: "imported"
+          })
     )
     updatedCount += 1
     if (approvalNeedsReview) conflictCount += 1

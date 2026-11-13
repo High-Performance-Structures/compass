@@ -1,4 +1,4 @@
-import { and, eq, type SQL } from "drizzle-orm"
+import { and, eq, inArray, sql, type SQL } from "drizzle-orm"
 import type { BatchItem } from "drizzle-orm/batch"
 import type { IndexColumn, SQLiteUpdateSetSource } from "drizzle-orm/sqlite-core"
 
@@ -7,7 +7,8 @@ import { selectionDeletionAllowed } from "@/lib/selections/deletion"
 import type { Db } from "@/lib/server/action-context"
 import { assertListFields } from "@/lib/shared/statuses"
 
-import { PROJECT_SELECTION_STATUSES } from "./statuses"
+import { automaticSelectionStatus, selectionStatusSources, selectionStatusTarget, type SelectionStatusEvent } from "./status-machine"
+import { PROJECT_SELECTION_STATUSES, type ProjectSelectionStatus } from "./statuses"
 
 // Enumerated columns are checked against their shared list before every write.
 const SELECTION_LISTS = { status: PROJECT_SELECTION_STATUSES }
@@ -58,7 +59,14 @@ export function updateSelectionRoomsStatement(db: Db, where: SQL | undefined, pa
 // ---- projectFinishSelections
 
 type FinishSelectionInsert = typeof projectFinishSelections.$inferInsert
-type FinishSelectionPatch = SQLiteUpdateSetSource<typeof projectFinishSelections>
+/** Every column but status; status changes through the status functions below. */
+type FinishSelectionPatch = Omit<SQLiteUpdateSetSource<typeof projectFinishSelections>, "status">
+
+// A spread or untyped patch can still carry status past the type; refuse it.
+function withoutStatus(patch: FinishSelectionPatch): FinishSelectionPatch {
+  if ("status" in patch) throw new Error("project_finish_selections.status changes only through the selections store's status functions.")
+  return patch
+}
 
 export function insertFinishSelectionStatement(db: Db, values: FinishSelectionInsert | readonly FinishSelectionInsert[]): Statement {
   assertListFields("project_finish_selections", values, SELECTION_LISTS)
@@ -71,13 +79,119 @@ export async function insertFinishSelection(db: Db, values: FinishSelectionInser
 }
 
 export function updateFinishSelectionsStatement(db: Db, where: SQL | undefined, patch: FinishSelectionPatch): Statement {
-  assertListFields("project_finish_selections", patch, SELECTION_LISTS)
-  return db.update(projectFinishSelections).set(patch).where(where)
+  return db.update(projectFinishSelections).set(withoutStatus(patch)).where(where)
 }
 
 export async function updateFinishSelections(db: Db, where: SQL | undefined, patch: FinishSelectionPatch): Promise<D1Result> {
-  assertListFields("project_finish_selections", patch, SELECTION_LISTS)
-  return db.update(projectFinishSelections).set(patch).where(where).run()
+  return db.update(projectFinishSelections).set(withoutStatus(patch)).where(where).run()
+}
+
+// ---- selection status (issue #1329, phase 2)
+//
+// Staff set any status by hand (setSelectionStatusByStaff); Compass's own
+// moves follow status-machine.ts. Both are compare-and-set, so a stale read
+// never overwrites a newer status. Every other update leaves status out.
+
+/**
+ * A staff status change: lands only while the selection still has
+ * `expected`, the status the person saw. False when it changed meanwhile.
+ */
+export async function setSelectionStatusByStaff(
+  db: Db,
+  input: {
+    readonly projectId: string
+    readonly selectionId: string
+    readonly expected: string
+    readonly status: ProjectSelectionStatus
+    /** Other columns written with the status. */
+    readonly values?: FinishSelectionPatch
+  },
+): Promise<boolean> {
+  const values = { ...withoutStatus(input.values ?? {}), status: input.status }
+  assertListFields("project_finish_selections", values, SELECTION_LISTS)
+  const result = await db
+    .update(projectFinishSelections)
+    .set(values)
+    .where(
+      and(
+        eq(projectFinishSelections.id, input.selectionId),
+        eq(projectFinishSelections.projectId, input.projectId),
+        // The stored value may be off the list (an old spelling), so compare as text.
+        sql`${projectFinishSelections.status} = ${input.expected}`,
+      ),
+    )
+    .run()
+  return result.meta.changes > 0
+}
+
+// Return type left to Drizzle: run() and the batch both need the builder.
+/**
+ * An automatic move of one selection read as `stored`, for the caller's
+ * batch: lands only while the row still has `stored` (one of the event's
+ * source statuses) and returns its id. Null when the machine doesn't move a
+ * selection from `stored` at all.
+ */
+export function automaticSelectionStatusStatement(
+  db: Db,
+  move: {
+    readonly projectId: string
+    readonly selectionId: string
+    readonly event: SelectionStatusEvent
+    readonly stored: string
+    readonly values?: FinishSelectionPatch
+  },
+) {
+  const to = automaticSelectionStatus(move.event, move.stored)
+  if (to === null) return null
+  return db
+    .update(projectFinishSelections)
+    .set({ ...withoutStatus(move.values ?? {}), status: to })
+    .where(
+      and(
+        eq(projectFinishSelections.id, move.selectionId),
+        eq(projectFinishSelections.projectId, move.projectId),
+        sql`${projectFinishSelections.status} = ${move.stored}`,
+      ),
+    )
+    .returning({ id: projectFinishSelections.id })
+}
+
+/**
+ * `event`'s status as a column expression: the event's target where the row
+ * is in one of its source statuses at write time, otherwise unchanged. For
+ * writes whose other columns land regardless (an owner approval records the
+ * approval even on an ordered selection; a reopen clears it everywhere).
+ */
+function statusAfterEvent(event: SelectionStatusEvent): SQL {
+  const to = selectionStatusTarget(event)
+  return sql`CASE WHEN ${inArray(projectFinishSelections.status, [...selectionStatusSources(event)])} THEN ${to} ELSE ${projectFinishSelections.status} END`
+}
+
+/** Columns plus `event`'s status move (see statusAfterEvent), as a batch statement. */
+export function updateFinishSelectionsWithEventStatement(
+  db: Db,
+  where: SQL | undefined,
+  event: SelectionStatusEvent,
+  patch: FinishSelectionPatch,
+): Statement {
+  return db
+    .update(projectFinishSelections)
+    .set({ ...withoutStatus(patch), status: statusAfterEvent(event) })
+    .where(where)
+}
+
+/** Columns plus `event`'s status move (see statusAfterEvent). */
+export async function updateFinishSelectionsWithEvent(
+  db: Db,
+  where: SQL | undefined,
+  event: SelectionStatusEvent,
+  patch: FinishSelectionPatch,
+): Promise<D1Result> {
+  return db
+    .update(projectFinishSelections)
+    .set({ ...withoutStatus(patch), status: statusAfterEvent(event) })
+    .where(where)
+    .run()
 }
 
 /** The ids of the rows the delete removed. */
@@ -145,7 +259,7 @@ export function templateFinishSelectionStatement(
     readonly name: string
     readonly description: string | null
     readonly costCode: string | null
-    readonly status: string
+    readonly status: ProjectSelectionStatus
     readonly notes: string | null
     readonly choiceOptionsJson: string | null
     readonly parentSelectionId: string | null

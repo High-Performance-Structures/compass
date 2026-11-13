@@ -27,7 +27,7 @@ import { cookies } from "next/headers"
 import { projectContacts, projectFinishSelections, projects } from "@/db/schema"
 import { peopleView } from "@/lib/domain/identity/views"
 import { projectChangeOrderLines, projectChangeOrders } from "@/db/schema-change-orders"
-import { projectSelectionRoundSignatureItems, projectSelectionRoundSignatures } from "@/db/schema-selection-choices"
+import { projectSelectionChoices, projectSelectionRoundSignatureItems, projectSelectionRoundSignatures } from "@/db/schema-selection-choices"
 import { projectSelectionDecisions } from "@/db/schema-selection-decisions"
 import { changeOrderNumber, changeOrderNumberColumns } from "@/lib/change-orders/numbering"
 import { chunkD1Values } from "@/lib/d1-query"
@@ -59,8 +59,8 @@ import type { Db } from "@/lib/server/action-context"
 
 import { pickedByLabel } from "./choice-rules"
 import { loadChoicePanels } from "./choices-read"
-import { insertRoundSignatureStatements, updateRoundSignature, updateRoundSignatureStatement } from "./round-signature-store"
-import { updateFinishSelectionsStatement } from "./store"
+import { insertRoundSignatureStatements, roundSignatureTransitionStatement, transitionRoundSignature, updateRoundSignature } from "./round-signature-store"
+import { updateFinishSelectionsWithEventStatement } from "./store"
 import { resolvedContactColumns, withContactDirectory } from "@/lib/domain/contacts/resolved-columns"
 
 const people = peopleView()
@@ -446,26 +446,29 @@ export async function prepareRoundSignature(input: {
   }
 }
 
-/** Cancels an unsigned signature and voids its draft change order or variance. */
-async function cancelRoundSignature(db: Db, projectId: string, signatureId: string, now: string): Promise<void> {
+/**
+ * Cancels (or, when the owner declined, declines) an unsigned signature and
+ * voids its draft change order or variance. False when the signature had
+ * already moved on (signed, or a retry of the same event).
+ */
+async function cancelRoundSignature(db: Db, projectId: string, signatureId: string, now: string, event: "cancel" | "decline" = "cancel"): Promise<boolean> {
   const signature = await db
     .select()
     .from(projectSelectionRoundSignatures)
     .where(and(eq(projectSelectionRoundSignatures.id, signatureId), eq(projectSelectionRoundSignatures.projectId, projectId)))
     .get()
-  if (!signature || signature.status === "signed") return
-  const statements = [updateRoundSignatureStatement(db, signatureId, signature.status, { status: "cancelled", updatedAt: now })]
+  if (!signature) return false
+  if (!(await transitionRoundSignature(db, signatureId, signature.status, event, { updatedAt: now }))) return false
   if (signature.changeOrderId) {
-    statements.push(
+    await db.batch([
       updateChangeOrdersStatement(
         db,
         and(eq(projectChangeOrders.id, signature.changeOrderId), inArray(projectChangeOrders.status, ["draft", "signature_pending"])),
         { status: "void", foxitStatus: "cancelled", updatedAt: now },
       ),
-    )
+    ])
   }
-  const [first, ...rest] = statements
-  if (first) await db.batch([first, ...rest])
+  return true
 }
 
 // ---- Foxit events
@@ -525,13 +528,12 @@ export async function handleRoundSignatureEvent(input: {
   const { db, env, signature } = input
   const now = new Date().toISOString()
   if (input.event === "folder_sent") {
-    const result = await updateRoundSignature(db, signature.id, "preparing", { status: "sent", sentAt: now, foxitEmbeddedSessionUrl: null, updatedAt: now })
-    return result.meta.changes > 0
+    return transitionRoundSignature(db, signature.id, signature.status, "send", { sentAt: now, foxitEmbeddedSessionUrl: null, updatedAt: now })
   }
   if (input.event === "folder_declined" || input.event === "folder_cancelled") {
-    if (signature.status === "signed" || signature.status === "declined" || signature.status === "cancelled") return false
-    await cancelRoundSignature(db, signature.projectId, signature.id, now)
-    if (input.event === "folder_declined") await updateRoundSignature(db, signature.id, "cancelled", { status: "declined", updatedAt: now })
+    // Once per signature: a retry, or a signature already signed, changes nothing.
+    const event = input.event === "folder_declined" ? "decline" : "cancel"
+    if (!(await cancelRoundSignature(db, signature.projectId, signature.id, now, event))) return false
     await announceEsignOutcome({
       db,
       projectId: signature.projectId,
@@ -545,25 +547,40 @@ export async function handleRoundSignatureEvent(input: {
     })
     return true
   }
-  if (input.event !== "folder_executed" || signature.status === "signed") return false
+  if (input.event !== "folder_executed") return false
+  // Signed exactly once, and only while preparing or sent: a retried webhook,
+  // or one for a signature already cancelled or declined (its change order
+  // voided), applies nothing below.
+  const sign = roundSignatureTransitionStatement(db, signature.id, signature.status, "sign", { signedAt: now, foxitEmbeddedSessionUrl: null, updatedAt: now })
+  if (sign === null) return false
 
   const items = await db
     .select({ selectionId: projectSelectionRoundSignatureItems.selectionId })
     .from(projectSelectionRoundSignatureItems)
     .where(eq(projectSelectionRoundSignatureItems.signatureId, signature.id))
   const evidenceUrl = signature.foxitEnvelopeId ? `/api/integrations/foxit/envelopes/${encodeURIComponent(signature.foxitEnvelopeId)}/document` : null
+  // Later statements land only if this request's sign did (same signed_at).
+  const signedNow = sql`EXISTS (SELECT 1 FROM ${projectSelectionRoundSignatures} WHERE ${projectSelectionRoundSignatures.id} = ${signature.id} AND ${projectSelectionRoundSignatures.status} = 'signed' AND ${projectSelectionRoundSignatures.signedAt} = ${now})`
+  // The owner signed for one pick per selection. A selection whose pick
+  // staff changed after the document went out is not approved by it; it
+  // stays open for the next signature.
+  const pickStillSigned = sql`EXISTS (SELECT 1 FROM ${projectSelectionRoundSignatureItems} INNER JOIN ${projectSelectionChoices} ON ${projectSelectionChoices.id} = ${projectSelectionRoundSignatureItems.choiceId} WHERE ${projectSelectionRoundSignatureItems.signatureId} = ${signature.id} AND ${projectSelectionRoundSignatureItems.selectionId} = ${projectFinishSelections.id} AND ${projectSelectionChoices.chosen} = 1)`
   const statements = [
-    updateRoundSignatureStatement(db, signature.id, signature.status, { status: "signed", signedAt: now, foxitEmbeddedSessionUrl: null, updatedAt: now }),
+    sign,
     ...chunkD1Values(items.map((item) => item.selectionId)).map((ids) =>
-      updateFinishSelectionsStatement(db, and(eq(projectFinishSelections.projectId, signature.projectId), inArray(projectFinishSelections.id, ids)), {
-        ownerApproved: true,
-        // approved_by names a Compass user; the owner signers are on the signature record.
-        approvedBy: null,
-        approvedAt: now,
+      updateFinishSelectionsWithEventStatement(
+        db,
+        and(eq(projectFinishSelections.projectId, signature.projectId), inArray(projectFinishSelections.id, ids), signedNow, pickStillSigned),
         // Signing never rewinds ordering or installation.
-        status: sql`CASE WHEN ${projectFinishSelections.status} IN ('needed', 'proposed', 'owner_review', 'pricing', 'rfq_sent', 'unavailable') THEN 'approved' ELSE ${projectFinishSelections.status} END`,
-        updatedAt: now,
-      }),
+        "owner_sign",
+        {
+          ownerApproved: true,
+          // approved_by names a Compass user; the owner signers are on the signature record.
+          approvedBy: null,
+          approvedAt: now,
+          updatedAt: now,
+        },
+      ),
     ),
   ]
   const changeOrder = signature.changeOrderId
@@ -571,7 +588,7 @@ export async function handleRoundSignatureEvent(input: {
     : undefined
   if (signature.changeOrderId && changeOrder?.recordType === "change_order") {
     statements.push(
-      updateChangeOrdersStatement(db, and(eq(projectChangeOrders.id, signature.changeOrderId), eq(projectChangeOrders.status, "signature_pending")), {
+      updateChangeOrdersStatement(db, and(eq(projectChangeOrders.id, signature.changeOrderId), eq(projectChangeOrders.status, "signature_pending"), signedNow), {
         status: "executed",
         executedAt: now,
         executedDocumentUrl: evidenceUrl,
@@ -582,7 +599,9 @@ export async function handleRoundSignatureEvent(input: {
     )
   }
   const [first, ...rest] = statements
-  if (first) await db.batch([first, ...rest])
+  const [signed] = await db.batch([first, ...rest])
+  // Another delivery of this event signed it first; it runs the follow-ups.
+  if (signed.meta.changes === 0) return false
 
   const sender = signature.createdBy
     ? await db.select({ id: people.id, role: people.role, displayName: people.displayName, email: people.email, firstName: people.firstName, lastName: people.lastName }).from(people).where(eq(people.id, signature.createdBy)).get()

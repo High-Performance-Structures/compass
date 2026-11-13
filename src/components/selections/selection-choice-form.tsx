@@ -83,6 +83,7 @@ export function SelectionChoiceForm({
         vendorId: vendorId === NO_VENDOR ? null : vendorId,
         supplierName: vendorId === NO_VENDOR ? text("supplierName") : null,
         status,
+        expectedStatus: choice?.status ?? null,
       })
       if (!result.success) {
         setError(result.error)

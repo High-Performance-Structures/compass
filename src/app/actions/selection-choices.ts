@@ -40,7 +40,7 @@ import type { SelectionLeadTimeWarning } from "@/lib/domain/selections/lead-time
 import { loadOwnerChoiceBoard, type OwnerBoardSelection } from "@/lib/domain/selections/owner-board-read"
 import { selectionPickIsSigned } from "@/lib/domain/selections/round-signing"
 import { checkRoundsReady, loadRoundCards, type RoundCard } from "@/lib/domain/selections/rounds-server"
-import { updateFinishSelections } from "@/lib/domain/selections/store"
+import { updateFinishSelectionsWithEvent } from "@/lib/domain/selections/store"
 import {
   loadDraftRfqOptions,
   loadSelectionRfqs,
@@ -202,7 +202,17 @@ export async function saveSelectionChoice(
     if (choiceId) {
       const existing = await choiceInProject(db, projectId, choiceId)
       if (!existing || existing.selectionId !== selectionId) return { success: false, error: "Choice not found" }
-      await updateSelectionChoice(db, projectId, choiceId, { ...value, updatedAt: now })
+      const { status, ...fields } = value
+      const expected = input.expectedStatus ?? null
+      // An unchanged status is left out, so a status someone else set meanwhile stays.
+      const saved = await updateSelectionChoice(
+        db,
+        projectId,
+        choiceId,
+        { ...fields, updatedAt: now },
+        expected === status ? undefined : { expected, to: status },
+      )
+      if (!saved) return { success: false, error: "Someone changed this choice's status while you were editing. Refresh and try again." }
       refresh(projectId)
       return { success: true, data: { id: choiceId } }
     }
@@ -296,10 +306,11 @@ export async function setSelectionChoiceChosen(
     })
     // Changing a signed pick reopens just this selection; the next round signature covers it.
     if (wasSigned && (!chosen || before !== choiceId)) {
-      await updateFinishSelections(
+      await updateFinishSelectionsWithEvent(
         db,
         and(eq(projectFinishSelections.id, choice.selectionId), eq(projectFinishSelections.projectId, projectId)),
-        { status: "owner_review", ownerApproved: false, approvedBy: null, approvedAt: null, updatedAt: now },
+        "reopen",
+        { ownerApproved: false, approvedBy: null, approvedAt: null, updatedAt: now },
       )
     }
     await checkRoundsReady(db, projectId, user.id)

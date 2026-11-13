@@ -41,7 +41,8 @@ export function ProjectSelectionStatusSelect({
     const result = await updateProjectSelectionStatus(
       projectId,
       selectionId,
-      option.value
+      option.value,
+      previous
     )
     setSaving(false)
 

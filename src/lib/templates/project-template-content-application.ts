@@ -2,6 +2,7 @@ import {
   formatTemplateChecklist,
   groupTemplateChecklistItems,
 } from "@/lib/templates/template-checklist-hierarchy"
+import type { ProjectSelectionStatus } from "@/lib/domain/selections/statuses"
 import { normalizeTemplateBidPackage } from "@/lib/templates/template-bid-package"
 import { buildTemplateSelectionHierarchy } from "@/lib/templates/template-selection-hierarchy"
 
@@ -35,7 +36,7 @@ type InstantiatedTemplateSelection = {
   readonly name: string
   readonly description: string | null
   readonly costCode: string | null
-  readonly status: string
+  readonly status: ProjectSelectionStatus
   readonly notes: string | null
   readonly choiceOptionsJson: string | null
   readonly parentSelectionId: string | null
@@ -115,10 +116,11 @@ function choiceNotes(payload: JsonObject): string | null {
     : null
 }
 
-function selectionStatus(value: unknown): string {
+// Buildertrend's "Selected" was once written as is, but it is not a selection
+// status and every screen showed it as Needed; it now starts as Needed.
+function selectionStatus(value: unknown): ProjectSelectionStatus {
   const normalized = text(value)?.toLowerCase()
   if (normalized === "approved") return "approved"
-  if (normalized === "selected") return "selected"
   return "needed"
 }
 

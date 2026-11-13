@@ -1,6 +1,6 @@
 "use server"
 
-import { and, eq, exists, sql } from "drizzle-orm"
+import { and, eq, exists, inArray, sql } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 import { z } from "zod/v4"
 import {
@@ -9,6 +9,7 @@ import {
   projectSelectionDecisionEvents as events,
 } from "@/db/schema-selection-decisions"
 import { selectionAccess } from "@/lib/domain/selections/access"
+import { selectionRequestMachine } from "@/lib/domain/selections/status-machine"
 import { safeSelectionUrl } from "@/lib/selections/decisions"
 
 type Result =
@@ -177,12 +178,14 @@ export async function closeSelectionRequest(
       throw new Error("You can only withdraw your own requests.")
     const now = new Date().toISOString()
     const token = crypto.randomUUID()
+    // selectionRequestMachine: only an open request is resolved or withdrawn.
+    const move = selectionRequestMachine.transitions[mode]
     const result = await db.batch([
       db
         .update(requests)
         .set({
           lastMutationId: token,
-          status: mode === "withdraw" ? "withdrawn" : "resolved",
+          status: move.to,
           response: mode === "resolve" ? response.trim() : null,
           updatedAt: now,
         })
@@ -190,7 +193,7 @@ export async function closeSelectionRequest(
           and(
             eq(requests.id, requestId),
             eq(requests.projectId, projectId),
-            eq(requests.status, "open"),
+            inArray(requests.status, [...move.from]),
             eq(requests.updatedAt, expectedUpdatedAt)
           )
         ),

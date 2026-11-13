@@ -1,9 +1,11 @@
 /**
  * Automatic selection status moves: published to the owner → With owner, a
  * purchase order sent → Ordered, a daily log marking it installed →
- * Installed. A status only ever moves forward automatically (the update is
- * guarded on the earlier statuses, so a selection already further along is
- * left alone), and each move is logged to Activity. Staff can still set any
+ * Installed. Each move is an event of the selection status machine
+ * (status-machine.ts), so a status only ever moves forward automatically: a
+ * selection already further along (or deferred, or unavailable) is left
+ * alone. Each row is compare-and-set on the status it was read with, and
+ * only the moves that landed are logged to Activity. Staff can still set any
  * status by hand.
  */
 import { and, eq, inArray } from "drizzle-orm"
@@ -14,28 +16,23 @@ import { recordActivityEvents, type ActivityActor } from "@/lib/activity-log"
 import { chunkD1Values } from "@/lib/d1-query"
 import type { Db } from "@/lib/server/action-context"
 
+import { selectionStatusSources, type SelectionStatusEvent } from "./status-machine"
 import type { ProjectSelectionStatus } from "./statuses"
 import { selectionStatusLabel } from "./status-labels"
 import { readSelectionStatusLabels } from "./status-labels-server"
-import { updateFinishSelectionsStatement } from "./store"
+import { automaticSelectionStatusStatement } from "./store"
 
 export type SelectionAdvanceTarget = "owner_review" | "ordered" | "installed"
 
-/**
- * The statuses each automatic move may replace. Pricing, RFQ sent, Deferred
- * and Unavailable are progress staff set on purpose, so publishing leaves
- * them alone (as owner approval does); ordering and installing move past
- * pricing and RFQs. Nothing ever moves back from a later status.
- */
-const REPLACES: Readonly<Record<SelectionAdvanceTarget, readonly ProjectSelectionStatus[]>> = {
-  owner_review: ["needed", "proposed"],
-  ordered: ["needed", "proposed", "owner_review", "approved", "pricing", "rfq_sent"],
-  installed: ["needed", "proposed", "owner_review", "approved", "pricing", "rfq_sent", "ordered"],
+const EVENT_FOR: Readonly<Record<SelectionAdvanceTarget, SelectionStatusEvent>> = {
+  owner_review: "publish",
+  ordered: "order",
+  installed: "install",
 }
 
 /** The statuses an automatic move to `target` may replace. */
 export function statusesBefore(target: SelectionAdvanceTarget): readonly ProjectSelectionStatus[] {
-  return REPLACES[target]
+  return selectionStatusSources(EVENT_FOR[target])
 }
 
 export type SelectionAdvanceReason =
@@ -65,12 +62,12 @@ export async function advanceSelectionStatus(
 ): Promise<readonly string[]> {
   const ids = [...new Set(input.selectionIds)]
   if (ids.length === 0) return []
+  const event = EVENT_FOR[input.target]
   const earlier = [...statusesBefore(input.target)]
   const now = new Date().toISOString()
-  const chunks = chunkD1Values(ids)
   const before = (
     await Promise.all(
-      chunks.map((chunk) =>
+      chunkD1Values(ids).map((chunk) =>
         db
           .select({ id: projectFinishSelections.id, name: projectFinishSelections.name, status: projectFinishSelections.status })
           .from(projectFinishSelections)
@@ -78,18 +75,17 @@ export async function advanceSelectionStatus(
       ),
     )
   ).flat()
-  if (before.length === 0) return []
-  const statements = chunkD1Values(before.map((row) => row.id)).map((chunk) =>
-    updateFinishSelectionsStatement(
-      db,
-      // Guarded again at write time, so a concurrent later status wins.
-      and(eq(projectFinishSelections.projectId, input.projectId), inArray(projectFinishSelections.id, chunk), inArray(projectFinishSelections.status, earlier)),
-      // updated_at is the edit token staff forms send back; an automatic status move leaves it.
-      { status: input.target },
-    ),
-  )
+  // updated_at is the edit token staff forms send back; an automatic status move leaves it.
+  const statements = before.flatMap((row) => {
+    const statement = automaticSelectionStatusStatement(db, { projectId: input.projectId, selectionId: row.id, event, stored: row.status })
+    return statement ? [statement] : []
+  })
   const [first, ...rest] = statements
-  if (first) await db.batch([first, ...rest])
+  if (!first) return []
+  // Each row is guarded on the status it was read with, so a concurrent change wins.
+  const landed = new Set((await db.batch([first, ...rest])).flatMap((rows) => rows.map((row) => row.id)))
+  const moved = before.filter((row) => landed.has(row.id))
+  if (moved.length === 0) return []
   const project = await db.select({ organizationId: projects.organizationId }).from(projects).where(eq(projects.id, input.projectId)).get()
   if (project?.organizationId) {
     const organizationId = project.organizationId
@@ -98,7 +94,7 @@ export async function advanceSelectionStatus(
     const labels = await readSelectionStatusLabels(db, organizationId)
     await recordActivityEvents(
       db,
-      before.map((row) => ({
+      moved.map((row) => ({
         organizationId,
         projectId: input.projectId,
         actor: input.actor,
@@ -118,7 +114,7 @@ export async function advanceSelectionStatus(
       })),
     )
   }
-  return before.map((row) => row.id)
+  return moved.map((row) => row.id)
 }
 
 /** Selections tied to a purchase order: procurement links and the selection's own PO link. */

@@ -22,6 +22,7 @@ import { assertListFields } from "@/lib/shared/statuses"
 
 import {
   type SelectionAuthorAudience,
+  type SelectionChoiceStatus,
   SELECTION_AUTHOR_AUDIENCES,
   SELECTION_CHOICE_STATUSES,
   SELECTION_COMMENT_VISIBILITIES,
@@ -53,13 +54,34 @@ export async function insertSelectionChoices(db: Db, rows: readonly ChoiceInsert
   await db.batch([first, ...rest])
 }
 
-export async function updateSelectionChoice(db: Db, projectId: string, choiceId: string, patch: ChoicePatch): Promise<void> {
-  assertListFields("project_selection_choices", patch, CHOICE_LISTS)
-  await db
+/**
+ * Saves a choice's fields. A choice's status is staff's to set (no
+ * automation moves it); a status change is compare-and-set on the status
+ * the person saw, so two editors never silently overwrite each other.
+ * False when that status changed meanwhile (nothing is written).
+ */
+export async function updateSelectionChoice(
+  db: Db,
+  projectId: string,
+  choiceId: string,
+  patch: Omit<ChoicePatch, "status">,
+  /** `expected` null: an older form that didn't send what it saw; written as before. */
+  status?: { readonly expected: string | null; readonly to: SelectionChoiceStatus },
+): Promise<boolean> {
+  const values = status ? { ...patch, status: status.to } : patch
+  assertListFields("project_selection_choices", values, CHOICE_LISTS)
+  const result = await db
     .update(projectSelectionChoices)
-    .set(patch)
-    .where(and(eq(projectSelectionChoices.id, choiceId), eq(projectSelectionChoices.projectId, projectId)))
+    .set(values)
+    .where(
+      and(
+        eq(projectSelectionChoices.id, choiceId),
+        eq(projectSelectionChoices.projectId, projectId),
+        status && status.expected !== null ? sql`${projectSelectionChoices.status} = ${status.expected}` : undefined,
+      ),
+    )
     .run()
+  return result.meta.changes > 0
 }
 
 /** Deletes a choice; its links, photo links and dependent rows go with it (cascade). */
