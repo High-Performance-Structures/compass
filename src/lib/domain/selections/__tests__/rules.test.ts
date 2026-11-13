@@ -112,7 +112,8 @@ describe("selection read model", () => {
       [item, toSelectionItem(row({ id: "s2", roomName: "Bath", status: "ordered" }))]
     )
     expect(summary.totalCount).toBe(2)
-    expect(summary.rooms.map((room) => room.roomName)).toEqual(["Kitchen", "Bath"])
+    // Rooms with no row of their own sort by name, as on every other list (room-order.ts).
+    expect(summary.rooms.map((room) => room.roomName)).toEqual(["Bath", "Kitchen"])
     expect(summary.needsDecisionCount).toBe(1)
     expect(summary.orderedCount).toBe(1)
     expect(summary.sourceWorkbookCount).toBe(1)
