@@ -61,6 +61,7 @@ import { specificationJson } from "@/lib/selections/decisions"
 import { projectFinishSelections } from "@/db/schema"
 import { and, eq } from "drizzle-orm"
 import { createReplacementTodo } from "@/app/actions/selection-replacements"
+import { archiveReplacementTodos } from "@/lib/domain/selections/selection-todos"
 import { insertReplacementSelectionStatement } from "@/lib/domain/selections/store"
 import { findRoundSignatureByEnvelope, handleRoundSignatureEvent } from "@/lib/domain/selections/round-signing"
 
@@ -763,5 +764,21 @@ describe("review follow-ups", () => {
     expect(readFileSync("src/lib/domain/selections/selection-change-orders.ts", "utf8")).not.toMatch(/kind: "draft"/)
     expect(readFileSync("src/components/selections/selection-replace-dialog.tsx", "utf8")).not.toMatch(/company setting/)
     expect(readFileSync("docs/help/guides/finish-selections.md", "utf8")).not.toMatch(/executed change order/)
+  })
+
+  it("R10-2: a double click on 'Create change-order to-do' makes one to-do", async () => {
+    const { replacementId, todoId } = await installedTileReplacedBySubway()
+    sqlite.prepare("UPDATE project_operations SET status = 'archived' WHERE id = ?").run(todoId)
+    const results = await Promise.all([createReplacementTodo("p1", replacementId), createReplacementTodo("p1", replacementId)])
+    expect(results.every((result) => result.success)).toBe(true)
+    expect(sqlite.prepare("SELECT count(*) AS n FROM project_operations WHERE source_record_id = ? AND status = 'open'").get(replacementId)).toEqual({ n: 1 })
+    expect(results.filter((result) => result.success && result.data.todoId !== null)).toHaveLength(1)
+  })
+
+  it("R10-1: archiving replacement to-dos takes more ids than one D1 statement binds", async () => {
+    const { replacementId, todoId } = await installedTileReplacedBySubway()
+    const ids = [...Array.from({ length: 150 }, (_, index) => `missing-${index}`), replacementId]
+    await archiveReplacementTodos(drizzleOverSqlite(sqlite), "p1", ids, NOW)
+    expect(sqlite.prepare("SELECT status FROM project_operations WHERE id = ?").get(todoId)).toEqual({ status: "archived" })
   })
 })

@@ -10,8 +10,9 @@ import { drizzleOverSqlite } from "../../../../../__tests__/helpers/corresponden
  * Owner decisions 2026-11-12, against a database built from every
  * migration: ordered and installed selections are locked; "Replace
  * installed item" and "Owner changed selection after purchase" make a new
- * selection (the old one kept) with a draft change order; a price change
- * while a Selection Phase is out for signature tells the job's managers.
+ * selection (the old one kept) and a to-do for staff to write its change
+ * order; a price change while a Selection Phase is out for signature tells
+ * the job's managers.
  */
 
 const mocks = vi.hoisted(() => ({

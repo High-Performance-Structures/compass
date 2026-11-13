@@ -52,21 +52,10 @@ type RfqQuoteLinkUpdate = Partial<RfqQuoteLinkInsert>
 
 export type OperationVersion = { readonly id: string; readonly updatedAt: string }
 
-/**
- * Archives to-dos whose work went away (their record was deleted), each
- * only while it still has the status the caller read.
- */
-export async function archiveTodos(
-  db: Db,
-  projectId: string,
-  rows: readonly { readonly id: string; readonly status: string }[],
-  updatedAt: string,
-): Promise<void> {
-  const queries = rows.map((row) =>
-    db.update(projectOperations)
-      .set({ status: "archived", updatedAt })
-      .where(and(eq(projectOperations.projectId, projectId), eq(projectOperations.id, row.id), eq(projectOperations.status, row.status))),
-  )
+/** Archives to-dos whose record was deleted, each only while it keeps the status the caller read. */
+export async function archiveTodos(db: Db, projectId: string, rows: readonly { readonly id: string; readonly status: string }[], updatedAt: string): Promise<void> {
+  const queries = rows.map((row) => db.update(projectOperations).set({ status: "archived", updatedAt })
+    .where(and(eq(projectOperations.projectId, projectId), eq(projectOperations.id, row.id), eq(projectOperations.status, row.status))))
   const [first, ...rest] = queries
   if (first) await db.batch([first, ...rest])
 }
@@ -87,6 +76,15 @@ export async function insertOperations(
   rows: OperationInsert | readonly OperationInsert[],
 ): Promise<void> {
   await db.insert(projectOperations).values(Array.isArray(rows) ? [...rows] : [rows])
+}
+
+/** Inserts the row, then (same atomic batch) removes it if `duplicate` holds: an earlier equivalent row wins. True when it stayed. */
+export async function insertOperationUnlessDuplicate(db: Db, row: OperationInsert & { readonly id: string }, duplicate: SQL): Promise<boolean> {
+  const [, removed] = await db.batch([
+    db.insert(projectOperations).values(row),
+    db.delete(projectOperations).where(and(eq(projectOperations.id, row.id), duplicate)).returning({ id: projectOperations.id }),
+  ])
+  return removed.length === 0
 }
 
 /** Inserts the row unless one with the same id already exists. */

@@ -11,7 +11,8 @@ import { and, asc, eq, inArray, or, sql } from "drizzle-orm"
 import { projectOperations, projects } from "@/db/schema"
 import { countProjectOperations } from "@/lib/domain/operations/queries"
 import { projectTaskNumberFor } from "@/lib/domain/operations/rules"
-import { archiveTodos, insertOperations, recordTodoEvent } from "@/lib/domain/operations/store"
+import { archiveTodos, insertOperationUnlessDuplicate, recordTodoEvent } from "@/lib/domain/operations/store"
+import { chunkD1Values } from "@/lib/d1-query"
 import { PROJECT_TODO_RECORD_TYPES } from "@/lib/project-todos"
 import { recordStatusColor, recordStatusLabel } from "@/lib/domain/record-statuses/rules"
 import type { RecordStatusColor } from "@/lib/domain/record-statuses/statuses"
@@ -104,7 +105,12 @@ export async function loadSelectionTodos(db: Db, projectId: string, selectionId:
 
 /** The selection's to-dos for a step (any status). */
 async function stepTodos(db: Db, projectId: string, selectionIds: readonly string[], step: SelectionTodoStep) {
-  if (selectionIds.length === 0) return []
+  // Chunked: a bulk delete can pass more ids than one D1 statement binds.
+  const chunks = await Promise.all(chunkD1Values(selectionIds).map((ids) => stepTodosChunk(db, projectId, ids, step)))
+  return chunks.flat()
+}
+
+async function stepTodosChunk(db: Db, projectId: string, selectionIds: readonly string[], step: SelectionTodoStep) {
   return db
     .select({
       id: projectOperations.id,
@@ -198,7 +204,10 @@ export async function ensureSelectionTodo(
   const text = STEP_TEXT[input.step]
   const id = crypto.randomUUID()
   const title = selectionTodoTitle(input.step, input.selectionName)
-  await insertOperations(db, {
+  // Atomic against a double click or a concurrent request: when another
+  // to-do for the step landed since the read above, this one is taken back.
+  const duplicate = sql`(SELECT count(*) FROM project_operations AS step_todo WHERE step_todo.project_id = ${input.projectId} AND step_todo.source_record_id = ${input.selectionId} AND step_todo.source_record_type = 'staff_task' AND json_extract(step_todo.sage_payload_json, '$.selectionStep') = ${input.step}) > ${open.length + 1}`
+  const kept = await insertOperationUnlessDuplicate(db, {
     id,
     projectId: input.projectId,
     sourceSystem: "compass",
@@ -228,7 +237,8 @@ export async function ensureSelectionTodo(
     syncStatus: "compass_only",
     createdAt: input.now,
     updatedAt: input.now,
-  })
+  }, duplicate)
+  if (!kept) return null
   if (project.organizationId) {
     await recordTodoEvent(db, {
       organizationId: project.organizationId,
