@@ -51,7 +51,7 @@ function chunks<T>(items: readonly T[]): T[][] {
 }
 
 /** Trimmed, single-spaced room text, or null when blank. */
-export function cleanRoomName(value: string | null | undefined): string | null {
+function cleanRoomName(value: string | null | undefined): string | null {
   const name = (value ?? "").replace(/\s+/g, " ").trim()
   return name ? name.slice(0, MAX_ROOM_NAME) : null
 }
