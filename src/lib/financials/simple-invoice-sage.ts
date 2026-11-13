@@ -1,6 +1,6 @@
 import "server-only"
 
-import { and, eq } from "drizzle-orm"
+import { and, eq, sql } from "drizzle-orm"
 
 import { sageTaxEntities } from "@/db/schema-estimates"
 import { sageInvoiceArExports } from "@/db/schema-sage"
@@ -9,7 +9,7 @@ import { loadProjectCostCodeCatalog } from "@/lib/cost-codes/catalog-server"
 import { getCloudflareContext } from "@/lib/db"
 import { planSimpleInvoiceForSage, type InvoiceLineComputed } from "@/lib/domain/financials/simple-invoice-rules"
 import type { ArInvoicePlan, ArInvoiceTaxDistrict } from "@/lib/domain/sage-bridge/ar-invoice-rules"
-import { upsertSageInvoiceArExport } from "@/lib/domain/sage-bridge/ar-invoice-store"
+import { POSSIBLY_IN_SAGE_SQL, upsertSageInvoiceArExport } from "@/lib/domain/sage-bridge/ar-invoice-store"
 import type { SageArInvoiceExportStatus } from "@/lib/domain/sage-bridge/statuses"
 import { incomeAccountFor } from "@/lib/feature-settings/sage-ar-invoice-settings"
 import { readFeatureSettings } from "@/lib/feature-settings/server"
@@ -184,6 +184,8 @@ export type SimpleInvoiceExportView = {
   readonly completedAt: string | null
   readonly sageRecordId: string | null
   readonly sageTotalCents: number | null
+  /** Sage may have it (see POSSIBLY_IN_SAGE_SQL): reopen is refused until staff check Sage. */
+  readonly possiblyInSage: boolean
 }
 
 export async function loadSimpleInvoiceExport(db: Db, organizationId: string, invoiceId: string): Promise<SimpleInvoiceExportView | null> {
@@ -196,9 +198,10 @@ export async function loadSimpleInvoiceExport(db: Db, organizationId: string, in
       completedAt: sageInvoiceArExports.completedAt,
       sageRecordId: sageInvoiceArExports.sageRecordId,
       sageTotalCents: sageInvoiceArExports.sageTotalCents,
+      possiblyInSage: sql<number>`${sql.raw(POSSIBLY_IN_SAGE_SQL)}`,
     })
     .from(sageInvoiceArExports)
     .where(and(eq(sageInvoiceArExports.invoiceId, invoiceId), eq(sageInvoiceArExports.organizationId, organizationId)))
     .get()
-  return row ?? null
+  return row ? { ...row, possiblyInSage: Boolean(row.possiblyInSage) } : null
 }

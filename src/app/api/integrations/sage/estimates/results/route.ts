@@ -139,7 +139,7 @@ export async function POST(request: Request): Promise<Response> {
     }
     return Response.json({ success: true, status }, { status: result.outcome === "succeeded" ? 200 : 202 })
   } catch (error) {
-    await releaseSageResultLease(db, "sage_estimate_exports", { id: result.id, claimToken: result.claimToken })
+    await releaseSageResultLease(db, "sage_estimate_exports", { id: result.id, claimToken: result.claimToken, claimedAt: row.claimedAt })
     throw error
   }
 }

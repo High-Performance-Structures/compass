@@ -40,6 +40,7 @@ import {
 import {
   arExportPossiblyInSage,
   cancelSageInvoiceArExport,
+  confirmSageArExportNotInSage,
   cancelSageInvoiceArExportStatement,
   POSSIBLY_IN_SAGE_SQL,
 } from "@/lib/domain/sage-bridge/ar-invoice-store"
@@ -453,6 +454,44 @@ export async function deleteProjectInvoice(projectId: string, invoiceId: string)
     return { success: true }
   } catch (error) {
     return actionFailure(errorMessage(error, "Unable to delete the invoice."))
+  }
+}
+
+/**
+ * "I checked Sage: it isn't there." Clears an export that may be in Sage (the
+ * writer's last result was a failure that may have written), so reopen and
+ * void behave normally. Same permission as reopen and void; who and when go
+ * on the export and the Activity.
+ */
+export async function confirmProjectInvoiceNotInSage(projectId: string, invoiceId: string): Promise<ActionDone> {
+  try {
+    const context = await simpleInvoiceContext(projectId, "update")
+    if (!context.success) return context
+    const { db, user, organizationId } = context.data
+    const invoice = await loadSimpleInvoice(db, organizationId, projectId, invoiceId)
+    if (!invoice) return actionFailure("Invoice not found.")
+    const now = new Date().toISOString()
+    const who = user.displayName ?? user.email
+    const note = `${who} checked Sage on ${now.slice(0, 10)}: the invoice isn't there.`
+    if (!(await confirmSageArExportNotInSage(db, { kind: "invoice", organizationId, sourceId: invoiceId, note, now }))) {
+      return actionFailure("This invoice isn't waiting on a Sage check (Sage has it, or it changed). Refresh to see where it is.")
+    }
+    await recordActivityEvent({
+      db,
+      organizationId,
+      projectId,
+      actor: user,
+      category: "financial",
+      action: "invoice_sage_checked_absent",
+      entityType: "invoice",
+      entityId: invoiceId,
+      summary: `Invoice ${invoice.invoiceNumber ?? ""}: ${who} checked Sage and it isn't there.`,
+      createdAt: now,
+    })
+    revalidateInvoice(projectId, invoiceId)
+    return { success: true }
+  } catch (error) {
+    return actionFailure(errorMessage(error, "Unable to record the Sage check."))
   }
 }
 

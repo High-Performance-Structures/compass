@@ -12,6 +12,7 @@ import type { SQLiteColumn } from "drizzle-orm/sqlite-core"
 
 import { sageArInvoiceExports, sageDepositArExports, sageInvoiceArExports } from "@/db/schema-sage"
 import { arInvoiceExportMachine, sourcesInto } from "@/lib/domain/sage-bridge/machines"
+import { AR_INVOICE_NO_WRITE_MESSAGES, writerWroteNothingSql } from "@/lib/domain/sage-bridge/writer-outcomes"
 import { SAGE_AR_INVOICE_EXPORT_STATUSES, type SageArInvoiceExportStatus } from "@/lib/domain/sage-bridge/statuses"
 import { assertListFields } from "@/lib/shared/statuses"
 import type { Db } from "@/lib/server/action-context"
@@ -47,13 +48,34 @@ const AR_EXPORT_TABLES = {
 } as const
 
 /**
- * Sage may have this export's invoice: the writer is running it, finished it,
- * read back Sage's record, or was ever handed its payload. The writer can
- * report "failed" (or "accepted but doesn't read back") for an invoice Sage
- * did take, so anything it ran counts. A row a guard stopped before it was
- * ever sent (no payload) does not.
+ * Sage may have this export's invoice: the writer is running it or finished
+ * it, Sage's record was read back, or the writer's last result for it was a
+ * failure that isn't one of its explicit nothing-written outcomes (a failed
+ * submit, an invoice that doesn't read back, a claim voided while it ran).
+ * A writer result keeps its claim (lease) token; a failure Compass's own
+ * guards set, a queued row and a cancelled one carry none, and staff clear it
+ * with "checked Sage, it isn't there" (confirmSageArExportNotInSage).
  */
-export const POSSIBLY_IN_SAGE_SQL = "(status IN ('running', 'succeeded') OR sage_record_id IS NOT NULL OR payload_json IS NOT NULL)"
+export const POSSIBLY_IN_SAGE_SQL = `(status IN ('running', 'succeeded') OR sage_record_id IS NOT NULL
+  OR (status IN ('failed', 'needs_attention') AND claim_token IS NOT NULL
+    AND NOT coalesce(${writerWroteNothingSql(AR_INVOICE_NO_WRITE_MESSAGES)}, 0)))`
+
+/**
+ * Staff checked Sage and the invoice isn't there: the export stops counting
+ * as possibly in Sage (its writer claim is let go), with who and when noted
+ * on it. Not for an export Sage reads back (it has Sage's record) or one
+ * running or done. True when it cleared one.
+ */
+export async function confirmSageArExportNotInSage(
+  db: Db,
+  input: { readonly kind: keyof typeof AR_EXPORT_TABLES; readonly organizationId: string; readonly sourceId: string; readonly note: string; readonly now: string }
+): Promise<boolean> {
+  const { table, source } = AR_EXPORT_TABLES[input.kind]
+  const result = await db.run(sql`UPDATE ${sql.identifier(table)} SET claim_token = NULL, error_message = ${input.note}, updated_at = ${input.now}
+    WHERE ${sql.identifier(source)} = ${input.sourceId} AND organization_id = ${input.organizationId}
+      AND status IN ('failed', 'needs_attention') AND sage_record_id IS NULL AND ${sql.raw(POSSIBLY_IN_SAGE_SQL)}`)
+  return result.meta.changes > 0
+}
 
 /** Whether Sage may have the invoice of `sourceId`'s export (see POSSIBLY_IN_SAGE_SQL); false with no export. */
 export async function arExportPossiblyInSage(
@@ -83,6 +105,18 @@ export async function recordLateResultOnVoided(
     WHERE id = ${input.id} AND organization_id = ${input.organizationId} AND claim_token = ${input.claimToken}
       AND status = 'needs_attention' AND error_message = ${VOIDED_WHILE_SENDING}`)
   return result.meta.changes === 1
+}
+
+/** A repeat of a late result that already landed on a "voided while sending" row (whatever its outcome). */
+export async function lateResultOnVoidedRecorded(
+  db: Db,
+  input: { readonly kind: keyof typeof AR_EXPORT_TABLES; readonly id: string; readonly organizationId: string; readonly leaseToken: string }
+): Promise<boolean> {
+  const { table } = AR_EXPORT_TABLES[input.kind]
+  const rows = await db.all<{ readonly n: number }>(sql`SELECT count(*) AS n FROM ${sql.identifier(table)}
+    WHERE id = ${input.id} AND organization_id = ${input.organizationId} AND claim_token = ${input.leaseToken}
+      AND status = 'needs_attention' AND error_message = ${VOIDED_WHILE_SENDING}`)
+  return Number(rows[0]?.n ?? 0) > 0
 }
 
 /**

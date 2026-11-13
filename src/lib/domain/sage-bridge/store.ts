@@ -284,9 +284,11 @@ export async function takeSageResultLease(
 export async function releaseSageResultLease(
   db: Db,
   table: SageResultLeaseTable,
-  input: { readonly id: string; readonly claimToken: string }
+  /** `claimedAt`: the claim's own time, put back over the lease's (the estimate result compares edits with it). */
+  input: { readonly id: string; readonly claimToken: string; readonly claimedAt?: string | null }
 ): Promise<void> {
-  await db.run(sql`UPDATE ${sql.identifier(table)} SET claim_token = ${input.claimToken}
+  const claimedAt = input.claimedAt ? sql`, claimed_at = ${input.claimedAt}` : sql``
+  await db.run(sql`UPDATE ${sql.identifier(table)} SET claim_token = ${input.claimToken}${claimedAt}
     WHERE id = ${input.id} AND status = 'running' AND claim_token = ${sageResultLeaseToken(input.claimToken)}`)
 }
 

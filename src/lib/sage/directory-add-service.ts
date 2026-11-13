@@ -9,6 +9,7 @@ import { recordActivityEvent, type ActivityActor } from "@/lib/activity-log"
 import { insertSageContactCreateEvent, insertSageContactCreateProposal } from "@/lib/domain/sage-bridge/contact-store"
 import { moveSageDirectoryAddRequest, relinkSageDirectoryAddOperation } from "@/lib/domain/sage-bridge/directory-add-store"
 import type { SageDirectoryAddKind } from "@/lib/domain/sage-bridge/statuses"
+import { COMPANY_ADD_NO_WRITE_MESSAGES, writerWroteNothing } from "@/lib/domain/sage-bridge/writer-outcomes"
 import { insertSageClientProjectWriteOperation, updateSageClientProjectWriteOperations } from "@/lib/domain/sage-bridge/store"
 import { readFeatureSettings } from "@/lib/feature-settings/server"
 import { isSageAddApprover } from "@/lib/feature-settings/sage-add-request-settings"
@@ -198,17 +199,33 @@ export async function queueApprovedSageAdd(db: Db, request: AddRequestRow, appro
         // Already linked to a Sage record since: never added again; the request fails with the reason.
         const linkedTo = await companyLinkedSageNumber(db, request)
         if (linkedTo) {
-          await relinkSageDirectoryAddOperation(db, {
+          const relinked = await relinkSageDirectoryAddOperation(db, {
             id: request.id, organizationId: request.organizationId, fromOperationId: operationId, toOperationId: existing.id, now,
             operationStatuses: ["failed"],
           })
-          await recordSageAddOutcome(db, {
-            operationId: existing.id, organizationId: request.organizationId, outcome: "failed", sageRecordId: null, sageRecordNumber: null,
-            error: `It is already linked to Sage #${linkedTo}; it was not added again.`, now,
-          })
-          return { status: "failed", error: `Already linked to Sage #${linkedTo}.` }
+          if (relinked) {
+            await recordSageAddOutcome(db, {
+              operationId: existing.id, organizationId: request.organizationId, outcome: "failed", sageRecordId: null, sageRecordNumber: null,
+              error: `It is already linked to Sage #${linkedTo}; it was not added again.`, now,
+            })
+            return { status: "failed", error: `Already linked to Sage #${linkedTo}.` }
+          }
         }
-        // Sent again with the request's details as they are now.
+        // The last attempt may have added it (a failed submit, say): never sent again on its own; staff review.
+        const review = linkedTo
+          ? "This request changed while it was being sent. Try again."
+          : writerWroteNothing(COMPANY_ADD_NO_WRITE_MESSAGES, existing.errorMessage)
+            ? null
+            : `The last attempt may have added it to Sage (${existing.errorMessage ?? "no reason given"}). Check Sage: link it if it's there, or ask an admin to send it again.`
+        if (review !== null) {
+          await moveSageDirectoryAddRequest(db, {
+            id: request.id, organizationId: request.organizationId, event: "unsend",
+            where: eq(sageDirectoryAddRequests.writeOperationId, operationId),
+            values: { writeOperationId: null, errorMessage: review, updatedAt: now },
+          })
+          return { status: "approved", error: review }
+        }
+        // Nothing was written last time: sent again with the request's details as they are now.
         await updateSageClientProjectWriteOperations(db, {
           status: "queued", payloadJson: await companyAddPayloadJson(db, request, companyFields.data),
           claimToken: null, claimedAt: null, errorMessage: null, completedAt: null, updatedAt: now,

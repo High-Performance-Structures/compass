@@ -6,7 +6,7 @@ import { sageArInvoiceExports } from "@/db/schema-sage"
 import { recordActivityEvent } from "@/lib/activity-log"
 import { updateBudgetApplicationsStatement } from "@/lib/domain/budget/store"
 import { operationUpdateQuery } from "@/lib/domain/operations/store"
-import { recordLateResultOnVoided, updateSageArInvoiceExportsStatement } from "@/lib/domain/sage-bridge/ar-invoice-store"
+import { lateResultOnVoidedRecorded, recordLateResultOnVoided, updateSageArInvoiceExportsStatement } from "@/lib/domain/sage-bridge/ar-invoice-store"
 import { releaseSageResultLease, sageResultAlreadyRecorded, sageResultLeaseToken, takeSageResultLease } from "@/lib/domain/sage-bridge/store"
 import { applyDepositSageResult } from "@/lib/financials/deposit-sage-result"
 import { applySimpleInvoiceSageResult } from "@/lib/financials/simple-invoice-sage-result"
@@ -84,6 +84,9 @@ export async function POST(request: Request): Promise<Response> {
     }
     // The record was voided while the writer ran (flagged for staff): keep Sage's record id, answer 2xx.
     for (const kind of ["pay", "invoice", "deposit"] as const) {
+      if (await lateResultOnVoidedRecorded(db, { kind, id: result.id, organizationId, leaseToken: sageResultLeaseToken(result.claimToken) })) {
+        return Response.json({ success: true, status: "needs_attention", alreadyRecorded: true })
+      }
       const late = await recordLateResultOnVoided(db, {
         kind, id: result.id, organizationId, claimToken: result.claimToken, leaseToken: sageResultLeaseToken(result.claimToken),
         sageRecordId: result.outcome === "succeeded" ? result.sageRecordId : null, now: new Date().toISOString(),

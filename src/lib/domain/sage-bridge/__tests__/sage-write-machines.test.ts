@@ -23,6 +23,8 @@ import {
   cancelSageInvoiceArExportStatement,
   claimSageArInvoiceExport,
   claimSageInvoiceArExport,
+  confirmSageArExportNotInSage,
+  lateResultOnVoidedRecorded,
   recordLateResultOnVoided,
   updateSageArInvoiceExportsStatement,
   upsertSageArInvoiceExport,
@@ -78,6 +80,7 @@ import { availableEvents, machineProblems } from "@/lib/shared/state-machine"
  */
 
 const ORG = "org-1"
+const NO_WRITE_VENDOR = "Sage already has vendor #12 named Photon Brothers; link it in Compass instead of adding another. No write was attempted."
 const NOW = "2026-11-12T10:00:00.000Z"
 const LATER = "2026-11-12T10:30:00.000Z"
 const STALE_BEFORE = "2026-11-12T09:50:00.000Z"
@@ -444,7 +447,7 @@ describe("review fixes: certificates, leases, links, void records", () => {
     sqlite.exec("UPDATE sage_invoice_ar_exports SET sage_record_id = '901' WHERE id = 'inSage'")
     sqlite.exec("UPDATE invoices SET amount_paid = 10 WHERE id = 'inv-paid'")
     // The writer reported a failure for one it ran: Sage may still have it.
-    sqlite.exec("UPDATE sage_invoice_ar_exports SET payload_json = '{}' WHERE id = 'ranOnce'")
+    sqlite.exec("UPDATE sage_invoice_ar_exports SET payload_json = '{}', claim_token = 'c1:result', error_message = 'submit Sage AR invoice add failed: timeout' WHERE id = 'ranOnce'")
     const [reopened] = await reopen("queued")
     expect(reopened).toHaveLength(1)
     expect(statusOf("sage_invoice_ar_exports", "queued")).toBe("cancelled")
@@ -456,18 +459,51 @@ describe("review fixes: certificates, leases, links, void records", () => {
     expect([statusOf("sage_invoice_ar_exports", "inSage"), statusOf("sage_invoice_ar_exports", "paid")]).toEqual(["needs_attention", "queued"])
   })
 
-  it("an export the writer ran may be in Sage even when it reported a failure; one a guard stopped before sending is not", async () => {
-    insertInvoiceExport("ran", "failed", "open")
-    sqlite.exec("UPDATE sage_invoice_ar_exports SET payload_json = '{}', attempt_count = 1 WHERE id = 'ran'")
-    insertInvoiceExport("guarded", "needs_attention", "open")
-    sqlite.exec("UPDATE sage_invoice_ar_exports SET attempt_count = 1 WHERE id = 'guarded'")
-    expect(await arExportPossiblyInSage(db, { kind: "invoice", organizationId: ORG, sourceId: "inv-ran" })).toBe(true)
-    expect(await arExportPossiblyInSage(db, { kind: "invoice", organizationId: ORG, sourceId: "inv-guarded" })).toBe(false)
-    // Re-queuing keeps the evidence that it was sent before.
-    await upsertSageInvoiceArExport(db, {
-      organizationId: ORG, projectId: "p1", invoiceId: "inv-ran", status: "queued", invoiceNumber: "J-INV01", requestedByUserId: null, errorMessage: null, now: LATER,
-    })
-    expect(await arExportPossiblyInSage(db, { kind: "invoice", organizationId: ORG, sourceId: "inv-ran" })).toBe(true)
+  it("Sage may have an invoice when the writer's last result is a failure that isn't one of its nothing-written outcomes", async () => {
+    const cases = [
+      ["submit", "failed", "c1", "submit Sage AR invoice add failed: COMException: lost connection", true],
+      ["readBack", "needs_attention", "c1", "Sage accepted the invoice but it doesn't read back on job 7; check Sage before sending again.", true],
+      ["noCostCode", "failed", "c1", "check Sage cost codes, accounts and tax district failed: InvalidOperationException: Sage has no cost code 9; no write was attempted.", false],
+      ["dryRun", "failed", "c1", "DRY RUN (nothing written): would add AR invoice J-INV01 to Sage job 7", false],
+      ["duplicate", "needs_attention", "c1", "Sage already has invoice J-INV01 with lines totalling 5.00; Compass's is 6.00. No write was attempted.", false],
+      // A guard in Compass stopped it at claim time (no writer result: no claim token).
+      ["guard", "needs_attention", null, "The project isn't linked to a Sage job.", false],
+    ] as const
+    for (const [id, status, claim, message, expected] of cases) {
+      insertInvoiceExport(id, status, "open")
+      sqlite.prepare("UPDATE sage_invoice_ar_exports SET claim_token = ?, error_message = ?, payload_json = '{}' WHERE id = ?").run(claim, message, id)
+      expect(await arExportPossiblyInSage(db, { kind: "invoice", organizationId: ORG, sourceId: `inv-${id}` }), id).toBe(expected)
+    }
+  })
+
+  it("staff who checked Sage clear the marker; an export Sage reads back can't be cleared", async () => {
+    insertInvoiceExport("x1", "failed", "open")
+    sqlite.exec("UPDATE sage_invoice_ar_exports SET claim_token = 'c1:result', error_message = 'submit Sage AR invoice add failed: timeout' WHERE id = 'x1'")
+    insertInvoiceExport("x2", "needs_attention", "open")
+    sqlite.exec("UPDATE sage_invoice_ar_exports SET claim_token = 'c2:result', sage_record_id = '901' WHERE id = 'x2'")
+    const confirm = (id: string) => confirmSageArExportNotInSage(db, { kind: "invoice", organizationId: ORG, sourceId: `inv-${id}`, note: "Ann checked Sage on 2026-11-12: the invoice isn't there.", now: LATER })
+    expect(await confirm("x1")).toBe(true)
+    expect(await arExportPossiblyInSage(db, { kind: "invoice", organizationId: ORG, sourceId: "inv-x1" })).toBe(false)
+    expect(sqlite.prepare("SELECT error_message FROM sage_invoice_ar_exports WHERE id = 'x1'").get()).toEqual({ error_message: "Ann checked Sage on 2026-11-12: the invoice isn't there." })
+    expect(await confirm("x2")).toBe(false)
+    expect(await arExportPossiblyInSage(db, { kind: "invoice", organizationId: ORG, sourceId: "inv-x2" })).toBe(true)
+  })
+
+  it("a repeat of a late failure on a voided row reads as recorded", async () => {
+    insertInvoiceExport("x1", "running", "void")
+    sqlite.exec("UPDATE sage_invoice_ar_exports SET claim_token = 'old', claimed_at = '2026-11-12T09:00:00.000Z' WHERE id = 'x1'")
+    await claimSageInvoiceArExport(db, { id: "x1", organizationId: ORG, claimToken: "c", now: LATER, staleBefore: STALE_BEFORE })
+    const leaseToken = sageResultLeaseToken("old")
+    expect(await recordLateResultOnVoided(db, { kind: "invoice", id: "x1", organizationId: ORG, claimToken: "old", leaseToken, sageRecordId: null, now: LATER })).toBe(true)
+    expect(await lateResultOnVoidedRecorded(db, { kind: "invoice", id: "x1", organizationId: ORG, leaseToken })).toBe(true)
+    expect(await lateResultOnVoidedRecorded(db, { kind: "invoice", id: "x1", organizationId: ORG, leaseToken: sageResultLeaseToken("other") })).toBe(false)
+  })
+
+  it("handing a lease back restores the claim's own time", async () => {
+    insertWrite("w1", "running", "c1", NOW)
+    await takeSageResultLease(db, "sage_client_project_write_operations", { id: "w1", organizationId: ORG, claimToken: "c1", now: LATER })
+    await releaseSageResultLease(db, "sage_client_project_write_operations", { id: "w1", claimToken: "c1", claimedAt: NOW })
+    expect(sqlite.prepare("SELECT claim_token, claimed_at FROM sage_client_project_write_operations WHERE id = 'w1'").get()).toEqual({ claim_token: "c1", claimed_at: NOW })
   })
 
   it("the writer's late result for a claim voided while it ran lands 2xx-style, keeping Sage's record id", async () => {
@@ -555,10 +591,10 @@ describe("Request add to Sage", () => {
     expect(countOf("SELECT count(*) AS n FROM sage_client_project_write_operations")).toBe(1)
   })
 
-  it("a failed writer request for it is sent again and linked", async () => {
+  it("a failed writer request that wrote nothing is sent again and linked", async () => {
     insertRequest("r1", "approved")
     insertWrite("existing", "failed")
-    sqlite.exec("UPDATE sage_client_project_write_operations SET idempotency_key = 'sage-add:r1' WHERE id = 'existing'")
+    sqlite.prepare("UPDATE sage_client_project_write_operations SET idempotency_key = 'sage-add:r1', error_message = ? WHERE id = 'existing'").run(NO_WRITE_VENDOR)
     const result = await queueApprovedSageAdd(db, await requestRow("r1"), "approver", LATER)
     expect(result.status).toBe("sent")
     expect(statusOf("sage_client_project_write_operations", "existing")).toBe("queued")
@@ -569,10 +605,21 @@ describe("Request add to Sage", () => {
   it("a failed writer request is sent again with the request's details as they are now", async () => {
     insertRequest("r1", "approved")
     insertWrite("existing", "failed")
-    sqlite.exec("UPDATE sage_client_project_write_operations SET idempotency_key = 'sage-add:r1', payload_json = '{\"old\":true}' WHERE id = 'existing'")
+    sqlite.prepare("UPDATE sage_client_project_write_operations SET idempotency_key = 'sage-add:r1', payload_json = '{\"old\":true}', error_message = ? WHERE id = 'existing'").run(NO_WRITE_VENDOR)
     await queueApprovedSageAdd(db, await requestRow("r1"), "approver", LATER)
     const payload: unknown = sqlite.prepare("SELECT payload_json FROM sage_client_project_write_operations WHERE id = 'existing'").get()
     expect(JSON.stringify(payload)).toContain("Photon Brothers")
+  })
+
+  it("a failed writer request that may have written is not sent again; staff review it", async () => {
+    insertRequest("r1", "approved")
+    insertWrite("existing", "failed")
+    sqlite.exec("UPDATE sage_client_project_write_operations SET idempotency_key = 'sage-add:r1', error_message = 'submit Sage vendor add failed: TimeoutException: timed out' WHERE id = 'existing'")
+    const result = await queueApprovedSageAdd(db, await requestRow("r1"), "approver", LATER)
+    expect(result.status).toBe("approved")
+    expect(result.error).toMatch(/may have added it to Sage/)
+    expect(statusOf("sage_client_project_write_operations", "existing")).toBe("failed")
+    expect(statusOf("sage_directory_add_requests", "r1")).toBe("approved")
   })
 
   it("a failed writer request for a vendor already linked to Sage since is not sent again; the request fails with why", async () => {
