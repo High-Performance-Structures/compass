@@ -186,3 +186,9 @@ export async function readProjectConversations(input: {
     return { success: false, error: err instanceof Error ? err.message : "Failed to list conversations" }
   }
 }
+
+/** How many of the job's conversations the viewer is in have unread messages, for the Messages badge. */
+export async function readProjectConversationUnreadCount(projectId: string): Promise<number> {
+  const result = await readProjectConversations({ projectId, scope: "mine", filter: "unread", search: "", page: 1 })
+  return result.success ? result.data.total : 0
+}
