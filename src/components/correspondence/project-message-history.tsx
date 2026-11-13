@@ -9,6 +9,7 @@ import {
 } from "@/app/actions/project-message-history"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { SplitDivider } from "@/components/ui/split-divider"
 import { cn } from "@/lib/utils"
 import type {
   CorrespondenceDetail,
@@ -124,7 +125,7 @@ export function ProjectMessageHistory({
         <aside
           aria-label="Global message history"
           className={cn(
-            "w-full shrink-0 overflow-y-auto border-r md:w-92",
+            "w-full shrink-0 overflow-y-auto md:w-[var(--split-list,45%)]",
             selectedId && "hidden md:block",
           )}
         >
@@ -234,6 +235,8 @@ export function ProjectMessageHistory({
             </Button>
           )}
         </aside>
+        {/* Same width and saved setting as the job's email inbox, so switching to Global keeps the split. */}
+        <SplitDivider storageKey="compass.messages.email-split" defaultPercent={45} label="Resize the message list" className="hidden md:block" />
         <section
           aria-label="Project conversation history"
           className={cn(
