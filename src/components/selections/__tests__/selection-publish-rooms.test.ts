@@ -81,7 +81,7 @@ let root: Root
 beforeEach(() => {
   Reflect.set(globalThis, "IS_REACT_ACT_ENVIRONMENT", true)
   host = document.createElement("div")
-  document.body.append(host)
+  document.body.appendChild(host)
   root = createRoot(host)
 })
 

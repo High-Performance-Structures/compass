@@ -1,9 +1,8 @@
 import Database from "better-sqlite3"
 import { randomUUID } from "node:crypto"
-import { readdirSync, readFileSync } from "node:fs"
-import { join, resolve } from "node:path"
 import { drizzle } from "drizzle-orm/better-sqlite3"
 import { afterAll, beforeAll, describe, expect, it } from "vitest"
+import { applyMigrations } from "@/test/migrated-database"
 
 import {
   saveOrganizationListSheetSetting,
@@ -19,13 +18,10 @@ import type { Db } from "@/lib/server/action-context"
 
 type Sqlite = InstanceType<typeof Database>
 
-const MIGRATIONS_DIR = resolve(process.cwd(), "drizzle")
 
 function replay(): Sqlite {
   const sqlite = new Database(":memory:")
-  for (const file of readdirSync(MIGRATIONS_DIR).filter((name) => /^\d{4}_.*\.sql$/.test(name)).sort()) {
-    sqlite.exec(readFileSync(join(MIGRATIONS_DIR, file), "utf8").replaceAll("--> statement-breakpoint", ""))
-  }
+  applyMigrations((sql) => sqlite.exec(sql))
   return sqlite
 }
 

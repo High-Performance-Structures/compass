@@ -1,6 +1,8 @@
-import { readdirSync, readFileSync } from "node:fs"
+import { readFileSync } from "node:fs"
 import { join } from "node:path"
-import { describe, expect, it } from "vitest"
+import { beforeAll, describe, expect, it } from "vitest"
+
+import { preloadSources, readSource, SOURCE_SCAN_TIMEOUT_MS, sourceFiles } from "@/test/source-tree"
 
 import {
   hasProjectContactDirectoryLink,
@@ -25,6 +27,16 @@ const base = {
   createdAt: NOW,
   updatedAt: NOW,
 }
+
+const RAW_INSERT_SCAN = {
+  skipDirectories: ["__tests__", "node_modules"],
+  include: /^(?!.*\.test\.[jt]sx?$).*\.(?:[cm]?[jt]sx?|sql)$/,
+}
+
+// Read both trees once for this file, as setup (see @/test/source-tree).
+beforeAll(() => {
+  for (const dir of ["src", "scripts"]) preloadSources(dir, RAW_INSERT_SCAN)
+}, SOURCE_SCAN_TIMEOUT_MS)
 
 describe("project contact directory link", () => {
   it("accepts each kind of directory link", () => {
@@ -61,7 +73,7 @@ describe("project contact directory link", () => {
 
   it("routes every project contact insert through the check", () => {
     const root = process.cwd()
-    const store = readFileSync(join(root, "src/lib/domain/contacts/store.ts"), "utf8")
+    const store = readSource(join(root, "src/lib/domain/contacts/store.ts"))
     const inserts = store.split("\n").filter((line) => line.includes("insert(projectContacts)"))
     expect(inserts.length).toBeGreaterThan(0)
     for (const line of inserts) expect(line).toContain("insertableProjectContacts(")
@@ -77,19 +89,9 @@ describe("project contact directory link", () => {
     // A local-only dev seed that writes a developer's own SQLite file, never D1.
     const allowed = new Set(["scripts/seed-project-contacts-local.mjs"])
     const rawInsert = /insert\s+(?:or\s+\w+\s+)?into\s+["'`]?project_contacts\b/i
-    const offenders: string[] = []
-    const walk = (dir: string): void => {
-      for (const entry of readdirSync(join(root, dir), { withFileTypes: true })) {
-        const path = `${dir}/${entry.name}`
-        if (entry.isDirectory()) {
-          if (entry.name !== "__tests__" && entry.name !== "node_modules") walk(path)
-        } else if (/\.(?:[cm]?[jt]sx?|sql)$/.test(entry.name) && !/\.test\.[jt]sx?$/.test(entry.name) && !allowed.has(path)) {
-          if (rawInsert.test(readFileSync(join(root, path), "utf8"))) offenders.push(path)
-        }
-      }
-    }
-    walk("src")
-    walk("scripts")
+    const offenders = ["src", "scripts"]
+      .flatMap((dir) => sourceFiles(dir, RAW_INSERT_SCAN))
+      .filter((path) => !allowed.has(path) && rawInsert.test(readSource(join(root, path))))
     expect(offenders).toEqual([])
   })
 })

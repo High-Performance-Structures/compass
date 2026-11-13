@@ -16,6 +16,8 @@ function estimate(
   return {
     id,
     estimateNumber: "COMPASS-00",
+    changeOrderId: null,
+    phaseProposalId: null,
     versionNumber,
     title: "Developer estimate",
     status: versionNumber === 1 ? "superseded" : "draft",

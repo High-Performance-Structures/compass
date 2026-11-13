@@ -1,8 +1,9 @@
-import { readdirSync, readFileSync, statSync } from "node:fs"
-import { join } from "node:path"
+import { readFileSync } from "node:fs"
 
 import { eq } from "drizzle-orm"
-import { afterEach, describe, expect, it } from "vitest"
+import { afterEach, beforeAll, describe, expect, it } from "vitest"
+
+import { preloadSources, readSource, SOURCE_SCAN_TIMEOUT_MS, sourceFiles as sharedSourceFiles } from "@/test/source-tree"
 
 import { projectSourceRecordParticipants } from "@/db/schema-participants"
 import { sqliteDb } from "@/lib/domain/__tests__/sqlite-d1"
@@ -115,21 +116,24 @@ describe("reviewSourceRecordParticipantsStatement", () => {
   })
 })
 
-function sourceFiles(dir: string): string[] {
-  return readdirSync(dir).flatMap((name) => {
-    const path = join(dir, name)
-    if (statSync(path).isDirectory()) return name === "__tests__" ? [] : sourceFiles(path)
-    return /\.(ts|tsx)$/.test(name) && !/\.test\.tsx?$/.test(name) ? [path] : []
-  })
+const SOURCE_OPTIONS = { skipDirectories: ["__tests__"], include: /^(?!.*\.test\.tsx?$).*\.(ts|tsx)$/ }
+
+function sourceFiles(dir: string): readonly string[] {
+  return sharedSourceFiles(dir, SOURCE_OPTIONS)
 }
 
+// Read the tree once for this file, as setup (see @/test/source-tree).
+beforeAll(() => preloadSources("src", SOURCE_OPTIONS), SOURCE_SCAN_TIMEOUT_MS)
+
 describe("participant status writes", () => {
-  const files = sourceFiles("src").map((path) => ({ path, text: readFileSync(path, "utf8") }))
+  // Built when a test runs (the reads are cached), not while Vitest collects tests.
+  const files = (): readonly { readonly path: string; readonly text: string }[] =>
+    sourceFiles("src").map((path) => ({ path, text: readSource(path) }))
 
   it("only documents/store.ts updates the table, and only through the machines", () => {
-    const updaters = files.filter(({ text }) => /\.update\(projectSourceRecordParticipants\)|UPDATE\s+project_source_record_participants/i.test(text))
+    const updaters = files().filter(({ text }) => /\.update\(projectSourceRecordParticipants\)|UPDATE\s+project_source_record_participants/i.test(text))
     expect(updaters.map(({ path }) => path)).toEqual(["src/lib/domain/documents/store.ts"])
-    const store = readFileSync("src/lib/domain/documents/store.ts", "utf8")
+    const store = readSource("src/lib/domain/documents/store.ts")
     const updates = store.split(".update(projectSourceRecordParticipants)").slice(1).map((chunk) => chunk.slice(0, chunk.indexOf("\n}\n")))
     expect(updates.length).toBeGreaterThan(0)
     for (const update of updates) {
@@ -141,12 +145,12 @@ describe("participant status writes", () => {
   it("never come from a literal status in a patch or row", () => {
     // Files that write participants (other tables have their own reviewStatus).
     // participant-machines.ts is where the managed values are declared.
-    const writers = files.filter(({ path, text }) =>
+    const writers = files().filter(({ path, text }) =>
       /SourceRecordParticipant/.test(text) && !path.endsWith("documents/participant-machines.ts"))
     expect(writers.length).toBeGreaterThan(3)
     const literal = /\b(identityStatus|membershipStatus|reviewStatus):\s*["'`]/
     expect(writers.filter(({ text }) => literal.test(text)).map(({ path }) => path)).toEqual([])
-    const store = readFileSync("src/lib/domain/documents/store.ts", "utf8")
+    const store = readSource("src/lib/domain/documents/store.ts")
     const threadInsert = store.slice(store.indexOf("export function insertThreadParticipantsForMessagesStatement"))
     expect(threadInsert.slice(0, threadInsert.indexOf("\n}\n"))).not.toMatch(/'(matched|reviewed|active|pending)'/)
   })

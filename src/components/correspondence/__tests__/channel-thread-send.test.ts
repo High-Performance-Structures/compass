@@ -58,7 +58,7 @@ describe("replying from the project messages pane", () => {
       }],
     }
     const html = renderToStaticMarkup(createElement(CorrespondenceInboxPanel, {
-      drafts: [], onOpenDraft: async () => undefined, projectId: "proj-1", inbox, activeId: null, hiddenOnMobile: false,
+      drafts: [], onOpenDraft: async () => undefined, projectId: "proj-1", inbox, activeId: null,
       filter: "inbox", query: "", hits: [], hasMore: false, busy: false, onQuery: () => undefined, onFilter: () => undefined,
       onNewMessage: async () => undefined, onNewEmail: async () => undefined, onOpen: async () => undefined, onRefresh: async () => null,
     }))

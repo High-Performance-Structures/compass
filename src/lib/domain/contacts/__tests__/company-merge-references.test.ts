@@ -1,7 +1,6 @@
-import { readdirSync, readFileSync } from "node:fs"
-import { join } from "node:path"
 import Database from "better-sqlite3"
 import { describe, expect, it } from "vitest"
+import { applyMigrations } from "@/test/migrated-database"
 
 import { ID_REFERENCE_EXEMPT, ID_REFERENCE_NEEDS_REVIEW, ID_REFERENCE_TRIGGERS } from "@/db/id-integrity"
 import { normalizedSql, recorded, recordingD1 } from "@/lib/domain/__tests__/recording-d1"
@@ -23,10 +22,7 @@ import { isRecord } from "@/lib/shared/guards"
  */
 
 const sqlite = new Database(":memory:")
-const dir = join(process.cwd(), "drizzle")
-for (const file of readdirSync(dir).filter((name) => /^\d{4}_.*\.sql$/.test(name)).sort()) {
-  sqlite.exec(readFileSync(join(dir, file), "utf8").replaceAll("--> statement-breakpoint", ""))
-}
+applyMigrations((sql) => sqlite.exec(sql))
 
 const PARENTS: Readonly<Record<string, CompanyMergeSide>> = { vendors: "vendor", customers: "customer" }
 

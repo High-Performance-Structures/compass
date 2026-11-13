@@ -140,7 +140,9 @@ describe("Contacts → Unassigned", () => {
   it("edits everything but the sign-in email once the person accepted an invitation", async () => {
     user("user_jane", "jane@acme.example", 1)
     invitation("inv-1", "pc-1", "accepted", "jane@acme.example", "user_jane")
-    expect((await listUnassignedPeople(drizzle(d1Over(sqlite)), ORG)).map((person) => person.hasAccount)).toEqual([true])
+    // @ts-expect-error The test binding implements only what drizzle's D1 driver calls.
+    const db: Parameters<typeof listUnassignedPeople>[0] = drizzle(d1Over(sqlite))
+    expect((await listUnassignedPeople(db, ORG)).map((person) => person.hasAccount)).toEqual([true])
     const moved = await editUnassignedPerson({ identity: IDENTITY, name: "Someone Else", email: "", phone: "", companyName: "" })
     expect(moved).toEqual({ success: false, error: SIGN_IN_EMAIL_LOCK })
     expect(one("SELECT display_name FROM project_contacts WHERE id = 'pc-1'").display_name).toBe("Jane Doe")

@@ -1,6 +1,5 @@
-import { readdirSync, readFileSync } from "node:fs"
-import { join, resolve } from "node:path"
 import { describe, expect, it } from "vitest"
+import { applyMigrations } from "@/test/migrated-database"
 
 import {
   planRelationalLinks,
@@ -129,10 +128,7 @@ type SqliteDatabase = { exec: (sql: string) => void; prepare: (sql: string) => S
 async function migratedDatabase(): Promise<SqliteDatabase> {
   const { default: Database } = await import("better-sqlite3")
   const database: SqliteDatabase = new Database(":memory:")
-  const dir = resolve(process.cwd(), "drizzle")
-  for (const file of readdirSync(dir).filter((name) => /^\d{4}_.*\.sql$/.test(name)).sort()) {
-    database.exec(readFileSync(join(dir, file), "utf8").replaceAll("--> statement-breakpoint", ""))
-  }
+  applyMigrations((sql) => database.exec(sql))
   database.exec("PRAGMA foreign_keys = ON")
   return database
 }

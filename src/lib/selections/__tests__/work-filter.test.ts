@@ -47,6 +47,7 @@ function spec(id: string, roomName: string, overrides: Partial<ProjectSelectionI
     purchaseOrderOperationId: null,
     notes: null,
     syncStatus: "synced",
+    updatedAt: "2026-09-01T00:00:00.000Z",
     ...overrides,
   }
 }

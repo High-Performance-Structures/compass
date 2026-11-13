@@ -1,14 +1,12 @@
-import Database from "better-sqlite3"
-import { readdirSync, readFileSync } from "node:fs"
-import { join } from "node:path"
+import type Database from "better-sqlite3"
 import { describe, expect, it } from "vitest"
+import { migratedDatabase } from "@/test/migrated-database"
 
 import { getDb } from "@/db"
 import { loadWorkingSchedule } from "@/lib/domain/schedule/queries"
 import { assignProjectTasks, replaceTaskPeopleQueries } from "@/lib/domain/schedule/store"
 import { insertStatements, planScheduleTaskPeopleBackfill } from "../../../../../scripts/lib/schedule-task-people-backfill.mjs"
 
-const MIGRATIONS_DIR = join(process.cwd(), "drizzle")
 const D1_MAX_BOUND_PARAMETERS = 100
 
 type D1Statement = Readonly<{
@@ -62,14 +60,6 @@ function d1(sqlite: InstanceType<typeof Database>) {
   }
   if (!isD1Database(fake)) throw new Error("fake D1 is incomplete")
   return getDb(fake)
-}
-
-function migratedDatabase(): InstanceType<typeof Database> {
-  const sqlite = new Database(":memory:")
-  for (const file of readdirSync(MIGRATIONS_DIR).filter((name) => /^\d{4}_.*\.sql$/.test(name)).sort()) {
-    sqlite.exec(readFileSync(join(MIGRATIONS_DIR, file), "utf8").replaceAll("--> statement-breakpoint", ""))
-  }
-  return sqlite
 }
 
 describe("loadWorkingSchedule assignees", () => {

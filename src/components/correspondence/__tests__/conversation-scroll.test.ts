@@ -36,7 +36,7 @@ describe("correspondence navigation", () => {
     vi.spyOn(HTMLElement.prototype, "clientHeight", "get").mockReturnValue(200)
     vi.spyOn(HTMLElement.prototype, "scrollHeight", "get").mockImplementation(() => height)
     host = document.createElement("div")
-    document.body.append(host)
+    document.body.appendChild(host)
     root = createRoot(host)
   })
   afterEach(async () => {

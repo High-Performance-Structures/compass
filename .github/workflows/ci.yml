@@ -29,6 +29,17 @@ jobs:
       - run: git fetch --no-tags --depth=1 origin main
       - run: bun run core:check
 
+  typecheck:
+    name: Type check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+      - run: bun install --frozen-lockfile
+      # The whole project, tests and fixtures included: a type error in a test
+      # usually means the fixture no longer matches the code it claims to cover.
+      - run: bun run typecheck
+
   dead-code:
     name: Dead code
     runs-on: ubuntu-latest

@@ -1,6 +1,7 @@
-import { readdirSync, readFileSync } from "node:fs"
 import { join } from "node:path"
 import { describe, expect, it } from "vitest"
+
+import { readSource, sourceFiles as sharedSourceFiles } from "@/test/source-tree"
 
 /*
  * One source of truth for job contacts (owner requirement 2026-11-10): a job
@@ -39,19 +40,13 @@ const FULL_ROW_READERS: Readonly<Record<string, string>> = {
 }
 
 function sourceFiles(dir: string): readonly string[] {
-  const files: string[] = []
-  for (const entry of readdirSync(join(ROOT, dir), { withFileTypes: true })) {
-    const path = `${dir}/${entry.name}`
-    if (entry.isDirectory()) {
-      if (entry.name !== "__tests__" && entry.name !== "node_modules") files.push(...sourceFiles(path))
-    } else if (/\.[cm]?[jt]sx?$/.test(entry.name) && !/\.test\.[jt]sx?$/.test(entry.name)) {
-      files.push(path)
-    }
-  }
-  return files
+  return sharedSourceFiles(dir, {
+    skipDirectories: ["__tests__", "node_modules"],
+    include: /^(?!.*\.test\.[jt]sx?$).*\.[cm]?[jt]sx?$/,
+  })
 }
 
-const FILES = sourceFiles("src").map((path) => ({ path, text: readFileSync(join(ROOT, path), "utf8") }))
+const FILES = sourceFiles("src").map((path) => ({ path, text: readSource(join(ROOT, path)) }))
 
 function offenders(pattern: RegExp, allowed: Readonly<Record<string, string>>): readonly string[] {
   return FILES.filter(({ path, text }) => !(path in allowed) && pattern.test(text)).map(({ path }) => path)

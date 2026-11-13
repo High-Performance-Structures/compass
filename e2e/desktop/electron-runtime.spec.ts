@@ -24,7 +24,12 @@ const previewUrl = new URL(
 // preview window once its first navigation commits, so the window-event wait
 // was really timing the dev compiler (it failed whenever the preview compile
 // passed ~90 s). Compile both routes here, as setup with its own budget, so
-// the window assertions below measure only Electron's behaviour.
+// the window assertions below measure only Electron's behaviour. Warming the
+// routes was not enough on macOS: the dev server kept compiling after the
+// Electron window loaded ("Compiling..." badge) and the popup's request never
+// reached the server within 45 s (run 43380715621), so CI's macOS job serves
+// a production build instead (playwright.config.ts, COMPASS_E2E_NEXT_START),
+// where this warm-up is a quick no-op.
 async function compileRoute(url: string): Promise<void> {
   // Any HTTP response (including the preview's "not found" error page) means
   // the route finished compiling; the status itself is irrelevant here.

@@ -1,6 +1,4 @@
-import Database from "better-sqlite3"
-import { readdirSync, readFileSync } from "node:fs"
-import { join } from "node:path"
+import type Database from "better-sqlite3"
 
 import { d1Over } from "@/lib/domain/__tests__/sqlite-d1"
 
@@ -17,14 +15,7 @@ export type DirectorySeedCounts = {
 export type QueryStats = { queries: number; rows: number; maxParams: number }
 
 /** Every migration replayed on a fresh database, as CI's schema check does. */
-export function migratedDatabase(): Sqlite {
-  const sqlite = new Database(":memory:")
-  const dir = join(process.cwd(), "drizzle")
-  for (const file of readdirSync(dir).filter((name) => /^\d{4}_.*\.sql$/.test(name)).sort()) {
-    sqlite.exec(readFileSync(join(dir, file), "utf8").replaceAll("--> statement-breakpoint", ""))
-  }
-  return sqlite
-}
+export { migratedDatabase } from "@/test/migrated-database"
 
 /**
  * A D1 binding that counts statements and returned rows, and enforces D1's

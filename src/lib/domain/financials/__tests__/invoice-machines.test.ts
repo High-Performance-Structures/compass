@@ -1,7 +1,8 @@
 import Database from "better-sqlite3"
-import { readdirSync, readFileSync, statSync } from "node:fs"
-import { join } from "node:path"
 import { afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest"
+import { migratedDatabase } from "@/test/migrated-database"
+
+import { preloadSources, readSource, SOURCE_SCAN_TIMEOUT_MS, sourceFiles as sharedSourceFiles } from "@/test/source-tree"
 
 import { eq } from "drizzle-orm"
 
@@ -76,19 +77,9 @@ const NOW = "2026-11-12T12:00:00.000Z"
 let sqlite: Sqlite
 let db: Db
 let d1: D1Database
-let migratedImage: Buffer | null = null
 
 function migrated(): Sqlite {
-  if (!migratedImage) {
-    const image = new Database(":memory:")
-    const dir = join(process.cwd(), "drizzle")
-    for (const file of readdirSync(dir).filter((name) => /^\d{4}_.*\.sql$/.test(name)).sort()) {
-      image.exec(readFileSync(join(dir, file), "utf8").replaceAll("--> statement-breakpoint", ""))
-    }
-    migratedImage = image.serialize()
-    image.close()
-  }
-  return new Database(migratedImage)
+  return migratedDatabase()
 }
 
 function isD1(value: unknown): value is D1Database {
@@ -279,17 +270,18 @@ describe("simple invoice status writes", () => {
 // Guard: invoice status writes go through financials/store.ts.
 // ---------------------------------------------------------------------------
 
-function sourceFiles(dir: string): string[] {
-  return readdirSync(dir).flatMap((name) => {
-    const path = join(dir, name)
-    if (statSync(path).isDirectory()) return name === "__tests__" ? [] : sourceFiles(path)
-    return /\.(ts|tsx)$/.test(name) ? [path] : []
-  })
+const SOURCE_OPTIONS = { skipDirectories: ["__tests__"], include: /\.(ts|tsx)$/ }
+
+function sourceFiles(dir: string): readonly string[] {
+  return sharedSourceFiles(dir, SOURCE_OPTIONS)
 }
+
+// Read the tree once for this file, as setup (see @/test/source-tree).
+beforeAll(() => preloadSources("src", SOURCE_OPTIONS), SOURCE_SCAN_TIMEOUT_MS)
 
 let sources: ReadonlyMap<string, string> | null = null
 function sourceTree(): ReadonlyMap<string, string> {
-  sources ??= new Map(sourceFiles("src").map((file) => [file, readFileSync(file, "utf8")]))
+  sources ??= new Map(sourceFiles("src").map((file) => [file, readSource(file)]))
   return sources
 }
 
@@ -315,7 +307,7 @@ describe("invoice status write guard", () => {
   })
 
   it("the store's simple invoice and Square link status writes read the machines and compare-and-set", () => {
-    const store = readFileSync("src/lib/domain/financials/store.ts", "utf8")
+    const store = readSource("src/lib/domain/financials/store.ts")
     // The two helpers write the target state from the machine and fence on its source states.
     expect(store).toContain("status: simpleInvoiceMachine.transitions[event].to")
     expect(store).toContain("inArray(invoices.status, [...simpleInvoiceMachine.transitions[event].from])")

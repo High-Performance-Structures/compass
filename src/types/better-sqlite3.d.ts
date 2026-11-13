@@ -16,6 +16,8 @@ declare module "better-sqlite3" {
   }
 
   type Statement = {
+    /** True when the statement returns rows (SELECT, or a write with RETURNING). */
+    readonly reader: boolean
     run(...params: unknown[]): RunResult
     get(...params: unknown[]): unknown
     all(...params: unknown[]): unknown[]

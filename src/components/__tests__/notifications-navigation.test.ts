@@ -23,7 +23,7 @@ describe("bell notification navigation", () => {
   beforeEach(() => {
     vi.clearAllMocks()
     Object.defineProperty(globalThis, "IS_REACT_ACT_ENVIRONMENT", { value: true, configurable: true })
-    host = document.createElement("div"); document.body.append(host); root = createRoot(host)
+    host = document.createElement("div"); document.body.appendChild(host); root = createRoot(host)
     mocks.panel.mockReturnValue(null)
     mocks.mark.mockRejectedValue(new Error("Read update offline"))
   })

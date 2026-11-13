@@ -16,7 +16,7 @@ describe("composition draft lifecycle", () => {
   beforeEach(() => {
     vi.useFakeTimers(); vi.clearAllMocks(); controls = null
     Object.defineProperty(globalThis,"IS_REACT_ACT_ENVIRONMENT",{value:true,configurable:true})
-    host = document.createElement("div"); document.body.append(host); root = createRoot(host)
+    host = document.createElement("div"); document.body.appendChild(host); root = createRoot(host)
     mocks.save.mockImplementation(async (_project: string,id: string,version: number,value: CompositionContent) => ({success:true,data:{id,version:version+1,content:value,attachments:[],updatedAt:"2026-09-30"}}))
     mocks.discard.mockImplementation(async (_project: string,_id: string,version: number) => ({success:true,data:{version:version+1}}))
   })
