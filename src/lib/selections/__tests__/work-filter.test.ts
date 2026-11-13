@@ -128,6 +128,13 @@ describe("selections work filter", () => {
     expect(byDivision.rooms.flatMap((room) => room.selections.map((item) => item.id))).toEqual(["faucet"])
   })
 
+  it("shows a room with no selections yet until a filter is on", () => {
+    const empty = { ...summary.rooms[1], id: "r3", roomName: "Mudroom", sortOrder: 2, selectionCount: 0, selections: [] }
+    const withEmpty = { ...summary, rooms: [...summary.rooms, empty] }
+    expect(filterSelectionsSummary(withEmpty, EMPTY_SELECTION_WORK_FILTER, divisions).rooms.map((room) => room.roomName)).toEqual(["Kitchen", "Bath", "Mudroom"])
+    expect(filterSelectionsSummary(withEmpty, { ...EMPTY_SELECTION_WORK_FILTER, search: "tub" }, divisions).rooms.map((room) => room.roomName)).toEqual(["Bath"])
+  })
+
   it("filters decision items through the same selections", () => {
     const items = [decision("faucet"), decision("tub")]
     expect(filterDecisionItems(items, summary, EMPTY_SELECTION_WORK_FILTER)).toBe(items)
