@@ -9,6 +9,7 @@ import { releaseSageResultLease, sageResultAlreadyRecorded, takeSageResultLease 
 import { readBoundedSageBridgeBody } from "@/lib/sage/bridge-auth"
 import { authorizeSageChangeOrderBridge, ESTIMATE_WRITER } from "@/lib/sage/change-order-bridge"
 import { sageExportActor } from "@/lib/sage/estimate-sync"
+import { EDITED_WHILE_SENDING, estimateEditedAfterClaim } from "@/lib/domain/sage-bridge/estimate-proposal-rules"
 import { sageEstimateWriteResultSchema } from "@/lib/sage/estimate-write"
 import { queueSageJobTaxDistrict } from "@/lib/sage/job-tax-district"
 
@@ -43,6 +44,7 @@ export async function POST(request: Request): Promise<Response> {
       estimateId: sageEstimateExports.estimateId,
       requestedByUserId: sageEstimateExports.requestedByUserId,
       automatic: sageEstimateExports.automatic,
+      claimedAt: sageEstimateExports.claimedAt,
     })
     .from(sageEstimateExports)
     .where(fence)
@@ -50,12 +52,22 @@ export async function POST(request: Request): Promise<Response> {
   // An exact repeat of a result that already landed is answered as recorded:
   // the writer stops its whole run on any non-2xx answer.
   const staleOrRepeat = async (): Promise<Response> => {
-    const recorded = await sageResultAlreadyRecorded(db, "sage_estimate_exports", {
-      id: result.id, organizationId, claimToken: result.claimToken, statuses: result.outcome === "succeeded" ? ["succeeded"] : [result.needsAttention ? "needs_attention" : "failed"],
-    })
+    // A success may have been recorded as needs attention when the estimate was edited meanwhile.
+    const recorded = result.outcome === "succeeded"
+      ? (await sageResultAlreadyRecorded(db, "sage_estimate_exports", { id: result.id, organizationId, claimToken: result.claimToken, statuses: ["succeeded"] })) ??
+        (await editedWhileSendingRecorded())
+      : await sageResultAlreadyRecorded(db, "sage_estimate_exports", {
+        id: result.id, organizationId, claimToken: result.claimToken, statuses: [result.needsAttention ? "needs_attention" : "failed"],
+      })
     return recorded
       ? Response.json({ success: true, status: recorded, alreadyRecorded: true })
       : Response.json({ error: "Estimate claim changed" }, { status: 409 })
+  }
+  async function editedWhileSendingRecorded(): Promise<string | null> {
+    const flagged = await sageResultAlreadyRecorded(db, "sage_estimate_exports", { id: result.id, organizationId, claimToken: result.claimToken, statuses: ["needs_attention"] })
+    if (!flagged) return null
+    const message = await db.select({ errorMessage: sageEstimateExports.errorMessage }).from(sageEstimateExports).where(eq(sageEstimateExports.id, result.id)).get()
+    return message?.errorMessage === EDITED_WHILE_SENDING ? flagged : null
   }
   if (!row) return staleOrRepeat()
   // One handler per claim: a result posted twice applies (and logs, and queues the tax district) once.
@@ -69,12 +81,17 @@ export async function POST(request: Request): Promise<Response> {
       eq(sageEstimateExports.claimToken, leaseToken)
     )
     const now = new Date().toISOString()
-    const status = result.outcome === "succeeded" ? "succeeded" : result.needsAttention ? "needs_attention" : "failed"
     const estimateWhere = and(eq(projectEstimates.id, row.estimateId), eq(projectEstimates.projectId, row.projectId))
+    // Sage has the proposal as it was when claimed; an estimate edited since is flagged for staff, never re-sent.
+    const edited = result.outcome === "succeeded" && estimateEditedAfterClaim(
+      (await db.select({ updatedAt: projectEstimates.updatedAt }).from(projectEstimates).where(estimateWhere).get())?.updatedAt ?? null,
+      row.claimedAt,
+    )
+    const status = result.outcome === "succeeded" ? (edited ? "needs_attention" : "succeeded") : result.needsAttention ? "needs_attention" : "failed"
     const [updated] = await db.batch([
       updateSageEstimateExportsStatement(db, leased, {
         status,
-        errorMessage: result.outcome === "failed" ? result.error : null,
+        errorMessage: result.outcome === "failed" ? result.error : edited ? EDITED_WHILE_SENDING : null,
         completedAt: now,
         updatedAt: now,
       }).returning({ id: sageEstimateExports.id }),
@@ -82,7 +99,7 @@ export async function POST(request: Request): Promise<Response> {
       updateEstimatesStatement(db, and(estimateWhere, sql`EXISTS (SELECT 1 FROM sage_estimate_exports
         WHERE id = ${result.id} AND claim_token = ${leaseToken} AND status = ${status} AND completed_at = ${now})`), {
         sageStatus: status === "succeeded" ? "sent" : status,
-        ...(status === "succeeded" ? { lastSageSyncAt: now } : {}),
+        ...(result.outcome === "succeeded" ? { lastSageSyncAt: now } : {}),
         updatedAt: now,
       }),
     ])
@@ -113,7 +130,7 @@ export async function POST(request: Request): Promise<Response> {
           action: "estimate_synced_to_sage",
           entityType: "project_estimate",
           entityId: row.estimateId,
-          summary: `${estimate?.estimateNumber ?? "Estimate"}: ${row.automatic ? "synced to Sage automatically" : "sent to Sage"} (proposal ${result.proposalLineCount} lines, $${result.proposalTotal}${result.budgetLineCount === null ? "" : `; budget ${result.budgetLineCount} lines`}).`,
+          summary: `${estimate?.estimateNumber ?? "Estimate"}: ${row.automatic ? "synced to Sage automatically" : "sent to Sage"} (proposal ${result.proposalLineCount} lines, $${result.proposalTotal}${result.budgetLineCount === null ? "" : `; budget ${result.budgetLineCount} lines`}).${edited ? ` ${EDITED_WHILE_SENDING}` : ""}`,
           metadata: { proposalLineCount: result.proposalLineCount, proposalTotal: result.proposalTotal, budgetLineCount: result.budgetLineCount },
           createdAt: now,
         })

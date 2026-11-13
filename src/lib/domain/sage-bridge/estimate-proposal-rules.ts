@@ -265,3 +265,15 @@ export function sageProposalWriterLines(lines: readonly PlannedLine[]): readonly
     memo: lines[index]?.memo ?? "",
   }))
 }
+
+/** The note on an export whose estimate was edited while the writer was sending it. */
+export const EDITED_WHILE_SENDING = "Edited while it was being sent to Sage; check Sage."
+
+/**
+ * Whether the estimate changed after the writer claimed its export: the
+ * proposal Sage now has may be the older version. Owner rule (2026-11-12):
+ * flag it for staff, never re-send on its own.
+ */
+export function estimateEditedAfterClaim(estimateUpdatedAt: string | null, claimedAt: string | null): boolean {
+  return estimateUpdatedAt !== null && claimedAt !== null && estimateUpdatedAt > claimedAt
+}

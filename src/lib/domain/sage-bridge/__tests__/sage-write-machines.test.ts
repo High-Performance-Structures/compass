@@ -28,6 +28,7 @@ import {
 import { queueSageChangeOrderExports, updateSageChangeOrderExportsStatement } from "@/lib/domain/sage-bridge/change-order-store"
 import { moveSageDirectoryAddRequest, sageDirectoryAddOutcomeStatement } from "@/lib/domain/sage-bridge/directory-add-store"
 import { updateSageEstimateExportsStatement } from "@/lib/domain/sage-bridge/estimate-store"
+import { EDITED_WHILE_SENDING, estimateEditedAfterClaim } from "@/lib/domain/sage-bridge/estimate-proposal-rules"
 import {
   arInvoiceExportMachine,
   changeOrderExportMachine,
@@ -299,6 +300,24 @@ describe("exports: AR invoices, change orders, estimates, certificates", () => {
     const updated = await updateSageEstimateExportsStatement(db, eq(sageEstimateExports.id, "e1"), { status: "succeeded", updatedAt: LATER })
       .returning({ id: sageEstimateExports.id })
     expect(updated).toEqual([])
+  })
+
+  it("an estimate edited after its export was claimed is flagged for staff when the result lands, not re-sent", async () => {
+    expect(estimateEditedAfterClaim("2026-11-12T10:05:00.000Z", NOW)).toBe(true)
+    expect(estimateEditedAfterClaim("2026-11-12T09:55:00.000Z", NOW)).toBe(false)
+    expect(estimateEditedAfterClaim(null, NOW)).toBe(false)
+    insert("sage_estimate_exports", {
+      id: "e1", organization_id: ORG, project_id: "p1", estimate_id: "est1", status: "running", claim_token: "c1", claimed_at: NOW, requested_at: NOW, updated_at: NOW,
+    })
+    const leaseToken = await takeSageResultLease(db, "sage_estimate_exports", { id: "e1", organizationId: ORG, claimToken: "c1", now: LATER })
+    if (!leaseToken) throw new Error("no lease")
+    // The success lands as needs attention: Sage has the proposal, staff check it.
+    const flagged = await updateSageEstimateExportsStatement(db, and(eq(sageEstimateExports.id, "e1"), eq(sageEstimateExports.claimToken, leaseToken)), {
+      status: "needs_attention", errorMessage: EDITED_WHILE_SENDING, completedAt: LATER, updatedAt: LATER,
+    }).returning({ id: sageEstimateExports.id })
+    expect(flagged).toEqual([{ id: "e1" }])
+    // Nothing re-queues it on its own: no claim takes a needs-attention row.
+    expect(estimateExportMachine.transitions.claim.from).not.toContain("needs_attention")
   })
 
   it("a certificate sync finishes only from running", async () => {
