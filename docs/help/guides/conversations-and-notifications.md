@@ -83,7 +83,7 @@ The towers at the top show how many open messages are in each group. Taller, red
 Email that comes into Compass goes straight to its job's **Messages** whenever Compass can tell which job it's for: it was sent to the job's Compass address, or it names exactly one of your job numbers. It's posted even when:
 
 - **The sender isn't a contact.** Job messages are only for staff, and an email never gives its sender access.
-- **An @name can't be matched.** The job's assigned staff are notified instead.
+- **An @name can't be matched.** The job's assigned staff are notified instead. An @name from a sender who isn't a contact is ignored the same way.
 - **No staff are assigned to the job.** The people who review held emails are notified instead.
 - **An attached file can't be saved.** The message is posted without it, with a note that the file is still in the original email.
 

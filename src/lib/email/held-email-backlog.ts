@@ -20,8 +20,9 @@ import { claimInboundEmailForReview, markInboundEmailPosted, releaseInboundEmail
 import { heldEmailCandidate } from "@/lib/email/held-job-emails"
 import { exactJobNumberMatches } from "@/lib/email/inbound-routing"
 import { projectEmailTitle, projectIdFromInboundAddress } from "@/lib/email/project-address"
-import { candidateBody } from "@/lib/email/project-inbound-routing"
+import { candidateBody, senderCanEmailProject } from "@/lib/email/project-inbound-routing"
 import { routeInboundProjectMessage } from "@/lib/email/project-message-routing"
+import { isCompassMailboxSender } from "@/lib/email/reply-tracking"
 import type { Db } from "@/lib/server/action-context"
 
 const DEFAULT_LIMIT = 25
@@ -52,10 +53,15 @@ function cursorCondition(after: string | null | undefined): SQL | undefined {
   return or(gt(inboundEmails.receivedAt, receivedAt), and(eq(inboundEmails.receivedAt, receivedAt), gt(inboundEmails.id, id)))
 }
 
-/** The held email's job under the new rule: its address, else exactly one job number (no office fallback). */
-function knownJob(email: typeof inboundEmails.$inferSelect, jobs: readonly JobRow[]): string | null {
+/**
+ * The held email's job under the new rule: its address, else exactly one job
+ * number (no office fallback). As in live intake, job numbers never route
+ * Compass's own mail.
+ */
+function knownJob(email: typeof inboundEmails.$inferSelect, jobs: readonly JobRow[], env: unknown): string | null {
   const addressed = projectIdFromInboundAddress(email.toAddress)
   if (addressed) return jobs.some((job) => job.id === addressed) ? addressed : null
+  if (isCompassMailboxSender(env, email.fromAddress)) return null
   const matches = exactJobNumberMatches(email, jobs)
   return matches.length === 1 && matches[0] ? matches[0].id : null
 }
@@ -103,7 +109,7 @@ export async function postHeldEmailBacklog(input: {
       skipped += 1
       continue
     }
-    const projectId = knownJob(email, jobsByOrganization.get(email.organizationId) ?? [])
+    const projectId = knownJob(email, jobsByOrganization.get(email.organizationId) ?? [], input.env)
     if (!projectId) {
       stillHeld += 1
       continue
@@ -115,6 +121,8 @@ export async function postHeldEmailBacklog(input: {
     try {
       const { candidate, filesFetched } = await heldEmailCandidate({ db, env: input.env, organizationId: email.organizationId, email })
       const body = candidateBody(candidate)
+      // As in live intake, an unrecognized sender's @names pick no one.
+      const senderAuthorized = await senderCanEmailProject({ env: input.env, db, organizationId: email.organizationId, projectId, senderEmail: email.fromAddress })
       const routed = await routeInboundProjectMessage({
         db,
         env: input.env,
@@ -126,6 +134,7 @@ export async function postHeldEmailBacklog(input: {
         now,
         postWhenJobKnown: true,
         quiet: true,
+        ignoreMentions: !senderAuthorized,
       })
       if (routed.status === "held") {
         await releaseInboundEmailClaim(db, email.id)

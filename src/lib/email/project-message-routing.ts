@@ -63,6 +63,8 @@ export async function routeInboundProjectMessage(input: {
   readonly postWhenJobKnown?: boolean
   /** Save without notifications and already read (re-posting old held email). */
   readonly quiet?: boolean
+  /** The sender isn't recognized: their @names pick no one; the job's staff (or reviewers) receive it. */
+  readonly ignoreMentions?: boolean
 }): Promise<RoutedProjectMessage | HeldProjectMessage> {
   const held = (reason: HeldMessageReason): HeldProjectMessage => ({ status: "held", reason })
   if (!isCorrespondenceEnabled(input.projectId, input.env) && !isCorrespondenceEnabled(input.projectId)) return held("messaging_off")
@@ -84,11 +86,11 @@ export async function routeInboundProjectMessage(input: {
     .leftJoin(notificationPreferences, eq(notificationPreferences.userId, accounts.id))
     .where(and(eq(accounts.isActive, true), inArray(memberships.role, staffRoles)))
   const text = `${input.candidate.subject}\n${input.body}`
-  const mentionsSomeone = inboundMessageMentionsSomeone(text)
+  const mentionsSomeone = !input.ignoreMentions && inboundMessageMentionsSomeone(text)
   const people = staff.map((person) => ({
     ...person, name: person.name ?? [person.firstName, person.lastName].filter(Boolean).join(" "), assigned: Boolean(person.assigned), inApp: person.inApp ?? true,
   }))
-  const resolved = inboundProjectMessageRecipients(text, people)
+  const resolved = input.ignoreMentions ? null : inboundProjectMessageRecipients(text, people)
   const assigned = people.filter((person) => person.assigned)
   // A known job's email never waits on a name: an unmatched @name goes to the job's staff.
   const jobStaff = input.postWhenJobKnown && assigned.length > 0 && assigned.length <= MAX_RECIPIENTS ? assigned : null

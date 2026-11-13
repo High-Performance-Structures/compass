@@ -219,7 +219,7 @@ function destinationEntityType(destination: ProjectEmailDestination): string {
   return "todo"
 }
 
-async function senderCanEmailProject(input: {
+export async function senderCanEmailProject(input: {
   readonly env: unknown
   readonly db: Db
   readonly organizationId: string
@@ -678,6 +678,7 @@ async function routeDestination(input: {
   readonly todoDetails?: ReviewedInboundTodoDetails
   readonly now: string
   readonly source: ProjectInboundSource
+  readonly senderAuthorized: boolean
 }): Promise<{
   readonly id: string
   readonly status:
@@ -690,7 +691,7 @@ async function routeDestination(input: {
     | "routed_message"
 } | HeldProjectMessage | null> {
   // Email to a known job is held only when messaging is off (postWhenJobKnown).
-  if (input.destination === "message") return routeInboundProjectMessage({ ...input, body: candidateBody(input.candidate), source: input.source.kind === "email" ? "email" : "sms", postWhenJobKnown: input.source.kind === "email" })
+  if (input.destination === "message") return routeInboundProjectMessage({ ...input, body: candidateBody(input.candidate), source: input.source.kind === "email" ? "email" : "sms", postWhenJobKnown: input.source.kind === "email", ignoreMentions: !input.senderAuthorized })
   if (input.destination === "rfi") return routeRfi(input)
   if (input.destination === "rfq") return routeRfq(input)
   if (input.destination === "change_order") return routeChangeOrder(input)
@@ -763,6 +764,7 @@ async function routeVerifiedProjectInboundMessage(input: {
     todoDetails: input.todoDetails,
     now: new Date().toISOString(),
     source: input.source,
+    senderAuthorized,
   })
   if (!routed || routed.status === "held") {
     await recordActivityEvent({

@@ -4,6 +4,7 @@ import { openCorrespondenceTestDatabase, type CorrespondenceTestDatabase, addCon
 import { routeProjectInboundEmail } from "@/lib/email/project-email-intake"
 import { postHeldEmailBacklog } from "@/lib/email/held-email-backlog"
 import { FILES_NOT_SAVED_NOTE } from "@/lib/email/project-message-routing"
+import { isCompassMailboxSender } from "@/lib/email/reply-tracking"
 import type { InboundCandidate } from "@/lib/email/gmail-message-parser"
 import { recordActivityEvent } from "@/lib/activity-log"
 
@@ -100,13 +101,33 @@ describe("job emails are held only when the job is unknown", () => {
     expect(count(db, "correspondence_messages")).toEqual({ count: 0 })
   })
 
-  it("posts an unmatched @name to the job's assigned staff, and exact names still work", async () => {
+  it("posts a recognized sender's unmatched @name to the job's assigned staff, and exact names still work", async () => {
     const db = setup()
-    expect(await route(db, candidate({ subject: '@"Nobody Here" deck question' }))).toMatchObject({ kind: "routed" })
+    const known = { fromAddress: "owner-a@example.test", fromName: "Owner A" }
+    expect(await route(db, candidate({ ...known, subject: '@"Nobody Here" deck question' }))).toMatchObject({ kind: "routed" })
     expect(participants(db)).toEqual([{ user_id: "revoked-a" }, { user_id: "staff-a" }])
     const db2 = setup()
-    expect(await route(db2, candidate({ subject: '@"Staff A" deck question' }))).toMatchObject({ kind: "routed" })
+    expect(await route(db2, candidate({ ...known, subject: '@"Staff A" deck question' }))).toMatchObject({ kind: "routed" })
     expect(participants(db2)).toEqual([{ user_id: "staff-a" }])
+  })
+
+  it("ignores an unrecognized sender's @names", async () => {
+    const db = setup()
+    // An exact name from a stranger picks no one: the job's assigned staff receive it.
+    expect(await route(db, candidate({ subject: '@"Staff A" deck question' }))).toMatchObject({ kind: "routed" })
+    expect(participants(db)).toEqual([{ user_id: "revoked-a" }, { user_id: "staff-a" }])
+    // With no staff on the job, the held-email reviewers do.
+    const db2 = setup()
+    db2.sqlite.exec("UPDATE organization_members SET role='office' WHERE user_id='revoked-a'")
+    expect(await route(db2, candidate({ toAddress: "jarvis+project-proj-b@example.test", subject: '@"Revoked A" deck question' }))).toMatchObject({ kind: "routed" })
+    expect(participants(db2)).toEqual([{ user_id: "staff-a" }])
+  })
+
+  it("never finds a job from numbers in Compass's own mail", async () => {
+    const db = setup()
+    const own = candidate({ fromAddress: "jarvis+cmp-123@example.test", toAddress: "client@example.test", textBody: "Update on J-1001." })
+    expect(await routeProjectInboundEmail({ db: db.db, env: { ...ENV, COMPASS_REPLY_MAILBOX: "jarvis@example.test" }, organizationId: "org-a", candidate: own, matchJobNumbers: !isCompassMailboxSender({ COMPASS_REPLY_MAILBOX: "jarvis@example.test" }, own.fromAddress) }))
+      .toEqual({ kind: "not_project_email" })
   })
 
   it("notifies the company's held-email reviewers when the job has no staff", async () => {
@@ -172,5 +193,14 @@ describe("held email backlog", () => {
     const rerun = await postHeldEmailBacklog({ db: db.db, env: ENV })
     expect(rerun).toMatchObject({ scanned: 2, posted: 0, stillHeld: 2 })
     expect(count(db, "correspondence_messages")).toEqual({ count: 2 })
+  })
+
+  it("leaves Compass's own mail held even when it names one job", async () => {
+    const db = setup()
+    const env = { ...ENV, COMPASS_REPLY_MAILBOX: "jarvis@example.test" }
+    hold(db, "own", "client@example.test", "Update on J-1001.", "2026-09-01T10:00:00.000Z")
+    db.sqlite.exec("UPDATE inbound_emails SET from_address='jarvis+cmp-1@example.test'")
+    expect(await postHeldEmailBacklog({ db: db.db, env })).toMatchObject({ scanned: 1, posted: 0, stillHeld: 1 })
+    expect(count(db, "correspondence_messages")).toEqual({ count: 0 })
   })
 })

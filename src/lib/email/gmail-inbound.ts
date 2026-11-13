@@ -24,7 +24,7 @@ import {
 } from "@/lib/email/gmail-message-parser"
 import { emailRetryAt, isEmailRateLimit } from "./delivery-recovery"
 import { claimMailbox, deferMailbox, mailboxCooldown, releaseMailbox } from "./mailbox-state"
-import { replyMailboxEmail } from "@/lib/email/reply-tracking"
+import { isCompassMailboxSender, replyMailboxEmail } from "@/lib/email/reply-tracking"
 import { isReplyMessage } from "@/lib/email/reply-detection"
 import { routeProjectInboundEmail } from "@/lib/email/project-email-intake"
 import { announceTrackedRecordReply } from "@/lib/email/tracked-record-replies"
@@ -355,7 +355,7 @@ async function importCandidate(input: {
     env: input.env,
     db: input.db,
     organizationId: input.organizationId,
-    candidate: input.candidate, matchJobNumbers: !replyThread && input.candidate.fromAddress.toLowerCase() !== replyMailboxEmail(input.env).toLowerCase(), // job numbers count only without a tracked reply thread, never for Compass's own mail
+    candidate: input.candidate, matchJobNumbers: !replyThread && !isCompassMailboxSender(input.env, input.candidate.fromAddress), // job numbers count only without a tracked reply thread, never for Compass's own mail
   })
   if (projectRoute.kind === "other_organization") return "other_org"
   if (projectRoute.kind === "needs_review") {
