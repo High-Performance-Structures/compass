@@ -36,11 +36,11 @@ import {
   schedulePaths,
   taskEditValues,
   taskWithProgress,
-  type TaskDates,
 } from "@/lib/domain/schedule/rules"
 import {
   acceptConfirmationProposal,
   clearTaskAssigneesQuery,
+  type DateMove,
   deleteTask as deleteTaskRow,
   insertTask,
   persistScheduleDateUpdates,
@@ -555,7 +555,7 @@ export async function updateTask(
       endDateCalculated: endDate
     }
     const allTasks = schedule.tasks.map((t) => (t.id === taskId ? updatedTask : t))
-    const dateUpdates = new Map<string, TaskDates>()
+    const dateUpdates = new Map<string, DateMove>()
     if (scheduleDatesChanged) {
       for (const [updatedTaskId, dates] of propagateFrom(
         taskId,
@@ -565,7 +565,7 @@ export async function updateTask(
       )) {
         dateUpdates.set(updatedTaskId, dates)
       }
-      dateUpdates.set(taskId, { startDate, endDateCalculated: endDate })
+      dateUpdates.set(taskId, { startDate, endDateCalculated: endDate, workdays })
     }
     const shiftSummary = summarizeScheduleShift(schedule.tasks, dateUpdates)
     const shiftReasonResult = resolveScheduleShiftReason(
@@ -606,7 +606,6 @@ export async function updateTask(
       taskId,
       taskEditValues({
         data: editData,
-        workdays,
         status: progress.status,
         percentComplete: progress.percentComplete,
         times: timesChanged && times.success ? times : null,

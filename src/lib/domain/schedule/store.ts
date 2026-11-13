@@ -36,18 +36,19 @@ import { namedAssignee } from "@/lib/schedule/assignees"
 import { confirmationMachine, confirmationStatusAfter, type ConfirmationAnswerEvent } from "./confirmation-machine"
 import { assigneeResponseMachine, assigneeResponseParts, type AssigneeAnswerEvent } from "./assignee-response-machine"
 import { loadProjectScheduleRows } from "./queries"
-import { criticalPathChanges, dependencyData, taskWithStatus, type DateUpdates } from "./rules"
+import { criticalPathChanges, dependencyData, taskWithStatus, type TaskDates } from "./rules"
 import type { ScheduleAssigneeResponseStatus } from "./statuses"
 
 type TaskInsert = typeof scheduleTasks.$inferInsert
 
 /** Assignee answers once staff move an item or re-ask (the machine's reset). */
 const RESET = assigneeResponseParts("reset")
-type TaskUpdate = Partial<TaskInsert>
+/** Dates are written only through dateMoveStatements (below). */
+type TaskUpdate = Omit<Partial<TaskInsert>, "startDate" | "workdays" | "endDateCalculated">
 
 /*
  * D1 caps the statements in one batch. These groups bound the number of
- * schedule items per batch (each item needs two or three statements); it is
+ * schedule items per batch (each item needs up to four statements); it is
  * a statement limit, not the bound-parameter limit chunkD1Values covers.
  */
 const ITEMS_PER_BATCH = 40
@@ -282,144 +283,139 @@ export async function assignProjectTasks(
   }
 }
 
-/** Moves tasks to new dates by id (no linked to-do or assignee changes). */
-export async function updateTaskDates(db: Db, updates: DateUpdates, now: string): Promise<void> {
-  for (const group of itemGroups([...updates])) {
-    const [first, ...rest] = group.map(
-      ([taskId, dates]): BatchItem<"sqlite"> =>
-        db
-          .update(scheduleTasks)
-          .set({ startDate: dates.startDate, endDateCalculated: dates.endDateCalculated, updatedAt: now })
-          .where(eq(scheduleTasks.id, taskId))
-    )
-    if (!first) continue
-    await db.batch([first, ...rest])
-  }
-}
+// ---------------------------------------------------------------------------
+// Date moves
+// ---------------------------------------------------------------------------
+// Every write of a schedule item's start date, workdays or end date goes
+// through dateMoveStatements (a test enforces it): an item whose dates
+// actually change asks its assignees again, single (confirmation-machine.ts
+// dates_moved) and multiple (assignee-response-machine.ts reset), in the same
+// atomic batch as the new dates.
 
-/** The linked to-do shift and the task date change for each moved task. */
-function dateUpdateStatements(
+/** A task's new dates; `workdays` only when the duration itself was edited. */
+export type DateMove = TaskDates & { readonly workdays?: number }
+export type DateMoves = ReadonlyMap<string, DateMove>
+
+/** The to-do follows its schedule item ("shift"), or the caller leaves it ("leave"). */
+type LinkedTodos = "shift" | "leave"
+
+/**
+ * One task's move. The re-ask statements run before the date write and only
+ * while the stored dates still differ from `dates`, so an item that didn't
+ * really move keeps its answers; the to-do shift runs first so its offsets
+ * use the previous dates.
+ */
+function dateMoveStatements(
   database: D1Database,
   projectId: string,
-  updates: DateUpdates,
-  updatedAt: string
+  taskId: string,
+  dates: DateMove,
+  now: string,
+  linkedTodos: LinkedTodos
 ): D1PreparedStatement[] {
-  return [...updates].flatMap(([taskId, dates]) => [
-    // The to-do statement runs first so its offsets use the previous dates.
-    linkedTodoDateUpdateStatement(database, {
-      scheduleTaskId: taskId,
-      nextStartDate: dates.startDate,
-      nextEndDate: dates.endDateCalculated,
-      updatedAt,
-    }),
+  const workdays = dates.workdays ?? null
+  const moved = `(start_date IS NOT ? OR end_date_calculated IS NOT ? OR workdays IS NOT COALESCE(?, workdays))`
+  const movedValues = [dates.startDate, dates.endDateCalculated, workdays]
+  const confirmation = confirmationMachine.transitions.dates_moved
+  return [
+    ...(linkedTodos === "shift"
+      ? [linkedTodoDateUpdateStatement(database, {
+          scheduleTaskId: taskId,
+          nextStartDate: dates.startDate,
+          nextEndDate: dates.endDateCalculated,
+          updatedAt: now,
+        })]
+      : []),
+    database
+      .prepare(
+        `UPDATE schedule_task_assignees
+         SET source_start_date = ?, source_workdays = COALESCE(?, source_workdays), source_end_date = ?,
+             response_status = ?, date_response_status = ?, duration_response_status = ?,
+             proposed_start_date = NULL, proposed_workdays = NULL, proposed_end_date = NULL,
+             response_message = NULL, responded_at = NULL, responded_by_user_id = NULL, response_source = NULL,
+             assigned_at = ?, updated_at = ?
+         WHERE schedule_task_id = ?
+           AND EXISTS (SELECT 1 FROM schedule_tasks WHERE id = ? AND project_id = ? AND ${moved})`
+      )
+      .bind(
+        dates.startDate,
+        workdays,
+        dates.endDateCalculated,
+        RESET.responseStatus,
+        RESET.dateResponseStatus,
+        RESET.durationResponseStatus,
+        now,
+        now,
+        taskId,
+        taskId,
+        projectId,
+        ...movedValues
+      ),
+    // The single assignee: asked again once the account was asked or had
+    // answered; items that ask for nothing, or wait for an account, stay. A
+    // pending proposal is for the old dates and is cleared.
     database
       .prepare(
         `UPDATE schedule_tasks
-         SET start_date = ?, end_date_calculated = ?, updated_at = ?
+         SET confirmation_status = ?, confirmation_requested_at = ?, confirmation_responded_at = NULL,
+             reminder_sent_at = NULL, proposed_start_date = NULL, proposed_workdays = NULL,
+             proposal_note = NULL, proposal_submitted_at = NULL, updated_at = ?
+         WHERE id = ? AND project_id = ?
+           AND confirmation_required = 1
+           AND assigned_user_id IS NOT NULL
+           AND confirmation_status IN (${confirmation.from.map(() => "?").join(", ")})
+           AND ${moved}`
+      )
+      .bind(confirmation.to, now, now, taskId, projectId, ...confirmation.from, ...movedValues),
+    database
+      .prepare(
+        `UPDATE schedule_tasks
+         SET start_date = ?, end_date_calculated = ?, workdays = COALESCE(?, workdays), updated_at = ?
          WHERE id = ? AND project_id = ?`
       )
-      .bind(dates.startDate, dates.endDateCalculated, updatedAt, taskId, projectId),
-  ])
+      .bind(dates.startDate, dates.endDateCalculated, workdays, now, taskId, projectId),
+  ]
 }
 
 /**
  * Runs `leading` (a dependency or workday-exception change) and the date
- * moves it causes, with their linked to-dos, in one atomic batch.
+ * moves it causes, with their linked to-dos and re-asks, in one atomic batch.
  */
 export async function runWithDateUpdates(
   database: D1Database,
   leading: D1PreparedStatement,
   projectId: string,
-  updates: DateUpdates,
+  updates: DateMoves,
   updatedAt: string,
   failureMessage: string
 ): Promise<void> {
   await runD1Batch(
     database,
-    [leading, ...dateUpdateStatements(database, projectId, updates, updatedAt)],
+    [
+      leading,
+      ...[...updates].flatMap(([taskId, dates]) =>
+        dateMoveStatements(database, projectId, taskId, dates, updatedAt, "shift")
+      ),
+    ],
     failureMessage
   )
 }
 
 /**
- * A moved item's single-assignee confirmation (confirmation-machine.ts
- * dates_moved): asked again on the new dates when the assigned account was
- * already asked or had answered; items that ask for nothing, or still wait
- * for an account, stay as they are. A pending proposal is for the old dates
- * and is cleared.
- */
-function datesMovedConfirmationStatement(
-  database: D1Database,
-  projectId: string,
-  taskId: string,
-  now: string
-): D1PreparedStatement {
-  const rule = confirmationMachine.transitions.dates_moved
-  return database
-    .prepare(
-      `UPDATE schedule_tasks
-       SET confirmation_status = ?,
-           confirmation_requested_at = ?,
-           confirmation_responded_at = NULL,
-           reminder_sent_at = NULL,
-           proposed_start_date = NULL,
-           proposed_workdays = NULL,
-           proposal_note = NULL,
-           proposal_submitted_at = NULL,
-           updated_at = ?
-       WHERE id = ? AND project_id = ?
-         AND confirmation_required = 1
-         AND assigned_user_id IS NOT NULL
-         AND confirmation_status IN (${rule.from.map(() => "?").join(", ")})`
-    )
-    .bind(rule.to, now, now, taskId, projectId, ...rule.from)
-}
-
-/**
- * Persists propagated dates. Each moved task also shifts its linked to-dos
- * and resets its assignees' responses, which were given against the old
- * dates; a single assignee who was asked or answered is asked again.
+ * Persists moved dates, each task atomically with its re-asks. Linked to-dos
+ * shift with their item unless the caller leaves them (the agent API).
  */
 export async function persistScheduleDateUpdates(
   database: D1Database,
   projectId: string,
-  updates: DateUpdates,
-  updatedAt: string
+  updates: DateMoves,
+  updatedAt: string,
+  linkedTodos: LinkedTodos = "shift"
 ): Promise<void> {
   for (const group of itemGroups([...updates])) {
-    const statements = group.flatMap(([taskId, dates]) => [
-      ...dateUpdateStatements(database, projectId, new Map([[taskId, dates]]), updatedAt),
-      database
-        .prepare(
-          `UPDATE schedule_task_assignees
-           SET source_start_date = ?,
-               source_end_date = ?,
-               response_status = ?,
-               date_response_status = ?,
-               duration_response_status = ?,
-               proposed_start_date = NULL,
-               proposed_workdays = NULL,
-               proposed_end_date = NULL,
-               response_message = NULL,
-               responded_at = NULL,
-               responded_by_user_id = NULL,
-               response_source = NULL,
-               assigned_at = ?,
-               updated_at = ?
-           WHERE schedule_task_id = ?`
-        )
-        .bind(
-          dates.startDate,
-          dates.endDateCalculated,
-          RESET.responseStatus,
-          RESET.dateResponseStatus,
-          RESET.durationResponseStatus,
-          updatedAt,
-          updatedAt,
-          taskId
-        ),
-      datesMovedConfirmationStatement(database, projectId, taskId, updatedAt),
-    ])
+    const statements = group.flatMap(([taskId, dates]) =>
+      dateMoveStatements(database, projectId, taskId, dates, updatedAt, linkedTodos)
+    )
     await runD1Batch(database, statements, "Schedule date update batch failed")
   }
 }

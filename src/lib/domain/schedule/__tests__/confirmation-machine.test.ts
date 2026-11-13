@@ -11,6 +11,7 @@ import {
   acceptConfirmationProposal,
   persistScheduleDateUpdates,
   recordConfirmationAnswer,
+  runWithDateUpdates,
   rejectConfirmationProposal,
 } from "@/lib/domain/schedule/store"
 import { newScheduleConfirmationState } from "@/lib/schedule/confirmation"
@@ -161,17 +162,35 @@ describe("acceptConfirmationProposal", () => {
   })
 })
 
-describe("persistScheduleDateUpdates", () => {
+describe("date moves ask again", () => {
   const NOW = "2026-11-12T20:00:00.000Z"
+  const MOVED = { startDate: "2026-09-21", endDateCalculated: "2026-09-23" }
+  const SAME = { startDate: "2026-09-14", endDateCalculated: "2026-09-16" }
 
-  it("asks a single assignee again once dates move, unless nothing was asked of an account", async () => {
+  function scheduled(rows: readonly (readonly [string, string, number, string | null])[]) {
     const sqlite = migratedSqlite()
     sqlite.exec(`
       INSERT INTO organizations (id, name, slug, type, is_active, created_at, updated_at) VALUES ('org-1', 'Example Co', 'example', 'internal', 1, '${NOW}', '${NOW}');
       INSERT INTO users (id, email, display_name, role, is_active, created_at, updated_at) VALUES ('u1', 'sub@example.com', 'Sub', 'subcontractor', 1, '${NOW}', '${NOW}');
       INSERT INTO projects (id, name, organization_id, status, created_at) VALUES ('p1', 'Bishop Residence', 'org-1', 'active', '${NOW}');
     `)
-    const rows: readonly [string, string, number, string | null][] = [
+    for (const [id, status, required, user] of rows) {
+      sqlite.prepare(`INSERT INTO schedule_tasks (id, project_id, title, start_date, workdays, end_date_calculated, phase,
+          assigned_user_id, confirmation_required, confirmation_status, confirmation_requested_at, confirmation_responded_at,
+          proposed_start_date, proposed_workdays, proposal_submitted_at, created_at, updated_at)
+        VALUES (?, 'p1', ?, '2026-09-14', 3, '2026-09-16', 'framing', ?, ?, ?, 'r0', 's0', '2026-09-21', 4, 's0', '${NOW}', '${NOW}')`)
+        .run(id, id, user, required, status)
+    }
+    const database = d1(sqlite) as unknown as D1Database
+    const confirmations = () => sqlite.prepare(`SELECT id, start_date, workdays, confirmation_status, confirmation_requested_at,
+      confirmation_responded_at, proposal_submitted_at FROM schedule_tasks ORDER BY rowid`).all()
+    return { sqlite, database, confirmations }
+  }
+  const reasked = (id: string, start = "2026-09-21", workdays = 3) => ({ id, start_date: start, workdays, confirmation_status: "pending", confirmation_requested_at: "t2", confirmation_responded_at: null, proposal_submitted_at: null })
+  const kept = (id: string, status: string, start = "2026-09-21") => ({ id, start_date: start, workdays: 3, confirmation_status: status, confirmation_requested_at: "r0", confirmation_responded_at: "s0", proposal_submitted_at: "s0" })
+
+  it("asks a single assignee again once dates move, unless nothing was asked of an account or nothing moved", async () => {
+    const rows = [
       ["confirmed", "confirmed", 1, "u1"],
       ["declined", "declined", 1, "u1"],
       ["proposed", "proposed", 1, "u1"],
@@ -180,22 +199,12 @@ describe("persistScheduleDateUpdates", () => {
       ["not_requested", "not_requested", 0, "u1"],
       ["not_required", "confirmed", 0, "u1"],
       ["unmoved", "confirmed", 1, "u1"],
-    ]
-    for (const [id, status, required, user] of rows) {
-      sqlite.prepare(`INSERT INTO schedule_tasks (id, project_id, title, start_date, workdays, end_date_calculated, phase,
-          assigned_user_id, confirmation_required, confirmation_status, confirmation_requested_at, confirmation_responded_at,
-          proposed_start_date, proposed_workdays, proposal_submitted_at, created_at, updated_at)
-        VALUES (?, 'p1', ?, '2026-09-14', 3, '2026-09-16', 'framing', ?, ?, ?, 'r0', 's0', '2026-09-21', 4, 's0', '${NOW}', '${NOW}')`)
-        .run(id, id, user, required, status)
-    }
-    const moved = new Map(rows.filter(([id]) => id !== "unmoved").map(([id]) => [id, { startDate: "2026-09-21", endDateCalculated: "2026-09-23" }]))
-    await persistScheduleDateUpdates(d1(sqlite), "p1", moved, "t2")
+    ] as const
+    const { database, confirmations } = scheduled(rows)
+    const moves = new Map(rows.map(([id]) => [id, id === "unmoved" ? SAME : MOVED]))
+    await persistScheduleDateUpdates(database, "p1", moves, "t2")
 
-    const after = sqlite.prepare(`SELECT id, start_date, confirmation_status, confirmation_requested_at, confirmation_responded_at,
-      proposal_submitted_at FROM schedule_tasks ORDER BY rowid`).all()
-    const reasked = (id: string) => ({ id, start_date: "2026-09-21", confirmation_status: "pending", confirmation_requested_at: "t2", confirmation_responded_at: null, proposal_submitted_at: null })
-    const kept = (id: string, status: string, start = "2026-09-21") => ({ id, start_date: start, confirmation_status: status, confirmation_requested_at: "r0", confirmation_responded_at: "s0", proposal_submitted_at: "s0" })
-    expect(after).toEqual([
+    expect(confirmations()).toEqual([
       reasked("confirmed"),
       reasked("declined"),
       reasked("proposed"),
@@ -205,6 +214,56 @@ describe("persistScheduleDateUpdates", () => {
       kept("not_required", "confirmed"),
       kept("unmoved", "confirmed", "2026-09-14"),
     ])
+  })
+
+  it("counts a duration change as a move and writes the workdays with it", async () => {
+    const { database, confirmations } = scheduled([["longer", "confirmed", 1, "u1"], ["same", "confirmed", 1, "u1"]])
+    await persistScheduleDateUpdates(database, "p1", new Map([
+      ["longer", { startDate: "2026-09-14", endDateCalculated: "2026-09-17", workdays: 4 }],
+      ["same", { ...SAME, workdays: 3 }],
+    ]), "t2")
+    expect(confirmations()).toEqual([reasked("longer", "2026-09-14", 4), kept("same", "confirmed", "2026-09-14")])
+  })
+
+  it("resets multi-assignee responses only on items that moved", async () => {
+    const { sqlite, database } = scheduled([["moved", "not_requested", 0, null], ["unmoved", "not_requested", 0, null]])
+    sqlite.exec("PRAGMA foreign_keys = OFF")
+    for (const task of ["moved", "unmoved"]) {
+      sqlite.prepare(`INSERT INTO schedule_task_assignees (id, schedule_task_id, participant_id, source_start_date, source_workdays,
+          source_end_date, response_status, date_response_status, duration_response_status, responded_at, assigned_at, created_at, updated_at)
+        VALUES (?, ?, 'person-1', '2026-09-14', 3, '2026-09-16', 'confirmed', 'confirmed', 'confirmed', 's0', 'a0', '${NOW}', '${NOW}')`)
+        .run(`a-${task}`, task)
+    }
+    await persistScheduleDateUpdates(database, "p1", new Map([["moved", MOVED], ["unmoved", SAME]]), "t2")
+    expect(sqlite.prepare("SELECT schedule_task_id, source_start_date, response_status, responded_at, assigned_at FROM schedule_task_assignees ORDER BY rowid").all()).toEqual([
+      { schedule_task_id: "moved", source_start_date: "2026-09-21", response_status: "pending", responded_at: null, assigned_at: "t2" },
+      { schedule_task_id: "unmoved", source_start_date: "2026-09-14", response_status: "confirmed", responded_at: "s0", assigned_at: "a0" },
+    ])
+  })
+
+  it("asks again when a dependency or calendar change moves the dates", async () => {
+    const { database, confirmations } = scheduled([["confirmed", "confirmed", 1, "u1"]])
+    const leading = database.prepare("UPDATE projects SET name = name WHERE id = 'p1'")
+    await runWithDateUpdates(database, leading, "p1", new Map([["confirmed", MOVED]]), "t2", "failed")
+    expect(confirmations()).toEqual([reasked("confirmed")])
+  })
+})
+
+describe("schedule date writes", () => {
+  it("go through the store's date moves only", () => {
+    const store = readFileSync("src/lib/domain/schedule/store.ts", "utf8")
+    const helperStart = store.indexOf("function dateMoveStatements(")
+    const helper = store.slice(helperStart, store.indexOf("\n}\n", helperStart))
+    const rest = store.replace(helper, "")
+    // Raw SQL outside the helper never sets a schedule item's dates...
+    expect(rest).not.toMatch(/UPDATE schedule_tasks[^`]*\b(start_date|workdays|end_date_calculated)\s*=/)
+    // ...and drizzle updates can't: their value type leaves the date columns out.
+    expect(store).toContain('type TaskUpdate = Omit<Partial<TaskInsert>, "startDate" | "workdays" | "endDateCalculated">')
+    for (const update of rest.split(".update(scheduleTasks)").slice(1)) {
+      const set = update.slice(0, update.indexOf(".where("))
+      expect(set).not.toMatch(/\b(startDate|workdays|endDateCalculated)\b/)
+    }
+    expect(helper).toContain("start_date = ?, end_date_calculated = ?, workdays = COALESCE(?, workdays)")
   })
 })
 

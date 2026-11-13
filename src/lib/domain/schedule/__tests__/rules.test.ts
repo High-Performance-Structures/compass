@@ -231,7 +231,6 @@ describe("scheduleSummary", () => {
 
 describe("taskEditValues", () => {
   const base = {
-    workdays: 3,
     status: "PENDING" as const,
     percentComplete: 0,
     times: null,
@@ -246,7 +245,6 @@ describe("taskEditValues", () => {
     expect(taskEditValues({ ...base, data: { title: "Frame walls", notes: "  " } })).toEqual({
       title: "Frame walls",
       notes: null,
-      workdays: 3,
       status: "PENDING",
       percentComplete: 0,
       updatedAt: base.now,

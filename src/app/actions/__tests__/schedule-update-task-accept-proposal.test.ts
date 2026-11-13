@@ -73,7 +73,7 @@ describe("updateTask accepting a date proposal", () => {
     )
     expect(mocks.acceptConfirmationProposal.mock.invocationCallOrder[0]).toBeLessThan(mocks.batch.mock.invocationCallOrder[0] ?? 0)
     expect(mocks.persistScheduleDateUpdates).toHaveBeenCalledWith(
-      {}, "project-1", new Map([["task-1", { startDate: "2026-09-21", endDateCalculated: expect.any(String) }]]), expect.any(String),
+      {}, "project-1", new Map([["task-1", { startDate: "2026-09-21", endDateCalculated: expect.any(String), workdays: 4 }]]), expect.any(String),
     )
   })
 

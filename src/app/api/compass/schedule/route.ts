@@ -29,8 +29,9 @@ import {
   insertTask,
   recalcCriticalPath,
   setTaskAssignedTo,
+  persistScheduleDateUpdates,
   updateTask,
-  updateTaskDates,
+  type DateMove,
 } from "@/lib/domain/schedule/store"
 import { calculateEndDate } from "@/lib/schedule/business-days"
 import { normalizeScheduleProgress } from "@/lib/schedule/progress"
@@ -42,7 +43,8 @@ import type { Db } from "@/lib/server/action-context"
  * The agent's schedule API. It authenticates with the agent token, then
  * calls the same schedule domain module (store, queries, rules) as the
  * server actions. It keeps its own narrower behavior: it does not shift
- * linked to-dos or reset assignee responses when dates move.
+ * linked to-dos when dates move. Moved items ask their assignees again, as
+ * every date move does (persistScheduleDateUpdates).
  */
 
 type ScheduleAction =
@@ -143,7 +145,7 @@ async function organizationTask(db: Db, orgId: string, taskId: string) {
   return task
 }
 
-async function updateTaskAction(db: Db, orgId: string, body: Body): Promise<Response> {
+async function updateTaskAction(db: Db, database: D1Database, orgId: string, body: Body): Promise<Response> {
   const taskId = body.taskId as string
   if (!taskId) return json({ error: "taskId required" }, 400)
   const task = await organizationTask(db, orgId, taskId)
@@ -173,9 +175,6 @@ async function updateTaskAction(db: Db, orgId: string, body: Body): Promise<Resp
 
     await updateTask(db, taskId, {
       ...(fields.title ? { title: fields.title as string } : {}),
-      startDate,
-      workdays,
-      endDateCalculated: endDate,
       ...(fields.phase ? { phase: fields.phase as string } : {}),
       status: progress.status,
       ...(fields.isMilestone !== undefined ? { isMilestone: fields.isMilestone as boolean } : {}),
@@ -198,13 +197,14 @@ async function updateTaskAction(db: Db, orgId: string, body: Body): Promise<Resp
       workdays,
       endDateCalculated: endDate,
     }
-    const updates = propagateFrom(
+    const updates = new Map<string, DateMove>(propagateFrom(
       taskId,
       tasks.map((row) => (row.id === taskId ? updatedTask : taskWithStatus(row))),
       dependencies.map(dependencyData),
       exceptions
-    )
-    await updateTaskDates(db, updates, new Date().toISOString())
+    ))
+    updates.set(taskId, { startDate, endDateCalculated: endDate, workdays })
+    await persistScheduleDateUpdates(database, task.projectId, updates, new Date().toISOString(), "leave")
   }
 
   if (status) {
@@ -236,7 +236,7 @@ async function deleteTaskAction(db: Db, orgId: string, body: Body): Promise<Resp
   return json({ success: true, message: "Task deleted" })
 }
 
-async function createDependency(db: Db, orgId: string, body: Body): Promise<Response> {
+async function createDependency(db: Db, database: D1Database, orgId: string, body: Body): Promise<Response> {
   const projectId = body.projectId as string
   const predecessorId = body.predecessorId as string
   const successorId = body.successorId as string
@@ -265,7 +265,7 @@ async function createDependency(db: Db, orgId: string, body: Body): Promise<Resp
   const exceptions = await loadProjectExceptions(db, projectId)
   const { tasks } = await projectSchedule(db, projectId)
   const updates = propagateFrom(predecessorId, tasks, [...existingDeps, dependency], exceptions)
-  await updateTaskDates(db, updates, new Date().toISOString())
+  await persistScheduleDateUpdates(database, projectId, updates, new Date().toISOString(), "leave")
 
   await recalcCriticalPath(db, projectId)
   revalidateSchedule(projectId)
@@ -321,11 +321,11 @@ export async function POST(req: Request): Promise<Response> {
       case "createTask":
         return auth.isDemoUser ? DEMO_READ_ONLY() : await createTask(db, auth.orgId, body)
       case "updateTask":
-        return auth.isDemoUser ? DEMO_READ_ONLY() : await updateTaskAction(db, auth.orgId, body)
+        return auth.isDemoUser ? DEMO_READ_ONLY() : await updateTaskAction(db, env.DB, auth.orgId, body)
       case "deleteTask":
         return auth.isDemoUser ? DEMO_READ_ONLY() : await deleteTaskAction(db, auth.orgId, body)
       case "createDependency":
-        return auth.isDemoUser ? DEMO_READ_ONLY() : await createDependency(db, auth.orgId, body)
+        return auth.isDemoUser ? DEMO_READ_ONLY() : await createDependency(db, env.DB, auth.orgId, body)
       case "deleteDependency":
         return auth.isDemoUser ? DEMO_READ_ONLY() : await deleteDependencyAction(db, auth.orgId, body)
       default:
