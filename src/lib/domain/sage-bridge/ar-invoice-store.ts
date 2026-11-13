@@ -32,7 +32,7 @@ const SOURCE_IS_VOID = {
     WHERE src.id = sage_deposit_ar_exports.deposit_id AND src.status = 'void')`),
 } as const
 
-export const VOIDED_WHILE_SENDING = "Voided while Sage was adding it; check Sage."
+const VOIDED_WHILE_SENDING = "Voided while Sage was adding it; check Sage."
 
 /** The export's record isn't void, for the writer polls' candidate lists (same SQL as the claim's). */
 export function sageArExportSourceNotVoid(kind: keyof typeof SOURCE_IS_VOID): SQL {
