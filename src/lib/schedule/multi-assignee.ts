@@ -1,3 +1,11 @@
+import type { ScheduleDatesSeen } from "@/lib/schedule/change-proposal"
+import {
+  answerEvent,
+  assigneeResponseParts,
+  type AssigneeAnswerEvent,
+  type AssigneeResponseColumns,
+} from "@/lib/domain/schedule/assignee-response-machine"
+
 export type ScheduleAssigneeResponse = "confirmed" | "declined" | "proposed"
 
 export type ScheduleAssigneeAudience = "internal" | "owner" | "sub_vendor"
@@ -7,16 +15,16 @@ export type ScheduleAssigneeProposalInput = {
   readonly proposedStartDate?: string | null
   readonly proposedWorkdays?: number | null
   readonly message?: string | null
+  /** The item's dates as the assignee saw them when answering. */
+  readonly seen?: ScheduleDatesSeen
 }
 
-export type ScheduleAssigneeResponseState = {
-  readonly responseStatus: ScheduleAssigneeResponse
-  readonly dateResponseStatus: "confirmed" | "declined" | "proposed" | "pending"
-  readonly durationResponseStatus:
-    | "confirmed"
-    | "declined"
-    | "proposed"
-    | "pending"
+/** An answer ready to record: the machine event, its columns, the proposal. */
+export type ScheduleAssigneeResponseState = AssigneeResponseColumns & {
+  readonly event: AssigneeAnswerEvent
+  readonly proposedStartDate: string | null
+  readonly proposedWorkdays: number | null
+  readonly responseMessage: string | null
 }
 
 /** Compare publication metadata without exposing or depending on ordering. */
@@ -79,17 +87,14 @@ export function scheduleAssigneeResponseState(
     return { error: "Response message must be 2000 characters or less." }
   }
 
-  if (input.response === "confirmed" || input.response === "declined") {
-    return {
-      responseStatus: input.response,
-      dateResponseStatus: input.response,
-      durationResponseStatus: input.response,
-    }
-  }
+  const event = answerEvent(input.response)
+  const proposed = event === "propose"
   return {
-    responseStatus: "proposed",
-    dateResponseStatus: hasDate ? "proposed" : "pending",
-    durationResponseStatus: hasDuration ? "proposed" : "pending",
+    event,
+    ...assigneeResponseParts(event, { date: hasDate, duration: hasDuration }),
+    proposedStartDate: proposed ? input.proposedStartDate?.trim() || null : null,
+    proposedWorkdays: proposed ? input.proposedWorkdays ?? null : null,
+    responseMessage: input.message?.trim() || null,
   }
 }
 

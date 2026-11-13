@@ -10,7 +10,8 @@
  * statement so a caller can put it in one atomic batch with another
  * module's write (for example a linked to-do or the project row).
  */
-import { and, eq, inArray } from "drizzle-orm"
+import { and, eq, exists, inArray, isNull, type SQL } from "drizzle-orm"
+import type { SQLiteColumn } from "drizzle-orm/sqlite-core"
 import type { BatchItem } from "drizzle-orm/batch"
 
 import {
@@ -32,10 +33,16 @@ import type {
 } from "@/lib/schedule/types"
 import { namedAssignee } from "@/lib/schedule/assignees"
 
+import { confirmationMachine, confirmationStatusAfter, type ConfirmationAnswerEvent } from "./confirmation-machine"
+import { assigneeResponseMachine, assigneeResponseParts, type AssigneeAnswerEvent } from "./assignee-response-machine"
 import { loadProjectScheduleRows } from "./queries"
 import { criticalPathChanges, dependencyData, taskWithStatus, type DateUpdates } from "./rules"
+import type { ScheduleAssigneeResponseStatus } from "./statuses"
 
 type TaskInsert = typeof scheduleTasks.$inferInsert
+
+/** Assignee answers once staff move an item or re-ask (the machine's reset). */
+const RESET = assigneeResponseParts("reset")
 type TaskUpdate = Partial<TaskInsert>
 
 /*
@@ -82,17 +89,84 @@ export async function updateTask(db: Db, taskId: string, values: TaskUpdate): Pr
   await db.update(scheduleTasks).set(values).where(eq(scheduleTasks.id, taskId))
 }
 
-/** Updates a task only while it is still assigned to `assignedUserId`. */
-export async function updateTaskForAssignee(
+// Single-assignee confirmations (confirmation-machine.ts). Staff events are
+// written with the item's other edits; these two are compare-and-set.
+
+/** The item as the assignee answered it, read before they answered. */
+export type ConfirmationVersion = {
+  readonly id: string
+  readonly assignedUserId: string
+  readonly startDate: string
+  readonly workdays: number
+  readonly confirmationRequestedAt: string | null
+  readonly confirmationRespondedAt: string | null
+}
+
+/**
+ * Records the assigned account's answer. It lands only while the item still
+ * asks them for one, at the dates and request in `seen`, with no answer since.
+ * Otherwise "already_recorded" when the same answer landed first (a double
+ * submit), and "schedule_changed" when staff moved, re-asked or reassigned.
+ */
+export async function recordConfirmationAnswer(
   db: Db,
-  taskId: string,
-  assignedUserId: string,
-  values: TaskUpdate
-): Promise<void> {
-  await db
+  seen: ConfirmationVersion,
+  event: ConfirmationAnswerEvent,
+  values: Pick<TaskUpdate, "proposedStartDate" | "proposedWorkdays" | "proposalNote" | "proposalSubmittedAt"> & {
+    readonly respondedAt: string
+  }
+): Promise<"recorded" | "already_recorded" | "schedule_changed"> {
+  const rule = confirmationMachine.transitions[event]
+  const { respondedAt, ...proposal } = values
+  const sameRequest = and(
+    eq(scheduleTasks.id, seen.id),
+    eq(scheduleTasks.assignedUserId, seen.assignedUserId),
+    eq(scheduleTasks.startDate, seen.startDate),
+    eq(scheduleTasks.workdays, seen.workdays),
+    sameText(scheduleTasks.confirmationRequestedAt, seen.confirmationRequestedAt)
+  )
+  const result = await db
     .update(scheduleTasks)
-    .set(values)
-    .where(and(eq(scheduleTasks.id, taskId), eq(scheduleTasks.assignedUserId, assignedUserId)))
+    .set({ ...proposal, confirmationStatus: rule.to, confirmationRespondedAt: respondedAt, updatedAt: respondedAt })
+    .where(
+      and(
+        sameRequest,
+        eq(scheduleTasks.confirmationRequired, true),
+        inArray(scheduleTasks.confirmationStatus, [...rule.from]),
+        sameText(scheduleTasks.confirmationRespondedAt, seen.confirmationRespondedAt)
+      )
+    )
+    .run()
+  if (result.meta.changes > 0) return "recorded"
+  const latest = await db
+    .select({ id: scheduleTasks.id })
+    .from(scheduleTasks)
+    .where(and(sameRequest, eq(scheduleTasks.confirmationStatus, rule.to)))
+    .get()
+  return latest ? "already_recorded" : "schedule_changed"
+}
+
+/** Staff turned a proposal down: asked again. False when no proposal is waiting. */
+export async function rejectConfirmationProposal(db: Db, taskId: string, now: string): Promise<boolean> {
+  const rule = confirmationMachine.transitions.reject_proposal
+  const result = await db
+    .update(scheduleTasks)
+    .set({
+      confirmationStatus: rule.to,
+      confirmationRespondedAt: null,
+      proposedStartDate: null,
+      proposedWorkdays: null,
+      proposalNote: null,
+      proposalSubmittedAt: null,
+      updatedAt: now,
+    })
+    .where(and(eq(scheduleTasks.id, taskId), inArray(scheduleTasks.confirmationStatus, [...rule.from])))
+    .run()
+  return result.meta.changes > 0
+}
+
+function sameText(column: SQLiteColumn, value: string | null): SQL | undefined {
+  return value === null ? isNull(column) : eq(column, value)
 }
 
 export async function markTaskReminderSent(
@@ -155,7 +229,8 @@ export async function assignProjectTasks(
         .set({
           assignedTo,
           assignedUserId: null,
-          confirmationStatus: task.confirmationRequired ? "unavailable" : "not_requested",
+          // A bulk assignee is a name only: the request waits for an account.
+          confirmationStatus: confirmationStatusAfter(task.confirmationRequired ? "await_account" : "stop"),
           confirmationRequestedAt: task.confirmationRequired ? now : null,
           confirmationRespondedAt: null,
           reminderSentAt: null,
@@ -246,9 +321,9 @@ export async function persistScheduleDateUpdates(
           `UPDATE schedule_task_assignees
            SET source_start_date = ?,
                source_end_date = ?,
-               response_status = 'pending',
-               date_response_status = 'pending',
-               duration_response_status = 'pending',
+               response_status = ?,
+               date_response_status = ?,
+               duration_response_status = ?,
                proposed_start_date = NULL,
                proposed_workdays = NULL,
                proposed_end_date = NULL,
@@ -260,7 +335,16 @@ export async function persistScheduleDateUpdates(
                updated_at = ?
            WHERE schedule_task_id = ?`
         )
-        .bind(dates.startDate, dates.endDateCalculated, updatedAt, updatedAt, taskId),
+        .bind(
+          dates.startDate,
+          dates.endDateCalculated,
+          RESET.responseStatus,
+          RESET.dateResponseStatus,
+          RESET.durationResponseStatus,
+          updatedAt,
+          updatedAt,
+          taskId
+        ),
     ])
     await runD1Batch(database, statements, "Schedule date update batch failed")
   }
@@ -312,7 +396,7 @@ export function templateTaskInsertStatement(
         confirmation_required, confirmation_status, sort_order,
         created_at, updated_at, notes
       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'PENDING', 0, ?, 0, ?, NULL,
-        ?, ?, 0, 'not_requested', ?, ?, ?, ?)`
+        ?, ?, 0, ?, ?, ?, ?, ?)`
     )
     .bind(
       task.id,
@@ -327,6 +411,7 @@ export function templateTaskInsertStatement(
       task.assignedTo,
       task.ownerVisible ? 1 : 0,
       task.subVendorVisible ? 1 : 0,
+      confirmationMachine.initial,
       task.sortOrder,
       now,
       now,
@@ -397,9 +482,7 @@ export function resetTaskAssigneesQuery(
       sourceStartDate: source.startDate,
       sourceWorkdays: source.workdays,
       sourceEndDate: source.endDate,
-      responseStatus: "pending",
-      dateResponseStatus: "pending",
-      durationResponseStatus: "pending",
+      ...RESET,
       proposedStartDate: null,
       proposedWorkdays: null,
       proposedEndDate: null,
@@ -413,12 +496,88 @@ export function resetTaskAssigneesQuery(
     .where(eq(scheduleTaskAssignees.scheduleTaskId, taskId))
 }
 
+/**
+ * The assignment as the assignee answered it, read before they answered:
+ * the row's assigned_at (set again by every reset), its last responded_at,
+ * and the item's dates.
+ */
+export type AssigneeResponseVersion = {
+  readonly id: string
+  readonly assignedAt: string
+  readonly respondedAt: string | null
+  readonly startDate: string
+  readonly workdays: number
+}
+
+/**
+ * Records an assignee's answer (assignee-response-machine.ts). It lands only
+ * while the row and its item are still at `seen`. Otherwise it reports
+ * "already_recorded" when the same person's same answer landed first (a
+ * double submit), and "schedule_changed" when staff moved, re-asked or
+ * reassigned in the meantime, or another answer landed.
+ */
 export async function recordAssigneeResponse(
   db: Db,
-  assignmentId: string,
-  values: Partial<typeof scheduleTaskAssignees.$inferInsert>
-): Promise<void> {
-  await db.update(scheduleTaskAssignees).set(values).where(eq(scheduleTaskAssignees.id, assignmentId))
+  seen: AssigneeResponseVersion,
+  answer: {
+    readonly event: AssigneeAnswerEvent
+    readonly dateResponseStatus: ScheduleAssigneeResponseStatus
+    readonly durationResponseStatus: ScheduleAssigneeResponseStatus
+    readonly proposedStartDate: string | null
+    readonly proposedWorkdays: number | null
+    readonly responseMessage: string | null
+  },
+  by: { readonly respondedAt: string; readonly respondedByUserId: string; readonly responseSource: string }
+): Promise<"recorded" | "already_recorded" | "schedule_changed"> {
+  const rule = assigneeResponseMachine.transitions[answer.event]
+  const result = await db
+    .update(scheduleTaskAssignees)
+    .set({
+      responseStatus: rule.to,
+      dateResponseStatus: answer.dateResponseStatus,
+      durationResponseStatus: answer.durationResponseStatus,
+      proposedStartDate: answer.proposedStartDate,
+      proposedWorkdays: answer.proposedWorkdays,
+      responseMessage: answer.responseMessage,
+      ...by,
+      updatedAt: by.respondedAt,
+    })
+    .where(
+      and(
+        eq(scheduleTaskAssignees.id, seen.id),
+        inArray(scheduleTaskAssignees.responseStatus, [...rule.from]),
+        eq(scheduleTaskAssignees.assignedAt, seen.assignedAt),
+        sameText(scheduleTaskAssignees.respondedAt, seen.respondedAt),
+        exists(
+          db
+            .select({ id: scheduleTasks.id })
+            .from(scheduleTasks)
+            .where(
+              and(
+                eq(scheduleTasks.id, scheduleTaskAssignees.scheduleTaskId),
+                eq(scheduleTasks.startDate, seen.startDate),
+                eq(scheduleTasks.workdays, seen.workdays)
+              )
+            )
+        )
+      )
+    )
+    .run()
+  if (result.meta.changes > 0) return "recorded"
+  const latest = await db
+    .select({
+      assignedAt: scheduleTaskAssignees.assignedAt,
+      responseStatus: scheduleTaskAssignees.responseStatus,
+      respondedByUserId: scheduleTaskAssignees.respondedByUserId,
+    })
+    .from(scheduleTaskAssignees)
+    .where(eq(scheduleTaskAssignees.id, seen.id))
+    .get()
+  const sameAnswer =
+    latest?.assignedAt === seen.assignedAt &&
+    latest.respondedByUserId === by.respondedByUserId &&
+    latest.responseStatus === rule.to
+  return sameAnswer ? "already_recorded" : "schedule_changed"
 }
 
 // ---------------------------------------------------------------------------

@@ -66,6 +66,8 @@ function ScheduleResponse({
     setError(null)
     setResponse(next)
   }
+  // The dates on screen, so an answer to dates staff moved since is refused.
+  const seen = { startDate: item.startDate, workdays: item.workdays }
   const submit = (): void => {
     if (response === null) return
     startTransition(async () => {
@@ -76,17 +78,14 @@ function ScheduleResponse({
             ? await respondToScheduleTaskAssignee(target.id, {
                 response,
                 message: note,
+                seen,
                 ...(response === "proposed"
                   ? { proposedStartDate: startDate, proposedWorkdays: workdays }
                   : {})
               })
             : response === "proposed"
-              ? await proposeScheduleTaskChange(item.id, {
-                  startDate,
-                  workdays,
-                  note
-                })
-              : await respondToScheduleTaskConfirmation(item.id, response, note)
+              ? await proposeScheduleTaskChange(item.id, { startDate, workdays, note, seen })
+              : await respondToScheduleTaskConfirmation(item.id, response, note, seen)
         if (!result.success) {
           setError(result.error)
           return

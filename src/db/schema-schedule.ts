@@ -15,6 +15,7 @@ import {
 
 import {
   DEPENDENCY_TYPES,
+  SCHEDULE_CONFIRMATION_STATUSES,
   SCHEDULE_DONE_BY,
   SCHEDULE_TASK_STATUSES,
   STORED_SCHEDULE_LINK_TYPES,
@@ -131,7 +132,8 @@ export const scheduleTasks = sqliteTable("schedule_tasks", {
   confirmationRequired: integer("confirmation_required", { mode: "boolean" })
     .notNull()
     .default(false),
-  confirmationStatus: text("confirmation_status")
+  // Moved only by domain/schedule/confirmation-machine.ts.
+  confirmationStatus: text("confirmation_status", { enum: SCHEDULE_CONFIRMATION_STATUSES })
     .notNull()
     .default("not_requested"),
   confirmationRequestedAt: text("confirmation_requested_at"),

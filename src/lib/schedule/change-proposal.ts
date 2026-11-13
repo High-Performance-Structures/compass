@@ -4,7 +4,11 @@ export type ScheduleChangeProposalInput = {
   readonly startDate: string
   readonly workdays: number
   readonly note?: string
+  /** The item's dates as the assignee saw them when proposing. */
+  readonly seen?: ScheduleDatesSeen
 }
+
+export type ScheduleDatesSeen = { readonly startDate: string; readonly workdays: number }
 
 type ValidScheduleChangeProposal = {
   readonly startDate: string

@@ -11,6 +11,7 @@ import {
   PARTICIPANT_MEMBERSHIP_STATUSES,
   PARTICIPANT_REVIEW_STATUSES,
 } from "../lib/domain/documents/statuses"
+import { SCHEDULE_ASSIGNEE_RESPONSES } from "../lib/domain/schedule/statuses"
 import { organizations, projectContacts, projects, scheduleTasks, teams, users } from "./schema"
 
 /**
@@ -108,11 +109,12 @@ export const scheduleTaskAssignees = sqliteTable(
     sourceStartDate: text("source_start_date").notNull(),
     sourceWorkdays: integer("source_workdays").notNull(),
     sourceEndDate: text("source_end_date").notNull(),
-    responseStatus: text("response_status").notNull().default("pending"),
-    dateResponseStatus: text("date_response_status")
+    // Moved only by domain/schedule/assignee-response-machine.ts.
+    responseStatus: text("response_status", { enum: SCHEDULE_ASSIGNEE_RESPONSES }).notNull().default("pending"),
+    dateResponseStatus: text("date_response_status", { enum: SCHEDULE_ASSIGNEE_RESPONSES })
       .notNull()
       .default("pending"),
-    durationResponseStatus: text("duration_response_status")
+    durationResponseStatus: text("duration_response_status", { enum: SCHEDULE_ASSIGNEE_RESPONSES })
       .notNull()
       .default("pending"),
     proposedStartDate: text("proposed_start_date"),

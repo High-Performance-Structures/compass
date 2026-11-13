@@ -5,7 +5,14 @@
  * and the agent API share exactly the same decisions.
  */
 import type { scheduleTasks } from "@/db/schema"
-import { DEPENDENCY_TYPES, SCHEDULE_DONE_BY, SCHEDULE_TASK_STATUSES, type ScheduleDoneBy } from "@/lib/domain/schedule/statuses"
+import { confirmationStatusAfter } from "@/lib/domain/schedule/confirmation-machine"
+import {
+  DEPENDENCY_TYPES,
+  SCHEDULE_DONE_BY,
+  SCHEDULE_TASK_STATUSES,
+  type ScheduleConfirmationStatus,
+  type ScheduleDoneBy,
+} from "@/lib/domain/schedule/statuses"
 import { isListValue } from "@/lib/shared/statuses"
 import { findCriticalPath } from "@/lib/schedule/critical-path"
 import {
@@ -356,7 +363,8 @@ export function taskEditValues(input: {
   readonly times: { readonly startTime: string | null; readonly endTime: string | null } | null
   readonly assignedUserId: string | null
   readonly confirmationRequired: boolean
-  readonly restartConfirmation: { readonly status: string; readonly requestedAt: string | null } | null
+  /** From newScheduleConfirmationState: a staff event of confirmation-machine.ts. */
+  readonly restartConfirmation: { readonly status: ScheduleConfirmationStatus; readonly requestedAt: string | null } | null
   readonly acceptChangeProposal: boolean
   readonly now: string
 }): Partial<typeof scheduleTasks.$inferInsert> {
@@ -388,7 +396,7 @@ export function taskEditValues(input: {
       : {}),
     ...(input.acceptChangeProposal
       ? {
-          confirmationStatus: input.confirmationRequired ? "pending" : "not_requested",
+          confirmationStatus: confirmationStatusAfter(input.confirmationRequired ? "request" : "stop"),
           confirmationRequestedAt: input.confirmationRequired ? input.now : null,
           ...CLEARED_PROPOSAL,
         }
