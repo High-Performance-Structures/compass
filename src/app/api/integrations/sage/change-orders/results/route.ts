@@ -48,6 +48,7 @@ export async function POST(request: Request): Promise<Response> {
   const staleOrRepeat = async (): Promise<Response> => {
     const recorded = await sageResultAlreadyRecorded(db, "sage_change_order_exports", {
       id: result.id, organizationId, claimToken: result.claimToken, statuses: [result.outcome],
+      sageRecordId: result.outcome === "succeeded" ? result.sageRecordId : null,
     })
     return recorded
       ? Response.json({ success: true, status: recorded, alreadyRecorded: true })

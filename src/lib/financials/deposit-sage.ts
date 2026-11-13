@@ -9,6 +9,7 @@ import { depositNumberFormat, depositRequestSequences } from "@/lib/deposits/dep
 import type { ArInvoicePlan } from "@/lib/domain/sage-bridge/ar-invoice-rules"
 import {
   claimSageDepositArExport,
+  sageArExportSourceNotVoid,
   updateSageDepositArExportsStatement,
   upsertSageDepositArExport,
 } from "@/lib/domain/sage-bridge/ar-invoice-store"
@@ -188,7 +189,8 @@ export async function claimDepositWriterRequests(
     .where(
       and(
         eq(sageDepositArExports.organizationId, organizationId),
-        or(eq(sageDepositArExports.status, "queued"), and(eq(sageDepositArExports.status, "running"), lt(sageDepositArExports.claimedAt, staleBefore)))
+        // A void deposit's queued export is never offered (a stale running one is, so the claim can flag it).
+        or(and(eq(sageDepositArExports.status, "queued"), sageArExportSourceNotVoid("deposit")), and(eq(sageDepositArExports.status, "running"), lt(sageDepositArExports.claimedAt, staleBefore)))
       )
     )
     .orderBy(asc(sageDepositArExports.requestedAt))

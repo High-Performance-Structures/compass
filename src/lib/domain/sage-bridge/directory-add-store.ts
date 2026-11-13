@@ -1,4 +1,4 @@
-import { and, eq, inArray, type SQL } from "drizzle-orm"
+import { and, eq, inArray, sql, type SQL } from "drizzle-orm"
 import type { SQLiteInsertValue } from "drizzle-orm/sqlite-core"
 
 import { sageDirectoryAddRequests } from "@/db/schema-sage"
@@ -50,7 +50,11 @@ export async function moveSageDirectoryAddRequest(
   return result.meta.changes
 }
 
-/** Points a sent request at the writer request already queued for it (no status change). True when it did. */
+/**
+ * Points a sent request at the writer request already there for it (no status
+ * change), only while that writer request is still live or done (not
+ * cancelled), checked in the same statement. True when it did.
+ */
 export async function relinkSageDirectoryAddOperation(
   db: Db,
   input: { readonly id: string; readonly organizationId: string; readonly fromOperationId: string; readonly toOperationId: string; readonly now: string }
@@ -61,8 +65,38 @@ export async function relinkSageDirectoryAddOperation(
       eq(sageDirectoryAddRequests.id, input.id),
       eq(sageDirectoryAddRequests.organizationId, input.organizationId),
       eq(sageDirectoryAddRequests.status, directoryAddMachine.transitions.send.to),
-      eq(sageDirectoryAddRequests.writeOperationId, input.fromOperationId)
+      eq(sageDirectoryAddRequests.writeOperationId, input.fromOperationId),
+      sql`EXISTS (SELECT 1 FROM sage_client_project_write_operations op
+        WHERE op.id = ${input.toOperationId} AND op.status IN ('queued', 'running', 'succeeded'))`
     ))
     .run()
   return result.meta.changes === 1
+}
+
+/**
+ * succeed / fail as a raw statement for the writer result's batch: the sent
+ * request for `operationId`, only while `guard` (the result's success under
+ * its lease) holds.
+ */
+export function sageDirectoryAddOutcomeStatement(
+  database: D1Database,
+  input: {
+    readonly requestId: string
+    readonly organizationId: string
+    readonly operationId: string
+    readonly event: "succeed" | "fail"
+    readonly sageRecordId: string | null
+    readonly sageRecordNumber: string | null
+    readonly errorMessage: string | null
+    readonly now: string
+    readonly guard: { readonly sql: string; readonly binds: readonly unknown[] }
+  }
+): D1PreparedStatement {
+  const { from, to } = directoryAddMachine.transitions[input.event]
+  return database.prepare(
+    `UPDATE sage_directory_add_requests
+       SET status = ?, sage_record_id = ?, sage_record_number = ?, error_message = ?, completed_at = ?, updated_at = ?
+       WHERE id = ? AND organization_id = ? AND write_operation_id = ? AND status IN (${from.map(() => "?").join(", ")}) AND ${input.guard.sql}`
+  ).bind(to, input.sageRecordId, input.sageRecordNumber, input.errorMessage, input.now, input.now,
+    input.requestId, input.organizationId, input.operationId, ...from, ...input.guard.binds)
 }

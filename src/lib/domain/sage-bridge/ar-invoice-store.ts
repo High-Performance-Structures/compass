@@ -7,7 +7,8 @@
  * Sage bridge. No auth here: callers resolve access or verify the bridge
  * signature first.
  */
-import { and, eq, inArray, lt, or, sql, type SQL } from "drizzle-orm"
+import { and, eq, inArray, isNull, lt, or, sql, type SQL } from "drizzle-orm"
+import type { SQLiteColumn } from "drizzle-orm/sqlite-core"
 
 import { sageArInvoiceExports, sageDepositArExports, sageInvoiceArExports } from "@/db/schema-sage"
 import { arInvoiceExportMachine, sourcesInto } from "@/lib/domain/sage-bridge/machines"
@@ -30,6 +31,22 @@ const SOURCE_IS_VOID = {
   deposit: sql.raw(`EXISTS (SELECT 1 FROM project_contract_deposits src
     WHERE src.id = sage_deposit_ar_exports.deposit_id AND src.status = 'void')`),
 } as const
+
+const VOIDED_WHILE_SENDING = "Voided while Sage was adding it; check Sage."
+
+/** The export's record isn't void, for the writer polls' candidate lists (same SQL as the claim's). */
+export function sageArExportSourceNotVoid(kind: keyof typeof SOURCE_IS_VOID): SQL {
+  return sql`NOT ${SOURCE_IS_VOID[kind]}`
+}
+
+/**
+ * cancel's fence: a source state of the event, and not in Sage. A row the
+ * writer added (needs_attention after Sage's total read back differently, say)
+ * carries Sage's record id and is never cancelled; it is voided in Sage.
+ */
+function cancellable(columns: { readonly status: SQLiteColumn; readonly sageRecordId: SQLiteColumn }): SQL | undefined {
+  return and(inArray(columns.status, [...arInvoiceExportMachine.transitions.cancel.from]), isNull(columns.sageRecordId))
+}
 
 /** The states the machine may move a row from into `status`: every update below is also fenced on them. */
 function mayEnter(status: SageArInvoiceExportStatus): SageArInvoiceExportStatus[] {
@@ -125,13 +142,23 @@ export async function claimSageArInvoiceExport(
     )
     .returning({ id: sageArInvoiceExports.id })
   if (claimed.length > 0) return true
-  // Queued (or failed) for a record voided since: cancelled, so it stops being offered.
+  // Queued (or failed) for a record voided since, and not in Sage: cancelled, so it stops being offered.
   await db.update(sageArInvoiceExports)
     .set({ status: arInvoiceExportMachine.transitions.cancel.to, claimToken: null, completedAt: input.now, updatedAt: input.now })
     .where(and(
       eq(sageArInvoiceExports.id, input.id),
       eq(sageArInvoiceExports.organizationId, input.organizationId),
-      inArray(sageArInvoiceExports.status, [...arInvoiceExportMachine.transitions.cancel.from]),
+      cancellable(sageArInvoiceExports),
+      SOURCE_IS_VOID.pay
+    ))
+  // Running for a record voided since, and stale: never offered again; staff check Sage.
+  await db.update(sageArInvoiceExports)
+    .set({ status: arInvoiceExportMachine.transitions.flag.to, claimToken: null, errorMessage: VOIDED_WHILE_SENDING, completedAt: input.now, updatedAt: input.now })
+    .where(and(
+      eq(sageArInvoiceExports.id, input.id),
+      eq(sageArInvoiceExports.organizationId, input.organizationId),
+      eq(sageArInvoiceExports.status, "running"),
+      lt(sageArInvoiceExports.claimedAt, input.staleBefore),
       SOURCE_IS_VOID.pay
     ))
   return false
@@ -175,7 +202,7 @@ export async function cancelSageArInvoiceExport(
     eq(sageArInvoiceExports.organizationId, input.organizationId)
   )
   // Fenced on the status, so a claim that lands first wins and this reports it.
-  const cancelled = await exportUpdate(db, and(forApplication, inArray(sageArInvoiceExports.status, [...arInvoiceExportMachine.transitions.cancel.from])), {
+  const cancelled = await exportUpdate(db, and(forApplication, cancellable(sageArInvoiceExports)), {
     status: "cancelled",
     claimToken: null,
     completedAt: input.now,
@@ -273,13 +300,23 @@ export async function claimSageInvoiceArExport(
     )
     .returning({ id: sageInvoiceArExports.id })
   if (claimed.length > 0) return true
-  // Queued (or failed) for a record voided since: cancelled, so it stops being offered.
+  // Queued (or failed) for a record voided since, and not in Sage: cancelled, so it stops being offered.
   await db.update(sageInvoiceArExports)
     .set({ status: arInvoiceExportMachine.transitions.cancel.to, claimToken: null, completedAt: input.now, updatedAt: input.now })
     .where(and(
       eq(sageInvoiceArExports.id, input.id),
       eq(sageInvoiceArExports.organizationId, input.organizationId),
-      inArray(sageInvoiceArExports.status, [...arInvoiceExportMachine.transitions.cancel.from]),
+      cancellable(sageInvoiceArExports),
+      SOURCE_IS_VOID.invoice
+    ))
+  // Running for a record voided since, and stale: never offered again; staff check Sage.
+  await db.update(sageInvoiceArExports)
+    .set({ status: arInvoiceExportMachine.transitions.flag.to, claimToken: null, errorMessage: VOIDED_WHILE_SENDING, completedAt: input.now, updatedAt: input.now })
+    .where(and(
+      eq(sageInvoiceArExports.id, input.id),
+      eq(sageInvoiceArExports.organizationId, input.organizationId),
+      eq(sageInvoiceArExports.status, "running"),
+      lt(sageInvoiceArExports.claimedAt, input.staleBefore),
       SOURCE_IS_VOID.invoice
     ))
   return false
@@ -308,7 +345,7 @@ export async function cancelSageInvoiceArExport(
   input: { readonly organizationId: string; readonly invoiceId: string; readonly now: string }
 ): Promise<boolean> {
   const forInvoice = and(eq(sageInvoiceArExports.invoiceId, input.invoiceId), eq(sageInvoiceArExports.organizationId, input.organizationId))
-  const cancelled = await invoiceExportUpdate(db, and(forInvoice, inArray(sageInvoiceArExports.status, [...arInvoiceExportMachine.transitions.cancel.from])), {
+  const cancelled = await invoiceExportUpdate(db, and(forInvoice, cancellable(sageInvoiceArExports)), {
     status: "cancelled",
     claimToken: null,
     completedAt: input.now,
@@ -331,7 +368,7 @@ export function cancelSageInvoiceArExportStatement(
   return invoiceExportUpdate(db, and(
     eq(sageInvoiceArExports.invoiceId, input.invoiceId),
     eq(sageInvoiceArExports.organizationId, input.organizationId),
-    inArray(sageInvoiceArExports.status, [...arInvoiceExportMachine.transitions.cancel.from]),
+    cancellable(sageInvoiceArExports),
     input.when
   ), { status: "cancelled", claimToken: null, completedAt: input.now, updatedAt: input.now })
 }
@@ -423,13 +460,23 @@ export async function claimSageDepositArExport(
     )
     .returning({ id: sageDepositArExports.id })
   if (claimed.length > 0) return true
-  // Queued (or failed) for a record voided since: cancelled, so it stops being offered.
+  // Queued (or failed) for a record voided since, and not in Sage: cancelled, so it stops being offered.
   await db.update(sageDepositArExports)
     .set({ status: arInvoiceExportMachine.transitions.cancel.to, claimToken: null, completedAt: input.now, updatedAt: input.now })
     .where(and(
       eq(sageDepositArExports.id, input.id),
       eq(sageDepositArExports.organizationId, input.organizationId),
-      inArray(sageDepositArExports.status, [...arInvoiceExportMachine.transitions.cancel.from]),
+      cancellable(sageDepositArExports),
+      SOURCE_IS_VOID.deposit
+    ))
+  // Running for a record voided since, and stale: never offered again; staff check Sage.
+  await db.update(sageDepositArExports)
+    .set({ status: arInvoiceExportMachine.transitions.flag.to, claimToken: null, errorMessage: VOIDED_WHILE_SENDING, completedAt: input.now, updatedAt: input.now })
+    .where(and(
+      eq(sageDepositArExports.id, input.id),
+      eq(sageDepositArExports.organizationId, input.organizationId),
+      eq(sageDepositArExports.status, "running"),
+      lt(sageDepositArExports.claimedAt, input.staleBefore),
       SOURCE_IS_VOID.deposit
     ))
   return false
@@ -458,7 +505,7 @@ export async function cancelSageDepositArExport(
   input: { readonly organizationId: string; readonly depositId: string; readonly now: string }
 ): Promise<boolean> {
   const forDeposit = and(eq(sageDepositArExports.depositId, input.depositId), eq(sageDepositArExports.organizationId, input.organizationId))
-  const cancelled = await depositExportUpdate(db, and(forDeposit, inArray(sageDepositArExports.status, [...arInvoiceExportMachine.transitions.cancel.from])), {
+  const cancelled = await depositExportUpdate(db, and(forDeposit, cancellable(sageDepositArExports)), {
     status: "cancelled",
     claimToken: null,
     completedAt: input.now,

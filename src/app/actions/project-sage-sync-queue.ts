@@ -31,14 +31,19 @@ function linesOfQueued(now: string): SQL {
     AND op.sync_status = 'queued_sage' AND op.updated_at = ${now})`
 }
 
-/** How many of the project's operations this queue write (stamped `now`) actually moved. */
-async function queuedCount(db: Parameters<typeof loadSageSyncQueue>[0], projectId: string, now: string): Promise<number> {
-  const rows = await db.select({ id: projectOperations.id }).from(projectOperations).where(and(
-    eq(projectOperations.projectId, projectId),
-    eq(projectOperations.syncStatus, "queued_sage"),
-    eq(projectOperations.updatedAt, now),
-  ))
-  return rows.length
+/** How many of `ids` this queue write (stamped `now`) actually moved. */
+async function queuedCount(db: Parameters<typeof loadSageSyncQueue>[0], projectId: string, ids: readonly string[], now: string): Promise<number> {
+  let count = 0
+  for (const chunk of chunkD1Values(ids)) {
+    const rows = await db.select({ id: projectOperations.id }).from(projectOperations).where(and(
+      eq(projectOperations.projectId, projectId),
+      inArray(projectOperations.id, [...chunk]),
+      eq(projectOperations.syncStatus, "queued_sage"),
+      eq(projectOperations.updatedAt, now),
+    ))
+    count += rows.length
+  }
+  return count
 }
 
 /*
@@ -83,7 +88,7 @@ export async function queueProjectOperationForSageSync(
     revalidatePath(`/dashboard/projects/${projectId}/schedule`)
     revalidatePath("/dashboard")
     // The item changed (the bridge synced it, say) since it was read: nothing was queued.
-    if ((await queuedCount(db, projectId, now)) === 0) {
+    if ((await queuedCount(db, projectId, [operationId], now)) === 0) {
       return { success: false, error: "This item changed while you were queuing it. Refresh and try again." }
     }
     return { success: true, updatedCount: 1 }
@@ -129,7 +134,7 @@ export async function queueProjectOperationsForSageSync(projectId: string): Prom
     revalidatePath(`/dashboard/projects/${projectId}/purchase-orders`)
     revalidatePath("/dashboard")
     // Items synced or changed since they were read are left as they are and not counted.
-    const updatedCount = await queuedCount(db, projectId, now)
+    const updatedCount = await queuedCount(db, projectId, readyIds, now)
     if (updatedCount === 0) return { success: false, error: "No Sage-ready items to queue." }
     return { success: true, updatedCount }
   } catch (error) {

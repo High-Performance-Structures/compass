@@ -51,7 +51,7 @@ export async function POST(request: Request): Promise<Response> {
   // the writer stops its whole run on any non-2xx answer.
   const staleOrRepeat = async (): Promise<Response> => {
     const recorded = await sageResultAlreadyRecorded(db, "sage_estimate_exports", {
-      id: result.id, organizationId, claimToken: result.claimToken, statuses: result.outcome === "succeeded" ? ["succeeded"] : ["failed", "needs_attention"],
+      id: result.id, organizationId, claimToken: result.claimToken, statuses: result.outcome === "succeeded" ? ["succeeded"] : [result.needsAttention ? "needs_attention" : "failed"],
     })
     return recorded
       ? Response.json({ success: true, status: recorded, alreadyRecorded: true })

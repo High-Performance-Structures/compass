@@ -9,7 +9,7 @@ import { recordActivityEvent, type ActivityActor } from "@/lib/activity-log"
 import { insertSageContactCreateEvent, insertSageContactCreateProposal } from "@/lib/domain/sage-bridge/contact-store"
 import { moveSageDirectoryAddRequest, relinkSageDirectoryAddOperation } from "@/lib/domain/sage-bridge/directory-add-store"
 import type { SageDirectoryAddKind } from "@/lib/domain/sage-bridge/statuses"
-import { insertSageClientProjectWriteOperation } from "@/lib/domain/sage-bridge/store"
+import { insertSageClientProjectWriteOperation, updateSageClientProjectWriteOperations } from "@/lib/domain/sage-bridge/store"
 import { readFeatureSettings } from "@/lib/feature-settings/server"
 import { isSageAddApprover } from "@/lib/feature-settings/sage-add-request-settings"
 import { createSystemNotificationEvent, type NotificationRecipientInput } from "@/lib/notifications/create-event"
@@ -145,7 +145,7 @@ export async function recordSageAddActivity(
   })
 }
 
-type QueueResult = { readonly status: "sent" | "approved" | "cancelled"; readonly error: string | null }
+type QueueResult = { readonly status: "sent" | "approved" | "cancelled" | "succeeded"; readonly error: string | null }
 
 /**
  * Queues an approved request for the Sage writer: a company as a client/job
@@ -185,20 +185,35 @@ export async function queueApprovedSageAdd(db: Db, request: AddRequestRow, appro
 
   let queued = await queueWriterRequest(db, request, { operationId, approverUserId, now, companyFields, personFields, parent })
   if (queued !== null && isCompany) {
-    // The writer request's key is per add request: one already waiting for it
-    // (an earlier send that went half way) is this request's, so link it.
-    const existing = await db.select({ id: sageClientProjectWriteOperations.id, status: sageClientProjectWriteOperations.status })
-      .from(sageClientProjectWriteOperations).where(and(
-        eq(sageClientProjectWriteOperations.organizationId, request.organizationId),
-        eq(sageClientProjectWriteOperations.idempotencyKey, `sage-add:${request.id}`),
-      )).get()
-    if (existing && (existing.status === "queued" || existing.status === "running")) {
+    // The writer request's key is per add request: one already there is this
+    // request's (an earlier send that went half way). Link it: a failed one is
+    // sent again, a succeeded one's answer is recorded now.
+    const existing = await db.select().from(sageClientProjectWriteOperations).where(and(
+      eq(sageClientProjectWriteOperations.organizationId, request.organizationId),
+      eq(sageClientProjectWriteOperations.idempotencyKey, `sage-add:${request.id}`),
+    )).get()
+    if (existing) {
+      if (existing.status === "failed") {
+        await updateSageClientProjectWriteOperations(db,
+          { status: "queued", claimToken: null, claimedAt: null, errorMessage: null, completedAt: null, updatedAt: now },
+          and(eq(sageClientProjectWriteOperations.id, existing.id), eq(sageClientProjectWriteOperations.status, "failed")))
+      }
       const linked = await relinkSageDirectoryAddOperation(db, {
         id: request.id, organizationId: request.organizationId, fromOperationId: operationId, toOperationId: existing.id, now,
       })
+      if (linked && existing.status === "succeeded") {
+        const vendor = request.kind === "vendor_company"
+        await recordSageAddOutcome(db, {
+          operationId: existing.id, organizationId: request.organizationId, outcome: "succeeded",
+          sageRecordId: vendor ? existing.sageVendorId : existing.sageClientId,
+          sageRecordNumber: vendor ? existing.sageVendorNumber : existing.sageClientNumber,
+          error: null, now,
+        })
+        return { status: "succeeded", error: null }
+      }
       if (linked) return { status: "sent", error: null }
+      queued = `Sage already has a ${existing.status} write for this request. Check the Sage queue.`
     }
-    if (existing) queued = `Sage already has a ${existing.status} write for this request. Check the Sage queue.`
   }
   if (queued !== null) {
     await moveSageDirectoryAddRequest(db, {
@@ -302,22 +317,10 @@ async function personParent(db: Db, request: AddRequestRow): Promise<{ readonly 
  */
 export async function recordSageAddOutcome(
   db: Db,
-  input: {
-    readonly operationId: string
-    readonly organizationId: string
-    readonly outcome: "succeeded" | "failed"
-    readonly sageRecordId: string | null
-    readonly sageRecordNumber: string | null
-    readonly error: string | null
-    readonly now: string
-  }
+  input: SageAddOutcome & { readonly operationId: string; readonly organizationId: string }
 ): Promise<void> {
   try {
-    const request = await db.select().from(sageDirectoryAddRequests).where(and(
-      eq(sageDirectoryAddRequests.organizationId, input.organizationId),
-      eq(sageDirectoryAddRequests.writeOperationId, input.operationId),
-      eq(sageDirectoryAddRequests.status, "sent"),
-    )).get()
+    const request = await findSentSageAddRequest(db, input)
     if (!request) return
     const changed = await moveSageDirectoryAddRequest(db, {
       id: request.id, organizationId: request.organizationId, event: input.outcome === "succeeded" ? "succeed" : "fail",
@@ -328,6 +331,36 @@ export async function recordSageAddOutcome(
       },
     })
     if (changed === 0) return
+    await announceSageAddOutcome(db, request, input)
+  } catch (error) {
+    // Never fails the writer's result; the write itself is already recorded.
+    console.error("Could not record the Sage add request outcome", error)
+  }
+}
+
+export type SageAddOutcome = {
+  readonly outcome: "succeeded" | "failed"
+  readonly sageRecordId: string | null
+  readonly sageRecordNumber: string | null
+  readonly error: string | null
+  readonly now: string
+}
+
+/** The add request a writer request was sent for, while it is still sent. */
+export async function findSentSageAddRequest(
+  db: Db,
+  input: { readonly operationId: string; readonly organizationId: string }
+): Promise<AddRequestRow | undefined> {
+  return db.select().from(sageDirectoryAddRequests).where(and(
+    eq(sageDirectoryAddRequests.organizationId, input.organizationId),
+    eq(sageDirectoryAddRequests.writeOperationId, input.operationId),
+    eq(sageDirectoryAddRequests.status, "sent"),
+  )).get()
+}
+
+/** After the request's outcome landed: its Activity, the requester's notice, and people waiting on the company. Never throws. */
+export async function announceSageAddOutcome(db: Db, request: AddRequestRow, input: SageAddOutcome): Promise<void> {
+  try {
     const name = requestName(request)
     if (input.outcome === "succeeded") {
       const number = input.sageRecordNumber ? ` as #${input.sageRecordNumber}` : ""
@@ -339,8 +372,7 @@ export async function recordSageAddOutcome(
       await notifySageAddRequester(db, request, `Sage didn't add ${name}`, input.error ?? "The Sage writer reported a problem.")
     }
   } catch (error) {
-    // Never fails the writer's result; the write itself is already recorded.
-    console.error("Could not record the Sage add request outcome", error)
+    console.error("Could not announce the Sage add request outcome", error)
   }
 }
 

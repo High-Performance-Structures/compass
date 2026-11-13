@@ -72,14 +72,17 @@ export async function POST(request: Request): Promise<Response> {
     .get()
   // An exact repeat of a result that already landed is answered as recorded:
   // the writer stops its whole run on any non-2xx answer.
+  // The same outcome only: a success with the same Sage record, or the same failure.
+  const repeat = result.outcome === "succeeded"
+    ? { statuses: ["succeeded", "needs_attention"], sageRecordId: result.sageRecordId }
+    : { statuses: [result.needsAttention ? "needs_attention" : "failed"], sageRecordId: null }
   const staleOrRepeat = async (): Promise<Response> => {
-    const recorded = await sageResultAlreadyRecorded(db, "sage_ar_invoice_exports", {
-      id: result.id, organizationId, claimToken: result.claimToken,
-      statuses: result.outcome === "succeeded" ? ["succeeded", "needs_attention"] : ["failed", "needs_attention"],
-    })
-    return recorded
-      ? Response.json({ success: true, status: recorded, alreadyRecorded: true })
-      : Response.json({ error: "AR invoice claim changed" }, { status: 409 })
+    // Pay requests, simple invoices and deposits share this writer and its result route.
+    for (const table of ["sage_ar_invoice_exports", "sage_invoice_ar_exports", "sage_deposit_ar_exports"] as const) {
+      const recorded = await sageResultAlreadyRecorded(db, table, { id: result.id, organizationId, claimToken: result.claimToken, ...repeat })
+      if (recorded) return Response.json({ success: true, status: recorded, alreadyRecorded: true })
+    }
+    return Response.json({ error: "AR invoice claim changed" }, { status: 409 })
   }
   if (!row) {
     // Not a pay request's export: a simple Compass invoice's, a deposit request's, or a stale claim.

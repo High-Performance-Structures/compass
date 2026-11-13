@@ -1,16 +1,19 @@
-import { and, eq, or, sql, type SQL } from "drizzle-orm"
+import { and, eq, or, sql } from "drizzle-orm"
 
 import { getDb } from "@/db"
 import { customers, vendors } from "@/db/schema"
 import { sageClientProjectWriteOperations } from "@/db/schema-sage"
 import { recordActivityEvent } from "@/lib/activity-log"
 import { getCloudflareContext } from "@/lib/db"
-import { sageClientWriteResultCustomerStatement, updateVendorById } from "@/lib/domain/contacts/store"
+import { sageClientWriteResultCustomerStatement, sageIdentityLinkStatement } from "@/lib/domain/contacts/store"
 import { sageJobResultStatement } from "@/lib/domain/project/store"
+import { sageDirectoryAddOutcomeStatement } from "@/lib/domain/sage-bridge/directory-add-store"
 import {
   releaseSageResultLease,
   sageClientProjectWriteSucceededStatement,
   sageResultAlreadyRecorded,
+  sageVendorWriteSucceededStatement,
+  sageWriteSucceededUnderLease,
   takeSageResultLease,
   updateSageClientProjectWriteOperations,
 } from "@/lib/domain/sage-bridge/store"
@@ -23,7 +26,7 @@ import {
   sageClientProjectWriteResultSchema,
   sageClientProjectWritesEnabled,
 } from "@/lib/sage/client-project-write"
-import { recordSageAddOutcome } from "@/lib/sage/directory-add-service"
+import { announceSageAddOutcome, findSentSageAddRequest, recordSageAddOutcome } from "@/lib/sage/directory-add-service"
 import { sageExportActor } from "@/lib/sage/estimate-sync"
 import { recordSageJobTaxDistrictResult } from "@/lib/sage/job-tax-district"
 
@@ -134,7 +137,7 @@ export async function POST(request: Request): Promise<Response> {
         await releaseSageResultLease(db, "sage_client_project_write_operations", lease)
         return Response.json({ error: "A vendor result answered a non-vendor write" }, { status: 400 })
       }
-      return recordVendorAdded(db, operation, leased, result.vendor, now)
+      return recordVendorAdded(db, env.DB, operation, leaseToken, result.vendor, now)
     }
     if (operation.operationType === "ensure_vendor") {
       await releaseSageResultLease(db, "sage_client_project_write_operations", lease)
@@ -156,10 +159,7 @@ export async function POST(request: Request): Promise<Response> {
       }),
     ]
     // The client and job links land only with the success above (same lease, same batch).
-    const succeededUnderLease = {
-      sql: "EXISTS (SELECT 1 FROM sage_client_project_write_operations WHERE id = ? AND claim_token = ? AND status = 'succeeded' AND completed_at = ?)",
-      binds: [operation.id, leaseToken, now],
-    }
+    const succeededUnderLease = sageWriteSucceededUnderLease({ operationId: operation.id, leaseToken, now })
     const customerStatementIndex = operation.customerId ? statements.length : null
     if (operation.customerId) {
       statements.push(
@@ -219,37 +219,46 @@ export async function POST(request: Request): Promise<Response> {
  */
 async function recordVendorAdded(
   db: ReturnType<typeof getDb>,
+  database: D1Database,
   operation: typeof sageClientProjectWriteOperations.$inferSelect,
-  leased: SQL | undefined,
+  leaseToken: string,
   vendor: { readonly id: string; readonly number: string; readonly print1099Applied: boolean },
   now: string
 ): Promise<Response> {
-  const succeeded = await updateSageClientProjectWriteOperations(
-    db,
-    { status: "succeeded", sageVendorId: vendor.id, sageVendorNumber: vendor.number, completedAt: now, updatedAt: now },
-    leased
-  ).returning({ id: sageClientProjectWriteOperations.id })
-  if (succeeded.length !== 1) {
-    return Response.json({ error: "Sage write claim is missing, stale, or already completed" }, { status: 409 })
-  }
-  let linkError: string | null = null
-  if (operation.vendorId) {
-    const holder = await db.select({ id: vendors.id, name: vendors.name }).from(vendors).where(and(
+  // Read before the batch: who in Compass already holds this Sage vendor.
+  const holder = operation.vendorId
+    ? await db.select({ id: vendors.id, name: vendors.name }).from(vendors).where(and(
       eq(vendors.organizationId, operation.organizationId),
       or(eq(vendors.sageVendorNumber, vendor.number), sql`upper(${vendors.sageVendorId}) = upper(${vendor.id})`),
     )).get()
-    if (holder && holder.id !== operation.vendorId) {
-      linkError = `Sage vendor #${vendor.number} already belongs to ${holder.name} in Compass; merge the two vendors.`
-    } else if (!holder) {
-      await updateVendorById(db, { vendorId: operation.vendorId, values: { sageVendorId: vendor.id, sageVendorNumber: vendor.number, updatedAt: now } })
-    }
-  }
-  await recordSageAddOutcome(db, {
-    operationId: operation.id, organizationId: operation.organizationId, outcome: "succeeded",
-    sageRecordId: vendor.id, sageRecordNumber: vendor.number,
+    : undefined
+  const linkError = holder && holder.id !== operation.vendorId
+    ? `Sage vendor #${vendor.number} already belongs to ${holder.name} in Compass; merge the two vendors.`
+    : null
+  const outcome = {
+    outcome: "succeeded" as const, sageRecordId: vendor.id, sageRecordNumber: vendor.number, now,
     error: linkError ?? (vendor.print1099Applied ? null : "Sage added the vendor, but its 1099 box must be set in Sage by hand."),
-    now,
-  })
+  }
+  const request = await findSentSageAddRequest(db, { operationId: operation.id, organizationId: operation.organizationId })
+  // One batch: the success, the vendor's Sage link and the add request's
+  // outcome, the last two only if the success landed under this lease.
+  const guard = sageWriteSucceededUnderLease({ operationId: operation.id, leaseToken, now })
+  const statements = [sageVendorWriteSucceededStatement(database, { operationId: operation.id, leaseToken, vendorId: vendor.id, vendorNumber: vendor.number, now })]
+  if (operation.vendorId && !holder) {
+    statements.push(sageIdentityLinkStatement(database, "vendor_company", guard.sql,
+      [vendor.id, vendor.number, operation.vendorId, operation.organizationId, vendor.number, ...guard.binds]))
+  }
+  if (request) {
+    statements.push(sageDirectoryAddOutcomeStatement(database, {
+      requestId: request.id, organizationId: request.organizationId, operationId: operation.id, event: "succeed",
+      sageRecordId: outcome.sageRecordId, sageRecordNumber: outcome.sageRecordNumber, errorMessage: outcome.error?.slice(0, 1000) ?? null, now, guard,
+    }))
+  }
+  const results = await database.batch(statements)
+  if (results[0]?.meta.changes !== 1) {
+    return Response.json({ error: "Sage write claim is missing, stale, or already completed" }, { status: 409 })
+  }
+  if (request && results.at(-1)?.meta.changes === 1) await announceSageAddOutcome(db, request, outcome)
   return Response.json({ success: true, status: "succeeded" })
 }
 

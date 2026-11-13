@@ -215,6 +215,29 @@ export function sageClientProjectWriteSucceededStatement(
   )
 }
 
+/** succeed for an "ensure_vendor" add: records Sage's vendor, only under `leaseToken`. */
+export function sageVendorWriteSucceededStatement(
+  database: D1Database,
+  input: { readonly operationId: string; readonly leaseToken: string; readonly vendorId: string; readonly vendorNumber: string; readonly now: string }
+): D1PreparedStatement {
+  const { from, to } = clientProjectWriteMachine.transitions.succeed
+  return database.prepare(
+    `UPDATE sage_client_project_write_operations
+       SET status = ?, sage_vendor_id = ?, sage_vendor_number = ?, completed_at = ?, updated_at = ?
+       WHERE id = ? AND claim_token = ? AND status IN (${from.map(() => "?").join(", ")})`
+  ).bind(to, input.vendorId, input.vendorNumber, input.now, input.now, input.operationId, input.leaseToken, ...from)
+}
+
+/** A WHERE fragment true only once the write succeeded under `leaseToken` at `now`, for its follow-ups in the same batch. */
+export function sageWriteSucceededUnderLease(input: { readonly operationId: string; readonly leaseToken: string; readonly now: string }): {
+  readonly sql: string; readonly binds: readonly string[]
+} {
+  return {
+    sql: "EXISTS (SELECT 1 FROM sage_client_project_write_operations WHERE id = ? AND claim_token = ? AND status = 'succeeded' AND completed_at = ?)",
+    binds: [input.operationId, input.leaseToken, input.now],
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Result leases: one result handler per claim
 // ---------------------------------------------------------------------------
@@ -225,6 +248,8 @@ export type SageResultLeaseTable =
   | "sage_change_order_exports"
   | "sage_estimate_exports"
   | "sage_ar_invoice_exports"
+  | "sage_invoice_ar_exports"
+  | "sage_deposit_ar_exports"
 
 /**
  * The lease a result for `claimToken` takes. Derived from the claim, not
@@ -275,14 +300,20 @@ export async function sageResultAlreadyRecorded(
   db: Db,
   table: SageResultLeaseTable,
   /** `organizationId` null for a bridge that isn't scoped to one company (the client/job writer). */
-  input: { readonly id: string; readonly organizationId: string | null; readonly claimToken: string; readonly statuses: readonly string[] }
+  input: {
+    readonly id: string; readonly organizationId: string | null; readonly claimToken: string; readonly statuses: readonly string[]
+    /** Tables that record Sage's id: the id the repeat reports (null: none yet). Omitted: not compared. */
+    readonly sageRecordId?: string | null
+  }
 ): Promise<string | null> {
   if (input.statuses.length === 0) return null
   const company = input.organizationId === null ? sql`` : sql` AND organization_id = ${input.organizationId}`
+  const record = input.sageRecordId === undefined ? sql``
+    : input.sageRecordId === null ? sql` AND sage_record_id IS NULL` : sql` AND sage_record_id = ${input.sageRecordId}`
   const rows = await db.all<{ readonly status: string }>(sql`SELECT status FROM ${sql.identifier(table)}
     WHERE id = ${input.id}${company}
       AND claim_token = ${sageResultLeaseToken(input.claimToken)}
-      AND status IN (${sql.join(input.statuses.map((status) => sql`${status}`), sql`, `)})`)
+      AND status IN (${sql.join(input.statuses.map((status) => sql`${status}`), sql`, `)})${record}`)
   return rows[0]?.status ?? null
 }
 

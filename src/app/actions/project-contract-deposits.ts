@@ -112,7 +112,7 @@ export type ProjectContractDepositInput = {
 }
 
 type DepositActionResult =
-  | { readonly success: true; readonly id: string }
+  | { readonly success: true; readonly id: string; readonly note?: string }
   | { readonly success: false; readonly error: string }
 
 const PAYMENT_METHODS: ReadonlySet<string> = new Set(["check", "ach", "wire", "card", "cash", "other"])
@@ -584,17 +584,23 @@ export async function voidProjectContractDeposit(projectId: string, depositId: s
       .get()
     if (!existing) throw new Error("Deposit not found.")
     if (existing.status === "void") return { success: true, id: depositId }
-    // A queued Sage AR invoice is withdrawn; one being added right now must finish first.
-    // One already in Sage stays there (void it in Sage too).
-    const sageStatus = await depositSageExportStatus(db, depositId)
-    if (sageStatus === "running") throw new Error("Sage is adding this deposit request's AR invoice right now. Try again in a minute.")
-    if (sageStatus && sageStatus !== "succeeded") await cancelSageDepositArExport(db, { organizationId, depositId, now: new Date().toISOString() })
     await assertStillCoversApplied(db, projectId, existing.status === "received" ? existing.receivedAmountCents ?? 0 : 0)
     const now = new Date().toISOString()
-    await db.update(projectContractDeposits).set({ status: "void", updatedAt: now }).where(eq(projectContractDeposits.id, depositId)).run()
+    // Void first, fenced on the status it was read in. From then on the Sage
+    // writer can't claim its AR invoice (the claim checks for void in the same
+    // statement); a queued one is withdrawn next.
+    const voided = await db.update(projectContractDeposits).set({ status: "void", updatedAt: now })
+      .where(and(eq(projectContractDeposits.id, depositId), eq(projectContractDeposits.status, existing.status)))
+      .returning({ id: projectContractDeposits.id })
+    if (voided.length !== 1) throw new Error("This deposit changed while you were voiding it. Refresh and try again.")
+    let note: string | null = null
+    if ((await depositSageExportStatus(db, depositId)) && !(await cancelSageDepositArExport(db, { organizationId, depositId, now }))) {
+      // Running (Sage may be adding it now) or already in Sage: it stays; staff void it in Sage.
+      note = "Its Sage AR invoice is in Sage or being added right now; void it in Sage too."
+    }
     await refreshAutoDepositPayApplications(db, projectId, now)
     revalidateDeposits(projectId)
-    return { success: true, id: depositId }
+    return note ? { success: true, id: depositId, note } : { success: true, id: depositId }
   } catch (error) {
     return { success: false, error: error instanceof Error ? error.message : "Unable to void the deposit." }
   }

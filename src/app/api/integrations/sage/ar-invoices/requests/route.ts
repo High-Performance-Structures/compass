@@ -4,6 +4,7 @@ import { sageArInvoiceExports, sageInvoiceArExports } from "@/db/schema-sage"
 import {
   claimSageArInvoiceExport,
   claimSageInvoiceArExport,
+  sageArExportSourceNotVoid,
   updateSageArInvoiceExportsStatement,
   updateSageInvoiceArExportsStatement,
 } from "@/lib/domain/sage-bridge/ar-invoice-store"
@@ -41,7 +42,8 @@ export async function GET(request: Request): Promise<Response> {
       and(
         eq(sageArInvoiceExports.organizationId, organizationId),
         or(
-          eq(sageArInvoiceExports.status, "queued"),
+          // A void record's queued export is never offered (a stale running one is, so the claim can flag it).
+          and(eq(sageArInvoiceExports.status, "queued"), sageArExportSourceNotVoid("pay")),
           and(eq(sageArInvoiceExports.status, "running"), lt(sageArInvoiceExports.claimedAt, staleBefore))
         )
       )
@@ -88,7 +90,7 @@ export async function GET(request: Request): Promise<Response> {
         and(
           eq(sageInvoiceArExports.organizationId, organizationId),
           or(
-            eq(sageInvoiceArExports.status, "queued"),
+            and(eq(sageInvoiceArExports.status, "queued"), sageArExportSourceNotVoid("invoice")),
             and(eq(sageInvoiceArExports.status, "running"), lt(sageInvoiceArExports.claimedAt, staleBefore))
           )
         )

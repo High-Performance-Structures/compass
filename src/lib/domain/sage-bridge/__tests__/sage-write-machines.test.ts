@@ -17,6 +17,7 @@ import { migratedDatabase } from "@/lib/domain/contacts/__tests__/directory-seed
 import { sageClientWriteResultCustomerStatement, sageSnapshotDirectoryUpdateStatement, sageVendorUpdateStatement } from "@/lib/domain/contacts/store"
 import {
   cancelSageArInvoiceExport,
+  cancelSageInvoiceArExport,
   cancelSageInvoiceArExportStatement,
   claimSageArInvoiceExport,
   claimSageInvoiceArExport,
@@ -25,7 +26,7 @@ import {
   upsertSageInvoiceArExport,
 } from "@/lib/domain/sage-bridge/ar-invoice-store"
 import { queueSageChangeOrderExports, updateSageChangeOrderExportsStatement } from "@/lib/domain/sage-bridge/change-order-store"
-import { moveSageDirectoryAddRequest } from "@/lib/domain/sage-bridge/directory-add-store"
+import { moveSageDirectoryAddRequest, sageDirectoryAddOutcomeStatement } from "@/lib/domain/sage-bridge/directory-add-store"
 import { updateSageEstimateExportsStatement } from "@/lib/domain/sage-bridge/estimate-store"
 import {
   arInvoiceExportMachine,
@@ -51,10 +52,13 @@ import {
   requeueFailedSageClientProjectWriteStatement,
   sageClientProjectWriteSucceededStatement,
   sageResultAlreadyRecorded,
+  sageVendorWriteSucceededStatement,
+  sageWriteSucceededUnderLease,
   takeSageResultLease,
   updateSageClientProjectWriteOperations,
   updateVendorCertificateSyncs,
 } from "@/lib/domain/sage-bridge/store"
+import { applySimpleInvoiceSageResult } from "@/lib/financials/simple-invoice-sage-result"
 import { queueApprovedSageAdd } from "@/lib/sage/directory-add-service"
 import { noNewSageHoldCondition, noNewSageHoldGuard } from "@/lib/sage/sage-held-fields"
 import type { Db } from "@/lib/server/action-context"
@@ -360,6 +364,42 @@ describe("review fixes: certificates, leases, links, void records", () => {
     expect([statusOf("sage_invoice_ar_exports", "x1"), statusOf("sage_invoice_ar_exports", "x2")]).toEqual(["cancelled", "running"])
   })
 
+  it("a stale running export of a record voided since is flagged for staff, not left running", async () => {
+    insertInvoiceExport("x1", "running", "void")
+    sqlite.exec("UPDATE sage_invoice_ar_exports SET claim_token = 'old', claimed_at = '2026-11-12T09:00:00.000Z' WHERE id = 'x1'")
+    expect(await claimSageInvoiceArExport(db, { id: "x1", organizationId: ORG, claimToken: "c", now: LATER, staleBefore: STALE_BEFORE })).toBe(false)
+    expect(sqlite.prepare("SELECT status, error_message FROM sage_invoice_ar_exports WHERE id = 'x1'").get())
+      .toEqual({ status: "needs_attention", error_message: "Voided while Sage was adding it; check Sage." })
+  })
+
+  it("an export Sage already has (it carries Sage's record id) is never cancelled", async () => {
+    insertInvoiceExport("x1", "needs_attention", "open")
+    sqlite.exec("UPDATE sage_invoice_ar_exports SET sage_record_id = '901' WHERE id = 'x1'")
+    expect(await cancelSageInvoiceArExport(db, { organizationId: ORG, invoiceId: "inv-x1", now: LATER })).toBe(false)
+    expect(statusOf("sage_invoice_ar_exports", "x1")).toBe("needs_attention")
+  })
+
+  it("a repeat only counts as recorded with the same outcome and Sage record", async () => {
+    insertInvoiceExport("x1", "running", "open")
+    sqlite.exec("UPDATE sage_invoice_ar_exports SET claim_token = 'c1' WHERE id = 'x1'")
+    const leaseToken = await takeSageResultLease(db, "sage_invoice_ar_exports", { id: "x1", organizationId: ORG, claimToken: "c1", now: NOW })
+    sqlite.prepare("UPDATE sage_invoice_ar_exports SET status = 'needs_attention', sage_record_id = '901' WHERE id = 'x1' AND claim_token = ?").run(leaseToken)
+    const repeat = { id: "x1", organizationId: ORG, claimToken: "c1" }
+    expect(await sageResultAlreadyRecorded(db, "sage_invoice_ar_exports", { ...repeat, statuses: ["succeeded", "needs_attention"], sageRecordId: "901" })).toBe("needs_attention")
+    expect(await sageResultAlreadyRecorded(db, "sage_invoice_ar_exports", { ...repeat, statuses: ["succeeded", "needs_attention"], sageRecordId: "902" })).toBeNull()
+    expect(await sageResultAlreadyRecorded(db, "sage_invoice_ar_exports", { ...repeat, statuses: ["needs_attention"], sageRecordId: null })).toBeNull()
+  })
+
+  it("a simple invoice result posted twice at once applies once", async () => {
+    insertInvoiceExport("x1", "running", "open")
+    sqlite.exec("UPDATE sage_invoice_ar_exports SET claim_token = 'c1' WHERE id = 'x1'")
+    const result = { outcome: "failed" as const, id: "x1", claimToken: "c1", error: "Sage said no", needsAttention: false }
+    const answers = await Promise.all([applySimpleInvoiceSageResult(db, ORG, result), applySimpleInvoiceSageResult(db, ORG, result)])
+    expect(answers.filter((answer) => answer !== null)).toEqual([{ status: "failed", httpStatus: 202 }])
+    expect(await sageResultAlreadyRecorded(db, "sage_invoice_ar_exports", { id: "x1", organizationId: ORG, claimToken: "c1", statuses: ["failed"], sageRecordId: null }))
+      .toBe("failed")
+  })
+
   it("queuing a voided invoice's export again changes nothing", async () => {
     insertInvoiceExport("x1", "failed", "void")
     const written = await upsertSageInvoiceArExport(db, {
@@ -431,14 +471,55 @@ describe("Request add to Sage", () => {
     expect(countOf("SELECT count(*) AS n FROM sage_client_project_write_operations")).toBe(1)
   })
 
-  it("a finished writer request for it puts the request back to approved for staff", async () => {
+  it("a failed writer request for it is sent again and linked", async () => {
     insertRequest("r1", "approved")
     insertWrite("existing", "failed")
     sqlite.exec("UPDATE sage_client_project_write_operations SET idempotency_key = 'sage-add:r1' WHERE id = 'existing'")
     const result = await queueApprovedSageAdd(db, await requestRow("r1"), "approver", LATER)
-    expect(result.status).toBe("approved")
+    expect(result.status).toBe("sent")
+    expect(statusOf("sage_client_project_write_operations", "existing")).toBe("queued")
     expect(sqlite.prepare("SELECT status, write_operation_id FROM sage_directory_add_requests WHERE id = 'r1'").get())
-      .toEqual({ status: "approved", write_operation_id: null })
+      .toEqual({ status: "sent", write_operation_id: "existing" })
+  })
+
+  it("a succeeded writer request for it finishes the request with Sage's vendor", async () => {
+    insertRequest("r1", "approved")
+    insertWrite("existing", "succeeded")
+    sqlite.exec("UPDATE sage_client_project_write_operations SET idempotency_key = 'sage-add:r1', sage_vendor_id = 'SV', sage_vendor_number = '42' WHERE id = 'existing'")
+    const result = await queueApprovedSageAdd(db, await requestRow("r1"), "approver", LATER)
+    expect(result.status).toBe("succeeded")
+    expect(sqlite.prepare("SELECT status, sage_record_number FROM sage_directory_add_requests WHERE id = 'r1'").get())
+      .toEqual({ status: "succeeded", sage_record_number: "42" })
+  })
+
+  it("a cancelled writer request for it is not linked; the request waits approved", async () => {
+    insertRequest("r1", "approved")
+    insertWrite("existing", "cancelled")
+    sqlite.exec("UPDATE sage_client_project_write_operations SET idempotency_key = 'sage-add:r1' WHERE id = 'existing'")
+    const result = await queueApprovedSageAdd(db, await requestRow("r1"), "approver", LATER)
+    expect(result.status).toBe("approved")
+    expect(statusOf("sage_directory_add_requests", "r1")).toBe("approved")
+  })
+
+  it("a vendor result's add-request outcome lands only with the success under the lease", async () => {
+    insertRequest("r1", "sent")
+    sqlite.exec("UPDATE sage_directory_add_requests SET write_operation_id = 'w1' WHERE id = 'r1'")
+    insertWrite("w1", "running", "c1:result", NOW)
+    const guard = sageWriteSucceededUnderLease({ operationId: "w1", leaseToken: "c1:result", now: LATER })
+    const outcome = (event: "succeed" | "fail") => sageDirectoryAddOutcomeStatement(d1, {
+      requestId: "r1", organizationId: ORG, operationId: "w1", event, sageRecordId: "SV", sageRecordNumber: "42", errorMessage: null, now: LATER, guard,
+    })
+    const results = await d1.batch([
+      sageVendorWriteSucceededStatement(d1, { operationId: "w1", leaseToken: "stale", vendorId: "SV", vendorNumber: "42", now: LATER }),
+      outcome("succeed"),
+    ])
+    expect(results.map((result) => result.meta.changes)).toEqual([0, 0])
+    const landed = await d1.batch([
+      sageVendorWriteSucceededStatement(d1, { operationId: "w1", leaseToken: "c1:result", vendorId: "SV", vendorNumber: "42", now: LATER }),
+      outcome("succeed"),
+    ])
+    expect(landed.map((result) => result.meta.changes)).toEqual([1, 1])
+    expect(statusOf("sage_directory_add_requests", "r1")).toBe("succeeded")
   })
 
   it("the writer's answer only finishes the request it was sent for", async () => {

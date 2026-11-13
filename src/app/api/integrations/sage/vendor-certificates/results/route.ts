@@ -1,4 +1,4 @@
-import { and, eq, ne } from "drizzle-orm"
+import { and, eq, inArray, isNull } from "drizzle-orm"
 import { z } from "zod/v4"
 
 import { sageVendorCertificateSyncs } from "@/db/schema-sage"
@@ -64,7 +64,10 @@ export async function POST(request: Request): Promise<Response> {
         eq(sageVendorCertificateSyncs.id, result.id),
         eq(sageVendorCertificateSyncs.organizationId, organizationId),
         eq(sageVendorCertificateSyncs.claimToken, result.claimToken),
-        ne(sageVendorCertificateSyncs.status, "running")
+        // The same outcome only (a requeue after it keeps the result's error message, or none).
+        result.outcome === "succeeded"
+          ? and(inArray(sageVendorCertificateSyncs.status, ["succeeded", "queued"]), isNull(sageVendorCertificateSyncs.errorMessage))
+          : and(inArray(sageVendorCertificateSyncs.status, ["failed", "queued"]), eq(sageVendorCertificateSyncs.errorMessage, result.error))
       ))
       .get()
     if (recorded) return Response.json({ success: true, alreadyRecorded: true }, { status: 202 })
