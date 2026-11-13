@@ -13,17 +13,16 @@ function normalized(value: string): string {
 }
 
 /**
- * The part of an email someone just wrote: quoted history ("> ..." lines and
- * everything from an "On ... wrote:" line) can't mention anyone again.
+ * What the sender wrote, without quoted history: "> ..." lines and the
+ * "On ... wrote:" line that introduces them can't mention anyone again.
+ * Text written below a quote still counts. Curly quotes become straight.
  */
 function newestPart(text: string): string {
-  const kept: string[] = []
-  for (const line of text.split(/\r?\n/)) {
-    if (/^\s*On\b.*\bwrote:\s*$/i.test(line)) break
-    if (/^\s*>/.test(line)) continue
-    kept.push(line)
-  }
-  return kept.join("\n")
+  return text
+    .split(/\r?\n/)
+    .filter((line) => !/^\s*>/.test(line) && !/^\s*On\b.*\bwrote:\s*$/i.test(line))
+    .join("\n")
+    .replace(/[\u201C\u201D]/g, '"')
 }
 
 /** True when the newest part of the email @mentions someone by name. */

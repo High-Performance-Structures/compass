@@ -36,4 +36,8 @@ describe("incoming project message @names", () => {
     expect(inboundProjectMessageRecipients("Thanks\n> @Nobody earlier", staff)?.map((p) => p.id)).toEqual(["a"])
     expect(inboundMessageMentionsSomeone("Thanks\n> @Morgan earlier")).toBe(false)
   })
+  it("keeps mentions written below a quote and reads curly-quoted names", () => {
+    expect(inboundProjectMessageRecipients("On Wed, X wrote:\n> question?\nYes, @Morgan please check", staff)?.map((p) => p.id)).toEqual(["b"])
+    expect(inboundProjectMessageRecipients("Please look @\u201CMorgan Reed\u201D", staff)?.map((p) => p.id)).toEqual(["b"])
+  })
 })
