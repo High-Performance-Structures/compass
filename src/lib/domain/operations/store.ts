@@ -32,11 +32,13 @@ import {
 import { shopTickets } from "@/db/schema-shop-tickets"
 import { companyMoveGuard, type CompanyReferenceMove } from "@/lib/domain/contacts/company-merge-references"
 import type { Db } from "@/lib/server/action-context"
+import { PROJECT_TODO_RECORD_TYPES } from "@/lib/project-todos"
 import { assertListFields } from "@/lib/shared/statuses"
 
 import { automaticSourceSpellings, automaticStatusAfter, type ProcurementAutomation } from "./procurement-machines"
 import { todoEventRow, type TodoEventInput } from "./rules"
 import { SHOP_TICKET_STATUSES } from "./statuses"
+import { automaticTodoSourceSpellings, automaticTodoStatusAfterEvents, type TodoAutomationEvent } from "./todo-machines"
 
 export type OperationRow = typeof projectOperations.$inferSelect
 export type OperationInsert = typeof projectOperations.$inferInsert
@@ -49,57 +51,6 @@ type RfqQuoteLinkInsert = typeof projectRfqQuoteLinks.$inferInsert
 type RfqQuoteLinkUpdate = Partial<RfqQuoteLinkInsert>
 
 export type OperationVersion = { readonly id: string; readonly updatedAt: string }
-
-/** Batch guarded writes: concurrent edits are left untouched and reported. */
-export async function changeTodosReturning(
-  db: Db,
-  projectId: string,
-  rows: readonly OperationRow[],
-  mode: "archive" | "restore" | "delete",
-  updatedAt: string,
-  actor: { readonly organizationId: string; readonly userId: string },
-): Promise<string[]> {
-  const queries = rows.flatMap((row) => {
-    const where = and(
-      eq(projectOperations.projectId, projectId),
-      eq(projectOperations.id, row.id),
-      eq(projectOperations.updatedAt, row.updatedAt),
-      eq(projectOperations.status, row.status),
-      eq(projectOperations.sourceRecordType, row.sourceRecordType),
-    )
-    const change = mode === "delete"
-      ? db.delete(projectOperations).where(where).returning({ id: projectOperations.id })
-      : db.update(projectOperations)
-          .set({ status: mode === "archive" ? "archived" : "open", updatedAt })
-          .where(where).returning({ id: projectOperations.id })
-    if (mode !== "restore") return [change]
-    const event = todoEventRow({
-      organizationId: actor.organizationId,
-      projectId,
-      todoId: row.id,
-      kind: "status",
-      dailyLogId: null,
-      fromStatus: row.status,
-      toStatus: "open",
-      note: null,
-      actorId: actor.userId,
-      createdAt: updatedAt,
-    })
-    // History and status use the same version guard in one atomic batch.
-    // Insert first: a concurrently changed row produces neither history nor an update.
-    const history = db.insert(projectTodoEvents).select(sql`
-      SELECT ${event.id}, ${event.organizationId}, ${event.projectId}, ${event.todoId},
-        ${event.kind}, ${event.dailyLogId}, ${event.fromStatus}, ${event.toStatus},
-        ${event.note}, ${event.actorId}, ${event.createdAt}
-      FROM ${projectOperations} WHERE ${where}
-    `).returning({ id: projectTodoEvents.todoId })
-    return [history, change]
-  })
-  const [first, ...rest] = queries
-  if (!first) return []
-  const results = await db.batch([first, ...rest])
-  return [...new Set(results.flat().map((row) => row.id))]
-}
 
 // ---------------------------------------------------------------------------
 // project_operations
@@ -599,11 +550,123 @@ export function purchaseOrderLinesUpdateQuery(
 }
 
 // ---------------------------------------------------------------------------
-// project_todo_events
+// To-do statuses and history (project_todo_events)
 // ---------------------------------------------------------------------------
+// Staff set any company status; a daily log's moves follow todo-machines.ts.
+// All are compare-and-set, with the change's history rows inserted first in
+// the same batch under the same condition: a to-do changed meanwhile gets
+// neither the new status nor history for it.
 
-/** One line in a to-do's history (made, worked, blocked, status change). */
-export async function recordTodoEvent(db: Db, event: TodoEventInput): Promise<void> {
+/** Batch guarded writes: concurrent edits are left untouched and reported. */
+export async function changeTodosReturning(
+  db: Db,
+  projectId: string,
+  rows: readonly OperationRow[],
+  mode: "archive" | "restore" | "delete",
+  updatedAt: string,
+  actor: { readonly organizationId: string; readonly userId: string },
+): Promise<string[]> {
+  const queries = rows.flatMap((row) => {
+    const where = and(
+      eq(projectOperations.projectId, projectId),
+      eq(projectOperations.id, row.id),
+      eq(projectOperations.updatedAt, row.updatedAt),
+      eq(projectOperations.status, row.status),
+      eq(projectOperations.sourceRecordType, row.sourceRecordType),
+    )
+    const change = mode === "delete"
+      ? db.delete(projectOperations).where(where).returning({ id: projectOperations.id })
+      : db.update(projectOperations)
+          .set({ status: mode === "archive" ? "archived" : "open", updatedAt })
+          .where(where).returning({ id: projectOperations.id })
+    if (mode !== "restore") return [change]
+    const history = guardedTodoEventInsert(db, {
+      organizationId: actor.organizationId, projectId, todoId: row.id, kind: "status", dailyLogId: null,
+      fromStatus: row.status, toStatus: "open", note: null, actorId: actor.userId, createdAt: updatedAt,
+    }, where).returning({ id: projectTodoEvents.todoId })
+    return [history, change]
+  })
+  const [first, ...rest] = queries
+  if (!first) return []
+  const results = await db.batch([first, ...rest])
+  return [...new Set(results.flat().map((row) => row.id))]
+}
+
+type TodoRef = { readonly projectId: string; readonly todoId: string; readonly updatedAt: string }
+
+function todoRow(projectId: string, todoId: string): SQL | undefined {
+  const isTodo = inArray(projectOperations.sourceRecordType, [...PROJECT_TODO_RECORD_TYPES])
+  return and(eq(projectOperations.id, todoId), eq(projectOperations.projectId, projectId), isTodo)
+}
+
+// A history row that lands only while `where` still matches (return type left to Drizzle).
+function guardedTodoEventInsert(db: Db, input: TodoEventInput, where: SQL | undefined) {
+  const event = todoEventRow(input)
+  return db.insert(projectTodoEvents).select(sql`
+      SELECT ${event.id}, ${event.organizationId}, ${event.projectId}, ${event.todoId},
+        ${event.kind}, ${event.dailyLogId}, ${event.fromStatus}, ${event.toStatus},
+        ${event.note}, ${event.actorId}, ${event.createdAt}
+      FROM ${projectOperations} WHERE ${where}
+    `)
+}
+
+/**
+ * A staff edit that may change the status: lands only on the version the
+ * person opened (`expectedUpdatedAt`) while the to-do still has
+ * `expectedStatus`, the status they saw. `history` is the status change's
+ * row, written only when the edit lands. Null when the to-do changed meanwhile.
+ */
+export async function setTodoStatusByStaff(
+  db: Db,
+  input: TodoRef & {
+    readonly expectedUpdatedAt: string
+    readonly expectedStatus: string
+    readonly status: string
+    /** Other columns saved with the status (the edit dialog's fields). */
+    readonly values?: Omit<OperationUpdate, "status" | "updatedAt">
+    readonly history: TodoEventInput | null
+  },
+): Promise<OperationVersion | null> {
+  const where = and(todoRow(input.projectId, input.todoId), eq(projectOperations.updatedAt, input.expectedUpdatedAt), eq(projectOperations.status, input.expectedStatus))
+  const update = db.update(projectOperations).set({ ...input.values, status: input.status, updatedAt: input.updatedAt }).where(where)
+  const written = input.history
+    ? (await db.batch([guardedTodoEventInsert(db, input.history, where), update]))[1]
+    : await update.run()
+  return written.meta.changes > 0 ? { id: input.todoId, updatedAt: input.updatedAt } : null
+}
+
+/**
+ * A daily log's moves (todo-machines.ts) from `stored`, the status it read,
+ * landing with their `history` rows only while the to-do still has it. False
+ * when the machine refuses them or the to-do changed meanwhile.
+ */
+export async function moveTodoStatusAutomatically(
+  db: Db,
+  move: TodoRef & {
+    readonly stored: string
+    readonly events: readonly TodoAutomationEvent[]
+    readonly history: readonly TodoEventInput[]
+  },
+): Promise<boolean> {
+  const to = automaticTodoStatusAfterEvents(move.events, move.stored)
+  const from = automaticTodoSourceSpellings(move.stored)
+  if (move.events.length === 0 || to === null || from.length === 0) return false
+  const where = and(todoRow(move.projectId, move.todoId), inArray(projectOperations.status, [...from]))
+  const update = db.update(projectOperations).set({ status: to, updatedAt: move.updatedAt }).where(where)
+  const [first, ...rest]: BatchItem<"sqlite">[] = [...move.history.map((event) => guardedTodoEventInsert(db, event, where)), update]
+  const written = (await db.batch([first ?? update, ...rest])).at(-1)
+  return written !== undefined && written.meta.changes > 0
+}
+
+/**
+ * One line in a to-do's history that records no status change of its own
+ * (made, worked on, still blocked). Status changes write their history with
+ * the change: setTodoStatusByStaff, moveTodoStatusAutomatically.
+ */
+export async function recordTodoEvent(
+  db: Db,
+  event: TodoEventInput & { readonly kind: "created" | "worked" | "still_blocked" },
+): Promise<void> {
   await db.insert(projectTodoEvents).values(todoEventRow(event))
 }
 

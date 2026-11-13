@@ -129,15 +129,14 @@ function topLevel(call: string): string {
 const GENERIC_UPDATES = ["operationUpdateQuery", "updateOperations", "updateOperationById", "updateOperationsReturning"]
 
 // Files that set status through the generic update helpers for record types
-// that are not RFQs or POs (to-dos, pay applications, Sage handoffs). A new
-// file here needs a reason; RFQ and PO statuses never belong on this list.
+// that are not RFQs, POs or to-dos (pay applications, Sage handoffs). A new
+// file here needs a reason; RFQ, PO and to-do statuses never belong on this
+// list (to-dos: todo-machines.test.ts).
 const OTHER_RECORD_STATUS_WRITERS = new Set([
   "src/app/actions/pay-application-billing.ts",
   "src/app/actions/project-financial-workflows.ts",
   "src/app/actions/project-sage-handoff-review.ts",
-  "src/app/actions/project-todos.ts",
   "src/app/actions/projects.ts",
-  "src/lib/daily-logs/log-followups-server.ts",
 ])
 
 describe("RFQ and purchase order status writes", () => {
