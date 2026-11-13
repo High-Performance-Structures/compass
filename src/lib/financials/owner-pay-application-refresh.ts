@@ -9,7 +9,7 @@ import {
 } from "@/db/schema"
 import { projectContractBudgetRevisions } from "@/db/schema-estimates"
 import { payApplicationShopTicketImports } from "@/db/schema-shop-tickets"
-import { chunkD1InsertRows, chunkD1Values } from "@/lib/d1-query"
+import { chunkD1InsertRows, chunkD1Values, isBatchGuardFailure } from "@/lib/d1-query"
 import { canonicalFeeCostCode, mixesFeeCostCodes } from "@/lib/domain/financials/builder-fee-codes"
 import { SAGE_SNAPSHOT_SOURCE } from "@/lib/domain/financials/rules"
 import { updateOperations } from "@/lib/domain/operations/store"
@@ -17,6 +17,7 @@ import { respreadShopTicketContributions } from "@/lib/domain/budget/rules"
 import {
   deleteBudgetLinesStatement,
   deleteShopTicketImportsStatement,
+  draftPayApplicationGuardStatement,
   insertBudgetLinesStatement,
   insertShopTicketImportsStatements,
   updateBudgetApplications,
@@ -352,7 +353,8 @@ function cents(value: number): number {
  * assembly split, keeping the work already entered. A cost code whose shares
  * are unchanged is updated in place (a fully billed row stays fully billed);
  * one whose split changed has its entered amounts spread across the new
- * shares by scheduled value.
+ * shares by scheduled value. False when it was no longer a draft (sent to
+ * review meanwhile); nothing changes then.
  */
 export async function syncDraftPayApplication(
   db: ReturnType<typeof getDb>,
@@ -360,7 +362,7 @@ export async function syncDraftPayApplication(
   applicationId: string,
   revisionId: string,
   now: string
-): Promise<void> {
+): Promise<boolean> {
   const revision = await db
     .select()
     .from(projectContractBudgetRevisions)
@@ -517,9 +519,15 @@ export async function syncDraftPayApplication(
       updatedAt: now,
     })
   )
-  const [first, ...rest] = statements
-  if (first) await db.batch([first, ...rest])
+  try {
+    // Only while it is still a draft: a draw sent to review keeps its lines.
+    await db.batch([draftPayApplicationGuardStatement(db, projectId, applicationId), ...statements])
+  } catch (error) {
+    if (isBatchGuardFailure(error)) return false
+    throw error
+  }
   await refreshOwnerPayApplication(db, projectId, applicationId, now)
+  return true
 }
 
 /** Whether a draft's rows no longer match the revision's cost code and assembly split. */
@@ -560,6 +568,7 @@ export async function moveDraftPayApplicationsToRevision(
       )
     )
     .orderBy(projectBudgetApplications.createdAt)
-  for (const draft of drafts) await syncDraftPayApplication(db, projectId, draft.id, revisionId, now)
-  return drafts.length
+  let moved = 0
+  for (const draft of drafts) if (await syncDraftPayApplication(db, projectId, draft.id, revisionId, now)) moved += 1
+  return moved
 }

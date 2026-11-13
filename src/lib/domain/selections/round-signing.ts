@@ -30,7 +30,7 @@ import { projectChangeOrderLines, projectChangeOrders } from "@/db/schema-change
 import { projectSelectionChoices, projectSelectionRoundSignatureItems, projectSelectionRoundSignatures } from "@/db/schema-selection-choices"
 import { projectSelectionDecisions } from "@/db/schema-selection-decisions"
 import { chunkD1Values } from "@/lib/d1-query"
-import { updateChangeOrdersStatement } from "@/lib/domain/estimates/store"
+import { changeOrderStatusStatement } from "@/lib/domain/estimates/change-order-status-store"
 import { SELECTION_ROUND_VARIANCE_SOURCE } from "@/lib/domain/estimates/variance-rules"
 import {
   approveVariance,
@@ -402,11 +402,11 @@ async function cancelRoundSignature(db: Db, projectId: string, signatureId: stri
   if (!(await transitionRoundSignature(db, signatureId, signature.status, event, { updatedAt: now }))) return false
   if (signature.changeOrderId) {
     await db.batch([
-      updateChangeOrdersStatement(
-        db,
-        and(eq(projectChangeOrders.id, signature.changeOrderId), inArray(projectChangeOrders.status, ["draft", "signature_pending"])),
-        { status: "void", foxitStatus: "cancelled", updatedAt: now },
-      ),
+      changeOrderStatusStatement(db, {
+        changeOrderId: signature.changeOrderId,
+        event: "cancel_selection_round",
+        values: { foxitStatus: "cancelled", updatedAt: now },
+      }),
     ])
   }
   return true
@@ -536,13 +536,17 @@ export async function handleRoundSignatureEvent(input: {
     : undefined
   if (signature.changeOrderId && changeOrder?.recordType === "change_order") {
     statements.push(
-      updateChangeOrdersStatement(db, and(eq(projectChangeOrders.id, signature.changeOrderId), eq(projectChangeOrders.status, "signature_pending"), signedNow), {
-        status: "executed",
-        executedAt: now,
-        executedDocumentUrl: evidenceUrl,
-        executedDocumentLabel: `${signature.roundNameSnapshot} Selection Phase signed`,
-        foxitStatus: "completed",
-        updatedAt: now,
+      changeOrderStatusStatement(db, {
+        changeOrderId: signature.changeOrderId,
+        event: "sign_selection_round",
+        also: signedNow,
+        values: {
+          executedAt: now,
+          executedDocumentUrl: evidenceUrl,
+          executedDocumentLabel: `${signature.roundNameSnapshot} Selection Phase signed`,
+          foxitStatus: "completed",
+          updatedAt: now,
+        },
       }),
     )
   }

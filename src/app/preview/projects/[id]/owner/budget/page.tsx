@@ -14,6 +14,7 @@ import {
 
 import { getProjectDepositRequests } from "@/app/actions/project-contract-deposits"
 import { getOwnerPayApplicationBalances } from "@/app/actions/received-payments"
+import { BUDGET_PROJECTION_SOURCE } from "@/lib/domain/financials/rules"
 import { formatCents } from "@/lib/format"
 import type { DepositRequestSummary } from "@/lib/deposits/deposit-requests"
 import { printPreviewHref } from "@/lib/print/print-documents"
@@ -109,6 +110,8 @@ export default async function OwnerBudgetPage({
     projectId: preview.project.id,
     projectNumber: preview.project.projectNumber,
   })
+  // The contract budget is stored like a pay application but isn't one.
+  const payApplications = budget.applications.filter((application) => application.sourceSystem !== BUDGET_PROJECTION_SOURCE)
   const reconciliation = budget.reconciliation
   const { reconciliationRequired } = reconciliation
   const messageShortcut = projectAudienceMessageShortcut({
@@ -178,7 +181,7 @@ export default async function OwnerBudgetPage({
             </section>
           )}
 
-          {budget.applications.length > 0 && (
+          {payApplications.length > 0 && (
             <section className="mt-5 border bg-background p-4">
               <div className="flex flex-wrap items-end justify-between gap-3">
                 <div>
@@ -188,11 +191,11 @@ export default async function OwnerBudgetPage({
                   </p>
                 </div>
                 <Badge variant="outline">
-                  {budget.applications.length} published
+                  {payApplications.length} published
                 </Badge>
               </div>
               <div className="mt-4 divide-y border">
-                {budget.applications.map((application, index) => {
+                {payApplications.map((application, index) => {
                   const payment = budgetPaymentBreakdown(application)
                   const balance = balances.get(application.id)
                   const paidLabel = balance && balance.paidState !== "open"

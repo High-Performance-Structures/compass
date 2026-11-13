@@ -15,6 +15,7 @@ import {
 } from "drizzle-orm/sqlite-core"
 
 import { PAY_APPLICATION_BILLING_SOURCES } from "../lib/domain/budget/statuses"
+import { CONTRACT_DEPOSIT_STATUSES } from "../lib/domain/financials/statuses"
 import { vendors } from "./schema-contacts"
 import { users } from "./schema-identity"
 import { projects } from "./schema-projects"
@@ -85,8 +86,8 @@ export const projectContractDeposits = sqliteTable(
     projectId: text("project_id")
       .notNull()
       .references(() => projects.id, { onDelete: "cascade" }),
-    /** requested | received | void */
-    status: text("status").notNull().default("received"),
+    /** See src/lib/domain/financials/deposit-machine.ts. */
+    status: text("status", { enum: CONTRACT_DEPOSIT_STATUSES }).notNull().default("received"),
     requestedAmountCents: integer("requested_amount_cents"),
     requestedAt: text("requested_at"),
     dueDate: text("due_date"),

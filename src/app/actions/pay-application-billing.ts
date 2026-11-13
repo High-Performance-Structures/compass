@@ -1,12 +1,13 @@
 "use server"
 
-import { and, eq, gt, notInArray } from "drizzle-orm"
+import { and, eq, gt, isNull, notInArray } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 
 import { getDb } from "@/db"
 import { projectBudgetApplications, projectOperations, projects } from "@/db/schema"
 import { activityActorName, recordActivityEvent } from "@/lib/activity-log"
-import { updateBudgetApplicationsStatement } from "@/lib/domain/budget/store"
+import { batchGuardStatement, isBatchGuardFailure } from "@/lib/d1-query"
+import { compassDrawStatusIs, movePayApplicationStatus, updateBudgetApplicationsStatement } from "@/lib/domain/budget/store"
 import { payApplicationHasActivePayments } from "@/lib/domain/financials/receivables"
 import { operationUpdateQuery } from "@/lib/domain/operations/store"
 import { cancelSageArInvoiceExport } from "@/lib/domain/sage-bridge/ar-invoice-store"
@@ -89,18 +90,22 @@ export async function approveProjectOwnerPayApplicationForBilling(
       throw new Error("Mark the pay application ready for review before approving it for billing.")
     }
     const now = new Date().toISOString()
-    await db.batch([
-      updateBudgetApplicationsStatement(
-        db,
-        and(eq(projectBudgetApplications.id, applicationId), eq(projectBudgetApplications.status, "internal_review")),
-        { status: "billed", ownerVisible: true, billedAt: now, billedBy: user.id, syncStatus: "awaiting_sage_invoice", updatedAt: now }
-      ),
-      operationUpdateQuery(db, operationFor(projectId, applicationId), {
-        status: "billed",
-        syncStatus: "awaiting_sage_invoice",
-        updatedAt: now,
-      }),
-    ])
+    // Compare-and-set: a double click or a second person approving at the
+    // same time lands once, and only that one logs Activity and queues Sage.
+    const moved = await movePayApplicationStatus(db, {
+      projectId,
+      applicationId,
+      event: "approve",
+      values: { ownerVisible: true, billedAt: now, billedBy: user.id, syncStatus: "awaiting_sage_invoice", updatedAt: now },
+      alongWith: [
+        operationUpdateQuery(db, operationFor(projectId, applicationId), {
+          status: "billed",
+          syncStatus: "awaiting_sage_invoice",
+          updatedAt: now,
+        }),
+      ],
+    })
+    if (!moved) throw new Error("This pay application was already approved or changed by someone else. Refresh to see where it stands.")
     await recordActivityEvent({
       db, organizationId, projectId, actor: user, category: "financial",
       action: "pay_application_billed", entityType: "project_budget_application", entityId: applicationId,
@@ -151,18 +156,22 @@ export async function undoProjectOwnerPayApplicationBilling(
     if (!(await cancelSageArInvoiceExport(db, { organizationId, applicationId, now }))) {
       throw new Error("This draw is being sent to Sage as an AR invoice (or Sage already has it). Wait for it to finish, then void the invoice in Sage first.")
     }
-    await db.batch([
-      updateBudgetApplicationsStatement(
-        db,
-        and(eq(projectBudgetApplications.id, applicationId), eq(projectBudgetApplications.status, "billed")),
-        { status: "internal_review", ownerVisible: false, billedAt: null, billedBy: null, syncStatus: "needs_review", updatedAt: now }
-      ),
-      operationUpdateQuery(db, operationFor(projectId, applicationId), {
-        status: "internal_review",
-        syncStatus: "needs_review",
-        updatedAt: now,
-      }),
-    ])
+    const moved = await movePayApplicationStatus(db, {
+      projectId,
+      applicationId,
+      event: "undo_billing",
+      // Not once a Sage invoice number was recorded meanwhile.
+      also: isNull(projectBudgetApplications.sageInvoiceNumber),
+      values: { ownerVisible: false, billedAt: null, billedBy: null, syncStatus: "needs_review", updatedAt: now },
+      alongWith: [
+        operationUpdateQuery(db, operationFor(projectId, applicationId), {
+          status: "internal_review",
+          syncStatus: "needs_review",
+          updatedAt: now,
+        }),
+      ],
+    })
+    if (!moved) throw new Error("This billing approval was already taken back, or a Sage invoice number was recorded meanwhile. Refresh to see where it stands.")
     await recordActivityEvent({
       db, organizationId, projectId, actor: user, category: "financial",
       action: "pay_application_billing_undone", entityType: "project_budget_application", entityId: applicationId,
@@ -189,14 +198,21 @@ export async function setProjectOwnerPayApplicationSageInvoice(
     const number = invoiceNumber.trim().slice(0, 60) || null
     const syncStatus = number ? "synced" : "awaiting_sage_invoice"
     const now = new Date().toISOString()
-    await db.batch([
-      updateBudgetApplicationsStatement(db, eq(projectBudgetApplications.id, applicationId), {
-        sageInvoiceNumber: number,
-        syncStatus,
-        updatedAt: now,
-      }),
-      operationUpdateQuery(db, operationFor(projectId, applicationId), { syncStatus, updatedAt: now }),
-    ])
+    try {
+      await db.batch([
+        // Only while it is still billed (not taken back meanwhile).
+        batchGuardStatement(db, compassDrawStatusIs(projectId, applicationId, ["billed"]), "pay application still billed"),
+        updateBudgetApplicationsStatement(db, eq(projectBudgetApplications.id, applicationId), {
+          sageInvoiceNumber: number,
+          syncStatus,
+          updatedAt: now,
+        }),
+        operationUpdateQuery(db, operationFor(projectId, applicationId), { syncStatus, updatedAt: now }),
+      ])
+    } catch (error) {
+      if (isBatchGuardFailure(error)) throw new Error("The billing approval was taken back meanwhile. Approve the pay application for billing first.")
+      throw error
+    }
     await recordActivityEvent({
       db, organizationId, projectId, actor: user, category: "financial",
       action: "pay_application_sage_invoice_recorded", entityType: "project_budget_application", entityId: applicationId,

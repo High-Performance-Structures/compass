@@ -43,8 +43,11 @@ import { assertProjectAccess } from "@/lib/domain/project/access"
 import { requirePermission } from "@/lib/permissions"
 import { isInternalStaffRole } from "@/lib/user-roles"
 import { requireUserContext } from "@/lib/server/action-context"
+import { contractDepositMachine } from "@/lib/domain/financials/deposit-machine"
+import type { ContractDepositStatus } from "@/lib/domain/financials/statuses"
+import { nextState } from "@/lib/shared/state-machine"
 
-type ProjectContractDepositStatus = "requested" | "received" | "void"
+type ProjectContractDepositStatus = ContractDepositStatus
 
 export type ProjectContractDepositItem = {
   readonly id: string
@@ -504,7 +507,17 @@ export async function saveProjectContractDeposit(
         }
       }
       await assertStillCoversApplied(db, projectId, (existing.status === "received" ? existing.receivedAmountCents ?? 0 : 0) - (values.receivedAmountCents ?? 0))
-      await db.update(projectContractDeposits).set({ ...values, updatedAt: now }).where(eq(projectContractDeposits.id, id)).run()
+      // Compare-and-set on the status read above (a receive, unreceive or plain save):
+      // a void or another save meanwhile wins, and this one is refused.
+      if (existing.status !== values.status && !nextState(contractDepositMachine, existing.status, values.status === "received" ? "receive" : "unreceive").ok) {
+        throw new Error("That deposit change isn't allowed.")
+      }
+      const saved = await db
+        .update(projectContractDeposits)
+        .set({ ...values, updatedAt: now })
+        .where(and(eq(projectContractDeposits.id, id), eq(projectContractDeposits.status, existing.status)))
+        .returning({ id: projectContractDeposits.id })
+      if (saved.length === 0) throw new Error("This deposit changed while you were editing it (voided or saved by someone else). Refresh and try again.")
     } else {
       id = crypto.randomUUID()
       await db
@@ -590,7 +603,7 @@ export async function voidProjectContractDeposit(projectId: string, depositId: s
     // writer can't claim its AR invoice (the claim checks for void in the same
     // statement); a queued one is withdrawn next.
     const reductionCents = existing.status === "received" ? existing.receivedAmountCents ?? 0 : 0
-    const voided = await db.update(projectContractDeposits).set({ status: "void", updatedAt: now })
+    const voided = await db.update(projectContractDeposits).set({ status: contractDepositMachine.transitions.void.to, updatedAt: now })
       .where(and(
         eq(projectContractDeposits.id, depositId), eq(projectContractDeposits.status, existing.status),
         // The applied-deposit check again, in the same statement: a pay application submitted meanwhile still counts.

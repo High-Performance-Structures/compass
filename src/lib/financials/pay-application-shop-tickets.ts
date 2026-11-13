@@ -1,8 +1,8 @@
-import { and, asc, eq, inArray, isNull } from "drizzle-orm"
+import { and, asc, eq, inArray, isNull, sql, type SQL } from "drizzle-orm"
 
 import { projectBudgetApplications, projectBudgetLines } from "@/db/schema"
 import { payApplicationShopTicketImports, shopTicketLines, shopTickets } from "@/db/schema-shop-tickets"
-import { chunkD1Values } from "@/lib/d1-query"
+import { chunkD1Values, isBatchGuardFailure } from "@/lib/d1-query"
 import {
   budgetLineProgress,
   planShopTicketContributions,
@@ -14,6 +14,7 @@ import {
 } from "@/lib/domain/budget/rules"
 import {
   deleteShopTicketImportsStatement,
+  draftPayApplicationGuardStatement,
   insertShopTicketImportsStatements,
   updateBudgetLinesStatement,
   type Statement,
@@ -218,9 +219,43 @@ function planStatements(
   return statements
 }
 
-async function runBatch(db: Db, statements: readonly Statement[]): Promise<void> {
-  const [first, ...rest] = statements
-  if (first) await db.batch([first, ...rest])
+/** What a change was planned from: the draft's lines it rewrites and its ticket rows, as read. */
+type ReadState = {
+  readonly projectId: string
+  readonly applicationId: string
+  readonly lines: readonly { readonly id: string; readonly currentWorkCompleted: number }[]
+  readonly importRows: readonly ImportRow[]
+}
+
+/** SQL condition: the lines and ticket rows are still as read. */
+function unchangedSince(read: ReadState): SQL {
+  const lines = read.lines.map(
+    (line) => sql`EXISTS (SELECT 1 FROM ${projectBudgetLines} WHERE ${and(eq(projectBudgetLines.id, line.id), eq(projectBudgetLines.currentWorkCompleted, line.currentWorkCompleted))})`
+  )
+  const rows = sql`(SELECT count(*) FROM ${payApplicationShopTicketImports} WHERE ${eq(payApplicationShopTicketImports.applicationId, read.applicationId)}) = ${read.importRows.length}`
+  return sql.join([...lines, rows], sql` AND `)
+}
+
+/**
+ * Runs a planned change only while the pay application is still a draft and
+ * nothing it was planned from changed: two imports at once, or an import
+ * racing a typed line edit, can't add a ticket twice or overwrite the edit.
+ */
+async function runPlannedBatch(db: Db, read: ReadState, statements: readonly Statement[]): Promise<void> {
+  try {
+    await db.batch([draftPayApplicationGuardStatement(db, read.projectId, read.applicationId, unchangedSince(read)), ...statements])
+  } catch (error) {
+    if (isBatchGuardFailure(error)) {
+      throw new Error("This pay application changed while the tickets were being applied (an edit, an import, or Ready for review). Refresh and try again.")
+    }
+    throw error
+  }
+}
+
+/** The lines a plan rewrites, as read. */
+function changedLines(lines: readonly (typeof projectBudgetLines.$inferSelect)[], plan: ShopTicketContributionPlan) {
+  const changed = new Set(plan.lineChanges.map((change) => change.lineId))
+  return lines.filter((line) => changed.has(line.id))
 }
 
 function lineInputs(lines: readonly (typeof projectBudgetLines.$inferSelect)[]) {
@@ -279,8 +314,9 @@ export async function importShopTickets(
     ),
     ...plan.blocked.map((row) => `${row.costCode} wasn't changed: ${row.error}`),
   ]
-  await runBatch(
+  await runPlannedBatch(
     db,
+    { projectId, applicationId, lines: changedLines(lines, plan), importRows: existingRows },
     planStatements(db, { applicationId, ticketId: null, lines, existingRows: existingRows.filter((row) => row.mode === "imported"), plan, userId: input.userId, now })
   )
   await refreshOwnerPayApplication(db, projectId, applicationId, now)
@@ -311,7 +347,7 @@ export async function detachShopTicket(
       `${ticket.ticketNumber} can't be taken off ${plan.blocked.map((row) => row.costCode).join(", ")}: ${plan.blocked[0]?.error ?? ""} Adjust the line first.`
     )
   }
-  await runBatch(db, [
+  await runPlannedBatch(db, { projectId, applicationId, lines: changedLines(lines, plan), importRows: existingRows }, [
     ...planStatements(db, {
       applicationId,
       ticketId,
@@ -362,7 +398,7 @@ export async function setShopTicketAlreadyIncluded(
     eq(payApplicationShopTicketImports.mode, "already_included")
   )
   if (!input.included) {
-    await runBatch(db, [deleteShopTicketImportsStatement(db, markWhere)])
+    await runPlannedBatch(db, { projectId, applicationId, lines: [], importRows: existingRows }, [deleteShopTicketImportsStatement(db, markWhere)])
     return
   }
   if (ticket.status !== "issued") throw new Error("Only an issued ticket can be marked as already included.")
@@ -370,8 +406,9 @@ export async function setShopTicketAlreadyIncluded(
     throw new Error(`${ticket.ticketNumber} was already imported onto the lines. Unlink it to take those amounts off first.`)
   }
   if (ticketRows.some((row) => row.mode === "already_included")) return
-  await runBatch(
+  await runPlannedBatch(
     db,
+    { projectId, applicationId, lines: [], importRows: existingRows },
     insertShopTicketImportsStatements(db, [
       {
         id: crypto.randomUUID(),

@@ -2,7 +2,7 @@
 
 import { requireProjectAudienceReadUser } from "@/lib/project-audience-request-server"
 
-import { and, asc, desc, eq, ne, sql } from "drizzle-orm"
+import { and, asc, desc, eq, ne, notInArray, sql } from "drizzle-orm"
 
 import { getDb } from "@/db"
 import {
@@ -588,7 +588,9 @@ export async function getProjectBudgetSummary(
               and(
                 eq(projectBudgetApplications.projectId, projectId),
                 eq(projectBudgetApplications.ownerVisible, true),
-                ne(projectBudgetApplications.status, "building")
+                // A replaced contract budget revision isn't billing history;
+                // owners saw every old revision listed as another pay application.
+                notInArray(projectBudgetApplications.status, ["building", "budget_superseded"])
               )
             )
             .orderBy(

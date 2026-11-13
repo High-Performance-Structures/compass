@@ -1,11 +1,11 @@
-import { and, eq, notInArray, sql, type SQL } from "drizzle-orm"
+import { and, eq, inArray, notInArray, sql, type SQL } from "drizzle-orm"
 import type { BatchItem } from "drizzle-orm/batch"
 import type { SQLiteUpdateSetSource } from "drizzle-orm/sqlite-core"
 
 import { projectBudgetApplications, projectBudgetLines } from "@/db/schema"
 import { payApplicationSageChecks, payApplicationSageSyncs } from "@/db/schema-sage"
 import { payApplicationShopTicketImports } from "@/db/schema-shop-tickets"
-import { chunkD1InsertRows } from "@/lib/d1-query"
+import { batchGuardStatement, chunkD1InsertRows, isBatchGuardFailure } from "@/lib/d1-query"
 import { companyMoveGuard, type CompanyReferenceMove } from "@/lib/domain/contacts/company-merge-references"
 import {
   COMPASS_DRAW_SOURCE,
@@ -18,6 +18,7 @@ import {
   type DepositAppliedMode,
 } from "@/lib/financials/contract-deposits"
 import { PAY_APPLICATION_BILLING_SOURCES, PAY_APPLICATION_SAGE_CHECK_STATUSES, PAY_APPLICATION_SAGE_SYNC_EVENTS } from "@/lib/domain/budget/statuses"
+import { payApplicationMachine, type PayApplicationEvent } from "@/lib/domain/budget/pay-application-machine"
 import { PAY_APPLICATION_SHOP_TICKET_IMPORT_MODES } from "@/lib/domain/operations/statuses"
 import type { Db } from "@/lib/server/action-context"
 import { assertListFields } from "@/lib/shared/statuses"
@@ -34,13 +35,18 @@ import { assertListFields } from "@/lib/shared/statuses"
  * `*Statement` builds an unexecuted statement for `db.batch`; the plain form
  * runs it. Callers pass the same `where` conditions they used before, so the
  * SQL is unchanged. No access rules here; callers check access first.
+ *
+ * A Compass draw's status changes only through movePayApplicationStatus
+ * (./pay-application-machine.ts); the plain updates refuse a status. Its
+ * G703 lines change only while it is a draft (draftPayApplicationLines*).
  */
 
 /** One statement for `db.batch([...])`. */
 export type Statement = BatchItem<"sqlite">
 
 type ApplicationInsert = typeof projectBudgetApplications.$inferInsert
-type ApplicationPatch = SQLiteUpdateSetSource<typeof projectBudgetApplications>
+/** Every column but status; see movePayApplicationStatus and the projection functions. */
+type ApplicationPatch = Omit<SQLiteUpdateSetSource<typeof projectBudgetApplications>, "status">
 type LineInsert = typeof projectBudgetLines.$inferInsert
 type LinePatch = SQLiteUpdateSetSource<typeof projectBudgetLines>
 
@@ -60,12 +66,81 @@ export async function insertBudgetApplication(db: Db, values: ApplicationInsert)
   await db.insert(projectBudgetApplications).values(values)
 }
 
+// A spread or untyped patch can still carry status past the type; refuse it.
+function withoutStatus(patch: ApplicationPatch): ApplicationPatch {
+  if ("status" in patch) throw new Error("project_budget_applications.status changes only through the budget store's status functions.")
+  return patch
+}
+
 export function updateBudgetApplicationsStatement(db: Db, where: SQL | undefined, patch: ApplicationPatch): Statement {
-  return db.update(projectBudgetApplications).set(patch).where(where)
+  return db.update(projectBudgetApplications).set(withoutStatus(patch)).where(where)
 }
 
 export async function updateBudgetApplications(db: Db, where: SQL | undefined, patch: ApplicationPatch): Promise<void> {
-  await db.update(projectBudgetApplications).set(patch).where(where).run()
+  await db.update(projectBudgetApplications).set(withoutStatus(patch)).where(where).run()
+}
+
+// ---- Compass draw status (issue #1329)
+
+/** One Compass-built draw of the project, in one of `statuses`. */
+function compassDrawIn(projectId: string, applicationId: string, statuses: readonly string[]): SQL | undefined {
+  return and(
+    eq(projectBudgetApplications.id, applicationId),
+    eq(projectBudgetApplications.projectId, projectId),
+    eq(projectBudgetApplications.sourceSystem, COMPASS_DRAW_SOURCE),
+    inArray(projectBudgetApplications.status, [...statuses]),
+  )
+}
+
+/** SQL condition: the Compass draw is (still) in one of `statuses`. */
+export function compassDrawStatusIs(projectId: string, applicationId: string, statuses: readonly string[]): SQL {
+  return sql`EXISTS (SELECT 1 FROM ${projectBudgetApplications} WHERE ${compassDrawIn(projectId, applicationId, statuses)})`
+}
+
+/**
+ * Moves a Compass draw through `event` (compare-and-set on the event's
+ * source states) together with `alongWith`, the statements that belong to
+ * the move (its workflow item, say), in one batch: they land only when the
+ * move does. Returns false, writing nothing, when the draw was no longer in
+ * a source state (someone else moved it first). Run follow-ups such as
+ * Activity or a Sage request only after true.
+ */
+export async function movePayApplicationStatus(
+  db: Db,
+  input: {
+    readonly projectId: string
+    readonly applicationId: string
+    readonly event: PayApplicationEvent
+    /** Other columns written with the status. */
+    readonly values?: ApplicationPatch
+    /** A further condition on the draw the move needs (no Sage invoice recorded, say). */
+    readonly also?: SQL
+    readonly alongWith?: readonly Statement[]
+  },
+): Promise<boolean> {
+  const rule = payApplicationMachine.transitions[input.event]
+  const where = and(compassDrawIn(input.projectId, input.applicationId, rule.from), input.also)
+  try {
+    await db.batch([
+      batchGuardStatement(db, sql`EXISTS (SELECT 1 FROM ${projectBudgetApplications} WHERE ${where})`, `pay application ${input.event}`),
+      db.update(projectBudgetApplications).set({ ...withoutStatus(input.values ?? {}), status: rule.to }).where(where),
+      ...(input.alongWith ?? []),
+    ])
+    return true
+  } catch (error) {
+    if (isBatchGuardFailure(error)) return false
+    throw error
+  }
+}
+
+/**
+ * A batch statement that fails the batch unless the draw is still a draft
+ * (and `condition`, when given, still holds). Put it first in a batch that
+ * edits a draft's lines, so nothing lands once it went to review.
+ */
+export function draftPayApplicationGuardStatement(db: Db, projectId: string, applicationId: string, condition?: SQL) {
+  const draft = compassDrawStatusIs(projectId, applicationId, ["draft"])
+  return batchGuardStatement(db, condition ? sql`(${draft} AND ${condition})` : draft, "draft pay application unchanged")
 }
 
 export function deleteBudgetApplicationsStatement(db: Db, where: SQL | undefined): Statement {
@@ -177,8 +252,21 @@ export function updateBudgetLinesStatement(db: Db, where: SQL | undefined, patch
   return db.update(projectBudgetLines).set(patch).where(where)
 }
 
-export async function updateBudgetLines(db: Db, where: SQL | undefined, patch: LinePatch): Promise<void> {
-  await db.update(projectBudgetLines).set(patch).where(where).run()
+/**
+ * Edits lines of a Compass draw only while it is still a draft: the check is
+ * part of the write, so an edit racing "Ready for review" can't change the
+ * amounts after they were frozen. Returns how many lines changed.
+ */
+export async function updateDraftPayApplicationLines(
+  db: Db,
+  input: { readonly projectId: string; readonly applicationId: string; readonly where: SQL | undefined; readonly patch: LinePatch },
+): Promise<number> {
+  const result = await db
+    .update(projectBudgetLines)
+    .set(input.patch)
+    .where(and(input.where, eq(projectBudgetLines.applicationId, input.applicationId), compassDrawStatusIs(input.projectId, input.applicationId, ["draft"])))
+    .run()
+  return result.meta.changes ?? 0
 }
 
 export function deleteBudgetLinesStatement(db: Db, where: SQL | undefined): Statement {

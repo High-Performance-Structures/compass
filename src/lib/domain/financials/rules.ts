@@ -605,3 +605,50 @@ export function parseVoidReason(raw: string): { readonly ok: true; readonly reas
 export function paidCentsAfterRelease(paidCents: number, releasedCents: number): number {
   return Math.max(paidCents - releasedCents, 0)
 }
+
+// ---------------------------------------------------------------------------
+// Imported invoices shown once. A cutover from another system (Buildertrend,
+// Sage) records each owner invoice in the invoices table, where it is listed
+// with received payments, and also promoted the same source record into the
+// project's financial workflow list. The workflow copy is left out when the
+// invoice itself is listed, matched by source system and the source record's
+// id, or its number.
+// ---------------------------------------------------------------------------
+
+type ImportedInvoiceRow = {
+  readonly sourceSystem: string
+  readonly sourceExternalId: string | null
+  readonly invoiceNumber: string | null
+  readonly status: string
+  readonly invoiceKind: string | null
+}
+
+function invoiceNumberKey(value: string): string {
+  return value.trim().toLowerCase()
+}
+
+/** Keys of the imported invoices listed with received payments (payable, not credit memos). */
+export function listedImportedInvoiceKeys(rows: readonly ImportedInvoiceRow[]): ReadonlySet<string> {
+  const keys = new Set<string>()
+  for (const row of rows) {
+    if (row.sourceSystem === "compass" || !invoiceAcceptsPayments(row.status) || row.invoiceKind === "credit_memo") continue
+    if (row.sourceExternalId?.trim()) keys.add(`${row.sourceSystem}:id:${row.sourceExternalId.trim()}`)
+    if (row.invoiceNumber?.trim()) keys.add(`${row.sourceSystem}:number:${invoiceNumberKey(row.invoiceNumber)}`)
+  }
+  return keys
+}
+
+/** True for an imported workflow "owner invoice" whose invoice is already listed (see listedImportedInvoiceKeys). */
+export function isListedImportedInvoiceCopy(
+  row: {
+    readonly sourceSystem: string
+    readonly sourceRecordType: string
+    readonly sourceRecordId: string | null
+    readonly sourceRecordNumber: string | null
+  },
+  listed: ReadonlySet<string>,
+): boolean {
+  if (row.sourceRecordType !== "owner_invoice") return false
+  if (row.sourceRecordId?.trim() && listed.has(`${row.sourceSystem}:id:${row.sourceRecordId.trim()}`)) return true
+  return Boolean(row.sourceRecordNumber?.trim() && listed.has(`${row.sourceSystem}:number:${invoiceNumberKey(row.sourceRecordNumber ?? "")}`))
+}

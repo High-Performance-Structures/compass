@@ -13,6 +13,7 @@ import {
 } from "@/app/actions/received-payments"
 import { RecordPaymentDialog, type RecordPaymentTarget } from "@/components/financials/record-payment-dialog"
 import { RecordTable, useRecordTable } from "@/components/record-table"
+import { SourceTag } from "@/components/shared/source-tag"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import {
@@ -134,6 +135,7 @@ export function billedItemColumns({ projectId, canRecord, canSettle, onRecord, o
         return (
           <div className="min-w-0">
             {href ? <Link href={href} className="font-medium hover:underline">{row.original.label}</Link> : <span className="font-medium">{row.original.label}</span>}
+            {row.original.sourceSystem === "buildertrend" && <SourceTag source="buildertrend" className="ml-1" />}
             {row.original.sageInvoiceNumber && <p className="text-xs text-muted-foreground">Sage invoice {row.original.sageInvoiceNumber}</p>}
             {row.original.sourceLabel && <p className="text-xs text-muted-foreground">{row.original.sourceLabel}</p>}
             {row.original.paymentBlocker && !row.original.prepaid && <p className="text-xs text-muted-foreground">{row.original.paymentBlocker}</p>}

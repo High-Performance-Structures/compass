@@ -351,6 +351,8 @@ export async function POST(request: Request): Promise<Response> {
         status: "superseded",
         updatedAt: now,
       }),
+      // Before the acceptance below: its guard checks the estimate as read.
+      ...changeOrderExecution,
       updateEstimatesStatement(db, eq(projectEstimates.id, estimate.id), {
         status: "accepted",
         foxitStatus: "completed",
@@ -364,7 +366,6 @@ export async function POST(request: Request): Promise<Response> {
         sageStatus: "ready",
         updatedAt: now,
       }),
-      ...changeOrderExecution,
     ])
     await announceEsignOutcome({
       db,

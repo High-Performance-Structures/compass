@@ -26,19 +26,24 @@ import {
   type PayApplicationChangeOrder,
 } from "@/lib/financials/pay-application-change-orders"
 import { getCloudflareContext } from "@/lib/db"
-import { chunkD1InsertRows } from "@/lib/d1-query"
+import { chunkD1InsertRows, isBatchGuardFailure } from "@/lib/d1-query"
 import { budgetLineProgress, payApplicationLineEntry, retainageAtPercent, retainageAtRate } from "@/lib/domain/budget/rules"
-import { insertOperations, operationDeleteQuery, operationUpdateQuery, updateOperations } from "@/lib/domain/operations/store"
+import { insertOperations, operationDeleteQuery } from "@/lib/domain/operations/store"
+import { readListedImportedInvoiceKeys } from "@/lib/domain/financials/receivables"
+import { returnPayApplicationToDraft, sendPayApplicationForReview } from "@/lib/domain/budget/pay-application-review"
+import { isListedImportedInvoiceCopy } from "@/lib/domain/financials/rules"
 import {
   deleteBudgetApplicationsStatement,
   deleteBudgetLinesStatement,
   discardBudgetApplication,
+  draftPayApplicationGuardStatement,
   insertBudgetApplication,
   insertBudgetLines,
+  movePayApplicationStatus,
   updateBudgetApplications,
   updateBudgetApplicationsStatement,
-  updateBudgetLines,
   updateBudgetLinesStatement,
+  updateDraftPayApplicationLines,
 } from "@/lib/domain/budget/store"
 import { readFeatureSettings } from "@/lib/feature-settings/server"
 import {
@@ -62,7 +67,6 @@ import {
   syncDraftPayApplication,
 } from "@/lib/financials/owner-pay-application-refresh"
 import {
-  g703ByCostCode,
   loadPayApplicationShares,
   priorAmountsForShares,
 } from "@/lib/financials/pay-application-shares"
@@ -385,8 +389,8 @@ function revalidateFinancialPaths(projectId: string): void {
 export async function getProjectFinancialWorkflowItems(
   projectId: string
 ): Promise<readonly ProjectFinancialWorkflowItem[]> {
-  const { db } = await verifyProjectReadAccess(projectId)
-  const [rows, applications] = await Promise.all([
+  const { db, organizationId } = await verifyProjectReadAccess(projectId)
+  const [rows, applications, listedInvoices] = await Promise.all([
     db
       .select()
       .from(projectOperations)
@@ -430,6 +434,7 @@ export async function getProjectFinancialWorkflowItems(
       })
       .from(projectBudgetApplications)
       .where(eq(projectBudgetApplications.projectId, projectId)),
+    readListedImportedInvoiceKeys(db, { organizationId, projectId }),
   ])
   const applicationsBySourceId = new Map(
     applications.flatMap((application) => {
@@ -440,7 +445,9 @@ export async function getProjectFinancialWorkflowItems(
     })
   )
 
-  return rows.map((row) => {
+  // An imported invoice already listed with received payments shows once, there.
+  const shown = rows.filter((row) => !isListedImportedInvoiceCopy(row, listedInvoices))
+  return shown.map((row) => {
     const isReadOnlyImportedFinancial =
       ["buildertrend", "sage"].includes(row.sourceSystem) &&
       ["owner_invoice", "payment", "deposit", "credit_memo"].includes(
@@ -690,19 +697,26 @@ export async function updateProjectOwnerPayApplicationLine(
       checked.entry
     const retainageHeld = retainageAtPercent(totalCompletedStored, retainagePercent)
     const now = new Date().toISOString()
-    await updateBudgetLines(db, eq(projectBudgetLines.id, lineId), {
-      currentWorkCompleted,
-      storedMaterials,
-      ...budgetLineProgress({
-        previousWorkCompleted: line.previousWorkCompleted,
+    // Lands only while the draw is still a draft (not sent to review meanwhile).
+    const changed = await updateDraftPayApplicationLines(db, {
+      projectId,
+      applicationId,
+      where: eq(projectBudgetLines.id, lineId),
+      patch: {
         currentWorkCompleted,
         storedMaterials,
-        adjustedEstimate: line.adjustedEstimate,
-      }),
-      retainageHeld,
-      ownerVisible: input.ownerVisible,
-      updatedAt: now,
+        ...budgetLineProgress({
+          previousWorkCompleted: line.previousWorkCompleted,
+          currentWorkCompleted,
+          storedMaterials,
+          adjustedEstimate: line.adjustedEstimate,
+        }),
+        retainageHeld,
+        ownerVisible: input.ownerVisible,
+        updatedAt: now,
+      },
     })
+    if (changed === 0) throw new Error("Only a draft pay application can be edited.")
     await refreshOwnerPayApplication(db, projectId, applicationId, now)
     revalidateFinancialPaths(projectId)
     return { success: true, id: lineId }
@@ -775,8 +789,13 @@ export async function setProjectOwnerPayApplicationPercentComplete(
         updatedAt: now,
       })
     })
-    const [first, ...rest] = updates
-    if (first) await db.batch([first, ...rest])
+    try {
+      // Only while the draw is still a draft (not sent to review meanwhile).
+      await db.batch([draftPayApplicationGuardStatement(db, projectId, applicationId), ...updates])
+    } catch (error) {
+      if (isBatchGuardFailure(error)) throw new Error("Only a draft pay application can be edited.")
+      throw error
+    }
     await refreshOwnerPayApplication(db, projectId, applicationId, now)
     revalidateFinancialPaths(projectId)
     return { success: true, id: applicationId }
@@ -847,7 +866,9 @@ export async function updateProjectOwnerPayApplicationBudget(
     const newer = await newerBudgetRevision(db, projectId, application.budgetRevisionId)
     const targetRevisionId = newer?.id ?? application.budgetRevisionId
     if (!targetRevisionId) throw new Error("This pay application has no contract budget revision.")
-    await syncDraftPayApplication(db, projectId, applicationId, targetRevisionId, new Date().toISOString())
+    if (!(await syncDraftPayApplication(db, projectId, applicationId, targetRevisionId, new Date().toISOString()))) {
+      throw new Error("Only a draft pay application can be updated.")
+    }
     revalidateFinancialPaths(projectId)
     return { success: true, id: applicationId }
   } catch (error) {
@@ -875,18 +896,25 @@ export async function deleteProjectOwnerPayApplicationDraft(
       )
       .get()
     if (!application) throw new Error("Only a draft pay application can be deleted.")
-    await db.batch([
-      deleteBudgetLinesStatement(db, eq(projectBudgetLines.applicationId, applicationId)),
-      operationDeleteQuery(
-        db,
-        and(
-          eq(projectOperations.projectId, projectId),
-          eq(projectOperations.sourceRecordType, "owner_pay_application"),
-          eq(projectOperations.sourceRecordId, applicationId)
-        )
-      ),
-      deleteBudgetApplicationsStatement(db, eq(projectBudgetApplications.id, applicationId)),
-    ])
+    try {
+      await db.batch([
+        // Not once it went to review meanwhile.
+        draftPayApplicationGuardStatement(db, projectId, applicationId),
+        deleteBudgetLinesStatement(db, eq(projectBudgetLines.applicationId, applicationId)),
+        operationDeleteQuery(
+          db,
+          and(
+            eq(projectOperations.projectId, projectId),
+            eq(projectOperations.sourceRecordType, "owner_pay_application"),
+            eq(projectOperations.sourceRecordId, applicationId)
+          )
+        ),
+        deleteBudgetApplicationsStatement(db, eq(projectBudgetApplications.id, applicationId)),
+      ])
+    } catch (error) {
+      if (isBatchGuardFailure(error)) throw new Error("Only a draft pay application can be deleted.")
+      throw error
+    }
     // Its applied deposit is free again for the other drafts.
     await refreshAutoDepositPayApplications(db, projectId, new Date().toISOString())
     revalidateFinancialPaths(projectId)
@@ -921,11 +949,20 @@ export async function setProjectOwnerPayApplicationDeposit(
     if (!application) throw new Error("Draft pay application not found.")
     const amount = input.mode === "manual" ? nonnegativeAmount(input.amount, "Deposit applied") : 0
     const now = new Date().toISOString()
-    await updateBudgetApplications(db, eq(projectBudgetApplications.id, applicationId), {
-      depositAppliedMode: input.mode,
-      depositApplied: amount,
-      updatedAt: now,
-    })
+    try {
+      await db.batch([
+        // A draw sent to review keeps the deposit it was reviewed with.
+        draftPayApplicationGuardStatement(db, projectId, applicationId),
+        updateBudgetApplicationsStatement(db, eq(projectBudgetApplications.id, applicationId), {
+          depositAppliedMode: input.mode,
+          depositApplied: amount,
+          updatedAt: now,
+        }),
+      ])
+    } catch (error) {
+      if (isBatchGuardFailure(error)) throw new Error("Draft pay application not found.")
+      throw error
+    }
     await refreshOwnerPayApplication(db, projectId, applicationId, now)
     revalidateFinancialPaths(projectId)
     return { success: true, id: applicationId }
@@ -940,98 +977,7 @@ export async function markProjectOwnerPayApplicationReady(
 ): Promise<ProjectFinancialWorkflowActionResult> {
   try {
     const { db } = await verifyProjectUpdateAccess(projectId)
-    const rows = await db
-      .select()
-      .from(projectBudgetApplications)
-      .where(
-        and(
-          eq(projectBudgetApplications.id, applicationId),
-          eq(projectBudgetApplications.projectId, projectId),
-          eq(projectBudgetApplications.status, "draft")
-        )
-      )
-      .limit(1)
-    const application = rows[0]
-    if (!application) throw new Error("Draft pay application not found.")
-    // A draw fully covered by the deposit still needs review and entry.
-    if (application.currentPaymentDue <= 0 && application.depositApplied <= 0) {
-      throw new Error("Enter current work or stored materials before Sage review.")
-    }
-    const lines = await db
-      .select()
-      .from(projectBudgetLines)
-      .where(eq(projectBudgetLines.applicationId, applicationId))
-      .orderBy(
-        asc(projectBudgetLines.csiDivision),
-        asc(projectBudgetLines.sortOrder)
-      )
-    if (lines.length === 0) {
-      throw new Error("The pay application has no G703 lines.")
-    }
-    const now = new Date().toISOString()
-    const sageReviewPayload = JSON.stringify({
-      schemaVersion: 1,
-      source: "compass_owner_pay_application",
-      writeApprovalRequired: true,
-      applicationId,
-      applicationNumber: application.applicationNumber,
-      periodTo: application.periodTo,
-      budgetRevisionId: application.budgetRevisionId,
-      g702: {
-        originalContractSum: application.originalContractSum,
-        netChanges: application.netChanges,
-        contractSumToDate: application.contractSumToDate,
-        totalCompletedStoredToDate: application.totalCompletedStoredToDate,
-        retainageHeld: application.retainageHeld,
-        totalEarnedLessRetainage: application.totalEarnedLessRetainage,
-        previousCertificates: application.previousCertificates,
-        depositApplied: application.depositApplied,
-        currentPaymentDue: application.currentPaymentDue,
-        balanceToFinish: application.balanceToFinish,
-      },
-      // Sage keeps one G703 line per cost code; assembly detail travels alongside.
-      g703: g703ByCostCode(lines).map((line) => ({
-        budgetRevisionLineId: line.budgetRevisionLineId,
-        divisionCode: line.csiDivision,
-        costCode: line.costCode,
-        description: line.description,
-        originalEstimate: line.originalEstimate,
-        totalChanges: line.totalChanges,
-        adjustedEstimate: line.adjustedEstimate,
-        previousWorkCompleted: line.previousWorkCompleted,
-        currentWorkCompleted: line.currentWorkCompleted,
-        storedMaterials: line.storedMaterials,
-        totalCompletedStored: line.totalCosts,
-        retainageHeld: line.retainageHeld,
-        balanceToFinish: line.balanceToFinish,
-      })),
-      g703Assemblies: lines.map((line) => ({
-        sourceLineId: line.id,
-        costCode: line.costCode,
-        assemblyKey: line.assemblyKey,
-        assemblyName: line.assemblyName,
-        adjustedEstimate: line.adjustedEstimate,
-        currentWorkCompleted: line.currentWorkCompleted,
-        storedMaterials: line.storedMaterials,
-        totalCompletedStored: line.totalCosts,
-      })),
-    })
-    await updateBudgetApplications(db, eq(projectBudgetApplications.id, applicationId), {
-      status: "internal_review",
-      syncStatus: "needs_review",
-      updatedAt: now,
-    })
-    await updateOperations(
-      db,
-      and(eq(projectOperations.projectId, projectId), eq(projectOperations.sourceRecordId, applicationId)),
-      {
-        status: "internal_review",
-        sageWriteStatus: "draft_ready",
-        sagePayloadJson: sageReviewPayload,
-        syncStatus: "needs_review",
-        updatedAt: now,
-      }
-    )
+    await sendPayApplicationForReview(db, { projectId, applicationId, now: new Date().toISOString() })
     revalidateFinancialPaths(projectId)
     return { success: true, id: applicationId }
   } catch (error) {
@@ -1049,36 +995,7 @@ export async function returnProjectOwnerPayApplicationToDraft(
 ): Promise<ProjectFinancialWorkflowActionResult> {
   try {
     const { db } = await verifyProjectUpdateAccess(projectId)
-    const application = await db
-      .select({ id: projectBudgetApplications.id })
-      .from(projectBudgetApplications)
-      .where(
-        and(
-          eq(projectBudgetApplications.id, applicationId),
-          eq(projectBudgetApplications.projectId, projectId),
-          eq(projectBudgetApplications.sourceSystem, "compass_contract_budget"),
-          eq(projectBudgetApplications.status, "internal_review")
-        )
-      )
-      .get()
-    if (!application) throw new Error("Only a pay application in internal review can go back to draft.")
-    const now = new Date().toISOString()
-    await db.batch([
-      updateBudgetApplicationsStatement(db, eq(projectBudgetApplications.id, applicationId), {
-        status: "draft",
-        syncStatus: "compass_only",
-        updatedAt: now,
-      }),
-      operationUpdateQuery(
-        db,
-        and(
-          eq(projectOperations.projectId, projectId),
-          eq(projectOperations.sourceRecordType, "owner_pay_application"),
-          eq(projectOperations.sourceRecordId, applicationId)
-        ),
-        { status: "draft", syncStatus: "compass_only", updatedAt: now }
-      ),
-    ])
+    await returnPayApplicationToDraft(db, { projectId, applicationId, now: new Date().toISOString() })
     revalidateFinancialPaths(projectId)
     return { success: true, id: applicationId }
   } catch (error) {
@@ -1382,7 +1299,9 @@ export async function createProjectOwnerPayApplicationDraft(
       createdAt: now,
       updatedAt: now,
     })
-    await updateBudgetApplications(db, eq(projectBudgetApplications.id, applicationId), { status: "draft", updatedAt: now })
+    if (!(await movePayApplicationStatus(db, { projectId, applicationId, event: "finish", values: { updatedAt: now } }))) {
+      throw new Error("The pay application changed while it was being created. Refresh and try again.")
+    }
     await linkShopTicketsByNumber(db, projectId, applicationId) // issued tickets naming this number
     revalidateFinancialPaths(projectId)
     return { success: true, id }

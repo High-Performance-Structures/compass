@@ -135,7 +135,7 @@ const GENERIC_UPDATES = ["operationUpdateQuery", "updateOperations", "updateOper
 // list (to-dos: todo-machines.test.ts).
 const OTHER_RECORD_STATUS_WRITERS = new Set([
   "src/app/actions/pay-application-billing.ts",
-  "src/app/actions/project-financial-workflows.ts",
+  "src/lib/domain/budget/pay-application-review.ts",
   "src/app/actions/project-sage-handoff-review.ts",
   "src/app/actions/projects.ts",
 ])

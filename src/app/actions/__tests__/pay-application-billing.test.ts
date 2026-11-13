@@ -110,6 +110,28 @@ describe("approving a pay application for billing", () => {
     expect(row("app-1")).toMatchObject({ status: "billed" })
   })
 
+  it("two approvals at once bill it once: one Activity entry, one Sage request", async () => {
+    const results = await Promise.all([
+      approveProjectOwnerPayApplicationForBilling("bishop", "app-1"),
+      approveProjectOwnerPayApplicationForBilling("bishop", "app-1"),
+    ])
+    expect(results.filter((result) => result.success)).toHaveLength(1)
+    expect(results.find((result) => !result.success)).toMatchObject({ error: expect.stringMatching(/already approved/) })
+    expect(mocks.recordActivityEvent.mock.calls.filter(([event]) => event.action === "pay_application_billed")).toHaveLength(1)
+    expect(row("app-1")).toMatchObject({ status: "billed", owner_visible: 1 })
+  })
+
+  it("taking back the approval and recording a Sage invoice at once never leaves an invoiced draw in review", async () => {
+    await approveProjectOwnerPayApplicationForBilling("bishop", "app-1")
+    const [undo, record] = await Promise.all([
+      undoProjectOwnerPayApplicationBilling("bishop", "app-1"),
+      setProjectOwnerPayApplicationSageInvoice("bishop", "app-1", "25031"),
+    ])
+    // Exactly one wins, and the row agrees with it.
+    expect([undo.success, record.success].filter(Boolean)).toHaveLength(1)
+    expect(row("app-1")).toMatchObject(undo.success ? { status: "internal_review", sage_invoice_number: null } : { status: "billed", sage_invoice_number: "25031" })
+  })
+
   it("refuses clients", async () => {
     mocks.requireAuth.mockResolvedValue({ id: "client", role: "client", organizationId: "client-org" })
     expect((await approveProjectOwnerPayApplicationForBilling("bishop", "app-1")).success).toBe(false)

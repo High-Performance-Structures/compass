@@ -18,6 +18,7 @@ import {
   importedDrawSourceLabel,
   invoiceAcceptsPayments,
   isImportedDraw,
+  listedImportedInvoiceKeys,
   receivableOpenCents,
   receivablePaidState,
   receivableStaffStatus,
@@ -140,6 +141,21 @@ function billedDrawCondition(): SQL | undefined {
       notInArray(projectBudgetApplications.status, [...IMPORTED_DRAW_UNBILLED_STATUSES]),
     ),
   )
+}
+
+/** Keys of the project's imported invoices that are listed with received payments (rules: listedImportedInvoiceKeys). */
+export async function readListedImportedInvoiceKeys(db: Db, scope: ProjectReceivableScope): Promise<ReadonlySet<string>> {
+  const rows = await db
+    .select({
+      sourceSystem: invoices.sourceSystem,
+      sourceExternalId: invoices.sourceExternalId,
+      invoiceNumber: invoices.invoiceNumber,
+      status: invoices.status,
+      invoiceKind: invoices.invoiceKind,
+    })
+    .from(invoices)
+    .where(and(eq(invoices.organizationId, scope.organizationId), eq(invoices.projectId, scope.projectId)))
+  return listedImportedInvoiceKeys(rows)
 }
 
 /**
