@@ -31,6 +31,7 @@ import {
 import { completePhaseProposal } from "@/lib/estimates/phase-proposals"
 import { readEstimateMode } from "@/lib/estimates/numbering"
 import { rebuildProjectContractBudget } from "@/lib/financials/contract-budget-store"
+import { afterChangeOrdersExecuted } from "@/lib/change-orders/executed-follow-ups"
 
 /**
  * Recording a client's acceptance: the estimate becomes the accepted version
@@ -99,6 +100,11 @@ async function acceptProjectEstimate(input: {
     ...changeOrderExecution,
     ...(input.versionChangeOrder?.statements ?? []),
   ])
+  await afterChangeOrdersExecuted(input.access.db, {
+    projectId: input.estimate.projectId,
+    changeOrderIds: [input.estimate.changeOrderId, input.versionChangeOrder?.changeOrderId],
+    actorId: input.access.user.id,
+  })
 
   // A phase estimate creates its family phase and takes its assembly out of
   // the contract estimate; it never builds this job's contract budget.

@@ -20,6 +20,7 @@ import { roundDueDate, roundProgress, type RoundProgress } from "@/lib/selection
 import type { SelectionSheetRow } from "@/lib/selections/sheet"
 import type { Db } from "@/lib/server/action-context"
 
+import { outsidePhaseWork } from "./locks"
 import { loadSelectionSheet } from "./selection-sheet-read"
 import type { SelectionRoundSignatureStatus } from "./statuses"
 import { clearRoundAlerts, recordRoundAlert } from "./template-store"
@@ -41,7 +42,10 @@ function cards(
   alerted: ReadonlySet<string>,
   signatures: ReadonlyMap<string, RoundCard["signature"]>,
 ): readonly RoundCard[] {
-  const selections = rows.map((row) => ({ roundKey: row.roundKey, hasPick: row.pickTitle !== null, deltaCents: row.deltaCents }))
+  // The same selections the phase document covers (outsidePhaseWork).
+  const selections = rows
+    .filter((row) => !outsidePhaseWork({ status: row.status, replaced: row.replaced, ownerApproved: row.ownerApproved, signedCurrentPick: row.signed }))
+    .map((row) => ({ roundKey: row.roundKey, hasPick: row.pickTitle !== null, deltaCents: row.deltaCents }))
   return rounds.map((round) => ({
     key: round.id,
     name: round.name,

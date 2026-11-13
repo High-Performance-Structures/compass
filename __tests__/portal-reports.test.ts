@@ -39,6 +39,7 @@ const item: SelectionDecisionItem = {
   approvedByName: "Private owner identity",
   approvalBlocker: null,
   signed: true,
+  ownerApproved: true,
   status: "selected",
   selectionUpdatedAt: "2026-09-05",
   requests: [],

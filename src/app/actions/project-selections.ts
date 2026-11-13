@@ -21,7 +21,7 @@ import {
   projectTaskNumberFor,
   requiredText
 } from "@/lib/domain/selections/rules"
-import { deleteFinishSelectionsReturningIds, insertFinishSelection, insertSelectionRoomIfAbsent, setSelectionStatusByStaff, updateFinishSelections } from "@/lib/domain/selections/store"
+import { deleteFinishSelectionsReturningIds, insertFinishSelection, insertSelectionRoomIfAbsent, setSelectionStatusByStaff, updateFinishSelections, updateLockedSelection } from "@/lib/domain/selections/store"
 import type {
   ApplyProjectFinishScheduleImportResult,
   CreateProjectSelectionInput,
@@ -398,6 +398,10 @@ export async function updateProjectSelection(
     }
     if (statusChanged) {
       const saved = await setSelectionStatusByStaff(db, { projectId, selectionId, expected: seenStatus, status, values })
+      if (!saved) return { success: false, error: STATUS_CHANGED }
+    } else if (selectionLock(existing.status, replaced)) {
+      // An allowed edit of a locked row (room, notes) lands only while it is still locked the same way.
+      const saved = await updateLockedSelection(db, { projectId, selectionId, expected: existing.status, values })
       if (!saved) return { success: false, error: STATUS_CHANGED }
     } else {
       const row = and(eq(projectFinishSelections.id, selectionId), eq(projectFinishSelections.projectId, projectId))

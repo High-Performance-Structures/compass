@@ -28,6 +28,8 @@ export type SelectionDecisionItem = {
   readonly requiresChangeOrder: boolean
   /** A signature covers it (signed Selection Phase or executed replacement change order); the click alone doesn't. */
   readonly signed: boolean
+  /** The owner's approval is recorded on the selection (signed, or an older approval). */
+  readonly ownerApproved: boolean
   readonly changeOrderId: string | null
   readonly approvedAt: string | null
   readonly approvedByName: string | null

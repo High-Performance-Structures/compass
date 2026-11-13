@@ -23,6 +23,7 @@ import { updateFinishSelectionsStatement } from "@/lib/domain/selections/store"
 import {
   approvalBlocker,
   moneyCents,
+  specificationCurrent,
   specificationJson,
 } from "@/lib/selections/decisions"
 import { publishSelectionSchema, type PublishSelectionInput } from "@/lib/selections/publish-input"
@@ -286,7 +287,7 @@ export async function approveSelectionDecision(
       .limit(1)
     const blocker = approvalBlocker({
       ...decision,
-      current: decision.specificationJson === specificationJson(row),
+      current: specificationCurrent(decision.specificationJson, row, row.status === "ordered" || row.status === "installed"),
       openRequests: open.length,
     })
     if (blocker) throw new Error(blocker)

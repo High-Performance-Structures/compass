@@ -39,7 +39,7 @@ import { canViewChangeOrder, changeOrderRequesterType, type ChangeOrderRequester
 import { displayChangeOrderRequesterType } from "@/lib/change-orders/provenance"
 import { getCloudflareContext } from "@/lib/db"
 import { rebuildProjectContractBudget } from "@/lib/financials/contract-budget-store"
-import { applyExecutedReplacementChangeOrder } from "@/lib/domain/selections/replacement-signing"
+import { afterChangeOrdersExecuted } from "@/lib/change-orders/executed-follow-ups"
 import {
   executeBaselineReplacement,
   rebaselineViewData,
@@ -1093,8 +1093,7 @@ export async function updateProjectChangeOrder(
         projectId,
         actorUserId: context.user.id,
       })
-      // A selection replacement's change order approves its selection.
-      await applyExecutedReplacementChangeOrder(context.db, { projectId, changeOrderId, actorId: context.user.id })
+      await afterChangeOrdersExecuted(context.db, { projectId, changeOrderIds: [changeOrderId], actorId: context.user.id })
     }
     revalidateChangeOrderPaths(projectId)
     return { success: true, id: changeOrderId }

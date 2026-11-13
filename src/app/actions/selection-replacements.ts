@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache"
 
 import { actionFailure, errorMessage, type ActionResult } from "@/lib/action-result"
 import { replaceLockedSelection, startReplacementChangeOrder } from "@/lib/domain/selections/replacement"
+import { canFeature, requireFeaturePermission } from "@/lib/permission-enforcement"
 import { projectContext } from "@/lib/server/action-context"
 import type { SelectionReplacementReason } from "@/lib/domain/selections/statuses"
 
@@ -48,6 +49,7 @@ async function replace(
       choiceId,
       note,
       actor: { ...user, name: user.displayName ?? user.email },
+      canCreateChangeOrder: await canFeature(user, "change-orders", "create"),
     })
     if (!result.ok) return actionFailure(result.error)
     revalidatePath(`/dashboard/projects/${projectId}/selections`)
@@ -93,6 +95,7 @@ export async function createReplacementChangeOrder(
 ): Promise<ActionResult<{ readonly changeOrderId: string; readonly changeOrderNumber: string }>> {
   try {
     const { db, user } = await writeContext(projectId)
+    await requireFeaturePermission(user, "change-orders", "create")
     const result = await startReplacementChangeOrder(db, { projectId, selectionId, actor: { ...user, name: user.displayName ?? user.email } })
     if (!result.ok) return actionFailure(result.error)
     revalidatePath(`/dashboard/projects/${projectId}/selections`)

@@ -6,7 +6,7 @@
  * enough that the owner should choose soon. Never includes supplier names
  * or supplier prices. Callers resolve owner access first.
  */
-import { and, asc, eq } from "drizzle-orm"
+import { and, asc, eq, isNotNull } from "drizzle-orm"
 
 import { projectFinishSelections, projects } from "@/db/schema"
 import { projectSelectionDecisions } from "@/db/schema-selection-decisions"
@@ -28,6 +28,8 @@ export type OwnerBoardSelection = {
   readonly approved: boolean
   /** The owner signed for the current pick (it is locked until the builder changes it). */
   readonly signed: boolean
+  /** The name of the selection that replaced this one (it is kept as it was), or null. */
+  readonly replacedByName: string | null
   readonly panel: SelectionChoicesPanel
   /** Names of the selections each choice opens, by choice id. */
   readonly followUpNames: Readonly<Record<string, readonly string[]>>
@@ -57,6 +59,11 @@ export async function loadOwnerChoiceBoard(db: Db, projectId: string, viewerUser
   )
   const panels = new Map(chunks.flat().map((panel) => [panel.selectionId, panel]))
   const signed = await signedChoices(db, published.map((row) => row.id))
+  const replacements = await db
+    .select({ name: projectFinishSelections.name, replaces: projectFinishSelections.replacesSelectionId })
+    .from(projectFinishSelections)
+    .where(and(eq(projectFinishSelections.projectId, projectId), isNotNull(projectFinishSelections.replacesSelectionId)))
+  const replacedBy = new Map(replacements.flatMap((row) => (row.replaces ? [[row.replaces, row.name] as const] : [])))
   const project = await db.select({ organizationId: projects.organizationId }).from(projects).where(eq(projects.id, projectId)).get()
   const leadTimes: LeadTimeContext | null = project?.organizationId
     ? await loadLeadTimeContext(db, { projectId, organizationId: project.organizationId })
@@ -72,6 +79,7 @@ export async function loadOwnerChoiceBoard(db: Db, projectId: string, viewerUser
       dueDate: row.dueDate,
       approved: Boolean(row.approvedAt),
       signed: panel.choices.some((choice) => choice.chosen && signed.get(row.id) === choice.id),
+      replacedByName: replacedBy.get(row.id) ?? null,
       panel,
       // Only follow-ups already published to the owner are named.
       followUpNames: Object.fromEntries(

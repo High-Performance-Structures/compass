@@ -18,6 +18,7 @@ import {
   type SelectionChoiceInput,
 } from "@/lib/domain/selections/choice-rules"
 import { categoryLeadTimeDays } from "@/lib/feature-settings/selection-settings"
+import { canFeature } from "@/lib/permission-enforcement"
 import { readFeatureSettings } from "@/lib/feature-settings/server"
 import {
   activeVendorInOrganization,
@@ -174,15 +175,20 @@ export type SelectionDetail = {
   /** The selection that replaced this one, and the one this one replaces. */
   readonly replacedBy: SelectionReplacementLink | null
   readonly replaces: SelectionReplacementLink | null
-  /** A replacement's change order (not void), or null. */
+  /** A replacement's change order (not void or declined), or null. */
   readonly replacementChangeOrder: { readonly id: string; readonly number: string; readonly status: string } | null
+  /** The viewer may create change orders ("Create change order"). */
+  readonly canCreateChangeOrder: boolean
 }
 
 /** Everything the staff detail panel shows for one selection. */
 export async function getSelectionDetail(projectId: string, selectionId: string): Promise<ActionResult<SelectionDetail>> {
   try {
-    const { db, userId } = await audienceAccess(projectId, selectionId, "staff", false)
-    const [panel, todos, rfqs, draftRfqs, lock, replacement, replacementChangeOrder] = await Promise.all([
+    const context = await staffSelectionContext(projectId, "read")
+    const { db } = context
+    if (!(await selectionInProject(db, projectId, selectionId))) throw new Error("Selection not found")
+    const userId = context.user.id
+    const [panel, todos, rfqs, draftRfqs, lock, replacement, replacementChangeOrder, canCreateChangeOrder] = await Promise.all([
       loadSelectionChoicesPanel(db, projectId, selectionId, "staff", userId),
       loadSelectionTodos(db, projectId, selectionId),
       loadSelectionRfqs(db, projectId, selectionId),
@@ -190,8 +196,9 @@ export async function getSelectionDetail(projectId: string, selectionId: string)
       loadSelectionLock(db, projectId, selectionId),
       loadSelectionReplacement(db, projectId, selectionId),
       replacementChangeOrderFor(db, projectId, selectionId),
+      canFeature(context.user, "change-orders", "create"),
     ])
-    return { success: true, data: { panel, todos, rfqs, draftRfqs, lock: lock?.lock ?? null, ...replacement, replacementChangeOrder } }
+    return { success: true, data: { panel, todos, rfqs, draftRfqs, lock: lock?.lock ?? null, ...replacement, replacementChangeOrder, canCreateChangeOrder } }
   } catch (error) {
     return failure(error, "Unable to load the selection.")
   }
@@ -377,7 +384,10 @@ export async function setSelectionChoiceChosen(
       audience: "staff",
       note: note?.trim().slice(0, 500) || null,
     })
-    if (!picked) return { success: false, error: (await pickLockMessage(db, projectId, choice.selectionId)) ?? "The pick changed. Refresh and try again." }
+    if (!picked) {
+      const locked = await pickLockMessage(db, projectId, choice.selectionId)
+      return { success: false, error: locked ?? "The pick can't change now: its replacement change order is out for signature or executed." }
+    }
     // Changing a signed pick reopens just this selection (never an ordered or installed one); the next round signature covers it.
     if (wasSigned && (!chosen || before !== choiceId)) {
       await updateFinishSelectionsWithEvent(
@@ -439,7 +449,7 @@ export async function addSelectionLink(
     const preview = await fetchLinkPreview(url)
     const id = crypto.randomUUID()
     const now = new Date().toISOString()
-    await insertSelectionLink(db, {
+    const kept = await insertSelectionLink(db, {
       id,
       projectId,
       selectionId,
@@ -454,6 +464,7 @@ export async function addSelectionLink(
       addedByAudience: audience,
       createdAt: now,
     })
+    if (!kept) return { success: false, error: "This selection was replaced. Add links to the replacement." }
     refresh(projectId)
     return { success: true, data: { id } }
   } catch (error) {
@@ -522,7 +533,7 @@ export async function attachSelectionPhotos(
     const valid = await projectPhotoIds(db, projectId, ids)
     if (valid.size !== ids.length) return { success: false, error: "A photo was not found on this project." }
     const now = new Date().toISOString()
-    await insertSelectionPhotos(
+    const kept = await insertSelectionPhotos(
       db,
       ids.map((photoId, index) => ({
         id: crypto.randomUUID(),
@@ -535,6 +546,7 @@ export async function attachSelectionPhotos(
         createdAt: now,
       })),
     )
+    if (!kept) return { success: false, error: "This selection was replaced. Add photos to the replacement." }
     refresh(projectId)
     return { success: true, data: { id: selectionId } }
   } catch (error) {

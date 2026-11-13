@@ -35,6 +35,7 @@ vi.mock("@/lib/notifications/events", () => ({
 }))
 vi.mock("next/headers", () => ({ cookies: async () => ({ toString: () => "session=abc" }), headers: async () => new Headers() }))
 vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }))
+vi.mock("@/lib/permission-enforcement", () => ({ requireFeaturePermission: vi.fn(), canFeature: vi.fn(async () => true) }))
 
 import { updateProjectSelection, updateProjectSelectionStatus } from "@/app/actions/project-selections"
 import { deleteSelectionChoice, getSelectionDetail, saveSelectionChoice, setSelectionChoiceChosen } from "@/app/actions/selection-choices"

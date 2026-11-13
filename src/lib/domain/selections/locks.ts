@@ -128,3 +128,20 @@ export const REPLACEMENT_REASON_LABELS: Readonly<Record<SelectionReplacementReas
   installed_replaced: "Installed item replaced",
   owner_changed_after_purchase: "Owner changed selection after purchase",
 }
+
+/**
+ * Whether a selection in a Selection Phase is outside the phase's work: it
+ * is ordered, installed or replaced, or the owner's approval is recorded
+ * without a signature on its current pick (an older approval). Those are
+ * left out of the phase document, its progress and its change order, so
+ * nothing is billed twice and a phase never waits on them.
+ */
+export function outsidePhaseWork(row: {
+  readonly status: string
+  readonly replaced: boolean
+  readonly ownerApproved: boolean
+  /** A signed Selection Phase covers its current pick. */
+  readonly signedCurrentPick: boolean
+}): boolean {
+  return row.status === "ordered" || row.status === "installed" || row.replaced || (row.ownerApproved && !row.signedCurrentPick)
+}

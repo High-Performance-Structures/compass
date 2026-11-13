@@ -42,6 +42,7 @@ import { announceEsignOutcome } from "@/lib/esign/announce"
 import { prepareEstimateSignaturePdf } from "@/lib/estimates/signature-pdf"
 import { readFeatureSettings } from "@/lib/feature-settings/server"
 import { rebuildProjectContractBudget } from "@/lib/financials/contract-budget-store"
+import { afterChangeOrdersExecuted } from "@/lib/change-orders/executed-follow-ups"
 import { createFoxitPreparedEnvelope, downloadFoxitExecutedEnvelope } from "@/lib/foxit/esign"
 import { getProjectDocumentDriveContext } from "@/lib/google/project-document-drive"
 import { internalDomainSet, resolveRecordFolder } from "@/lib/paper-trail/folders"
@@ -53,6 +54,8 @@ import { pickedByLabel } from "./choice-rules"
 import { loadChoicePanels } from "./choices-read"
 import { createSelectionChangeOrder, type SelectionChangeOrderActor } from "./selection-change-orders"
 import { ensureSelectionTodo } from "./selection-todos"
+import { replacedSelectionIds } from "./lock-read"
+import { outsidePhaseWork } from "./locks"
 import { insertRoundSignatureStatements, roundSignatureTransitionStatement, transitionRoundSignature, updateRoundSignature } from "./round-signature-store"
 import { updateFinishSelectionsWithEventStatement } from "./store"
 import { resolvedContactColumns, withContactDirectory } from "@/lib/domain/contacts/resolved-columns"
@@ -134,6 +137,8 @@ export async function loadRoundSigningView(db: Db, projectId: string, organizati
         roomName: projectFinishSelections.roomName,
         name: projectFinishSelections.name,
         costCode: projectFinishSelections.costCode,
+        status: projectFinishSelections.status,
+        ownerApproved: projectFinishSelections.ownerApproved,
         allowanceCents: projectSelectionDecisions.allowanceCents,
       })
       .from(projectFinishSelections)
@@ -155,7 +160,7 @@ export async function loadRoundSigningView(db: Db, projectId: string, organizati
   const round = settings.rounds.find((item) => item.id === roundKey)
   if (!project || !round) return null
   const ids = selections.map((selection) => selection.id)
-  const [panels, signed, itemCounts] = await Promise.all([
+  const [panels, signed, itemCounts, replaced] = await Promise.all([
     Promise.all(chunkD1Values(ids).map((chunk) => loadChoicePanels(db, projectId, chunk, "staff", ""))).then((parts) => parts.flat()),
     signedChoices(db, ids),
     signatures.length
@@ -164,10 +169,23 @@ export async function loadRoundSigningView(db: Db, projectId: string, organizati
           .from(projectSelectionRoundSignatureItems)
           .where(inArray(projectSelectionRoundSignatureItems.signatureId, signatures.slice(0, 90).map((row) => row.signature.id)))
       : Promise.resolve([]),
+    replacedSelectionIds(db, ids),
   ])
   const byId = new Map(panels.map((panel) => [panel.selectionId, panel]))
-  const lines: RoundDocumentLineInput[] = selections.map((selection) => {
-    const choice = byId.get(selection.id)?.choices.find((item) => item.chosen) ?? null
+  const pickOf = (selectionId: string) => byId.get(selectionId)?.choices.find((item) => item.chosen) ?? null
+  // Ordered, installed and replaced selections, and older approvals no
+  // signature covers, are outside the phase: not signed or billed again.
+  const inPhase = selections.filter((selection) => {
+    const pick = pickOf(selection.id)
+    return !outsidePhaseWork({
+      status: selection.status,
+      replaced: replaced.has(selection.id),
+      ownerApproved: selection.ownerApproved,
+      signedCurrentPick: pick !== null && signed.get(selection.id) === pick.id,
+    })
+  })
+  const lines: RoundDocumentLineInput[] = inPhase.map((selection) => {
+    const choice = pickOf(selection.id)
     const link = choice?.links[0] ?? null
     return {
       selectionId: selection.id,
@@ -534,6 +552,9 @@ export async function handleRoundSignatureEvent(input: {
   if (signed.meta.changes === 0) return false
 
   await orderTodosForSigned(db, signature, now)
+  if (signature.changeOrderId && changeOrder?.recordType === "change_order") {
+    await afterChangeOrdersExecuted(db, { projectId: signature.projectId, changeOrderIds: [signature.changeOrderId], actorId: signature.createdBy })
+  }
 
   const sender = signature.createdBy
     ? await db.select({ id: people.id, role: people.role, displayName: people.displayName, email: people.email, firstName: people.firstName, lastName: people.lastName }).from(people).where(eq(people.id, signature.createdBy)).get()

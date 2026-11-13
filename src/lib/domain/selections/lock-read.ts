@@ -1,10 +1,10 @@
 /**
  * Reads for locked and replaced selections (rules in locks.ts).
  */
-import { and, eq, inArray, ne } from "drizzle-orm"
+import { and, asc, desc, eq, inArray, notInArray } from "drizzle-orm"
 
 import { projectChangeOrders, projectFinishSelections } from "@/db/schema"
-import { projectSelectionRoundSignatureItems, projectSelectionRoundSignatures } from "@/db/schema-selection-choices"
+import { projectSelectionChoices, projectSelectionRoundSignatureItems, projectSelectionRoundSignatures } from "@/db/schema-selection-choices"
 import { chunkD1Values } from "@/lib/d1-query"
 import type { Db } from "@/lib/server/action-context"
 
@@ -92,17 +92,24 @@ export async function loadSelectionReplacement(
 export const EXECUTED_CHANGE_ORDER_STATUSES = ["executed", "sage_pending", "synced", "closed"] as const
 
 /**
- * The job's selections a signature covers: in a signed Selection Phase, or
- * a replacement whose change order was executed. "Approved" without one
- * (set by hand, or an older click approval) is not shown as signed.
+ * The job's selections a signature covers for their CURRENT pick: the pick
+ * is the choice the latest signed Selection Phase covered, or the selection
+ * is a replacement whose change order was executed (its pick can't change
+ * while that change order is out or executed). "Approved" without one (set
+ * by hand, an older click approval, or a pick changed since) isn't signed.
  */
 export async function signedSelectionIds(db: Db, projectId: string): Promise<ReadonlySet<string>> {
-  const [rounds, replacements] = await Promise.all([
+  const [rounds, picks, replacements] = await Promise.all([
     db
-      .selectDistinct({ id: projectSelectionRoundSignatureItems.selectionId })
+      .select({ selectionId: projectSelectionRoundSignatureItems.selectionId, choiceId: projectSelectionRoundSignatureItems.choiceId })
       .from(projectSelectionRoundSignatureItems)
       .innerJoin(projectSelectionRoundSignatures, eq(projectSelectionRoundSignatures.id, projectSelectionRoundSignatureItems.signatureId))
-      .where(and(eq(projectSelectionRoundSignatures.projectId, projectId), eq(projectSelectionRoundSignatures.status, "signed"))),
+      .where(and(eq(projectSelectionRoundSignatures.projectId, projectId), eq(projectSelectionRoundSignatures.status, "signed")))
+      .orderBy(asc(projectSelectionRoundSignatures.signedAt)),
+    db
+      .select({ selectionId: projectSelectionChoices.selectionId, choiceId: projectSelectionChoices.id })
+      .from(projectSelectionChoices)
+      .where(and(eq(projectSelectionChoices.projectId, projectId), eq(projectSelectionChoices.chosen, true))),
     db
       .selectDistinct({ id: projectChangeOrders.sourceRecordId })
       .from(projectChangeOrders)
@@ -114,10 +121,17 @@ export async function signedSelectionIds(db: Db, projectId: string): Promise<Rea
         ),
       ),
   ])
-  return new Set([...rounds, ...replacements].flatMap((row) => (row.id ? [row.id] : [])))
+  // Later signatures overwrite earlier ones.
+  const signedChoice = new Map(rounds.map((row) => [row.selectionId, row.choiceId]))
+  const signed = new Set(picks.flatMap((pick) => (signedChoice.get(pick.selectionId) === pick.choiceId ? [pick.selectionId] : [])))
+  for (const row of replacements) if (row.id) signed.add(row.id)
+  return signed
 }
 
-/** The replacement selection's change order that isn't void, or null. */
+/** Change order statuses that end a replacement's change order without the owner signing. */
+const CLOSED_UNSIGNED_CHANGE_ORDER_STATUSES = ["void", "declined"] as const
+
+/** The replacement selection's latest change order that isn't void or declined, or null. */
 export async function replacementChangeOrderFor(
   db: Db,
   projectId: string,
@@ -131,9 +145,10 @@ export async function replacementChangeOrderFor(
         eq(projectChangeOrders.projectId, projectId),
         eq(projectChangeOrders.sourceType, "selection_replacement"),
         eq(projectChangeOrders.sourceRecordId, selectionId),
-        ne(projectChangeOrders.status, "void"),
+        notInArray(projectChangeOrders.status, [...CLOSED_UNSIGNED_CHANGE_ORDER_STATUSES]),
       ),
     )
+    .orderBy(desc(projectChangeOrders.createdAt))
     .get()
   return row ?? null
 }

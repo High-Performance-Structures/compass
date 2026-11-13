@@ -9,6 +9,7 @@ import { changeOrderExecutionFromEstimate, estimateSupersedeConditions } from "@
 import { projectDepartment } from "@/lib/project-branding"
 import { getCloudflareContext } from "@/lib/db"
 import { rebuildProjectContractBudget } from "@/lib/financials/contract-budget-store"
+import { afterChangeOrdersExecuted } from "@/lib/change-orders/executed-follow-ups"
 import { queueEstimateSageSync, sageExportActor } from "@/lib/sage/estimate-sync"
 import { verifyFoxitWebhook } from "@/lib/foxit/esign"
 import {
@@ -366,6 +367,9 @@ export async function POST(request: Request): Promise<Response> {
       }),
       ...changeOrderExecution,
     ])
+    if (estimate.changeOrderId) {
+      await afterChangeOrdersExecuted(db, { projectId: estimate.projectId, changeOrderIds: [estimate.changeOrderId], actorId: estimate.createdBy })
+    }
     await announceEsignOutcome({
       db,
       projectId: estimate.projectId,

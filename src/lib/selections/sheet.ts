@@ -29,6 +29,8 @@ export type SelectionSheetInput = {
     readonly replaced?: boolean
     /** It replaces an ordered or installed selection. */
     readonly replacement?: boolean
+    /** The owner's approval is recorded on the selection (a signature, or an older approval). */
+    readonly ownerApproved?: boolean
   }[]
   readonly choices: readonly {
     readonly selectionId: string
@@ -72,6 +74,8 @@ export type SelectionSheetRow = {
   readonly replaced: boolean
   /** It replaces an ordered or installed selection (outside Selection Phases; its change order is its signature). */
   readonly replacement: boolean
+  /** The owner's approval is recorded on the selection. */
+  readonly ownerApproved: boolean
   /** Sorts room, then parent, then its follow-ups right under it. */
   readonly orderKey: string
 }
@@ -121,6 +125,7 @@ export function selectionSheetRows(input: SelectionSheetInput): readonly Selecti
       signed: row.signed ?? false,
       replaced: row.replaced ?? false,
       replacement: row.replacement ?? false,
+      ownerApproved: row.ownerApproved ?? false,
       orderKey: [topRow.roomName.toLocaleLowerCase(), position.get(top) ?? "", parentId ? "1" : "0", position.get(row.id) ?? ""].join("\u0000"),
     }
   })

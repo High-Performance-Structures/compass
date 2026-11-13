@@ -81,7 +81,8 @@ export async function namedProjectManager(
   const people = peopleView()
   const memberships = membershipsView()
   const matches = await db
-    .select({ userId: people.id, email: people.email, googleEmail: people.googleEmail, accountRole: people.role })
+    // The role the person holds in the job's company decides whether they are its staff.
+    .select({ userId: people.id, email: people.email, googleEmail: people.googleEmail, accountRole: memberships.role })
     .from(people)
     .innerJoin(memberships, and(eq(memberships.userId, people.id), eq(memberships.organizationId, project.organizationId)))
     .where(and(eq(people.isActive, true), sql`lower(trim(${people.displayName})) = lower(${name})`))

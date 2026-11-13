@@ -220,10 +220,12 @@ export function SelectionDetailPanel({
               >
                 Change order {detail.replacementChangeOrder.number}
               </Link>
-            ) : (
+            ) : detail.canCreateChangeOrder ? (
               <Button type="button" variant="outline" size="sm" disabled={pending} onClick={() => run(() => createReplacementChangeOrder(projectId, row.id))}>
                 Create change order
               </Button>
+            ) : (
+              <span>No change order yet.</span>
             )}
           </div>
         )}

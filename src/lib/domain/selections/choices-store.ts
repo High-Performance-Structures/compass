@@ -49,8 +49,13 @@ const selectionLocked = sql`EXISTS (SELECT 1 FROM project_finish_selections AS l
 const selectionReplaced = sql`EXISTS (SELECT 1 FROM project_finish_selections AS replacement WHERE replacement.replaces_selection_id = project_selection_choices.selection_id)`
 /** The choice may be edited or deleted: not the bought pick of an ordered or installed selection, and not on a replaced one. */
 const choiceWritable = sql`NOT ((project_selection_choices.chosen = 1 AND ${selectionLocked}) OR ${selectionReplaced})`
-/** The selection's pick may change: it is not ordered, installed or replaced. */
-const pickChangeable = sql`NOT (${selectionLocked} OR ${selectionReplaced})`
+/**
+ * A replacement's change order is out for signature or executed: the pick
+ * it prices is fixed (a draft change order can still follow a new pick).
+ */
+const replacementOrderLive = sql`EXISTS (SELECT 1 FROM project_change_orders AS replacement_change WHERE replacement_change.source_type = 'selection_replacement' AND replacement_change.source_record_id = project_selection_choices.selection_id AND replacement_change.status NOT IN ('draft', 'void', 'declined'))`
+/** The selection's pick may change: it is not ordered, installed or replaced, and no live replacement change order prices it. */
+const pickChangeable = sql`NOT (${selectionLocked} OR ${selectionReplaced} OR ${replacementOrderLive})`
 
 // ---- choices
 
@@ -249,9 +254,20 @@ export async function replaceChoiceDependents(
 
 // ---- supplier links
 
-export async function insertSelectionLink(db: Db, row: LinkInsert): Promise<void> {
+// A replaced selection's links and photo links don't change. An insert is
+// undone in the same batch (one transaction) when the selection was replaced
+// by then; a delete skips them.
+const linkOnReplaced = sql`EXISTS (SELECT 1 FROM project_finish_selections AS replacement WHERE replacement.replaces_selection_id = project_selection_links.selection_id)`
+const photoOnReplaced = sql`EXISTS (SELECT 1 FROM project_finish_selections AS replacement WHERE replacement.replaces_selection_id = project_selection_photos.selection_id)`
+
+/** Saves a link; false when its selection was replaced (nothing is kept). */
+export async function insertSelectionLink(db: Db, row: LinkInsert): Promise<boolean> {
   assertListFields("project_selection_links", row, LINK_LISTS)
-  await db.insert(projectSelectionLinks).values(row).run()
+  const [, undone] = await db.batch([
+    db.insert(projectSelectionLinks).values(row),
+    db.delete(projectSelectionLinks).where(and(eq(projectSelectionLinks.id, row.id), linkOnReplaced)),
+  ])
+  return undone.meta.changes === 0
 }
 
 /** Plain links saved together (a template's product links), chunked under D1's parameter limit. */
@@ -266,22 +282,27 @@ export async function insertSelectionLinks(db: Db, rows: readonly LinkInsert[]):
 export async function deleteSelectionLink(db: Db, projectId: string, linkId: string): Promise<void> {
   await db
     .delete(projectSelectionLinks)
-    .where(and(eq(projectSelectionLinks.id, linkId), eq(projectSelectionLinks.projectId, projectId)))
+    .where(and(eq(projectSelectionLinks.id, linkId), eq(projectSelectionLinks.projectId, projectId), sql`NOT ${linkOnReplaced}`))
     .run()
 }
 
 // ---- photo links
 
-export async function insertSelectionPhotos(db: Db, rows: readonly PhotoInsert[]): Promise<void> {
-  if (rows.length === 0) return
-  await db.insert(projectSelectionPhotos).values([...rows]).onConflictDoNothing().run()
+/** Links photos; false when their selection was replaced (nothing is kept). */
+export async function insertSelectionPhotos(db: Db, rows: readonly PhotoInsert[]): Promise<boolean> {
+  if (rows.length === 0) return true
+  const [, undone] = await db.batch([
+    db.insert(projectSelectionPhotos).values([...rows]).onConflictDoNothing(),
+    db.delete(projectSelectionPhotos).where(and(inArray(projectSelectionPhotos.id, rows.map((row) => row.id)), photoOnReplaced)),
+  ])
+  return undone.meta.changes === 0
 }
 
 export async function deleteSelectionPhotoLinks(db: Db, projectId: string, linkIds: readonly string[]): Promise<void> {
   if (linkIds.length === 0) return
   await db
     .delete(projectSelectionPhotos)
-    .where(and(inArray(projectSelectionPhotos.id, [...linkIds]), eq(projectSelectionPhotos.projectId, projectId)))
+    .where(and(inArray(projectSelectionPhotos.id, [...linkIds]), eq(projectSelectionPhotos.projectId, projectId), sql`NOT ${photoOnReplaced}`))
     .run()
 }
 

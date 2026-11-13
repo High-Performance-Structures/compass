@@ -61,6 +61,8 @@ export async function replaceLockedSelection(
     readonly choiceId: string | null
     readonly note: string | null
     readonly actor: SelectionChangeOrderActor
+    /** The actor may create change orders; without it the replacement is made and the change order left to someone who may. */
+    readonly canCreateChangeOrder: boolean
   },
 ): Promise<ReplaceSelectionResult> {
   const old = await db
@@ -142,9 +144,11 @@ export async function replaceLockedSelection(
     throw error
   }
 
-  const created = settings.replacementChangeOrder
-    ? await replacementChangeOrder(db, { projectId: input.projectId, newId, old, pick: pick ?? null, label, note, reason: input.reason, actor: input.actor, now })
-    : { changeOrder: null, changeOrderError: null }
+  const created = !settings.replacementChangeOrder
+    ? { changeOrder: null, changeOrderError: null }
+    : !input.canCreateChangeOrder
+      ? { changeOrder: null, changeOrderError: "You don't have permission to create change orders. Ask someone who does to use Create change order on the new selection." }
+      : await replacementChangeOrder(db, { projectId: input.projectId, newId, old, pick: pick ?? null, label, note, reason: input.reason, actor: input.actor, now })
   const { changeOrder, changeOrderError } = created
 
   await recordActivityEvents(db, [
@@ -205,6 +209,10 @@ async function replacementChangeOrder(
     })
     return { changeOrder, changeOrderError: null }
   } catch (error) {
+    // The one-live-change-order index refuses a second (a double submit).
+    if (error instanceof Error && /UNIQUE constraint failed.*source_record_id/i.test(error.message)) {
+      return { changeOrder: null, changeOrderError: "This replacement already has a change order." }
+    }
     console.error("[selections] replacement change order failed", error)
     return { changeOrder: null, changeOrderError: error instanceof Error ? error.message : "The change order could not be created." }
   }

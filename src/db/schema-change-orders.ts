@@ -4,6 +4,7 @@
  * Written by: src/lib/domain/estimates/ (change orders belong to estimates).
  */
 
+import { sql } from "drizzle-orm"
 import {
   index,
   sqliteTable,
@@ -121,6 +122,10 @@ export const projectChangeOrders = sqliteTable(
     // Declared from drizzle/0281_id_reference_triggers.sql.
     index("project_change_orders_baseline_estimate_id_idx").on(table.baselineEstimateId),
     index("project_change_orders_record_type_idx").on(table.projectId, table.recordType, table.status),
+    // One live change order per selection replacement (0321): a double submit can't make two.
+    uniqueIndex("project_change_orders_one_live_replacement")
+      .on(table.sourceRecordId)
+      .where(sql`"source_type" = 'selection_replacement' AND "status" NOT IN ('void', 'declined')`),
   ]
 )
 

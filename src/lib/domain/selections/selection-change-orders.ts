@@ -80,7 +80,8 @@ export async function createSelectionChangeOrder(
       await insertChangeOrderRows(db, { ...input, id, number, status, amountCents, lineRows })
       return { id, number }
     } catch (error) {
-      if (attempt >= NUMBER_ATTEMPTS || !(error instanceof Error && /UNIQUE constraint failed/i.test(error.message))) throw error
+      // Only a taken number is retried; any other conflict (one live replacement change order) is final.
+      if (attempt >= NUMBER_ATTEMPTS || !(error instanceof Error && /UNIQUE constraint failed.*change_order_number/i.test(error.message))) throw error
     }
   }
 }

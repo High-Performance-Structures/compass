@@ -290,6 +290,36 @@ export function insertReplacementSelectionStatement(
   )
 }
 
+/**
+ * An allowed edit of a locked (ordered or installed) selection: room, room
+ * type or notes. Lands only while the row still has `expected` and nothing
+ * replaces it. Its published decision stays current: a room move isn't a
+ * product change (specificationCurrent). False when nothing landed.
+ */
+export async function updateLockedSelection(
+  db: Db,
+  input: {
+    readonly projectId: string
+    readonly selectionId: string
+    readonly expected: string
+    readonly values: FinishSelectionPatch
+  },
+): Promise<boolean> {
+  const result = await db
+    .update(projectFinishSelections)
+    .set(withoutStatus(input.values))
+    .where(
+      and(
+        eq(projectFinishSelections.id, input.selectionId),
+        eq(projectFinishSelections.projectId, input.projectId),
+        sql`${projectFinishSelections.status} = ${input.expected}`,
+        notReplaced,
+      ),
+    )
+    .run()
+  return result.meta.changes > 0
+}
+
 /** The ids of the rows the delete removed. */
 export async function deleteFinishSelectionsReturningIds(
   db: Db,

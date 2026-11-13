@@ -68,7 +68,7 @@ function SelectionCard({
   const [asking, setAsking] = React.useState(selection.panel.comments.length > 0)
   const choices = selection.panel.choices
   const pick = choices.find((choice) => choice.chosen) ?? null
-  const locked = !canChoose || selection.approved || selection.signed
+  const locked = !canChoose || selection.approved || selection.signed || selection.replacedByName !== null
 
   function choose(choice: SelectionChoiceView): void {
     if (locked) return
@@ -94,7 +94,9 @@ function SelectionCard({
             </>
           )}
           {selection.dueDate && <span className="text-muted-foreground"> · choose by {formatDate(selection.dueDate)}</span>}
-          {selection.signed ? (
+          {selection.replacedByName !== null ? (
+            <span className="text-muted-foreground"> · replaced by {selection.replacedByName}</span>
+          ) : selection.signed ? (
             <span className="text-muted-foreground"> · signed</span>
           ) : selection.approved ? (
             <span className="text-muted-foreground"> · choice confirmed</span>

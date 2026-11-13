@@ -56,14 +56,14 @@ export async function assignSelectionRound(projectId: string, selectionIds: read
       const settings = await readFeatureSettings(context.db, context.organizationId, "selections")
       if (!settings.rounds.some((round) => round.id === roundKey)) return { success: false, error: "That Selection Phase isn't in Settings › Selections." }
     }
-    // Ordered, installed and replaced selections stay where they are, and a
-    // replacement stays out of Selection Phases: its change order is its
-    // signature, so a phase would bill the difference twice.
+    // Ordered, installed and replaced selections only leave a Selection
+    // Phase (never join one), and a replacement stays out of them: its change
+    // order is its signature, so a phase would bill the difference twice.
     const count = await updateFinishSelections(
       context.db,
-      and(inArray(projectFinishSelections.id, ids), eq(projectFinishSelections.projectId, projectId), isNull(projectFinishSelections.replacesSelectionId)),
+      and(inArray(projectFinishSelections.id, ids), eq(projectFinishSelections.projectId, projectId), roundKey === null ? undefined : isNull(projectFinishSelections.replacesSelectionId)),
       { roundKey, updatedAt: new Date().toISOString() },
-      { unlockedOnly: true },
+      { unlockedOnly: roundKey !== null },
     )
     if (count === 0) return { success: false, error: "Ordered, installed and replacement selections can't change Selection Phase." }
     await checkRoundsReady(context.db, projectId, context.user.id)

@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { readFileSync } from "node:fs"
-import { projectSelectionComments, projectSelectionRoundSignatureItems, projectSelectionRoundSignatures } from "@/db/schema-selection-choices"
+import { projectSelectionChoices, projectSelectionComments, projectSelectionRoundSignatureItems, projectSelectionRoundSignatures } from "@/db/schema-selection-choices"
 import { organizationFeatureSettings } from "@/db/schema"
 import { getTableConfig, type SQLiteTable } from "drizzle-orm/sqlite-core"
 import { eq } from "drizzle-orm"
@@ -122,6 +122,7 @@ beforeEach(async () => {
     // Signed Selection Phases mark "Approved (signed)" and open supplier access.
     projectSelectionRoundSignatures,
     projectSelectionRoundSignatureItems,
+    projectSelectionChoices,
   ])
     createTable(table)
   testDb.sqlite.exec(
