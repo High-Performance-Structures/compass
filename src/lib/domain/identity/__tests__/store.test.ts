@@ -7,7 +7,7 @@ import { ensureExternalOrganizationMembership, finishInvitationEmail } from "../
 
 // Production's schema (every migration), with the parents its keys need.
 function seed(sqlite: ReturnType<typeof migratedDb>["sqlite"]): void {
-  insertRow(sqlite, "organizations", { id: "org" })
+  insertRow(sqlite, "organizations", { id: "org", type: "internal" })
   insertRow(sqlite, "users", { id: "u" })
   insertRow(sqlite, "users", { id: "staff" })
   insertRow(sqlite, "projects", { id: "p", organization_id: "org" })

@@ -24,12 +24,12 @@ const { claimProjectAccessInvitations } = await import("@/lib/domain/identity/ac
 // Production's schema (every migration), so the unique (project_id, user_id)
 // index, foreign keys and NOT NULL rules all apply as they do on D1.
 function seed(sqlite: ReturnType<typeof migratedDb>["sqlite"]): void {
-  insertRow(sqlite, "organizations", { id: "org" })
+  insertRow(sqlite, "organizations", { id: "org", type: "internal" })
   insertRow(sqlite, "users", { id: "staff" })
   insertRow(sqlite, "users", { id: "u1" })
   insertRow(sqlite, "users", { id: "u2" })
   insertRow(sqlite, "projects", { id: "p1", organization_id: "org" })
-  insertRow(sqlite, "project_contacts", { id: "c1", project_id: "p1", active: 1 })
+  insertRow(sqlite, "project_contacts", { id: "c1", project_id: "p1", contact_type: "owner", active: 1 })
   insertRow(sqlite, "project_access_invitations", {
     id: "i1", organization_id: "org", project_id: "p1", project_contact_id: "c1", email: "guest@example.test",
     role: "guest", invited_by: "staff", invited_at: "t0", created_at: "t0", updated_at: "t0",

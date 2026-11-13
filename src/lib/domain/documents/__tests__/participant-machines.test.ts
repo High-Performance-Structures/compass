@@ -126,10 +126,12 @@ function sourceFiles(dir: string): readonly string[] {
 beforeAll(() => preloadSources("src", SOURCE_OPTIONS), SOURCE_SCAN_TIMEOUT_MS)
 
 describe("participant status writes", () => {
-  const files = sourceFiles("src").map((path) => ({ path, text: readSource(path) }))
+  // Built when a test runs (the reads are cached), not while Vitest collects tests.
+  const files = (): readonly { readonly path: string; readonly text: string }[] =>
+    sourceFiles("src").map((path) => ({ path, text: readSource(path) }))
 
   it("only documents/store.ts updates the table, and only through the machines", () => {
-    const updaters = files.filter(({ text }) => /\.update\(projectSourceRecordParticipants\)|UPDATE\s+project_source_record_participants/i.test(text))
+    const updaters = files().filter(({ text }) => /\.update\(projectSourceRecordParticipants\)|UPDATE\s+project_source_record_participants/i.test(text))
     expect(updaters.map(({ path }) => path)).toEqual(["src/lib/domain/documents/store.ts"])
     const store = readSource("src/lib/domain/documents/store.ts")
     const updates = store.split(".update(projectSourceRecordParticipants)").slice(1).map((chunk) => chunk.slice(0, chunk.indexOf("\n}\n")))
@@ -143,7 +145,7 @@ describe("participant status writes", () => {
   it("never come from a literal status in a patch or row", () => {
     // Files that write participants (other tables have their own reviewStatus).
     // participant-machines.ts is where the managed values are declared.
-    const writers = files.filter(({ path, text }) =>
+    const writers = files().filter(({ path, text }) =>
       /SourceRecordParticipant/.test(text) && !path.endsWith("documents/participant-machines.ts"))
     expect(writers.length).toBeGreaterThan(3)
     const literal = /\b(identityStatus|membershipStatus|reviewStatus):\s*["'`]/

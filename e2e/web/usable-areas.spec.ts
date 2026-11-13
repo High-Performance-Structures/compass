@@ -296,20 +296,26 @@ test.describe("usable Compass areas", () => {
     })
     await multipleMode.click()
     await expect(page).toHaveURL(/selection=multiple/)
+    const projectRows = page.locator('[data-slot="command-item"]')
     // Choosing a mode (and checking a project in multiple mode) keeps the
     // picker open on purpose, but the navigation it starts re-renders the
-    // schedule page, which can remount the picker closed at a moment the test
-    // cannot observe. Toggling the trigger then either opened or closed it
-    // depending on timing; in CI Firefox the rows vanished at lines 306/313.
-    // Reload so each step starts from the settled page the URL describes,
-    // then open the picker once.
-    await page.reload()
-    await page.getByRole("combobox", { name: "Choose schedule scope" }).click()
+    // schedule page and can remount the picker closed. Clicking the trigger
+    // unconditionally then closed a still-open picker or opened a remounted
+    // one, by timing; in CI Firefox the rows vanished at lines 306/313. Open
+    // it only while it is closed, until its rows show (a late remount closes
+    // it again, so this converges instead of toggling).
+    const ensureScopePickerOpen = async (): Promise<void> => {
+      const trigger = page.getByRole("combobox", { name: "Choose schedule scope" })
+      await expect(async () => {
+        if ((await trigger.getAttribute("aria-expanded")) === "false") await trigger.click()
+        await expect(projectRows.first()).toBeVisible({ timeout: 2_000 })
+      }).toPass()
+    }
+    await ensureScopePickerOpen()
     await expect(
       page.getByText("Check projects to compare their schedules.")
     ).toBeVisible()
 
-    const projectRows = page.locator('[data-slot="command-item"]')
     const project = projectRows.first()
     await expect(project).toBeVisible()
     await expect(project).toHaveAttribute(
@@ -333,9 +339,8 @@ test.describe("usable Compass areas", () => {
     await expect
       .poll(() => new URL(page.url()).searchParams.get("projects"))
       .toBe("")
-    // Same remount race as the mode change above: settle, then open once.
-    await page.reload()
-    await page.getByRole("combobox", { name: "Choose schedule scope" }).click()
+    // Same remount race as the mode change above.
+    await ensureScopePickerOpen()
     await expect(page.getByText("No projects selected", { exact: true }).last()).toBeVisible()
     await expect(page.locator('[data-slot="command-item"]').first()).toHaveAttribute(
       "aria-label",

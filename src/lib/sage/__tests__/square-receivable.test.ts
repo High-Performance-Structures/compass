@@ -92,7 +92,7 @@ function createD1(sqlite: Sqlite): unknown {
 // Production's schema (every migration), with the parents its keys need.
 function createSchema(sqlite: Sqlite): void {
   applyMigrations((sql) => sqlite.exec(sql));
-  insertRow(sqlite, "organizations", { id: "org-1" });
+  insertRow(sqlite, "organizations", { id: "org-1", type: "internal" });
   insertRow(sqlite, "customers", { id: "customer-1", organization_id: "org-1" });
   insertRow(sqlite, "projects", { id: "project-1", organization_id: "org-1" });
 }

@@ -14,9 +14,9 @@ let db: ReturnType<typeof migratedDb>["db"]
 
 beforeEach(() => {
   ;({ sqlite, db } = migratedDb())
-  insertRow(sqlite, "organizations", { id: "org-1" })
+  insertRow(sqlite, "organizations", { id: "org-1", type: "internal" })
   insertRow(sqlite, "users", { id: "user-1", email: "pm@example.com", display_name: "Pat Manager", is_active: 1 })
-  insertRow(sqlite, "organization_members", { id: "m1", organization_id: "org-1", user_id: "user-1" })
+  insertRow(sqlite, "organization_members", { id: "m1", organization_id: "org-1", user_id: "user-1", role: "office" })
 })
 
 afterEach(() => sqlite.close())

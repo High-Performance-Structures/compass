@@ -45,8 +45,8 @@ function createD1(sqlite: InstanceType<typeof Database>) {
 
 function createDatabase(): InstanceType<typeof Database> {
   const sqlite = migratedDatabase()
-  insertRow(sqlite, "organizations", { id: "org-1" })
-  insertRow(sqlite, "organizations", { id: "org-2" })
+  insertRow(sqlite, "organizations", { id: "org-1", type: "internal" })
+  insertRow(sqlite, "organizations", { id: "org-2", type: "internal" })
   insertRow(sqlite, "users", { id: "viewer-1" })
   insertRow(sqlite, "projects", { id: "project-1", project_number: "P-1", organization_id: "org-1" })
   insertRow(sqlite, "projects", { id: "project-2", project_number: "P-2", organization_id: "org-2" })
