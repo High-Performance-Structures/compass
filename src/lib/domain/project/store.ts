@@ -10,6 +10,7 @@ import {
   projects,
 } from "@/db/schema"
 import { companyMoveGuard, type CompanyReferenceMove } from "@/lib/domain/contacts/company-merge-references"
+import { companyExistsSql } from "@/lib/domain/identity/reads"
 import type { Db } from "@/lib/server/action-context"
 import { assertListFields } from "@/lib/shared/statuses"
 
@@ -262,9 +263,7 @@ export function buildertrendCutoverNewProjectSql(
   ${cutoverSqlText(project.clientName)}, ${cutoverSqlText(organizationId)},
   ${cutoverSqlText(project.googleDriveProjectFolderId)}, 0, 'compass', 'weekly', 'items',
   ${cutoverSqlText(capturedAt)}, ${cutoverSqlText(capturedAt)}
-WHERE EXISTS (
-  SELECT 1 FROM organizations WHERE id = ${cutoverSqlText(organizationId)}
-)
+WHERE ${companyExistsSql(cutoverSqlText(organizationId))}
 ON CONFLICT(id) DO UPDATE SET
   google_drive_folder_id = COALESCE(
     projects.google_drive_folder_id,

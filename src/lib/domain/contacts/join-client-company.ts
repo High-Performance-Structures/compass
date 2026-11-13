@@ -24,6 +24,7 @@
  * merged, so only standalone records can join.
  */
 import { activityEventSelectStatement } from "@/lib/activity-log"
+import { acceptedClientSignIns } from "@/lib/domain/identity/reads"
 import { isRecord } from "@/lib/shared/guards"
 
 import { companyMergeStatements, inspectCompanyMerge, type CompanyMergeCount } from "./company-merge"
@@ -149,11 +150,9 @@ export async function inspectClientCompanyJoin(database: D1Database, pair: Clien
 
   // Sign-ins: the record's same-person logins, and accepted invitations on the record's own project contacts
   // by a client member of the company (only they may hold a client person's sign-in).
-  const invited = await rows(database, `SELECT DISTINCT i.accepted_by AS user_id FROM project_access_invitations i
-      JOIN project_contacts pc ON pc.id = i.project_contact_id JOIN users u ON u.id = i.accepted_by
-      JOIN organization_members om ON om.user_id = i.accepted_by AND om.organization_id = ? AND om.role = 'client'
-    WHERE i.status = 'accepted' AND u.is_active = 1 AND pc.customer_contact_id IS NULL
-      AND (pc.customer_id = ? OR (pc.source_entity_type = 'customer' AND pc.source_entity_id = ?))`, organizationId, recordId, recordId)
+  const contactIds = await rows(database, `SELECT id FROM project_contacts WHERE customer_contact_id IS NULL
+    AND (customer_id = ? OR (source_entity_type = 'customer' AND source_entity_id = ?))`, recordId, recordId)
+  const invited = await acceptedClientSignIns(database, organizationId, contactIds.map((row) => String(row.id)))
   const targetRow = existing ?? ownTarget
   const targetUser = text(targetRow, "user_id")
   const logins = new Map<string, string | null>()
@@ -161,9 +160,8 @@ export async function inspectClientCompanyJoin(database: D1Database, pair: Clien
     const userId = text(row, "user_id")
     if (userId) logins.set(userId, String(row.id))
   }
-  for (const row of invited) {
-    const userId = text(row, "user_id")
-    if (userId && !logins.has(userId)) logins.set(userId, null)
+  for (const userId of invited) {
+    if (!logins.has(userId)) logins.set(userId, null)
   }
   if (targetUser) logins.delete(targetUser)
   if (logins.size > 1 || (logins.size === 1 && targetUser)) {

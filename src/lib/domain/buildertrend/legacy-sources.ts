@@ -5,6 +5,7 @@
  * The store (store.ts) owns the INSERT statements that consume them.
  * `defaultOrg` is an already-quoted SQL literal.
  */
+import { companyCountSql } from "@/lib/domain/identity/reads"
 
 /** Temp guard table and the checks that abort the batch before any durable write. */
 export function legacyGuardPreludeSql(defaultOrg: string): string {
@@ -17,7 +18,7 @@ CREATE TEMP TABLE buildertrend_reconciliation_guard (
 );
 INSERT INTO buildertrend_reconciliation_guard (check_name, valid)
 SELECT 'selected organization exists',
-  CASE WHEN (SELECT COUNT(*) FROM organizations WHERE id = ${defaultOrg}) = 1
+  CASE WHEN ${companyCountSql(defaultOrg)} = 1
     THEN 1 ELSE 0 END;
 
 -- File/access conflicts abort. Record conflicts are quarantined below using the

@@ -250,16 +250,6 @@
       "count": 5
     }
   },
-  "src/lib/domain/buildertrend/legacy-sources.ts": {
-    "compass-core/owned-table-raw-sql": {
-      "count": 1
-    }
-  },
-  "src/lib/domain/contacts/join-client-company.ts": {
-    "compass-core/owned-table-raw-sql": {
-      "count": 1
-    }
-  },
   "src/lib/domain/conversations/imported-participant-group-resolve.ts": {
     "compass-core/owned-table-import": {
       "count": 1
@@ -361,11 +351,6 @@
   "src/lib/domain/project/profile-sync.ts": {
     "compass-core/owned-table-import": {
       "count": 3
-    }
-  },
-  "src/lib/domain/project/store.ts": {
-    "compass-core/owned-table-raw-sql": {
-      "count": 1
     }
   },
   "src/lib/domain/schedule/queries.ts": {
@@ -554,11 +539,6 @@
   "src/lib/sage/sage-linked-local-apply.ts": {
     "compass-core/owned-table-import": {
       "count": 4
-    }
-  },
-  "src/lib/sage/square-creator-alerts.ts": {
-    "compass-core/owned-table-raw-sql": {
-      "count": 1
     }
   },
   "src/lib/sage/square-payment.ts": {
