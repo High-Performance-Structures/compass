@@ -38,7 +38,7 @@ describe("access request status writes", () => {
       expect(fn).toMatch(/status: accessRequestMachine\.transitions(\.\w+|\[\w+\])\.to/)
       expect(fn).toMatch(/statusIn\(("\w+"|event)\)/)
     }
-    expect(writers.length - statusWriters.length).toBe(1)
+    expect(writers.length - statusWriters.length).toBe(2)
     // New rows start at the machine's initial state.
     expect(store).toMatch(/status: accessRequestMachine\.initial/)
     // Nothing else in the app writes the table.

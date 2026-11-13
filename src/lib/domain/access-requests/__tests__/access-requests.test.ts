@@ -268,6 +268,7 @@ describe("deciding a request", () => {
   })
 
   it("approves someone nobody in Contacts matches as a new client, from what they entered", async () => {
+    sqlite.exec(`UPDATE customer_contacts SET email = 'other@client.test' WHERE id = 'cc-1'`)
     const submitted = await submit(rita, "client")
     if (!submitted.success) throw new Error(submitted.error)
     const result = await approveAccessRequest(db, d1, adminA, { kind: "client", requestId: submitted.data.requestId, customerContactId: "new" }, NOW)
@@ -327,6 +328,41 @@ describe("deciding a request", () => {
   })
 })
 
+describe("never a second client or vendor record", () => {
+  it("refuses \"new\" when the directory already has someone with this email, and adds nothing", async () => {
+    const submitted = await submit(rita, "client")
+    if (!submitted.success) throw new Error(submitted.error)
+    const result = await approveAccessRequest(db, d1, adminA, { kind: "client", requestId: submitted.data.requestId, customerContactId: "new" }, NOW)
+    expect(result).toEqual({ success: false, error: "Rita Client (Rita Client) is already in your clients with this email. Pick them instead of adding a new client." })
+    expect(row("SELECT count(*) AS n FROM customers WHERE organization_id = 'org-a'")).toEqual({ n: 1 })
+    expect(row("SELECT status FROM organization_access_requests")).toEqual({ status: "pending" })
+  })
+
+  it("refuses a \"new\" vendor the same way", async () => {
+    const submitted = await submit(vic, "vendor")
+    if (!submitted.success) throw new Error(submitted.error)
+    const result = await approveAccessRequest(db, d1, adminA, { kind: "vendor", requestId: submitted.data.requestId, vendorContactId: "new", role: "subcontractor" }, NOW)
+    expect(result).toEqual({ success: false, error: "Vic Vendor (Vic Concrete) is already in your vendors with this email. Pick them instead of adding a new vendor." })
+    expect(row("SELECT count(*) AS n FROM vendors WHERE organization_id = 'org-a'")).toEqual({ n: 1 })
+  })
+
+  it("a retry after a failed grant reuses the client record the first attempt made", async () => {
+    sqlite.exec(`UPDATE customer_contacts SET email = 'other@client.test' WHERE id = 'cc-1'`)
+    const submitted = await submit(rita, "client")
+    if (!submitted.success) throw new Error(submitted.error)
+    const id = submitted.data.requestId
+    // The first attempt made the record, remembered it, then its grant failed and the request reopened.
+    sqlite.exec(`INSERT INTO customers (id, organization_id, name, email, created_at) VALUES ('cust-made', 'org-a', 'Rita Client', 'rita@client.test', '${NOW}');
+      INSERT INTO customer_contacts (id, customer_id, name, email, created_at, updated_at) VALUES ('cc-made', 'cust-made', 'Rita Client', 'rita@client.test', '${NOW}', '${NOW}');
+      UPDATE organization_access_requests SET status = 'approved', customer_contact_id = 'cc-made' WHERE id = '${id}';`)
+    expect(await reopenAccessRequest(db, id, NOW)).toBe(true)
+    const result = await approveAccessRequest(db, d1, adminA, { kind: "client", requestId: id, customerContactId: "new" }, NOW)
+    if (!result.success) throw new Error(result.error)
+    expect(row("SELECT count(*) AS n FROM customers WHERE organization_id = 'org-a'")).toEqual({ n: 2 })
+    expect(row("SELECT user_id FROM customer_contacts WHERE id = 'cc-made'")).toEqual({ user_id: "user_rita" })
+  })
+})
+
 describe("deciding a request twice at once", () => {
   const adminTwo = actor("admin-a2", "admin", "org-a")
   beforeEach(() => {
@@ -335,6 +371,7 @@ describe("deciding a request twice at once", () => {
   })
 
   it("two admins approving as a new client: one wins and only one client record is added", async () => {
+    sqlite.exec(`UPDATE customer_contacts SET email = 'other@client.test' WHERE id = 'cc-1'`)
     const submitted = await submit(rita, "client")
     if (!submitted.success) throw new Error(submitted.error)
     const choice = { kind: "client" as const, requestId: submitted.data.requestId, customerContactId: "new" }
