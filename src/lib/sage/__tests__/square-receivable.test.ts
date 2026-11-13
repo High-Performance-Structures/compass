@@ -2,6 +2,7 @@ import { createRequire } from "node:module";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { upsertSquareOwnerReceivable } from "@/lib/sage/square-receivable";
+import { applyMigrations, insertRow } from "@/test/migrated-database";
 
 type SqliteStatement = Readonly<{
   readonly run: (...values: readonly unknown[]) => { readonly changes: number };
@@ -88,47 +89,12 @@ function createD1(sqlite: Sqlite): unknown {
   };
 }
 
+// Production's schema (every migration), with the parents its keys need.
 function createSchema(sqlite: Sqlite): void {
-  sqlite.exec(`
-    CREATE TABLE invoices (
-      id TEXT PRIMARY KEY, organization_id TEXT, customer_id TEXT NOT NULL,
-      project_id TEXT, source_system TEXT NOT NULL, source_external_id TEXT,
-      invoice_number TEXT, status TEXT NOT NULL, issue_date TEXT NOT NULL,
-      due_date TEXT, subtotal REAL NOT NULL, tax REAL NOT NULL,
-      total REAL NOT NULL, amount_paid REAL NOT NULL, amount_due REAL NOT NULL,
-      memo TEXT, line_items TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL
-    );
-    CREATE UNIQUE INDEX invoices_source_identity_unique
-      ON invoices (organization_id, source_system, source_external_id);
-    CREATE TABLE payments (
-      id TEXT PRIMARY KEY, organization_id TEXT, customer_id TEXT,
-      vendor_id TEXT, project_id TEXT, source_system TEXT NOT NULL,
-      source_external_id TEXT, payment_type TEXT NOT NULL, amount REAL NOT NULL,
-      gross_amount_cents INTEGER, processing_fee_cents INTEGER,
-      net_amount_cents INTEGER, cash_receipt INTEGER NOT NULL,
-      payment_date TEXT NOT NULL, payment_method TEXT, reference_number TEXT,
-      memo TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL
-    );
-    CREATE UNIQUE INDEX payments_source_identity_unique
-      ON payments (organization_id, source_system, source_external_id);
-    CREATE TABLE invoice_payment_allocations (
-      id TEXT PRIMARY KEY, organization_id TEXT NOT NULL, project_id TEXT NOT NULL,
-      invoice_id TEXT NOT NULL, payment_id TEXT NOT NULL,
-      allocation_cents INTEGER NOT NULL, created_at TEXT NOT NULL,
-      released_at TEXT, released_by TEXT,
-      UNIQUE (invoice_id, payment_id)
-    );
-    CREATE TABLE project_operations (
-      id TEXT PRIMARY KEY, project_id TEXT NOT NULL, source_system TEXT NOT NULL,
-      source_record_type TEXT NOT NULL, source_record_id TEXT,
-      source_record_number TEXT, title TEXT NOT NULL, description TEXT,
-      status TEXT NOT NULL, priority TEXT NOT NULL, assignee_type TEXT,
-      company_name TEXT, start_date TEXT, due_date TEXT, amount REAL,
-      sage_job_number TEXT, sage_write_status TEXT NOT NULL,
-      sync_direction TEXT NOT NULL, sync_status TEXT NOT NULL,
-      last_synced_at TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL
-    );
-  `);
+  applyMigrations((sql) => sqlite.exec(sql));
+  insertRow(sqlite, "organizations", { id: "org-1", type: "internal" });
+  insertRow(sqlite, "customers", { id: "customer-1", organization_id: "org-1" });
+  insertRow(sqlite, "projects", { id: "project-1", organization_id: "org-1" });
 }
 
 describe("Square owner receivable projection", () => {

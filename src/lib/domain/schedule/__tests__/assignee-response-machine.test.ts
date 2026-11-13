@@ -1,9 +1,9 @@
-import { readdirSync, readFileSync, statSync } from "node:fs"
-import { join } from "node:path"
+import { afterEach, beforeAll, describe, expect, it } from "vitest"
 
-import { afterEach, describe, expect, it } from "vitest"
+import { preloadSources, readSource, SOURCE_SCAN_TIMEOUT_MS, sourceFiles as sharedSourceFiles } from "@/test/source-tree"
 
-import { sqliteDb } from "@/lib/domain/__tests__/sqlite-d1"
+import { migratedDb } from "@/lib/domain/__tests__/sqlite-d1"
+import { insertRow } from "@/test/migrated-database"
 import { assigneeResponseMachine, assigneeResponseParts } from "@/lib/domain/schedule/assignee-response-machine"
 import { SCHEDULE_ASSIGNEE_RESPONSES } from "@/lib/domain/schedule/statuses"
 import { recordAssigneeResponse, resetTaskAssigneesQuery } from "@/lib/domain/schedule/store"
@@ -47,22 +47,26 @@ function includes(list: readonly string[], value: string): boolean {
   return list.includes(value)
 }
 
-const SCHEMA = ["0140_project_source_record_participants.sql", "0141_schedule_task_assignee_targets.sql"]
-  .map((file) => readFileSync(join("drizzle", file), "utf8").replaceAll("--> statement-breakpoint", ""))
-  .join("\n")
 
-let current: ReturnType<typeof sqliteDb> | null = null
+let current: ReturnType<typeof migratedDb> | null = null
 afterEach(() => {
   current?.sqlite.close()
   current = null
 })
 
-function seed(): ReturnType<typeof sqliteDb> {
-  current = sqliteDb(`PRAGMA foreign_keys = OFF;
-    CREATE TABLE schedule_tasks (id text PRIMARY KEY, start_date text NOT NULL, workdays integer NOT NULL);
-    ${SCHEMA}`)
-  current.sqlite.exec(`INSERT INTO schedule_tasks VALUES ('t1', '2026-09-14', 3);
-    INSERT INTO schedule_task_assignees (id, schedule_task_id, participant_id, source_start_date, source_workdays,
+function seed(): ReturnType<typeof migratedDb> {
+  // Production's schema (every migration), with the parents its keys need.
+  current = migratedDb()
+  insertRow(current.sqlite, "organizations", { id: "org", type: "internal" })
+  insertRow(current.sqlite, "users", { id: "u1" })
+  insertRow(current.sqlite, "projects", { id: "proj", organization_id: "org" })
+  insertRow(current.sqlite, "schedule_tasks", {
+    id: "t1", project_id: "proj", start_date: "2026-09-14", workdays: 3, end_date_calculated: "2026-09-16",
+  })
+  insertRow(current.sqlite, "project_source_record_participants", {
+    id: "p1", organization_id: "org", project_id: "proj", source_record_type: "schedule_task", participant_role: "assignee",
+  })
+  current.sqlite.exec(`INSERT INTO schedule_task_assignees (id, schedule_task_id, participant_id, source_start_date, source_workdays,
       source_end_date, assigned_at, created_at, updated_at)
     VALUES ('a1', 't1', 'p1', '2026-09-14', 3, '2026-09-16', 't0', 't0', 't0')`)
   return current
@@ -77,7 +81,7 @@ function answer(respondedAt: string) {
   return { respondedAt, respondedByUserId: "u1", responseSource: "compass" }
 }
 
-function row(sqlite: ReturnType<typeof sqliteDb>["sqlite"]): unknown {
+function row(sqlite: ReturnType<typeof migratedDb>["sqlite"]): unknown {
   return sqlite.prepare("SELECT response_status, date_response_status, responded_at FROM schedule_task_assignees WHERE id = 'a1'").get()
 }
 
@@ -121,19 +125,22 @@ describe("recordAssigneeResponse", () => {
   })
 })
 
-function sourceFiles(dir: string): string[] {
-  return readdirSync(dir).flatMap((name) => {
-    const path = join(dir, name)
-    if (statSync(path).isDirectory()) return name === "__tests__" ? [] : sourceFiles(path)
-    return /\.(ts|tsx)$/.test(name) && !/\.test\.tsx?$/.test(name) ? [path] : []
-  })
+const SOURCE_OPTIONS = { skipDirectories: ["__tests__"], include: /^(?!.*\.test\.tsx?$).*\.(ts|tsx)$/ }
+
+function sourceFiles(dir: string): readonly string[] {
+  return sharedSourceFiles(dir, SOURCE_OPTIONS)
 }
 
+// Read the tree once for this file, as setup (see @/test/source-tree).
+beforeAll(() => preloadSources("src", SOURCE_OPTIONS), SOURCE_SCAN_TIMEOUT_MS)
+
 describe("assignee response writes", () => {
-  const files = sourceFiles("src").map((path) => ({ path, text: readFileSync(path, "utf8") }))
+  // Built when a test runs (the reads are cached), not while Vitest collects tests.
+  const files = (): readonly { readonly path: string; readonly text: string }[] =>
+    sourceFiles("src").map((path) => ({ path, text: readSource(path) }))
 
   it("only schedule/store.ts writes the table", () => {
-    const writers = files.filter(({ text }) =>
+    const writers = files().filter(({ text }) =>
       /\.(update|insert)\(scheduleTaskAssignees\)|(UPDATE|INSERT INTO)\s+schedule_task_assignees/i.test(text))
     expect(writers.map(({ path }) => path)).toEqual(["src/lib/domain/schedule/store.ts"])
   })
@@ -141,7 +148,7 @@ describe("assignee response writes", () => {
   it("never sets a response status from a literal", () => {
     const literal = /\b(responseStatus|dateResponseStatus|durationResponseStatus):\s*["'`]|\b(response_status|date_response_status|duration_response_status)\s*=\s*'/
     // Files that touch this table (work-calendar events have their own response_status).
-    const touching = files.filter(({ text }) => /scheduleTaskAssignees|schedule_task_assignees/.test(text))
+    const touching = files().filter(({ text }) => /scheduleTaskAssignees|schedule_task_assignees/.test(text))
     expect(touching.length).toBeGreaterThan(3)
     expect(touching.filter(({ text }) => literal.test(text)).map(({ path }) => path)).toEqual([])
   })

@@ -1,6 +1,7 @@
-import { existsSync, readdirSync, readFileSync } from "node:fs"
+import { existsSync } from "node:fs"
 import { dirname, join, relative } from "node:path"
-import { describe, expect, it } from "vitest"
+import { beforeAll, describe, expect, it } from "vitest"
+import { preloadSources, readSource, SOURCE_SCAN_TIMEOUT_MS, sourceFiles } from "@/test/source-tree"
 import { validateHelpRoute } from "../../../../scripts/generate-help-resources.mjs"
 import { HELP_GUIDES } from "@/lib/help"
 import type { HelpGuide } from "@/lib/help/types"
@@ -14,14 +15,11 @@ const APP_ROOT = join(REPOSITORY_ROOT, "src/app")
 const SOURCE_ROOT = join(REPOSITORY_ROOT, "src")
 
 function filesBelow(directory: string, filename?: string): readonly string[] {
-  const files: string[] = []
-  for (const entry of readdirSync(directory, { withFileTypes: true })) {
-    const path = join(directory, entry.name)
-    if (entry.isDirectory()) files.push(...filesBelow(path, filename))
-    if (entry.isFile() && (!filename || entry.name === filename)) files.push(path)
-  }
-  return files
+  return sourceFiles(directory, filename ? { include: new RegExp(`^${filename.replaceAll(".", "\\.")}$`) } : {})
 }
+
+// Read the tree once for this file, as setup (see @/test/source-tree).
+beforeAll(() => preloadSources(SOURCE_ROOT, { include: /\.(?:ts|tsx)$/ }), SOURCE_SCAN_TIMEOUT_MS)
 
 function applicationRoutes(): readonly string[] {
   return ["dashboard", "preview"].flatMap((root) =>
@@ -39,7 +37,7 @@ function contextualTopicIds(): readonly string[] {
   const expressionStringPattern = /["']([^"']+)["']/g
   for (const path of filesBelow(SOURCE_ROOT)) {
     if (!/\.(?:ts|tsx)$/.test(path)) continue
-    const source = readFileSync(path, "utf8")
+    const source = readSource(path)
     if (!source.includes("ContextualHelp")) continue
     for (const match of source.matchAll(topicPattern)) {
       const literalTopicId = match[1]

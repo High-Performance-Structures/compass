@@ -1,6 +1,7 @@
-import { readdirSync, readFileSync, statSync } from "node:fs"
 import { join, relative } from "node:path"
-import { describe, expect, it } from "vitest"
+import { beforeAll, describe, expect, it } from "vitest"
+
+import { preloadSources, readSource, SOURCE_SCAN_TIMEOUT_MS, sourceFiles as sharedSourceFiles } from "@/test/source-tree"
 
 /*
  * Enforces docs/development/email-workflows.md: one way to email people
@@ -11,17 +12,19 @@ import { describe, expect, it } from "vitest"
 
 const ROOT = process.cwd()
 
+const SOURCE_OPTIONS = { skipDirectories: ["__tests__", "node_modules"], include: /\.(ts|tsx)$/ }
+
 function sourceFiles(dir: string): readonly string[] {
-  return readdirSync(join(ROOT, dir)).flatMap((entry) => {
-    const path = join(dir, entry)
-    if (entry === "__tests__" || entry === "node_modules") return []
-    if (statSync(join(ROOT, path)).isDirectory()) return sourceFiles(path)
-    return /\.(ts|tsx)$/.test(entry) ? [path] : []
-  })
+  return sharedSourceFiles(dir, SOURCE_OPTIONS)
 }
 
+// Read the tree once for this file, as setup (see @/test/source-tree).
+beforeAll(() => {
+  for (const dir of ["src/app", "src/lib", "src/components"]) preloadSources(dir, SOURCE_OPTIONS)
+}, SOURCE_SCAN_TIMEOUT_MS)
+
 function read(path: string): string {
-  return readFileSync(join(ROOT, path), "utf8")
+  return readSource(join(ROOT, path))
 }
 
 const FILES = [...sourceFiles("src/app"), ...sourceFiles("src/lib"), ...sourceFiles("src/components")].map((path) =>

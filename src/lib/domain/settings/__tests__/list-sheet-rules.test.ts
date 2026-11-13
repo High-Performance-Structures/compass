@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest"
 
 import { LIST_SHEETS, listSheetDefinition, type ListSheetDefinition } from "../list-sheet-registry"
 import {
+  type CompanyListSheetSetting,
   checkCompanyListSheet,
   checkPersonalListSheet,
   companyListSheetInputSchema,
@@ -42,7 +43,7 @@ describe("list sheet layout precedence", () => {
   })
 
   it("applies the company over the default and the person over the company", () => {
-    const company = {
+    const company: CompanyListSheetSetting = {
       columns: [
         { id: "number", visible: true },
         { id: "status", visible: true },

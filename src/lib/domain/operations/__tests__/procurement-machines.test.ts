@@ -1,6 +1,6 @@
-import { readdirSync, readFileSync, statSync } from "node:fs"
-import { join } from "node:path"
-import { describe, expect, it } from "vitest"
+import { beforeAll, describe, expect, it } from "vitest"
+
+import { preloadSources, readSource, SOURCE_SCAN_TIMEOUT_MS, sourceFiles as sharedSourceFiles } from "@/test/source-tree"
 
 import {
   automaticSourceSpellings,
@@ -86,13 +86,14 @@ describe("purchase order status automation", () => {
 // Guard: RFQ and PO status writes go through the store's two status functions.
 // ---------------------------------------------------------------------------
 
-function sourceFiles(dir: string): string[] {
-  return readdirSync(dir).flatMap((name) => {
-    const path = join(dir, name)
-    if (statSync(path).isDirectory()) return name === "__tests__" ? [] : sourceFiles(path)
-    return /\.(ts|tsx)$/.test(name) ? [path] : []
-  })
+const SOURCE_OPTIONS = { skipDirectories: ["__tests__"], include: /\.(ts|tsx)$/ }
+
+function sourceFiles(dir: string): readonly string[] {
+  return sharedSourceFiles(dir, SOURCE_OPTIONS)
 }
+
+// Read the tree once for this file, as setup (see @/test/source-tree).
+beforeAll(() => preloadSources("src", SOURCE_OPTIONS), SOURCE_SCAN_TIMEOUT_MS)
 
 /** The argument text of every call to `name(` in `source`. */
 function callArguments(source: string, name: string): string[] {
@@ -142,7 +143,7 @@ const OTHER_RECORD_STATUS_WRITERS = new Set([
 describe("RFQ and purchase order status writes", () => {
   it("only the operations store updates project_operations", () => {
     const writers = sourceFiles("src").filter((file) =>
-      /\.update\((schema\.)?projectOperations\)|UPDATE project_operations/.test(readFileSync(file, "utf8")),
+      /\.update\((schema\.)?projectOperations\)|UPDATE project_operations/.test(readSource(file)),
     )
     expect(writers).toEqual(["src/lib/domain/operations/store.ts"])
   })
@@ -150,7 +151,7 @@ describe("RFQ and purchase order status writes", () => {
   it("no caller sets status through the generic update helpers outside the known non-procurement writers", () => {
     const offenders = sourceFiles("src").flatMap((file) => {
       if (file.startsWith("src/lib/domain/operations/store.ts") || OTHER_RECORD_STATUS_WRITERS.has(file)) return []
-      const source = readFileSync(file, "utf8")
+      const source = readSource(file)
       return GENERIC_UPDATES.flatMap((name) => callArguments(source, name))
         .filter((call) => /[{,\s]status(:|,|\s*})/.test(topLevel(call)))
         .map((call) => `${file}: ${call.slice(0, 80)}`)
@@ -159,7 +160,7 @@ describe("RFQ and purchase order status writes", () => {
   })
 
   it("the store's procurement status writes are compare-and-set", () => {
-    const store = readFileSync("src/lib/domain/operations/store.ts", "utf8")
+    const store = readSource("src/lib/domain/operations/store.ts")
     const staff = store.slice(store.indexOf("export async function setProcurementStatusByStaff"))
     expect(staff.slice(0, staff.indexOf("\n}\n"))).toContain("eq(projectOperations.status, input.expected)")
     const automatic = store.slice(store.indexOf("function automaticStatusUpdate"))

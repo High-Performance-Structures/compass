@@ -1,6 +1,7 @@
-import { readdirSync, readFileSync, statSync } from "node:fs"
 import { join, relative } from "node:path"
 import { describe, expect, it } from "vitest"
+
+import { readSource, sourceFiles as sharedSourceFiles } from "@/test/source-tree"
 
 /*
  * Enforces "Line item order" in docs/development/ui-standards.md
@@ -30,16 +31,11 @@ const ADD_LINE_EXCEPTIONS: Readonly<Record<string, string>> = {
 }
 
 function sourceFiles(dir: string): readonly string[] {
-  return readdirSync(dir).flatMap((entry) => {
-    if (entry === "__tests__" || entry === "node_modules") return []
-    const path = join(dir, entry)
-    if (statSync(path).isDirectory()) return sourceFiles(path)
-    return /\.(ts|tsx)$/.test(entry) ? [path] : []
-  })
+  return sharedSourceFiles(dir, { skipDirectories: ["__tests__", "node_modules"], include: /\.(ts|tsx)$/ })
 }
 
 const files = [...sourceFiles(join(ROOT, "src/components")), ...sourceFiles(join(ROOT, "src/app"))]
-  .map((path) => ({ path: relative(ROOT, path), text: readFileSync(path, "utf8") }))
+  .map((path) => ({ path: relative(ROOT, path), text: readSource(path) }))
 
 describe("line order standard", () => {
   it("keeps drag-and-drop code in the shared control", () => {

@@ -1,8 +1,9 @@
 import Database from "better-sqlite3"
 import { randomUUID } from "node:crypto"
-import { readdirSync, readFileSync } from "node:fs"
+import { readFileSync } from "node:fs"
 import { join, resolve } from "node:path"
 import { afterAll, beforeAll, describe, expect, it } from "vitest"
+import { applyMigrations } from "@/test/migrated-database"
 
 import { ID_REFERENCE_TRIGGERS, idReferenceKey, type IdReferenceTrigger } from "../id-integrity"
 
@@ -19,9 +20,7 @@ const MIGRATIONS_DIR = resolve(process.cwd(), "drizzle")
 
 function replay(): Sqlite {
   const sqlite = new Database(":memory:")
-  for (const file of readdirSync(MIGRATIONS_DIR).filter((name) => /^\d{4}_.*\.sql$/.test(name)).sort()) {
-    sqlite.exec(readFileSync(join(MIGRATIONS_DIR, file), "utf8").replaceAll("--> statement-breakpoint", ""))
-  }
+  applyMigrations((sql) => sqlite.exec(sql))
   // Isolate the 0281 triggers: no foreign keys or CHECKs on the filler rows.
   sqlite.pragma("foreign_keys = OFF")
   sqlite.pragma("ignore_check_constraints = ON")

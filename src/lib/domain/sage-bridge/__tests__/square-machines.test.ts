@@ -1,7 +1,8 @@
 import Database from "better-sqlite3"
-import { readdirSync, readFileSync, statSync } from "node:fs"
-import { join } from "node:path"
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest"
+import { migratedDatabase } from "@/test/migrated-database"
+
+import { preloadSources, readSource, SOURCE_SCAN_TIMEOUT_MS, sourceFiles as sharedSourceFiles } from "@/test/source-tree"
 
 import { getDb } from "@/db"
 import { d1Over } from "@/lib/domain/__tests__/sqlite-d1"
@@ -51,19 +52,9 @@ const LATER = "2026-11-12T12:30:00.000Z"
 let sqlite: Sqlite
 let db: Db
 let d1: D1Database
-let migratedImage: Buffer | null = null
 
 function migrated(): Sqlite {
-  if (!migratedImage) {
-    const image = new Database(":memory:")
-    const dir = join(process.cwd(), "drizzle")
-    for (const file of readdirSync(dir).filter((name) => /^\d{4}_.*\.sql$/.test(name)).sort()) {
-      image.exec(readFileSync(join(dir, file), "utf8").replaceAll("--> statement-breakpoint", ""))
-    }
-    migratedImage = image.serialize()
-    image.close()
-  }
-  return new Database(migratedImage)
+  return migratedDatabase()
 }
 
 function isD1(value: unknown): value is D1Database {
@@ -221,19 +212,20 @@ describe("Square alerts", () => {
 // Guard: Square status writes go through sage-bridge/square-store.ts.
 // ---------------------------------------------------------------------------
 
-function sourceFiles(dir: string): string[] {
-  return readdirSync(dir).flatMap((name) => {
-    const path = join(dir, name)
-    if (statSync(path).isDirectory()) return name === "__tests__" ? [] : sourceFiles(path)
-    return /\.(ts|tsx)$/.test(name) ? [path] : []
-  })
+const SOURCE_OPTIONS = { skipDirectories: ["__tests__"], include: /\.(ts|tsx)$/ }
+
+function sourceFiles(dir: string): readonly string[] {
+  return sharedSourceFiles(dir, SOURCE_OPTIONS)
 }
+
+// Read the tree once for this file, as setup (see @/test/source-tree).
+beforeAll(() => preloadSources("src", SOURCE_OPTIONS), SOURCE_SCAN_TIMEOUT_MS)
 
 describe("Square status write guard", () => {
   // Read the tree once, outside the tests' own timeouts (slow under full-suite load).
   let tree: ReadonlyMap<string, string> = new Map()
   beforeAll(() => {
-    tree = new Map(sourceFiles("src").map((file) => [file, readFileSync(file, "utf8")]))
+    tree = new Map(sourceFiles("src").map((file) => [file, readSource(file)]))
   }, 120_000)
 
   it("only the Square store writes the Square tables", () => {
@@ -252,7 +244,7 @@ describe("Square status write guard", () => {
   })
 
   it("the store's status writes take their target from the machines", () => {
-    const store = readFileSync("src/lib/domain/sage-bridge/square-store.ts", "utf8")
+    const store = readSource("src/lib/domain/sage-bridge/square-store.ts")
     expect(store).not.toMatch(/status: "(queued|running|succeeded|failed|already_in_sage|manual_action_required|attention)"/)
     expect(store).not.toMatch(/SET status = '(processing|processed|failed|attention)'/)
     expect(store.match(/status: squarePaymentOperationMachine\.transitions[.[]/g)?.length).toBe(3)

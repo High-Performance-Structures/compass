@@ -1,6 +1,6 @@
-import { readdirSync, readFileSync, statSync } from "node:fs"
-import { join } from "node:path"
-import { beforeEach, describe, expect, it, vi } from "vitest"
+import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest"
+
+import { preloadSources, readSource, SOURCE_SCAN_TIMEOUT_MS, sourceFiles as sharedSourceFiles } from "@/test/source-tree"
 
 vi.mock("@/lib/notifications/events", () => ({ notifyProjectAssignment: vi.fn(async () => undefined) }))
 vi.mock("@/lib/notifications/clear-on-read", () => ({ clearOverdueFollowUpReminders: vi.fn(async () => undefined) }))
@@ -245,17 +245,18 @@ function calls(source: string, name: string): string[] {
   return found
 }
 
-function sourceFiles(dir: string): string[] {
-  return readdirSync(dir).flatMap((name) => {
-    const path = join(dir, name)
-    if (statSync(path).isDirectory()) return name === "__tests__" ? [] : sourceFiles(path)
-    return /\.(ts|tsx)$/.test(name) ? [path] : []
-  })
+const SOURCE_OPTIONS = { skipDirectories: ["__tests__"], include: /\.(ts|tsx)$/ }
+
+function sourceFiles(dir: string): readonly string[] {
+  return sharedSourceFiles(dir, SOURCE_OPTIONS)
 }
+
+// Read the tree once for this file, as setup (see @/test/source-tree).
+beforeAll(() => preloadSources("src", SOURCE_OPTIONS), SOURCE_SCAN_TIMEOUT_MS)
 
 describe("to-do status writes guard", () => {
   it("the store's to-do status writes are compare-and-set and decided by the machine", () => {
-    const store = readFileSync("src/lib/domain/operations/store.ts", "utf8")
+    const store = readSource("src/lib/domain/operations/store.ts")
     const body = (name: string): string => {
       const from = store.slice(store.indexOf(`export async function ${name}`))
       return from.slice(0, from.indexOf("\n}\n"))
@@ -269,7 +270,7 @@ describe("to-do status writes guard", () => {
 
   it("status-change history is never written on its own", () => {
     const offenders = sourceFiles("src").flatMap((file) => {
-      return calls(readFileSync(file, "utf8"), "recordTodoEvent")
+      return calls(readSource(file), "recordTodoEvent")
         .filter((call) => /kind: "(status|completed|unblocked)"/.test(call))
         .map((call) => `${file}: ${call.slice(0, 80)}`)
     })

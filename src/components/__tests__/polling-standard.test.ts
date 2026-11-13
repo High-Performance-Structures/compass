@@ -1,6 +1,8 @@
-import { existsSync, readdirSync, readFileSync, statSync } from "node:fs"
+import { existsSync } from "node:fs"
 import { join, relative } from "node:path"
-import { describe, expect, it } from "vitest"
+import { beforeAll, describe, expect, it } from "vitest"
+
+import { preloadSources, readSource, SOURCE_SCAN_TIMEOUT_MS, sourceFiles as sharedSourceFiles } from "@/test/source-tree"
 
 /*
  * Enforces the polling standard in docs/development/architecture-standards.md:
@@ -19,15 +21,17 @@ import { describe, expect, it } from "vitest"
 const ROOT = process.cwd()
 const DIRS = ["src/components", "src/app", "src/hooks", "src/contexts"] as const
 
+const SOURCE_OPTIONS = { skipDirectories: ["__tests__", "node_modules"], include: /\.(ts|tsx)$/ }
+
 function sourceFiles(dir: string): readonly string[] {
   if (!existsSync(join(ROOT, dir))) return []
-  return readdirSync(join(ROOT, dir)).flatMap((entry) => {
-    const path = join(dir, entry)
-    if (entry === "__tests__" || entry === "node_modules") return []
-    if (statSync(join(ROOT, path)).isDirectory()) return sourceFiles(path)
-    return /\.(ts|tsx)$/.test(entry) ? [path] : []
-  })
+  return sharedSourceFiles(dir, SOURCE_OPTIONS)
 }
+
+// Read the tree once for this file, as setup (see @/test/source-tree).
+beforeAll(() => {
+  for (const dir of DIRS) if (existsSync(join(ROOT, dir))) preloadSources(dir, SOURCE_OPTIONS)
+}, SOURCE_SCAN_TIMEOUT_MS)
 
 const FILES = DIRS.flatMap((dir) => sourceFiles(dir)).map((path) => relative(ROOT, join(ROOT, path)))
 
@@ -52,7 +56,7 @@ const RAW_INTERVAL_ALLOWLIST: Readonly<Record<string, Allowed>> = {
 }
 
 function rawIntervalCount(path: string): number {
-  return (readFileSync(join(ROOT, path), "utf8").match(/\bsetInterval\s*\(/g) ?? []).length
+  return (readSource(join(ROOT, path)).match(/\bsetInterval\s*\(/g) ?? []).length
 }
 
 describe("polling standard", () => {
@@ -87,7 +91,7 @@ describe("polling standard", () => {
   it("reads layout-loaded projects from ProjectListProvider in client components", () => {
     const offenders = FILES.filter((path) => {
       if (!path.startsWith("src/components/") && !path.startsWith("src/hooks/")) return false
-      const source = readFileSync(join(ROOT, path), "utf8")
+      const source = readSource(join(ROOT, path))
       return /^["']use client["']/.test(source) && /\bgetProjects\s*\(/.test(source)
     })
     expect(offenders, "Use useProjectList() from @/components/project-list-provider.").toEqual([])
@@ -99,7 +103,7 @@ describe("polling standard", () => {
       (path) =>
         (path.startsWith("src/components/") || path.startsWith("src/hooks/")) &&
         !allowed.has(path) &&
-        /\bgetNotificationCenter\s*\(/.test(readFileSync(join(ROOT, path), "utf8"))
+        /\bgetNotificationCenter\s*\(/.test(readSource(join(ROOT, path)))
     )
     expect(offenders, "Read notifications with useNotificationCenter or useNotificationInbox.").toEqual([])
   })

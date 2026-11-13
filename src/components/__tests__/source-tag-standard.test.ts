@@ -1,6 +1,8 @@
-import { existsSync, readdirSync, readFileSync, statSync } from "node:fs"
+import { existsSync } from "node:fs"
 import { join, relative } from "node:path"
-import { describe, expect, it } from "vitest"
+import { beforeAll, describe, expect, it } from "vitest"
+
+import { preloadSources, readSource, SOURCE_SCAN_TIMEOUT_MS, sourceFiles as sharedSourceFiles } from "@/test/source-tree"
 
 /*
  * Enforces the imported-record source tag standard in
@@ -21,15 +23,17 @@ const DIRS = ["src/components", "src/app"] as const
 // "from buildertrend" as words, not SQL like "FROM buildertrend_records".
 const LONG_SOURCE_LABEL = /(?:imported from|from) buildertrend(?![_\w])/gi
 
+const SOURCE_OPTIONS = { skipDirectories: ["__tests__", "node_modules"], include: /^(?!.*\.test\.tsx?$).*\.(ts|tsx)$/ }
+
 function sourceFiles(dir: string): readonly string[] {
   if (!existsSync(join(ROOT, dir))) return []
-  return readdirSync(join(ROOT, dir)).flatMap((entry) => {
-    const path = join(dir, entry)
-    if (entry === "__tests__" || entry === "node_modules") return []
-    if (statSync(join(ROOT, path)).isDirectory()) return sourceFiles(path)
-    return /\.(ts|tsx)$/.test(entry) && !/\.test\.tsx?$/.test(entry) ? [path] : []
-  })
+  return sharedSourceFiles(dir, SOURCE_OPTIONS)
 }
+
+// Read the tree once for this file, as setup (see @/test/source-tree).
+beforeAll(() => {
+  for (const dir of DIRS) if (existsSync(join(ROOT, dir))) preloadSources(dir, SOURCE_OPTIONS)
+}, SOURCE_SCAN_TIMEOUT_MS)
 
 const FILES = DIRS.flatMap((dir) => sourceFiles(dir)).map((path) => relative(ROOT, join(ROOT, path)))
 
@@ -49,7 +53,7 @@ function isCommentLine(line: string): boolean {
 }
 
 function longLabelCount(path: string): number {
-  return readFileSync(join(ROOT, path), "utf8")
+  return readSource(join(ROOT, path))
     .split("\n")
     .filter((line) => !isCommentLine(line))
     .reduce((sum, line) => sum + (line.match(LONG_SOURCE_LABEL) ?? []).length, 0)

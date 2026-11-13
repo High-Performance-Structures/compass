@@ -1,7 +1,8 @@
-import fs from "node:fs"
 import path from "node:path"
 
-import { describe, expect, it } from "vitest"
+import { beforeAll, describe, expect, it } from "vitest"
+
+import { preloadSources, readSource, SOURCE_SCAN_TIMEOUT_MS, sourceFiles } from "@/test/source-tree"
 
 /*
  * A vendor is never marked a duplicate without naming the vendor that
@@ -17,18 +18,21 @@ const ALLOWED = new Set([
   "src/app/actions/contact-duplicates.ts",
 ])
 
-function files(directory: string): string[] {
-  return fs.readdirSync(path.join(ROOT, directory), { withFileTypes: true }).flatMap((entry) => {
-    const relative = path.join(directory, entry.name)
-    if (entry.isDirectory()) return entry.name === "__tests__" || entry.name === "node_modules" ? [] : files(relative)
-    return /\.(ts|tsx|mjs|js|sql)$/.test(entry.name) && !/\.test\./.test(entry.name) ? [relative] : []
-  })
+const SCAN = { skipDirectories: ["__tests__", "node_modules"], include: /^(?!.*\.test\.).*\.(ts|tsx|mjs|js|sql)$/ }
+
+function files(directory: string): readonly string[] {
+  return sourceFiles(directory, SCAN)
 }
+
+// Read both trees once for this file, as setup (see @/test/source-tree).
+beforeAll(() => {
+  for (const dir of ["src", "scripts"]) preloadSources(dir, SCAN)
+}, SOURCE_SCAN_TIMEOUT_MS)
 
 describe("excluded duplicates need a survivor", () => {
   it("no code outside the merge names the excluded_duplicate status", () => {
     const offenders = [...files("src"), ...files("scripts")]
-      .filter((file) => !ALLOWED.has(file) && fs.readFileSync(path.join(ROOT, file), "utf8").includes("excluded_duplicate"))
+      .filter((file) => !ALLOWED.has(file) && readSource(path.join(ROOT, file)).includes("excluded_duplicate"))
     expect(offenders).toEqual([])
   })
 })
