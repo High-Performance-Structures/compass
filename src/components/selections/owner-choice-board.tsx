@@ -5,6 +5,9 @@
  * as a card of choice photos with the owner price and over/under the
  * allowance (owner prices include the builder fee), a link to the supplier's
  * page, a gentle "choose by" note on a choice with a longer lead time,
+ * "Add my own choice" (when the company allows it: a name, an optional
+ * product link and a note; it shows "Pending staff pricing" until the
+ * builder prices it, and the owner can edit or delete it until then),
  * "Suggest an item (paste a link)" and "Ask a question". Tapping a
  * card makes it the owner's pick; they can change it until the selection is
  * approved. Staff previewing the owner view see it read-only.
@@ -14,6 +17,8 @@ import { useRouter } from "next/navigation"
 import { IconCheck, IconExternalLink } from "@tabler/icons-react"
 
 import { setSelectionChoiceChosen } from "@/app/actions/selection-choices"
+import { deleteOwnerSuggestedChoice } from "@/app/actions/selection-owner-choices"
+import { OwnerSuggestionDeleteDialog, OwnerSuggestionDialog } from "@/components/selections/owner-suggestion-dialog"
 import { SelectionComments } from "@/components/selections/selection-comments"
 import { PasteLinkDialog } from "@/components/selections/selection-detail-dialogs"
 import { linkSiteName, SelectionLinkCard } from "@/components/selections/selection-link-card"
@@ -21,6 +26,7 @@ import { Button } from "@/components/ui/button"
 import { allowanceDeltaCents } from "@/lib/domain/selections/choice-rules"
 import type { SelectionChoiceView } from "@/lib/domain/selections/choices-read"
 import { ownerLeadTimeNote } from "@/lib/domain/selections/lead-time-rules"
+import { ownerCanChangeSuggestion } from "@/lib/domain/selections/owner-suggestion-rules"
 import type { OwnerBoardSelection } from "@/lib/domain/selections/owner-board-read"
 import { formatCents, formatDate } from "@/lib/format"
 import { projectAudiencePhotoUrl } from "@/lib/photo-sources"
@@ -55,17 +61,22 @@ function SelectionCard({
   projectId,
   selection,
   canChoose,
+  canSuggestChoices,
   onChanged,
 }: {
   readonly projectId: string
   readonly selection: OwnerBoardSelection
   readonly canChoose: boolean
+  readonly canSuggestChoices: boolean
   readonly onChanged: () => void
 }): React.ReactElement {
   const [error, setError] = React.useState<string | null>(null)
   const [pending, startTransition] = React.useTransition()
   const [suggesting, setSuggesting] = React.useState(false)
   const [asking, setAsking] = React.useState(selection.panel.comments.length > 0)
+  // "Add my own choice" ("new") or editing one of the owner's own suggestions.
+  const [editing, setEditing] = React.useState<SelectionChoiceView | "new" | null>(null)
+  const [deleting, setDeleting] = React.useState<SelectionChoiceView | null>(null)
   const choices = selection.panel.choices
   const pick = choices.find((choice) => choice.chosen) ?? null
   // No clickable choices where the pick can't change (ordered, installed, approved, out for signature, replaced).
@@ -79,6 +90,15 @@ function SelectionCard({
       if (!result.success) setError(result.error)
       onChanged()
     })
+  }
+
+  async function removeSuggestion(): Promise<void> {
+    if (!deleting) return
+    setError(null)
+    const result = await deleteOwnerSuggestedChoice(projectId, deleting.id)
+    if (!result.success) setError(result.error)
+    setDeleting(null)
+    onChanged()
   }
 
   const followUps = pick ? (selection.followUpNames[pick.id] ?? []) : []
@@ -133,8 +153,15 @@ function SelectionCard({
                       {choice.chosen && <IconCheck className="mr-1 inline size-4 align-[-2px]" aria-hidden />}
                       {choice.title}
                     </span>
+                    {choice.suggestedByOwner && <span className="text-xs font-medium text-muted-foreground">Suggested by owner</span>}
                     <span className="text-sm">
-                      {choice.ownerPriceCents !== null ? formatCents(choice.ownerPriceCents) : <span className="text-muted-foreground">Price coming</span>}
+                      {choice.ownerPricingPending ? (
+                        <span className="text-muted-foreground">Pending staff pricing</span>
+                      ) : choice.ownerPriceCents !== null ? (
+                        formatCents(choice.ownerPriceCents)
+                      ) : (
+                        <span className="text-muted-foreground">Price coming</span>
+                      )}
                       {delta !== null && (
                         <>
                           {" · "}
@@ -146,6 +173,16 @@ function SelectionCard({
                     {choice.description && <span className="line-clamp-2 text-xs text-muted-foreground">{choice.description}</span>}
                   </span>
                 </button>
+                {canChoose && !locked && ownerCanChangeSuggestion(choice) && (
+                  <div className="mx-3 mb-2 flex gap-2">
+                    <Button type="button" variant="outline" size="sm" disabled={pending} onClick={() => setEditing(choice)}>
+                      Edit
+                    </Button>
+                    <Button type="button" variant="outline" size="sm" disabled={pending} onClick={() => setDeleting(choice)}>
+                      Delete
+                    </Button>
+                  </div>
+                )}
                 {link && (
                   <a
                     href={link.url}
@@ -170,6 +207,11 @@ function SelectionCard({
         </div>
       )}
       <div className="flex flex-wrap items-center gap-2">
+        {canChoose && canSuggestChoices && !locked && (
+          <Button type="button" onClick={() => setEditing("new")}>
+            Add my own choice
+          </Button>
+        )}
         {canChoose && (
           <Button type="button" variant="outline" onClick={() => setSuggesting(true)}>
             Suggest an item (paste a link)
@@ -199,6 +241,23 @@ function SelectionCard({
           <p className="text-sm text-muted-foreground">Preview: owners ask questions here.</p>
         )
       )}
+      <OwnerSuggestionDialog
+        projectId={projectId}
+        selectionId={selection.id}
+        selectionName={selection.name}
+        choice={editing === "new" ? null : editing}
+        open={editing !== null}
+        onOpenChange={(open) => {
+          if (!open) setEditing(null)
+        }}
+        onSaved={onChanged}
+      />
+      <OwnerSuggestionDeleteDialog
+        choiceTitle={deleting?.title ?? null}
+        selectionName={selection.name}
+        onCancel={() => setDeleting(null)}
+        onConfirm={() => void removeSuggestion()}
+      />
       <PasteLinkDialog
         projectId={projectId}
         selectionId={selection.id}
@@ -217,11 +276,14 @@ export function OwnerChoiceBoard({
   projectId,
   selections,
   canChoose,
+  canSuggestChoices,
 }: {
   readonly projectId: string
   readonly selections: readonly OwnerBoardSelection[]
   /** False when staff preview the owner's view. */
   readonly canChoose: boolean
+  /** The company lets owners add their own choices (Settings › Selections). */
+  readonly canSuggestChoices: boolean
 }): React.ReactElement | null {
   const router = useRouter()
   const rooms = React.useMemo(() => [...new Set(selections.map((selection) => selection.roomName))], [selections])
@@ -284,7 +346,14 @@ export function OwnerChoiceBoard({
         </nav>
         <div className="flex min-w-0 flex-[999_1_560px] flex-col gap-4">
           {inRoom.map((selection) => (
-            <SelectionCard key={selection.id} projectId={projectId} selection={selection} canChoose={canChoose} onChanged={refresh} />
+            <SelectionCard
+              key={selection.id}
+              projectId={projectId}
+              selection={selection}
+              canChoose={canChoose}
+              canSuggestChoices={canSuggestChoices}
+              onChanged={refresh}
+            />
           ))}
         </div>
       </div>

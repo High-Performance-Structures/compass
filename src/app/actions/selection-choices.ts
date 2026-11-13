@@ -49,7 +49,7 @@ import {
   type SelectionRfqView,
   type SupplierOption,
 } from "@/lib/domain/selections/selection-sheet-read"
-import { ensureSelectionTodo, hasSelectionStepTodo, loadSelectionTodos, type SelectionTodoView } from "@/lib/domain/selections/selection-todos"
+import { archiveOwnerSuggestionTodo, ensureSelectionTodo, hasSelectionStepTodo, loadSelectionTodos, type SelectionTodoView } from "@/lib/domain/selections/selection-todos"
 import {
   deleteSelectionChoice as deleteChoiceRow,
   deleteSelectionComment as deleteCommentRow,
@@ -328,6 +328,8 @@ export async function deleteSelectionChoice(projectId: string, choiceId: string)
     if (!(await deleteChoiceRow(db, projectId, choiceId))) {
       return { success: false, error: "This choice can't be deleted now: it is an approved or signed pick, or it changed. Refresh and try again." }
     }
+    // An owner's suggestion deleted by staff needs no pricing any more.
+    if (choice.ownerPricingPending) await archiveOwnerSuggestionTodo(db, projectId, choice.selectionId, choiceId, new Date().toISOString())
     await checkRoundsReady(db, projectId, user.id)
     refresh(projectId)
     return { success: true, data: { id: choiceId } }

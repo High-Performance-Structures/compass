@@ -9,7 +9,8 @@ import { isInternalStaffRole } from "@/lib/user-roles"
  * selection category, how many days ahead a long lead time is flagged, the
  * markup that prefills a choice's owner price from the supplier price, and
  * the over-budget percent at which a variance is treated as a change order,
- * whether owners confirm their choice by click, and which project roles are
+ * whether owners confirm their choice by click, whether owners can suggest
+ * their own choices, and which project roles are
  * told when a price changes during a signature (the first of them on the
  * job gets a replacement's change-order to-do). Pure and client-safe.
  */
@@ -47,9 +48,15 @@ export const selectionSettingsSchema = z.object({
    */
   ownerChoiceConfirmation: z.boolean(),
   /**
+   * Owners may add their own choice to a published selection ("Add my own
+   * choice"): a name, an optional product link and a note. It waits for
+   * staff to set the owner price; off hides the button and the server refuses.
+   */
+  ownerSuggestedChoices: z.boolean(),
+  /**
    * Project roles told when a choice's price changes while its Selection
    * Phase is out for signature, and (the first one on the job) assigned a
-   * replacement's change-order to-do. Only company staff roles are kept: an
+   * replacement's change-order to-do and an owner suggestion's pricing to-do. Only company staff roles are kept: an
    * unknown or outside role is dropped, never the whole Selections setting.
    */
   priceChangeNoticeRoles: z.array(z.string()).max(USER_ROLES.length * 2).transform(staffRoles),
@@ -74,13 +81,14 @@ const DEFAULT_SELECTION_SETTINGS: SelectionSettings = {
   ownerMarkupPercent: null,
   changeOrderThresholdPercent: 10,
   ownerChoiceConfirmation: true,
+  ownerSuggestedChoices: true,
   priceChangeNoticeRoles: ["project_manager", "assistant_project_manager", "project_administrator"],
 }
 
 export const SELECTION_SETTINGS_GROUP = {
   label: "Selections",
   description:
-    "Selection Phases and the schedule items that set their due dates, default lead times by category and how early a long lead time is flagged, the markup that fills in owner prices, when a variance becomes a change order, owner choice confirmation, and who hears about price changes during a signature (and gets a replacement's change-order to-do).",
+    "Selection Phases and the schedule items that set their due dates, default lead times by category and how early a long lead time is flagged, the markup that fills in owner prices, when a variance becomes a change order, owner choice confirmation, whether owners can suggest their own choices, and who hears about price changes during a signature (and gets the to-dos for a replacement's change order and for pricing an owner's suggested choice).",
   defaults: DEFAULT_SELECTION_SETTINGS,
   schema: selectionSettingsSchema,
 }

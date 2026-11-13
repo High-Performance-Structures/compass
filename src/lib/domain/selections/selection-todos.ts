@@ -22,7 +22,7 @@ import type { Db } from "@/lib/server/action-context"
 
 /** The selection steps that make a to-do. */
 
-export type SelectionTodoStep = "price_choices" | "order" | "owner_question" | "order_lead_time" | "replacement_change_order"
+export type SelectionTodoStep = "price_choices" | "order" | "owner_question" | "order_lead_time" | "replacement_change_order" | "price_owner_suggestion"
 
 const STEP_TEXT: Readonly<Record<SelectionTodoStep, { readonly title: string; readonly description: string; readonly priority: string }>> = {
   price_choices: {
@@ -48,6 +48,12 @@ const STEP_TEXT: Readonly<Record<SelectionTodoStep, { readonly title: string; re
   replacement_change_order: {
     title: "Create a change order for this replacement:",
     description: "A new selection replaces an approved, ordered or installed one. Write the change order for it on the change-order screens and send it for the owner's signature.",
+    priority: "high",
+  },
+  price_owner_suggestion: {
+    title: "Price owner's suggested choice:",
+    description:
+      "The owner added their own choice. Set its owner price (supplier price plus markup) in the choice's edit form; until then the owner sees \"Pending staff pricing\" and the Selection Phase can't go out for signature with it picked. The product page's price is only the supplier price.",
     priority: "high",
   },
 }
@@ -153,6 +159,23 @@ export async function archiveReplacementTodos(db: Db, projectId: string, selecti
 }
 
 /**
+ * Archives the open to-do to price an owner's suggested choice (keyed by the
+ * choice) once the suggestion is deleted. Done ones stay.
+ */
+export async function archiveOwnerSuggestionTodo(db: Db, projectId: string, selectionId: string, choiceId: string, now: string): Promise<void> {
+  const statuses = await loadRecordStatusListForProject(db, projectId, "todo")
+  const open = (await stepTodos(db, projectId, [selectionId], "price_owner_suggestion")).filter(
+    (row) => row.onceKey === ownerSuggestionTodoKey(choiceId) && !isCompletedTodoStatus(statuses, row.status) && !isArchivedTodoStatus(statuses, row.status),
+  )
+  await archiveTodos(db, projectId, open, now)
+}
+
+/** The once-key of the to-do to price one owner suggestion. */
+export function ownerSuggestionTodoKey(choiceId: string): string {
+  return `owner-suggestion:${choiceId}`
+}
+
+/**
  * Creates the step's to-do for the selection unless one is still open.
  * Assigned to `assigneeName` when given (null leaves it unassigned), else to
  * the project manager named on the job. Returns the new to-do's id, or null
@@ -179,10 +202,18 @@ export async function ensureSelectionTodo(
     readonly assigneeName?: string | null
     /** The selection a replacement replaces: the to-do shows on both. */
     readonly replacedSelectionId?: string
+    /**
+     * With `onceKey`: one to-do per key rather than per step, so another
+     * open to-do for the step (a different key, e.g. another owner
+     * suggestion on the same selection) doesn't stop this one.
+     */
+    readonly perKey?: boolean
   },
 ): Promise<string | null> {
   const statuses = await loadRecordStatusListForProject(db, input.projectId, "todo")
-  const open = await stepTodos(db, input.projectId, [input.selectionId], input.step)
+  const all = await stepTodos(db, input.projectId, [input.selectionId], input.step)
+  const perKey = input.perKey === true && input.onceKey !== undefined
+  const open = perKey ? all.filter((row) => row.onceKey === input.onceKey) : all
   if (open.some((row) => !isCompletedTodoStatus(statuses, row.status) && !isArchivedTodoStatus(statuses, row.status))) return null
   if (input.onceKey !== undefined && open.some((row) => row.onceKey === input.onceKey)) return null
 
@@ -206,7 +237,8 @@ export async function ensureSelectionTodo(
   const title = selectionTodoTitle(input.step, input.selectionName)
   // Atomic against a double click or a concurrent request: when another
   // to-do for the step landed since the read above, this one is taken back.
-  const duplicate = sql`(SELECT count(*) FROM project_operations AS step_todo WHERE step_todo.project_id = ${input.projectId} AND step_todo.source_record_id = ${input.selectionId} AND step_todo.source_record_type = 'staff_task' AND json_extract(step_todo.sage_payload_json, '$.selectionStep') = ${input.step}) > ${open.length + 1}`
+  const sameKey = perKey ? sql` AND json_extract(step_todo.sage_payload_json, '$.selectionStepKey') = ${input.onceKey}` : sql``
+  const duplicate = sql`(SELECT count(*) FROM project_operations AS step_todo WHERE step_todo.project_id = ${input.projectId} AND step_todo.source_record_id = ${input.selectionId} AND step_todo.source_record_type = 'staff_task' AND json_extract(step_todo.sage_payload_json, '$.selectionStep') = ${input.step}${sameKey}) > ${open.length + 1}`
   const kept = await insertOperationUnlessDuplicate(db, {
     id,
     projectId: input.projectId,

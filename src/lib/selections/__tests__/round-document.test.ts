@@ -18,6 +18,7 @@ function line(overrides: Partial<RoundDocumentLineInput>): RoundDocumentLineInpu
     costCode: null,
     pickedBy: null,
     signedEarlier: false,
+    ownerPricingPending: false,
     ...overrides,
   }
 }
