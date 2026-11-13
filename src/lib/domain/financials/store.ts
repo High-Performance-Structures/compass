@@ -1,4 +1,4 @@
-import { and, eq, isNotNull, type SQL } from "drizzle-orm"
+import { and, eq, inArray, isNotNull, lt, notInArray, or, sql, type SQL } from "drizzle-orm"
 import type { BatchItem } from "drizzle-orm/batch"
 
 import {
@@ -31,6 +31,14 @@ import {
   SIMPLE_INVOICE_KINDS,
   SIMPLE_INVOICE_STATUSES,
 } from "@/lib/domain/financials/statuses"
+import {
+  INVOICE_CLOSED_TO_PAYMENTS,
+  SQUARE_LINK_LEASE_MS,
+  simpleInvoiceMachine,
+  squareLinkMachine,
+  type SimpleInvoiceEvent,
+  type SquareLinkEvent,
+} from "@/lib/domain/financials/invoice-machines"
 import { assertListFields } from "@/lib/shared/statuses"
 import { chunkD1Rows } from "@/lib/d1-query"
 import type { Db } from "@/lib/server/action-context"
@@ -75,10 +83,90 @@ export function simpleInvoiceInsertStatement(db: Db, values: NewInvoice) {
   return db.insert(invoices).values(values)
 }
 
-/** Fenced by the caller's `where` (id, organization and the status it expects). */
+/**
+ * Fenced by the caller's `where`. Never a status or Square link change: those
+ * go through the event functions below (./invoice-machines.ts).
+ */
 export function simpleInvoiceUpdateStatement(db: Db, where: SQL | undefined, patch: Partial<NewInvoice>) {
+  if (Reflect.get(patch, "status") !== undefined || Reflect.get(patch, "squareState") !== undefined) {
+    throw new Error("Change an invoice's status or Square link with the invoice status functions in financials/store.ts")
+  }
   assertListFields("invoices", patch, SIMPLE_INVOICE_LISTS)
   return db.update(invoices).set(patch).where(where)
+}
+
+type SimpleInvoiceKey = { readonly invoiceId: string; readonly organizationId: string; readonly projectId: string }
+
+function simpleInvoiceKey(key: SimpleInvoiceKey): SQL | undefined {
+  return and(eq(invoices.id, key.invoiceId), eq(invoices.organizationId, key.organizationId), eq(invoices.projectId, key.projectId), isNotNull(invoices.invoiceKind))
+}
+
+/** Applies `event` as a compare-and-set on its source states (plus `also`); true when it landed. */
+async function moveSimpleInvoice(db: Db, key: SimpleInvoiceKey, event: SimpleInvoiceEvent, values: Partial<NewInvoice>, also?: SQL): Promise<boolean> {
+  const updated = await db.update(invoices)
+    .set({ ...values, status: simpleInvoiceMachine.transitions[event].to })
+    .where(and(simpleInvoiceKey(key), inArray(invoices.status, [...simpleInvoiceMachine.transitions[event].from]), also))
+    .returning({ id: invoices.id })
+  return updated.length === 1
+}
+
+/** The same for the invoice's Square link (square_state). */
+async function moveSquareLink(db: Db, key: SimpleInvoiceKey, event: SquareLinkEvent, values: Partial<NewInvoice>, also?: SQL): Promise<boolean> {
+  const updated = await db.update(invoices)
+    .set({ ...values, squareState: squareLinkMachine.transitions[event].to })
+    .where(and(simpleInvoiceKey(key), inArray(invoices.squareState, [...squareLinkMachine.transitions[event].from]), also))
+    .returning({ id: invoices.id })
+  return updated.length === 1
+}
+
+/** finalize: numbers a draft. "number_taken" when another invoice of the job took the sequence number first. */
+export async function finalizeSimpleInvoice(db: Db, key: SimpleInvoiceKey & {
+  readonly sequenceNumber: number; readonly invoiceNumber: string; readonly actorId: string; readonly now: string
+}): Promise<"finalized" | "changed" | "number_taken"> {
+  try {
+    const values = { sequenceNumber: key.sequenceNumber, invoiceNumber: key.invoiceNumber, finalizedAt: key.now, finalizedByUserId: key.actorId, updatedAt: key.now }
+    return (await moveSimpleInvoice(db, key, "finalize", values)) ? "finalized" : "changed"
+  } catch (error) {
+    const text = error instanceof Error ? `${error.message} ${String(error.cause ?? "")}` : String(error)
+    if (/UNIQUE constraint failed/i.test(text)) return "number_taken"
+    throw error
+  }
+}
+
+/** reopen: a final, unpaid invoice back to draft. */
+export async function reopenSimpleInvoice(db: Db, key: SimpleInvoiceKey & { readonly now: string }): Promise<boolean> {
+  return moveSimpleInvoice(db, key, "reopen", { updatedAt: key.now }, eq(invoices.amountPaid, 0))
+}
+
+/** void: keeps a final, unpaid invoice for the record. The caller cancels its Sage export and Square invoice only after this lands. */
+export async function voidSimpleInvoice(db: Db, key: SimpleInvoiceKey & { readonly reason: string; readonly actorId: string; readonly now: string }): Promise<boolean> {
+  const values = { amountDue: 0, voidedAt: key.now, voidedByUserId: key.actorId, voidReason: key.reason, updatedAt: key.now }
+  return moveSimpleInvoice(db, key, "void", values, eq(invoices.amountPaid, 0))
+}
+
+/** The invoice is final and not void (it may carry a Square payment link). */
+const INVOICE_OPEN_FOR_SQUARE = notInArray(invoices.status, [...INVOICE_CLOSED_TO_PAYMENTS])
+
+/** start: one request creates the Square invoice (never two payment links); a "pending" left by a dead request is claimable after the lease. */
+export async function startSquareInvoiceLink(db: Db, key: SimpleInvoiceKey & { readonly now: string }): Promise<boolean> {
+  const leaseExpired = new Date(Date.parse(key.now) - SQUARE_LINK_LEASE_MS).toISOString()
+  return moveSquareLink(db, key, "start", { squareError: null, updatedAt: key.now },
+    and(INVOICE_OPEN_FOR_SQUARE, or(notInArray(invoices.squareState, ["pending"]), lt(invoices.updatedAt, leaseExpired))))
+}
+
+/** publish: stores Square's payment page. False when the invoice was voided meanwhile; the caller cancels it in Square. */
+export async function publishSquareInvoiceLink(db: Db, key: SimpleInvoiceKey & { readonly publicUrl: string; readonly now: string }): Promise<boolean> {
+  return moveSquareLink(db, key, "publish", { squarePublicUrl: key.publicUrl, squareError: null, updatedAt: key.now }, INVOICE_OPEN_FOR_SQUARE)
+}
+
+/** fail: Square didn't create the invoice; staff may try again. */
+export async function failSquareInvoiceLink(db: Db, key: SimpleInvoiceKey & { readonly error: string; readonly now: string }): Promise<boolean> {
+  return moveSquareLink(db, key, "fail", { squareError: key.error, updatedAt: key.now })
+}
+
+/** cancel: a voided invoice's Square invoice was cancelled in Square. */
+export async function cancelSquareInvoiceLink(db: Db, key: SimpleInvoiceKey & { readonly now: string }): Promise<boolean> {
+  return moveSquareLink(db, key, "cancel", { updatedAt: key.now }, eq(invoices.status, simpleInvoiceMachine.transitions.void.to))
 }
 
 /** A draft's lines are replaced as a whole on save. */
@@ -123,6 +211,16 @@ export async function insertPayment(db: Db, values: NewPayment): Promise<void> {
 
 export async function updatePaymentRow(db: Db, id: string, values: Partial<NewPayment>): Promise<void> {
   await db.update(payments).set(values).where(eq(payments.id, id))
+}
+
+/** Updates a payment only while nothing applies it (released history counts); false when it was applied first. */
+export async function updateUnappliedPaymentRow(db: Db, id: string, values: Partial<NewPayment>): Promise<boolean> {
+  const updated = await db.update(payments).set(values).where(and(
+    eq(payments.id, id),
+    sql`NOT EXISTS (SELECT 1 FROM pay_application_payment_allocations WHERE payment_id = ${id})`,
+    sql`NOT EXISTS (SELECT 1 FROM invoice_payment_allocations WHERE payment_id = ${id})`,
+  )).returning({ id: payments.id })
+  return updated.length === 1
 }
 
 export async function deletePaymentRow(db: Db, id: string): Promise<void> {
@@ -253,7 +351,7 @@ export function upsertInvoicePaymentAllocationStatement(database: D1Database, in
   ).bind(input.id, input.organizationId, input.projectId, input.invoiceId, input.paymentId, input.allocationCents, input.now)
 }
 
-/** Recomputes an invoice's amount paid, amount due and paid status from its stored allocations. */
+/** Recomputes amount paid, amount due and paid status from the allocations; a draft or void invoice keeps its status (a void one owes 0). */
 export function refreshInvoicePaidStatusStatement(database: D1Database, input: {
   readonly invoiceId: string; readonly organizationId: string; readonly projectId: string; readonly now: string
 }): D1PreparedStatement {
@@ -267,15 +365,16 @@ export function refreshInvoicePaidStatusStatement(database: D1Database, input: {
              WHERE invoice_id = ? AND released_at IS NULL
            ), 0)
          ),
-         amount_due = MAX(
+         amount_due = CASE WHEN status = 'void' THEN 0 ELSE MAX(
            total - COALESCE((
              SELECT SUM(allocation_cents) / 100.0
              FROM invoice_payment_allocations
              WHERE invoice_id = ? AND released_at IS NULL
            ), 0),
            0
-         ),
+         ) END,
          status = CASE
+           WHEN status IN (${CLOSED_TO_PAYMENTS_SQL}) THEN status
            WHEN COALESCE((
              SELECT SUM(allocation_cents)
              FROM invoice_payment_allocations
@@ -386,6 +485,16 @@ const PAYABLE_DRAW_GUARD = `(SELECT COUNT(*) FROM project_budget_applications
 const INVOICE_PAID_CENTS = `(SELECT CAST(ROUND(amount_paid * 100) AS INTEGER) FROM invoices
   WHERE id = ? AND organization_id = ? AND project_id = ?)`
 
+/** Draft and void invoices: never take a payment, and a paid-state write leaves their status alone. */
+const CLOSED_TO_PAYMENTS_SQL = SQL_LIST(INVOICE_CLOSED_TO_PAYMENTS)
+
+/** The invoice still takes payments (it was not voided after the action read it). Binds: invoice id. */
+const INVOICE_TAKES_PAYMENTS = `(SELECT status FROM invoices WHERE id = ?) NOT IN (${CLOSED_TO_PAYMENTS_SQL})`
+
+/** The paid status to write, unless the invoice is a draft or void (a void is never undone by a payment write). */
+const PAID_STATUS_UNLESS_CLOSED = (newStatus: string): string =>
+  `CASE WHEN status IN (${CLOSED_TO_PAYMENTS_SQL}) THEN status ELSE ${newStatus} END`
+
 /** New invoice amount paid, amount due and status (computed by rules.ts). */
 type InvoicePaidUpdate = {
   readonly amountPaid: number
@@ -422,7 +531,8 @@ type PaymentScope = {
 
 function invoicePaidUpdateStatement(database: D1Database, scope: PaymentScope, invoiceId: string, values: InvoicePaidUpdate): D1PreparedStatement {
   return database
-    .prepare(`UPDATE invoices SET amount_paid = ?, amount_due = ?, status = ?, updated_at = ?
+    .prepare(`UPDATE invoices SET amount_paid = ?, amount_due = CASE WHEN status = 'void' THEN 0 ELSE ? END,
+        status = ${PAID_STATUS_UNLESS_CLOSED("?")}, updated_at = ?
       WHERE id = ? AND organization_id = ? AND project_id = ?`)
     .bind(values.amountPaid, values.amountDue, values.status, scope.now, invoiceId, scope.organizationId, scope.projectId)
 }
@@ -456,12 +566,16 @@ function allocationStatements(
   }
   return [
     database
+      // Revives a released row for the same pair; an active one gets 0 cents, which the CHECK refuses.
       .prepare(`INSERT INTO invoice_payment_allocations (
           id, organization_id, project_id, invoice_id, payment_id, allocation_cents, created_at
-        ) SELECT ?, ?, ?, ?, ?, CASE WHEN ${INVOICE_PAID_CENTS} = ? AND ${PAYMENT_GUARD} THEN ? ELSE 0 END, ?`)
+        ) SELECT ?, ?, ?, ?, ?, CASE WHEN ${INVOICE_PAID_CENTS} = ? AND ${INVOICE_TAKES_PAYMENTS} AND ${PAYMENT_GUARD} THEN ? ELSE 0 END, ? WHERE true
+        ON CONFLICT(invoice_id, payment_id) DO UPDATE SET
+          allocation_cents = CASE WHEN released_at IS NULL THEN 0 ELSE excluded.allocation_cents END,
+          released_at = NULL, released_by = NULL`)
       .bind(
         allocation.allocationId, organizationId, projectId, allocation.invoiceId, paymentId,
-        allocation.invoiceId, organizationId, projectId, allocation.expectedPaidCents,
+        allocation.invoiceId, organizationId, projectId, allocation.expectedPaidCents, allocation.invoiceId,
         ...paymentBinds, allocation.cents, now,
       ),
     invoicePaidUpdateStatement(database, scope, allocation.invoiceId, allocation.invoice),
@@ -576,6 +690,26 @@ export async function voidReceivedPayment(database: D1Database, input: PaymentSc
       .bind(paymentId),
   )
   return runGuardedBatch(database, statements)
+}
+
+/** Takes a payment off a void or draft invoice (a late Square payment) so it can be applied elsewhere; the invoice keeps its status. */
+export async function releaseAllocationFromClosedInvoice(database: D1Database, input: PaymentScope & {
+  readonly allocationId: string
+}): Promise<{ readonly releasedCents: number } | "stale"> {
+  const { organizationId, projectId, paymentId, actorId, now } = input
+  const allocation = await database.prepare(`SELECT invoice_id, allocation_cents FROM invoice_payment_allocations
+    WHERE id = ? AND payment_id = ? AND organization_id = ? AND project_id = ?`).bind(input.allocationId, paymentId, organizationId, projectId)
+    .first<{ invoice_id: string; allocation_cents: number }>()
+  if (!allocation) return "stale"
+  const [released] = await database.batch([
+    database
+      .prepare(`UPDATE invoice_payment_allocations SET released_at = ?, released_by = ?
+        WHERE id = ? AND payment_id = ? AND released_at IS NULL AND allocation_cents = ?
+          AND (SELECT status FROM invoices WHERE id = ?) IN (${CLOSED_TO_PAYMENTS_SQL})`)
+      .bind(now, actorId, input.allocationId, paymentId, allocation.allocation_cents, allocation.invoice_id),
+    refreshInvoicePaidStatusStatement(database, { invoiceId: allocation.invoice_id, organizationId, projectId, now }),
+  ])
+  return Number(released?.meta.changes) === 1 ? { releasedCents: Number(allocation.allocation_cents) } : "stale"
 }
 
 type PrepaidScope = {

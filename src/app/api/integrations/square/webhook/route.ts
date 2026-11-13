@@ -60,22 +60,22 @@ export async function POST(request: Request): Promise<Response> {
   }
   const event = validated.data
   const now = new Date().toISOString()
-  const begin = await beginSquareWebhookEvent(env, event, now)
-  if (begin === "duplicate") {
+  const lease = await beginSquareWebhookEvent(env, event, now)
+  if (lease.outcome === "duplicate") {
     return Response.json({ success: true, duplicate: true })
   }
   try {
     await processSquareWebhookEvent(env, event, now)
-    await completeSquareWebhookEvent(env, event.event_id, now)
+    await completeSquareWebhookEvent(env, event.event_id, lease.attempt, now)
     return Response.json({ success: true })
   } catch (error) {
     const message = safeErrorMessage(error)
-    if (error instanceof SageSquarePaymentAttentionError) {
-      await flagSquareWebhookEventForAttention(env, event.event_id, message, now)
-    } else {
-      await failSquareWebhookEvent(env, event.event_id, message, now)
-    }
+    // Only the attempt still holding the lease records the outcome and alerts staff.
+    const recorded = error instanceof SageSquarePaymentAttentionError
+      ? await flagSquareWebhookEventForAttention(env, event.event_id, lease.attempt, message, now)
+      : await failSquareWebhookEvent(env, event.event_id, lease.attempt, message, now)
     if (
+      recorded &&
       error instanceof SageSquarePaymentAttentionError &&
       error.organizationId
     ) {

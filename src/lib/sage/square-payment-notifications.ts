@@ -5,8 +5,11 @@ import {
   notificationEvents,
 } from "@/db/schema"
 import { peopleView } from "@/lib/domain/identity/views"
-import { settleNotificationRecipientsWhereStatement } from "@/lib/domain/notifications/store"
-import { createSystemNotificationEvent } from "@/lib/notifications/events"
+import {
+  insertInternalNotificationEventWhereStatement,
+  insertNotificationRecipientWhereStatement,
+  settleNotificationRecipientsWhereStatement,
+} from "@/lib/domain/notifications/store"
 import { squareAlertRecipientIds } from "@/lib/sage/square-alert-recipients"
 
 const people = peopleView()
@@ -55,6 +58,12 @@ export function manualReceiptNotificationBody(
   ].join(" ")
 }
 
+/**
+ * One alert per event type and source, ever. The event id is derived from
+ * them and written with the "no such alert yet" guard in one batch, so two
+ * webhook deliveries (or a delivery and the maintenance pass) racing on the
+ * same Square payment add one alert, not two. In-app only.
+ */
 async function notifySageSquareAdmins(
   env: CloudflareEnv,
   input: SageSquareAdminNotificationInput
@@ -75,30 +84,42 @@ async function notifySageSquareAdmins(
   // Chosen in Settings → Workflows → Square and Sage payments; administrators otherwise.
   const recipientIds = await squareAlertRecipientIds(db, env, input.organizationId, "payments")
   const admins = await db
-    .select({
-      userId: people.id,
-      email: people.email,
-    })
+    .select({ userId: people.id })
     .from(people)
-    .where(inArray(people.id, recipientIds.length > 0 ? [...recipientIds] : [""]))
-  await createSystemNotificationEvent({
-    organizationId: input.organizationId,
-    projectId: input.projectId,
-    eventType: input.eventType,
-    sourceType: EXCEPTION_SOURCE_TYPE,
-    sourceId: input.sourceId,
-    title: input.title,
-    body: input.body,
-    href: input.projectId && input.receiptOperationId
-      ? `/dashboard/projects/${encodeURIComponent(input.projectId)}/financials?squareReceipt=${encodeURIComponent(input.receiptOperationId)}`
-      : input.projectId
-        ? `/dashboard/projects/${encodeURIComponent(input.projectId)}/financials`
-      : "/dashboard/financials?tab=payments",
-    priority: input.priority,
-    audience: "internal",
-    recipients: admins,
-    delivery: { inApp: true, email: false, push: false },
-  })
+    .where(and(inArray(people.id, recipientIds.length > 0 ? [...recipientIds] : [""]), eq(people.isActive, true)))
+  if (admins.length === 0) return
+  const eventId = `${input.eventType}:${input.organizationId}:${input.sourceId}`
+  const createdAt = new Date().toISOString()
+  const noAlertYet = {
+    sql: `NOT EXISTS (SELECT 1 FROM notification_events WHERE event_type = ? AND source_type = ? AND source_id = ? AND organization_id = ?)`,
+    binds: [input.eventType, EXCEPTION_SOURCE_TYPE, input.sourceId, input.organizationId],
+  }
+  const eventStored = { sql: "EXISTS (SELECT 1 FROM notification_events WHERE id = ?)", binds: [eventId] }
+  await env.DB.batch([
+    insertInternalNotificationEventWhereStatement(env.DB, {
+      id: eventId,
+      organizationId: input.organizationId,
+      projectId: input.projectId,
+      eventType: input.eventType,
+      sourceType: EXCEPTION_SOURCE_TYPE,
+      sourceId: input.sourceId,
+      title: input.title,
+      body: input.body,
+      href: input.projectId && input.receiptOperationId
+        ? `/dashboard/projects/${encodeURIComponent(input.projectId)}/financials?squareReceipt=${encodeURIComponent(input.receiptOperationId)}`
+        : input.projectId
+          ? `/dashboard/projects/${encodeURIComponent(input.projectId)}/financials`
+        : "/dashboard/financials?tab=payments",
+      priority: input.priority,
+      createdAt,
+    }, noAlertYet),
+    ...admins.map((admin) => insertNotificationRecipientWhereStatement(env.DB, {
+      id: `${eventId}:${admin.userId}`,
+      eventId,
+      userId: admin.userId,
+      createdAt,
+    }, eventStored)),
+  ])
 }
 
 export async function notifySageSquareException(

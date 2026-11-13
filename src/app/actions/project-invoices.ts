@@ -1,6 +1,6 @@
 "use server"
 
-import { and, eq, inArray } from "drizzle-orm"
+import { and, eq } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 
 import { customers } from "@/db/schema"
@@ -28,10 +28,14 @@ import {
   type InvoicePriceMode,
 } from "@/lib/domain/financials/statuses"
 import {
+  cancelSquareInvoiceLink,
   deleteDraftSimpleInvoiceStatement,
+  finalizeSimpleInvoice,
+  reopenSimpleInvoice,
   replaceInvoiceLinesStatements,
   simpleInvoiceInsertStatement,
   simpleInvoiceUpdateStatement,
+  voidSimpleInvoice,
 } from "@/lib/domain/financials/store"
 import { cancelSageInvoiceArExport } from "@/lib/domain/sage-bridge/ar-invoice-store"
 import { addDays } from "@/lib/domain/sage-bridge/ar-invoice-rules"
@@ -321,27 +325,28 @@ export async function finalizeProjectInvoice(projectId: string, invoiceId: strin
     if (invoice.totalCents <= 0) return actionFailure("The invoice total must be more than zero.")
     if (invoice.lines.some((line) => line.taxable) && !invoice.taxEntityId) return actionFailure("Some lines are taxable; choose the sales tax district first.")
     const format = simpleInvoiceNumberFormat(invoice.invoiceKind, exportSettings)
+    const now = new Date().toISOString()
     // A reopened invoice keeps its number; a new one takes the next free number of its kind.
     let sequence = invoice.sequenceNumber ?? (await nextInvoiceSequence(db, projectId, invoice.invoiceKind))
     let number = formatSageInvoiceNumber(format, { projectNumber: project.projectNumber, sageJobNumber: project.sageJobNumber, number: String(sequence) })
-    if (invoice.sequenceNumber === null) {
-      const taken = await projectInvoiceNumbers(db, organizationId, projectId)
-      while (taken.has(number.value.trim().toUpperCase()) && sequence < 999) {
-        sequence += 1
-        number = formatSageInvoiceNumber(format, { projectNumber: project.projectNumber, sageJobNumber: project.sageJobNumber, number: String(sequence) })
+    // Another invoice of the job finalized at the same moment may take the
+    // same sequence number first (the unique index refuses the second): take the next one.
+    for (let attempt = 0; ; attempt += 1) {
+      if (invoice.sequenceNumber === null) {
+        const taken = await projectInvoiceNumbers(db, organizationId, projectId)
+        while (taken.has(number.value.trim().toUpperCase()) && sequence < 999) {
+          sequence += 1
+          number = formatSageInvoiceNumber(format, { projectNumber: project.projectNumber, sageJobNumber: project.sageJobNumber, number: String(sequence) })
+        }
       }
+      if (number.error) return actionFailure(number.error)
+      const outcome = await finalizeSimpleInvoice(db, { invoiceId, organizationId, projectId, sequenceNumber: sequence, invoiceNumber: number.value, actorId: user.id, now })
+      if (outcome === "finalized") break
+      if (outcome === "changed") return actionFailure("Someone else changed this invoice. Refresh and try again.")
+      if (invoice.sequenceNumber !== null || attempt >= 4) return actionFailure("Another invoice took this invoice number. Refresh and try again.")
+      sequence = Math.max(sequence + 1, await nextInvoiceSequence(db, projectId, invoice.invoiceKind))
+      number = formatSageInvoiceNumber(format, { projectNumber: project.projectNumber, sageJobNumber: project.sageJobNumber, number: String(sequence) })
     }
-    if (number.error) return actionFailure(number.error)
-    const now = new Date().toISOString()
-    const updated = await simpleInvoiceUpdateStatement(db, and(eq(invoices.id, invoiceId), eq(invoices.organizationId, organizationId), eq(invoices.status, "draft")), {
-      status: "open",
-      sequenceNumber: sequence,
-      invoiceNumber: number.value,
-      finalizedAt: now,
-      finalizedByUserId: user.id,
-      updatedAt: now,
-    }).returning({ id: invoices.id })
-    if (updated.length !== 1) return actionFailure("Someone else changed this invoice. Refresh and try again.")
     await recordActivityEvent({
       db,
       organizationId,
@@ -378,11 +383,7 @@ export async function reopenProjectInvoice(projectId: string, invoiceId: string)
     if (exported && !(await cancelSageInvoiceArExport(db, { organizationId, invoiceId, now }))) {
       return actionFailure("Sage is taking this invoice right now; void it instead.")
     }
-    const updated = await simpleInvoiceUpdateStatement(db, and(eq(invoices.id, invoiceId), eq(invoices.organizationId, organizationId), inArray(invoices.status, ["open"])), {
-      status: "draft",
-      updatedAt: now,
-    }).returning({ id: invoices.id })
-    if (updated.length !== 1) return actionFailure("Only a final, unpaid invoice can be reopened.")
+    if (!(await reopenSimpleInvoice(db, { invoiceId, organizationId, projectId, now }))) return actionFailure("Only a final, unpaid invoice can be reopened.")
     await recordActivityEvent({
       db,
       organizationId,
@@ -453,36 +454,33 @@ export async function voidProjectInvoice(projectId: string, invoiceId: string, r
     if (invoice.status === "void") return actionFailure("This invoice is already void.")
     if (invoice.amountPaidCents > 0) return actionFailure("This invoice has payments applied. Release them on the Financials page first.")
     const now = new Date().toISOString()
+    // Void first: the Sage export and Square invoice are cancelled only once
+    // the void landed, so a void that loses to a payment or a second click
+    // never cancels anything behind an invoice that stays open.
+    if (!(await voidSimpleInvoice(db, { invoiceId, organizationId, projectId, reason: why, actorId: user.id, now }))) {
+      return actionFailure("Someone else changed this invoice (or a payment was applied). Refresh and try again.")
+    }
     const notes: string[] = []
     const exported = await loadSimpleInvoiceExport(db, organizationId, invoiceId)
     if (exported) {
       if (exported.status === "succeeded" || exported.status === "running") {
         notes.push(`Invoice ${invoice.invoiceNumber ?? ""} is in Sage (or being added): void it in Sage too.`)
-      } else {
-        await cancelSageInvoiceArExport(db, { organizationId, invoiceId, now })
+      } else if (!(await cancelSageInvoiceArExport(db, { organizationId, invoiceId, now }))) {
+        notes.push(`Sage started adding invoice ${invoice.invoiceNumber ?? ""}: check Sage and void it there too.`)
       }
     }
-    let squareState: string = invoice.squareState
-    if (invoice.squareInvoiceId) {
+    // The stored Square id, read again: a Square invoice created while this void ran is cancelled too.
+    const squareInvoiceId = (await loadSimpleInvoice(db, organizationId, projectId, invoiceId))?.squareInvoiceId ?? invoice.squareInvoiceId
+    if (squareInvoiceId) {
       const token = squareInvoiceAccessToken(env)
       try {
         if (!token) throw new Error("Square isn't connected.")
-        await cancelSquareInvoice(token, invoice.squareInvoiceId)
-        squareState = "canceled"
+        await cancelSquareInvoice(token, squareInvoiceId)
+        await cancelSquareInvoiceLink(db, { invoiceId, organizationId, projectId, now })
       } catch (error) {
         notes.push(`Cancel the Square invoice in Square: ${errorMessage(error, "Square didn't confirm.")}`)
       }
     }
-    const updated = await simpleInvoiceUpdateStatement(db, and(eq(invoices.id, invoiceId), eq(invoices.organizationId, organizationId), eq(invoices.status, invoice.status)), {
-      status: "void",
-      amountDue: 0,
-      voidedAt: now,
-      voidedByUserId: user.id,
-      voidReason: why,
-      squareState: squareState === "canceled" ? "canceled" : undefined,
-      updatedAt: now,
-    }).returning({ id: invoices.id })
-    if (updated.length !== 1) return actionFailure("Someone else changed this invoice. Refresh and try again.")
     await recordActivityEvent({
       db,
       organizationId,

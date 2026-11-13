@@ -1,4 +1,4 @@
-import { and, asc, eq, inArray, lt, or, sql } from "drizzle-orm"
+import { and, asc, eq, inArray, lt } from "drizzle-orm"
 
 import { getDb } from "@/db"
 import {
@@ -11,7 +11,11 @@ import {
   sageBridgeBatchLimit,
   sageBridgeCutoff,
 } from "@/lib/domain/sage-bridge/rules"
-import { updateSageSquarePaymentOperations } from "@/lib/domain/sage-bridge/square-store"
+import {
+  claimableSageSquareFeeOperations,
+  claimSageSquareFeeOperation,
+  finishSageSquareFeeOperation,
+} from "@/lib/domain/sage-bridge/square-store"
 import {
   deleteSageBridgeRequestNonces,
   insertSageBridgeRequestNonce,
@@ -85,18 +89,9 @@ export async function GET(request: Request): Promise<Response> {
     .from(sageSquarePaymentOperations)
     .where(
       and(
-        eq(
-          sageSquarePaymentOperations.operationType,
-          "post_square_processing_fee"
-        ),
-        ...(writesEnabled ? [] : [inArray(sageSquarePaymentOperations.id, [...testOperationIds])]),
-        or(
-          eq(sageSquarePaymentOperations.status, "queued"),
-          and(
-            eq(sageSquarePaymentOperations.status, "running"),
-            lt(sageSquarePaymentOperations.claimedAt, staleClaimIso)
-          )
-        )
+        // Only "post_square_processing_fee" operations reach the writer.
+        claimableSageSquareFeeOperations(staleClaimIso),
+        ...(writesEnabled ? [] : [inArray(sageSquarePaymentOperations.id, [...testOperationIds])])
       )
     )
     .orderBy(asc(sageSquarePaymentOperations.requestedAt))
@@ -105,30 +100,8 @@ export async function GET(request: Request): Promise<Response> {
   const requests: unknown[] = []
   for (const candidate of candidates) {
     const claimToken = crypto.randomUUID()
-    await updateSageSquarePaymentOperations(
-      db,
-      {
-        status: "running",
-        claimToken,
-        claimedAt: nowIso,
-        attemptCount: sql`${sageSquarePaymentOperations.attemptCount} + 1`,
-        updatedAt: nowIso,
-      },
-      and(
-        eq(sageSquarePaymentOperations.id, candidate.id),
-        eq(
-          sageSquarePaymentOperations.operationType,
-          "post_square_processing_fee"
-        ),
-        or(
-          eq(sageSquarePaymentOperations.status, "queued"),
-          and(
-            eq(sageSquarePaymentOperations.status, "running"),
-            lt(sageSquarePaymentOperations.claimedAt, staleClaimIso)
-          )
-        )
-      )
-    )
+    // Compare-and-set inside: still "post_square_processing_fee", queued or stale.
+    if (!(await claimSageSquareFeeOperation(db, { operationId: candidate.id, claimToken, staleClaimIso, now: nowIso }))) continue
     const claimed = await db
       .select()
       .from(sageSquarePaymentOperations)
@@ -150,16 +123,15 @@ export async function GET(request: Request): Promise<Response> {
     }
     const validated = sageSquarePaymentPayloadSchema.safeParse(payload)
     if (!validated.success) {
-      await updateSageSquarePaymentOperations(
-        db,
-        {
-          status: "failed",
-          errorMessage: "Stored Sage Square payment payload failed validation",
-          completedAt: nowIso,
-          updatedAt: nowIso,
-        },
-        eq(sageSquarePaymentOperations.id, claimed.id)
-      )
+      await finishSageSquareFeeOperation(db, {
+        operationId: claimed.id,
+        claimToken,
+        event: "fail",
+        sageRecordId: null,
+        sageRecordNumber: null,
+        errorMessage: "Stored Sage Square payment payload failed validation",
+        now: nowIso,
+      })
       continue
     }
     requests.push({

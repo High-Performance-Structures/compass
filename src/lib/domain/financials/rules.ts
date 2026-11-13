@@ -394,9 +394,13 @@ export function invoicePaidValues(input: {
   }
 }
 
-/** The status an invoice returns to when voiding leaves nothing paid on it. */
-export function invoiceUnpaidStatus(sourceSystem: string): string {
-  return sourceSystem === "sage" ? "open" : "sent"
+/**
+ * The status an invoice returns to when voiding leaves nothing paid on it:
+ * "open" for Sage and simple invoices (their status lists have no "sent"),
+ * "sent" for older Compass invoices.
+ */
+export function invoiceUnpaidStatus(sourceSystem: string, invoiceKind: string | null = null): string {
+  return sourceSystem === "sage" || invoiceKind !== null ? "open" : "sent"
 }
 
 /** Draft and void invoices cannot take a payment. */

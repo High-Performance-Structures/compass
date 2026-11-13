@@ -37,6 +37,11 @@ export type SquareOwnerReceivableIds = {
   readonly paymentOperationId: string;
 };
 
+/** What was stored, plus the invoice's status after the payment (a void invoice stays void). */
+export type SquareOwnerReceivableResult = SquareOwnerReceivableIds & {
+  readonly invoiceStatus: string;
+};
+
 function cents(value: number, label: string, allowZero = false): number {
   if (
     !Number.isSafeInteger(value) ||
@@ -75,7 +80,7 @@ export async function upsertSquareOwnerReceivable(
   env: CloudflareEnv,
   input: SquareOwnerReceivableInput,
   now: string,
-): Promise<SquareOwnerReceivableIds> {
+): Promise<SquareOwnerReceivableResult> {
   const invoiceTotalCents = cents(input.invoiceTotalCents, "Invoice total");
   const invoiceTaxCents = cents(input.invoiceTaxCents, "Invoice tax", true);
   const paymentAmountCents = cents(input.paymentAmountCents, "Payment amount");
@@ -286,5 +291,5 @@ export async function upsertSquareOwnerReceivable(
     projectId: input.projectId,
   });
 
-  return ids;
+  return { ...ids, invoiceStatus: invoice.status };
 }

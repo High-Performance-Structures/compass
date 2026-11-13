@@ -96,15 +96,16 @@ describe("financials store: Square owner receivable", () => {
              WHERE invoice_id = ? AND released_at IS NULL
            ), 0)
          ),
-         amount_due = MAX(
+         amount_due = CASE WHEN status = 'void' THEN 0 ELSE MAX(
            total - COALESCE((
              SELECT SUM(allocation_cents) / 100.0
              FROM invoice_payment_allocations
              WHERE invoice_id = ? AND released_at IS NULL
            ), 0),
            0
-         ),
+         ) END,
          status = CASE
+           WHEN status IN ('draft', 'void') THEN status
            WHEN COALESCE((
              SELECT SUM(allocation_cents)
              FROM invoice_payment_allocations
