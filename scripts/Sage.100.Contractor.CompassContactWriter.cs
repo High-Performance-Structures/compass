@@ -133,9 +133,71 @@ namespace CompassSageClientProjectWriter
         }
         private static readonly ExtendedContactField[] ClientCompanyExtendedFields = {
             new ExtendedContactField("name", "reccln", "clnnme", new string[] { "ClientName", "Name" }),
-            new ExtendedContactField("email", "reccln", "e_mail", new string[] { "Email", "Email1" }),
-            new ExtendedContactField("phone", "reccln", "phnnum", new string[] { "Phone", "Phone1", "PhoneNumber" }),
         };
+
+        // Sage keeps a client's email and phone on its contact lines (clncnt).
+        // ClientModRq accepts Email1/Phone1 but stores nothing, so a client
+        // company's email and phone are its FIRST contact line: read from it,
+        // changed with ClientContactMod, or a new line under the client's name
+        // (ClientContactAdd) when the client has none. Schema order: Phone, Email.
+        private static readonly ContactField[] ClientLineFields = {
+            new ContactField("phone", "phnnum", "Phone"),
+            new ContactField("email", "e_mail", "Email"),
+        };
+        private const int ClientLineEmailMax = 75;   // ClientContact Email is String75OrNull
+        private const int ClientLineNameMax = 50;    // ClientContact ContactName is String50OrNull
+
+        /** The first contact line of a client, or null when the client has none. */
+        private sealed class ClientLine
+        {
+            public int Number;
+            public Dictionary<string, string> Fields = new Dictionary<string, string>(StringComparer.Ordinal);
+        }
+
+        /** Where a client company's email and phone are written: an existing line, or a new one. */
+        private sealed class ClientLineTarget
+        {
+            public int LineId;      // > 0: ClientContactMod of this line
+            public string AddName;  // LineId == 0: ClientContactAdd under this name
+        }
+
+        private static bool IsClientLineField(string kind, string key)
+        {
+            if (kind != "client_company") return false;
+            foreach (ContactField field in ClientLineFields) if (field.Key == key) return true;
+            return false;
+        }
+
+        private static ClientLine ReadClientFirstLine(SqlConnection connection, string clientId)
+        {
+            StringBuilder query = new StringBuilder("SELECT TOP (1) linnum");
+            foreach (ContactField field in ClientLineFields) query.Append(", ").Append(field.Sql);
+            query.Append(" FROM dbo.clncnt WHERE _idref = @client ORDER BY linnum");
+            using (SqlCommand command = new SqlCommand(query.ToString(), connection))
+            {
+                command.Parameters.AddWithValue("@client", clientId ?? "");
+                using (SqlDataReader reader = command.ExecuteReader())
+                {
+                    if (!reader.Read()) return null;
+                    ClientLine line = new ClientLine { Number = Convert.ToInt32(reader[0]) };
+                    for (int index = 0; index < ClientLineFields.Length; index++)
+                        line.Fields.Add(ClientLineFields[index].Key,
+                            reader.IsDBNull(index + 1) ? null : Convert.ToString(reader[index + 1]).Trim());
+                    return line;
+                }
+            }
+        }
+
+        private static ClientLineTarget ClientLineTargetFor(string company, ContactSnapshot client)
+        {
+            ClientLine line;
+            using (SqlConnection connection = OpenContactSql(company))
+                line = ReadClientFirstLine(connection, client.sageRecordId);
+            if (line != null) return new ClientLineTarget { LineId = line.Number };
+            string name = (client.identityName ?? "").Trim();
+            if (name.Length == 0) throw new InvalidOperationException("Sage client has no name for a new contact line; no write attempted.");
+            return new ClientLineTarget { AddName = name.Length > ClientLineNameMax ? name.Substring(0, ClientLineNameMax).TrimEnd() : name };
+        }
         private static readonly ExtendedContactField[] VendorCompanyExtendedFields = {
             new ExtendedContactField("name", "actpay", "vndnme", new string[] { "VendorName", "Name" }),
             new ExtendedContactField("email", "actpay", "e_mail", new string[] { "Email" }),
@@ -789,7 +851,9 @@ namespace CompassSageClientProjectWriter
                             key == "email" ? "test@example.invalid" :
                             key == "phone" || key == "cellPhone" ? "5550100" : "Test" };
                 }
-                ValidateContactXml(kind, 1, 1, changes, ContactTestCompany);
+                ValidateContactXml(kind, 1, 1, changes, ContactTestCompany, new ClientLineTarget { LineId = 1 });
+                if (kind == "client_company")
+                    ValidateContactXml(kind, 1, 1, changes, ContactTestCompany, new ClientLineTarget { AddName = "Test" });
             }
             BuildVendorPrimaryEmailTestXml(1, "test@example.invalid");
             BuildTestChildXml("client_person", 1, "Compass QA", null);
@@ -859,8 +923,11 @@ namespace CompassSageClientProjectWriter
                 HashSet<string> ids = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
                 HashSet<string> numbers = new HashSet<string>(StringComparer.Ordinal);
                 using (SqlConnection connection = OpenContactSql(TargetCompany))
+                // A client's email is its first contact line's, as in QueryContact.
                 using (SqlCommand command = new SqlCommand(
-                    "SELECT _idnum, recnum, clnnme, e_mail FROM dbo.reccln ORDER BY recnum", connection))
+                    "SELECT r._idnum, r.recnum, r.clnnme, " +
+                    "(SELECT TOP (1) c.e_mail FROM dbo.clncnt c WHERE c._idref = r._idnum ORDER BY c.linnum) " +
+                    "FROM dbo.reccln r ORDER BY r.recnum", connection))
                 using (SqlDataReader reader = command.ExecuteReader())
                 {
                     while (reader.Read())
@@ -958,8 +1025,12 @@ namespace CompassSageClientProjectWriter
                     foreach (ContactChange change in task.changes)
                         if (!String.Equals(before.fields[change.field] ?? "", change.before ?? "", StringComparison.Ordinal))
                             throw new InvalidOperationException("Approved before-value differs from Sage; no write attempted.");
+                    ClientLineTarget clientLine = null;
+                    foreach (ContactChange change in task.changes)
+                        if (IsClientLineField(task.kind, change.field) && clientLine == null)
+                            clientLine = ClientLineTargetFor(TargetCompany, before);
                     item.Xml = BuildContactXml(task.kind, Convert.ToInt32(before.sageRecordNumber),
-                        ContactParentNumber(TargetCompany, task), task.changes, TargetCompany);
+                        ContactParentNumber(TargetCompany, task), task.changes, TargetCompany, clientLine);
                 }
             }
             catch (Exception error) { item.Error = error.Message; }
@@ -1133,6 +1204,7 @@ namespace CompassSageClientProjectWriter
                     .Append(" WHERE ((@id IS NOT NULL AND _idnum = @id) OR (@id IS NULL AND ")
                     .Append(idColumn).Append(" = @number))");
                 if (person) query.Append(" AND _idref = @parent");
+                ContactSnapshot snapshot;
                 using (SqlCommand command = new SqlCommand(query.ToString(), connection))
                 {
                     command.Parameters.AddWithValue("@id", String.IsNullOrWhiteSpace(task.sageRecordId) ? (object)DBNull.Value : task.sageRecordId);
@@ -1141,7 +1213,7 @@ namespace CompassSageClientProjectWriter
                     using (SqlDataReader reader = command.ExecuteReader())
                     {
                         if (!reader.Read()) throw new InvalidOperationException("Sage contact record was not found by its exact key.");
-                        ContactSnapshot snapshot = new ContactSnapshot {
+                        snapshot = new ContactSnapshot {
                             kind = task.kind, entityId = task.entityId,
                             sageRecordId = Convert.ToString(reader[0]),
                             sageRecordNumber = Convert.ToString(reader[1]),
@@ -1166,10 +1238,17 @@ namespace CompassSageClientProjectWriter
                             snapshot.fields.Add(extended[index].Key, reader.IsDBNull(extendedStart + index) ? null :
                                 Convert.ToString(reader[extendedStart + index]).Trim());
                         if (reader.Read()) throw new InvalidOperationException("Sage contact key resolved more than one row.");
-                        snapshot.revision = ContactRevision(snapshot);
-                        return snapshot;
                     }
                 }
+                // After the client row's reader closes: one open reader per connection.
+                if (task.kind == "client_company")
+                {
+                    ClientLine line = ReadClientFirstLine(connection, snapshot.sageRecordId);
+                    foreach (ContactField field in ClientLineFields)
+                        snapshot.fields.Add(field.Key, line == null ? null : line.Fields[field.Key]);
+                }
+                snapshot.revision = ContactRevision(snapshot);
+                return snapshot;
             }
         }
 
@@ -1206,9 +1285,10 @@ namespace CompassSageClientProjectWriter
             }
         }
 
-        private static void ValidateContactXml(string kind, int recordNumber, int parentNumber, ContactChange[] changes, string company)
+        private static void ValidateContactXml(string kind, int recordNumber, int parentNumber, ContactChange[] changes, string company,
+            ClientLineTarget clientLine)
         {
-            BuildContactXml(kind, recordNumber, parentNumber, changes, company);
+            BuildContactXml(kind, recordNumber, parentNumber, changes, company, clientLine);
         }
 
         /** The approved fields plus the extended company fields the installed schema names. */
@@ -1220,6 +1300,7 @@ namespace CompassSageClientProjectWriter
                 XmlSchemaElement element = ExtendedXmlElement(kind, field);
                 if (element != null) fields.Add(new ContactField(field.Key, field.Sql, SchemaElementName(element)));
             }
+            if (kind == "client_company") fields.AddRange(ClientLineFields);
             return fields.ToArray();
         }
 
@@ -1247,7 +1328,8 @@ namespace CompassSageClientProjectWriter
             return ordered.ToArray();
         }
 
-        private static string BuildContactXml(string kind, int recordNumber, int parentNumber, ContactChange[] changes, string company)
+        private static string BuildContactXml(string kind, int recordNumber, int parentNumber, ContactChange[] changes, string company,
+            ClientLineTarget clientLine = null)
         {
             if (recordNumber < 1) throw new InvalidOperationException("Sage contact number is invalid.");
             ContactField[] allowed = WritableFieldsFor(kind);
@@ -1277,10 +1359,13 @@ namespace CompassSageClientProjectWriter
                 .Append(person ? parentNumber : recordNumber).Append("</ObjectID></ObjectRef>");
             if (person) body.Append(kind == "client_person" ? "<ClientContactMod>" : "<VendorContactMod>")
                 .Append("<ObjectRef><LineID>").Append(recordNumber).Append("</LineID></ObjectRef>");
-            foreach (ContactField field in OrderedForSchema(kind, allowed))
+            List<ContactField> topLevel = new List<ContactField>();
+            foreach (ContactField field in allowed) if (!IsClientLineField(kind, field.Key)) topLevel.Add(field);
+            foreach (ContactField field in OrderedForSchema(kind, topLevel.ToArray()))
                 if (proposed.ContainsKey(field.Key)) body.Append('<').Append(field.Xml).Append('>')
                     .Append(XmlEscape(proposed[field.Key] ?? "")).Append("</").Append(field.Xml).Append('>');
             if (person) body.Append(kind == "client_person" ? "</ClientContactMod>" : "</VendorContactMod>");
+            AppendClientLineChanges(body, kind, proposed, clientLine);
             string xml = "<api:MBXML xmlns:api=\"http://sage100contractor.com/api\"><MBXMLSessionRq><Company>" +
                 XmlEscape(company) + "</Company><User>" + XmlEscape(Required("SAGE_API_USER")) +
                 "</User></MBXMLSessionRq><MBXMLMsgsRq messageSetID=\"compass-contact\" onError=\"stopOnError\"><" +
@@ -1288,6 +1373,33 @@ namespace CompassSageClientProjectWriter
                 "></MBXMLMsgsRq></api:MBXML>";
             ValidateXml(xml);
             return xml;
+        }
+
+        /**
+         * A client company's email/phone change as the nested contact-line
+         * element, which mbxml.xsd places after every top-level ClientMod field.
+         */
+        private static void AppendClientLineChanges(StringBuilder body, string kind,
+            Dictionary<string, string> proposed, ClientLineTarget clientLine)
+        {
+            bool any = false;
+            foreach (ContactField field in ClientLineFields)
+                if (IsClientLineField(kind, field.Key) && proposed.ContainsKey(field.Key)) any = true;
+            if (!any) return;
+            if (clientLine == null || (clientLine.LineId < 1 && String.IsNullOrWhiteSpace(clientLine.AddName)))
+                throw new InvalidOperationException("Sage client contact line is unknown; no write attempted.");
+            if (proposed.ContainsKey("email") && proposed["email"] != null && proposed["email"].Length > ClientLineEmailMax)
+                throw new InvalidOperationException("Sage email is longer than Sage allows; no write attempted.");
+            string element = clientLine.LineId > 0 ? "ClientContactMod" : "ClientContactAdd";
+            body.Append('<').Append(element).Append('>');
+            if (clientLine.LineId > 0)
+                body.Append("<ObjectRef><LineID>").Append(clientLine.LineId).Append("</LineID></ObjectRef>");
+            else
+                body.Append("<ContactName>").Append(XmlEscape(clientLine.AddName)).Append("</ContactName>");
+            foreach (ContactField field in ClientLineFields)
+                if (proposed.ContainsKey(field.Key)) body.Append('<').Append(field.Xml).Append('>')
+                    .Append(XmlEscape(proposed[field.Key] ?? "")).Append("</").Append(field.Xml).Append('>');
+            body.Append("</").Append(element).Append('>');
         }
 
         private static void PostContactResult(string type, ContactTask task, ContactSnapshot snapshot, string error)

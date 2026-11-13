@@ -452,7 +452,10 @@ namespace CompassSageClientProjectWriter
             int clientStatus = ResolveCatalog("clnsts", "stsnme", client.status.name);
             if (clientStatus != client.status.expectedNumber)
                 throw new InvalidOperationException("Client status mismatch: Compass expected " + client.status.expectedNumber + " " + client.status.name + ", but Sage resolved " + clientStatus + ".");
-            SageRecord clientRecord = FindClient(client);
+            // attempt > 1: an earlier claim of this write may have added the client
+            // or job before Compass gave up on it (a poll over 10 minutes).
+            bool retry = request.attempt > 1;
+            SageRecord clientRecord = FindClient(client, retry);
             if (clientRecord != null && clientRecord.StatusNumber != clientStatus)
                 throw new InvalidOperationException("Matched Sage client has status " + clientRecord.StatusNumber + ", not requested status " + clientStatus + ".");
 
@@ -466,7 +469,7 @@ namespace CompassSageClientProjectWriter
                 if (clientRecord != null)
                     jobRecord = RunStage("find existing Sage job", delegate { return FindJob(request.payload.job, clientRecord.Number); });
                 if (jobRecord == null)
-                    RunStage("check Sage for a job with this project number", delegate { RefuseJobWithSameProjectNumber(request.payload.job); return true; });
+                    jobRecord = RunStage("check Sage for a job with this project number", delegate { return RefuseJobWithSameProjectNumber(request.payload.job, clientRecord, retry); });
             }
 
             if (clientRecord == null || (request.payload.job != null && jobRecord == null))
@@ -612,7 +615,7 @@ namespace CompassSageClientProjectWriter
             // A linked client is resolved by its stable ID; otherwise an exact name is
             // the client chosen for this job, and only a missing one is added.
             SageRecord clientRecord = !String.IsNullOrWhiteSpace(client.sageClientId) || !String.IsNullOrWhiteSpace(client.sageClientNumber)
-                ? FindClient(client)
+                ? FindClient(client, false)
                 : FindClientByName(client.name);
             if (jobRecord.ClientNumber > 0)
             {
@@ -826,7 +829,7 @@ namespace CompassSageClientProjectWriter
             return numbers[0];
         }
 
-        private static SageRecord FindClient(ClientPayload client)
+        private static SageRecord FindClient(ClientPayload client, bool retry)
         {
             // A previously linked client must be resolved by the exact stable
             // Sage identity. Name/email matching is only for an unlinked add.
@@ -846,6 +849,10 @@ namespace CompassSageClientProjectWriter
             SageRecord emailMatch = FindClientByEmail(client.email);
             if (emailMatch != null) return emailMatch;
             SageRecord nameMatch = FindClientByName(client.name);
+            // Sage drops a client add's email (it keeps email on contact lines),
+            // so on a retry this write's own earlier add matches by name only.
+            if (nameMatch != null && String.IsNullOrWhiteSpace(nameMatch.Email) && retry && AddedRecently("reccln", nameMatch.Id))
+                return nameMatch;
             if (nameMatch != null && String.IsNullOrWhiteSpace(nameMatch.Email))
                 throw new InvalidOperationException("A Sage client matches the requested name but has no email. Link its Sage client ID and number in Compass before filling the email; no write was attempted.");
             if (nameMatch != null)
@@ -897,22 +904,59 @@ namespace CompassSageClientProjectWriter
         // street number is often filled in later, so two names for one project can
         // differ after the consecutive number. A job someone already entered in Sage
         // by hand under either name is the job; adding another would split its history.
-        private static void RefuseJobWithSameProjectNumber(JobPayload job)
+        // Returns this write's own earlier add on a retry (one match, same client,
+        // added in the last two days); otherwise null when Sage has no such job.
+        private static SageRecord RefuseJobWithSameProjectNumber(JobPayload job, SageRecord client, bool retry)
         {
             Match key = Regex.Match(job.compassProjectNumber ?? "", @"^([A-Za-z]+-[0-9]+)(?:-|$)");
-            if (!key.Success) return;
+            if (!key.Success) return null;
             string prefix = key.Groups[1].Value;
             List<string> matches = new List<string>();
+            List<int> numbers = new List<int>();
+            List<int> clients = new List<int>();
             using (SqlConnection connection = OpenSql())
-            using (SqlCommand command = new SqlCommand("SELECT recnum, jobnme FROM dbo.actrec WHERE LTRIM(jobnme) = @key OR LTRIM(jobnme) LIKE @prefix OR LTRIM(shtnme) = @key OR LTRIM(shtnme) LIKE @prefix ORDER BY recnum", connection))
+            using (SqlCommand command = new SqlCommand("SELECT recnum, jobnme, ISNULL(clnnum, 0) FROM dbo.actrec WHERE LTRIM(jobnme) = @key OR LTRIM(jobnme) LIKE @prefix OR LTRIM(shtnme) = @key OR LTRIM(shtnme) LIKE @prefix ORDER BY recnum", connection))
             {
                 command.Parameters.AddWithValue("@key", prefix);
                 command.Parameters.AddWithValue("@prefix", prefix + "-%");
                 using (SqlDataReader reader = command.ExecuteReader())
-                    while (reader.Read()) matches.Add(Convert.ToString(reader[0]) + " " + (reader.IsDBNull(1) ? "" : Convert.ToString(reader[1])));
+                    while (reader.Read())
+                    {
+                        matches.Add(Convert.ToString(reader[0]) + " " + (reader.IsDBNull(1) ? "" : Convert.ToString(reader[1])));
+                        numbers.Add(Convert.ToInt32(reader[0]));
+                        clients.Add(Convert.ToInt32(reader[2]));
+                    }
+            }
+            if (retry && client != null && numbers.Count == 1 && clients[0] == client.Number)
+            {
+                SageRecord own = FindJobByNumber(numbers[0]);
+                if (own != null && AddedRecently("actrec", own.Id)) return own;
             }
             if (matches.Count > 0)
                 throw new InvalidOperationException("Sage already has job " + String.Join(", ", matches.ToArray()) + " for " + prefix + "; link that job in Compass instead of adding another. No write was attempted.");
+            return null;
+        }
+
+        // Sage's insert date on a client (reccln) or job (actrec); false when this
+        // Sage version has no insdte column, so nothing is assumed to be ours.
+        private static bool AddedRecently(string table, string id)
+        {
+            if (table != "reccln" && table != "actrec") throw new InvalidOperationException("Unsupported Sage table.");
+            using (SqlConnection connection = OpenSql())
+            {
+                using (SqlCommand check = new SqlCommand("SELECT COL_LENGTH(@table, 'insdte')", connection))
+                {
+                    check.Parameters.AddWithValue("@table", "dbo." + table);
+                    object length = check.ExecuteScalar();
+                    if (length == null || length == DBNull.Value) return false;
+                }
+                using (SqlCommand command = new SqlCommand("SELECT insdte FROM dbo." + table + " WHERE _idnum = CONVERT(uniqueidentifier, @id)", connection))
+                {
+                    command.Parameters.AddWithValue("@id", id ?? "");
+                    object value = command.ExecuteScalar();
+                    return value is DateTime && (DateTime)value > DateTime.Now.AddDays(-2);
+                }
+            }
         }
 
         private static SageRecord FindJobByNumber(int jobNumber)
