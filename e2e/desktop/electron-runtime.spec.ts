@@ -8,20 +8,46 @@ function isElectron(): boolean {
   return process.env.ELECTRON === "true" || process.env.ELECTRON_TEST === "true"
 }
 
+const appUrl = new URL(
+  "/dashboard/projects/e2e-project-001",
+  process.env.PLAYWRIGHT_BASE_URL ??
+    `http://127.0.0.1:${process.env.PORT ?? "3000"}`,
+).toString()
+const previewUrl = new URL(
+  "/preview/projects/e2e-project-001/owner",
+  appUrl,
+).toString()
+
+// Desktop E2E runs against `next dev`, which compiles each route the first
+// time it is requested. On macOS runners the project Overview and the owner
+// preview each took 50-100 s to compile, and Playwright only reports the
+// preview window once its first navigation commits, so the window-event wait
+// was really timing the dev compiler (it failed whenever the preview compile
+// passed ~90 s). Compile both routes here, as setup with its own budget, so
+// the window assertions below measure only Electron's behaviour.
+async function compileRoute(url: string): Promise<void> {
+  // Any HTTP response (including the preview's "not found" error page) means
+  // the route finished compiling; the status itself is irrelevant here.
+  const response = await fetch(url, {
+    redirect: "manual",
+    signal: AbortSignal.timeout(240_000),
+  })
+  await response.arrayBuffer()
+}
+
 test.describe("Electron runtime", () => {
   test.skip(!isElectron(), "Desktop only")
 
+  test.beforeAll(async () => {
+    test.setTimeout(300_000)
+    await compileRoute(appUrl)
+    await compileRoute(previewUrl)
+  })
+
   test("loads the app with the desktop preload bridge", async () => {
-    // macOS runners can spend longer preparing the bundled Electron process
-    // than Playwright's default 30-second window-event timeout, and the dev
-    // server compiles the project Overview on this first request (passing
-    // runs there already take up to 1.8 minutes).
-    test.setTimeout(240_000)
-    const appUrl = new URL(
-      "/dashboard/projects/e2e-project-001",
-      process.env.PLAYWRIGHT_BASE_URL ??
-        `http://127.0.0.1:${process.env.PORT ?? "3000"}`,
-    ).toString()
+    // Routes are precompiled above; this covers Electron startup plus the
+    // remaining client-side work on slow macOS runners.
+    test.setTimeout(150_000)
     const app = await electron.launch({
       args: ["--disable-popup-blocking", "dist-electron/electron/main.js"],
       env: {
@@ -31,7 +57,7 @@ test.describe("Electron runtime", () => {
     })
 
     try {
-      const page = await app.firstWindow({ timeout: 180_000 })
+      const page = await app.firstWindow({ timeout: 90_000 })
       await page.waitForURL(/\/dashboard/)
       await page.waitForLoadState("domcontentloaded")
 
@@ -41,10 +67,6 @@ test.describe("Electron runtime", () => {
         )
         .toBe(true)
       await page.bringToFront()
-      const previewUrl = new URL(
-        "/preview/projects/e2e-project-001/owner",
-        appUrl,
-      ).toString()
       await page.evaluate((url) => {
         const previewLink = document.createElement("a")
         previewLink.dataset.e2ePreviewLink = "true"
@@ -57,7 +79,7 @@ test.describe("Electron runtime", () => {
       }, previewUrl)
       const previewTrigger = page.locator('a[data-e2e-preview-link="true"]')
       await expect(previewTrigger).toBeVisible()
-      const previewWindowPromise = app.waitForEvent("window", { timeout: 90_000 })
+      const previewWindowPromise = app.waitForEvent("window", { timeout: 45_000 })
       await previewTrigger.click()
       const previewWindow = await previewWindowPromise
       await expect
