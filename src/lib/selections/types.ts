@@ -53,6 +53,8 @@ export type SelectionWorkspace = {
   readonly projectId: string
   readonly audience: "staff" | "owner" | "sub_vendor"
   readonly canWrite: boolean
+  /** Owners may confirm their choice by click (company setting; a signature approves either way). */
+  readonly ownerChoiceConfirmation: boolean
   /** The job's company status names (Settings › Selections › Status names). */
   readonly statusLabels: SelectionStatusLabels
   readonly items: readonly SelectionDecisionItem[]

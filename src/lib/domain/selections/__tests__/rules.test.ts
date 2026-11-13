@@ -56,6 +56,8 @@ function row(overrides: Partial<Row> = {}): Row {
     notes: null,
     sortOrder: 0,
     roundKey: null,
+    replacesSelectionId: null,
+    replacementReason: null,
     syncStatus: "imported",
     lastSyncedAt: null,
     createdAt: "2026-10-01T00:00:00.000Z",

@@ -9,9 +9,11 @@ import {
   text,
   integer,
   real,
+  uniqueIndex,
+  type AnySQLiteColumn,
 } from "drizzle-orm/sqlite-core"
 
-import { PROJECT_SELECTION_STATUSES } from "../lib/domain/selections/statuses"
+import { PROJECT_SELECTION_STATUSES, SELECTION_REPLACEMENT_REASONS } from "../lib/domain/selections/statuses"
 import { projectOperations } from "./schema-operations"
 import { projects } from "./schema-projects"
 
@@ -61,6 +63,9 @@ export const projectFinishSelections = sqliteTable("project_finish_selections", 
   sortOrder: integer("sort_order").notNull().default(0),
   // The company selection round (Settings > Selections) it belongs to; a key into those settings. Null: no round. (0313)
   roundKey: text("round_key"),
+  // The ordered or installed selection this one replaces; that one stays on record, locked. One replacement each. (0321)
+  replacesSelectionId: text("replaces_selection_id").references((): AnySQLiteColumn => projectFinishSelections.id, { onDelete: "set null" }),
+  replacementReason: text("replacement_reason", { enum: SELECTION_REPLACEMENT_REASONS }),
   syncStatus: text("sync_status").notNull().default("manual"),
   lastSyncedAt: text("last_synced_at"),
   createdAt: text("created_at").notNull(),
@@ -82,6 +87,7 @@ export const projectFinishSelections = sqliteTable("project_finish_selections", 
     index("project_finish_selections_purchase_order_operation_id_idx").on(table.purchaseOrderOperationId),
     index("project_finish_selections_rfq_operation_id_idx").on(table.rfqOperationId),
     index("project_finish_selections_round_idx").on(table.projectId, table.roundKey),
+    uniqueIndex("project_finish_selections_replaces_unique").on(table.replacesSelectionId),
   ])
 
 export const projectFinishSelectionRooms = sqliteTable("project_finish_selection_rooms", {

@@ -20,6 +20,7 @@ import { ownerPriceFromMarkup } from "@/lib/feature-settings/selection-settings"
 import type { Db } from "@/lib/server/action-context"
 import { assertListFields } from "@/lib/shared/statuses"
 
+import { insertCopyStatement } from "./copy-rows"
 import {
   type SelectionAuthorAudience,
   type SelectionChoiceStatus,
@@ -140,8 +141,21 @@ export async function setSelectionChoiceChosen(
 }
 
 /**
+ * True for a choice that is the pick of an ordered, installed or replaced
+ * selection (locks.ts): its product and price are fixed. The outer table is
+ * named in full so the subquery reads the choice being written.
+ */
+const lockedPick = sql`(project_selection_choices.chosen = 1 AND EXISTS (
+  SELECT 1 FROM project_finish_selections AS locked
+  WHERE locked.id = project_selection_choices.selection_id
+    AND (locked.status IN ('ordered', 'installed')
+      OR EXISTS (SELECT 1 FROM project_finish_selections AS replacement WHERE replacement.replaces_selection_id = locked.id))
+))`
+
+/**
  * Supplier prices returned on an RFQ, in one batch. The RFQ's vendor becomes
- * the choice's supplier only where the choice has none.
+ * the choice's supplier only where the choice has none. The pick of an
+ * ordered or installed selection is left as it was bought.
  */
 export async function setChoicePricesFromRfq(
   db: Db,
@@ -156,6 +170,7 @@ export async function setChoicePricesFromRfq(
       eq(projectSelectionChoices.id, price.choiceId),
       eq(projectSelectionChoices.selectionId, price.selectionId),
       eq(projectSelectionChoices.projectId, projectId),
+      sql`NOT ${lockedPick}`,
     )
     const ownerPrice = ownerPriceFromMarkup(price.priceCents, ownerMarkupPercent)
     // A blank owner price is filled from the markup; one staff set stays.
@@ -272,4 +287,69 @@ export async function deleteSelectionComment(db: Db, projectId: string, commentI
     .delete(projectSelectionComments)
     .where(and(eq(projectSelectionComments.id, commentId), eq(projectSelectionComments.projectId, projectId)))
     .run()
+}
+
+// ---- replacement copies
+
+/**
+ * Copies a replaced selection's choices, supplier links and photo links onto
+ * the selection that replaces it, for the same batch that inserts it. Each
+ * statement copies one row from its source and lands only if the new
+ * selection exists, so nothing is copied when that insert didn't land. The
+ * originals stay with the replaced selection. `pick` is the one copied
+ * choice to mark chosen (picked by staff, with the reason as the note).
+ */
+export function copyChoicesToReplacementStatements(
+  db: Db,
+  input: {
+    readonly projectId: string
+    readonly toSelectionId: string
+    readonly choices: readonly { readonly fromId: string; readonly newId: string }[]
+    readonly links: readonly { readonly fromId: string; readonly newId: string; readonly newChoiceId: string | null }[]
+    readonly photos: readonly { readonly fromId: string; readonly newId: string; readonly newChoiceId: string | null }[]
+    readonly pick: { readonly newChoiceId: string; readonly userId: string; readonly note: string } | null
+    readonly now: string
+  },
+): BatchItem<"sqlite">[] {
+  const landed = sql`EXISTS (SELECT 1 FROM project_finish_selections WHERE id = ${input.toSelectionId} AND project_id = ${input.projectId})`
+  const choices = input.choices.map((choice) => {
+    const pick = input.pick?.newChoiceId === choice.newId ? input.pick : null
+    return insertCopyStatement(
+      db,
+      projectSelectionChoices,
+      {
+        id: choice.newId,
+        selectionId: input.toSelectionId,
+        chosen: pick !== null,
+        chosenByUserId: pick?.userId ?? null,
+        chosenByAudience: pick ? "staff" : null,
+        chosenAt: pick ? input.now : null,
+        chosenNote: pick?.note ?? null,
+        // A Buildertrend choice id is imported once; the copy is Compass's own.
+        sourceSystem: "compass",
+        btChoiceId: null,
+        createdBy: input.pick?.userId ?? null,
+        createdAt: input.now,
+        updatedAt: input.now,
+      },
+      and(eq(projectSelectionChoices.id, choice.fromId), eq(projectSelectionChoices.projectId, input.projectId), landed),
+    )
+  })
+  const links = input.links.map((link) =>
+    insertCopyStatement(
+      db,
+      projectSelectionLinks,
+      { id: link.newId, selectionId: input.toSelectionId, choiceId: link.newChoiceId, createdAt: input.now },
+      and(eq(projectSelectionLinks.id, link.fromId), eq(projectSelectionLinks.projectId, input.projectId), landed),
+    ),
+  )
+  const photos = input.photos.map((photo) =>
+    insertCopyStatement(
+      db,
+      projectSelectionPhotos,
+      { id: photo.newId, selectionId: input.toSelectionId, choiceId: photo.newChoiceId, createdAt: input.now },
+      and(eq(projectSelectionPhotos.id, photo.fromId), eq(projectSelectionPhotos.projectId, input.projectId), landed),
+    ),
+  )
+  return [...choices, ...links, ...photos]
 }

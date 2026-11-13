@@ -5,12 +5,10 @@ import { revalidatePath } from "next/cache"
 
 import { projectFinishSelections, projectOperations, projects } from "@/db/schema"
 import { staffSelectionContext } from "@/lib/domain/selections/access"
-import {
-  applyFinishScheduleImport,
-  finishScheduleImportAccess,
-  loadFinishSchedule
-} from "@/lib/domain/selections/finish-schedule-import"
+import { applyFinishScheduleImport, finishScheduleImportAccess, loadFinishSchedule } from "@/lib/domain/selections/finish-schedule-import"
 import { insertOperations } from "@/lib/domain/operations/store"
+import { selectionIsReplaced } from "@/lib/domain/selections/lock-read"
+import { selectionLock, staffEditBlocker, staffStatusChangeBlocker } from "@/lib/domain/selections/locks"
 import {
   changedNumberField,
   changedTextField,
@@ -364,6 +362,9 @@ export async function updateProjectSelection(
       changedTextField("Notes", existing.notes, notes)
     ].filter((change) => change !== null)
     const specificationChanged = changes.some(change => change.field !== "Status" && change.field !== "Notes")
+    // Ordered and installed selections keep their product; a replaced one keeps everything.
+    const locked = staffEditBlocker({ status: existing.status, replaced: await selectionIsReplaced(db, selectionId), changedFields: changes.map((change) => change.field), statusMove: statusChanged ? { from: seenStatus, to: status } : null })
+    if (locked) return { success: false, error: locked }
 
     await insertSelectionRoomIfAbsent(db, {
       id: compassSelectionRoomId(projectId, roomName),
@@ -592,8 +593,10 @@ export async function updateProjectSelectionStatus(
     }
 
     const seenStatus = expectedStatus ?? existing.status
+    const blocked = staffStatusChangeBlocker(seenStatus, status, await selectionIsReplaced(db, selectionId))
+    if (blocked) return { success: false, error: blocked }
     const becameUnavailable = status === "unavailable" && seenStatus !== "unavailable"
-    // Owner approval is left as it is: only the owner's own approval sets it.
+    // Owner approval is left as it is: only the owner's signature sets it.
     const syncStatus = becameUnavailable ? "selection_change_review" : existing.syncStatus
     const values = { syncStatus, updatedAt: now }
     if (!(await setSelectionStatusByStaff(db, { projectId, selectionId, expected: seenStatus, status, values }))) {
@@ -760,11 +763,14 @@ export async function deleteProjectSelection(
       return { success: false, error: "Selection not found." }
     }
 
-    if (existing.ownerApproved || existing.status === "approved") {
+    // Ordered, installed and replaced selections stay on record too (locks.ts).
+    const lock = selectionLock(existing.status, await selectionIsReplaced(db, selectionId))
+    if (existing.ownerApproved || existing.status === "approved" || lock) {
       return {
         success: false,
-        error:
-          "Approved selections cannot be deleted. Change the selection status or create a change review instead."
+        error: lock
+          ? `${lock.message} It can't be deleted.`
+          : "Approved selections cannot be deleted. Change the selection status or create a change review instead."
       }
     }
 

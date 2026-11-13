@@ -13,7 +13,8 @@ export const PROJECT_SELECTION_STATUS_LABELS: Readonly<Record<ProjectSelectionSt
   needed: "Needed",
   proposed: "Proposed",
   owner_review: "With owner",
-  approved: "Approved",
+  // Only a signed document approves; an owner's click records their choice.
+  approved: "Approved (signed)",
   pricing: "Pricing",
   rfq_sent: "RFQ sent",
   ordered: "Ordered",
@@ -49,3 +50,11 @@ export type SelectionRoundSignatureStatus = (typeof SELECTION_ROUND_SIGNATURE_ST
 
 /** How a round's over/under the allowance changes the contract when the owner signs. */
 export const SELECTION_OVERAGE_TREATMENTS = ["none", "variance", "change_order"] as const
+
+/**
+ * Why a selection replaces an ordered or installed one: the installed item
+ * had to be replaced with a different product, or the owner changed their
+ * mind after it was purchased.
+ */
+export const SELECTION_REPLACEMENT_REASONS = ["installed_replaced", "owner_changed_after_purchase"] as const
+export type SelectionReplacementReason = (typeof SELECTION_REPLACEMENT_REASONS)[number]

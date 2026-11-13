@@ -97,7 +97,7 @@ function SelectionCard({
           {selection.signed ? (
             <span className="text-muted-foreground"> · signed</span>
           ) : selection.approved ? (
-            <span className="text-muted-foreground"> · approved</span>
+            <span className="text-muted-foreground"> · choice confirmed</span>
           ) : null}
         </span>
       </div>

@@ -175,6 +175,10 @@ describe("round signing", () => {
       { id: "tile", status: "approved", owner_approved: 1, approved_by: null },
     ])
     expect(sqlite.prepare("SELECT status, foxit_status FROM project_change_orders").get()).toEqual({ status: "executed", foxit_status: "completed" })
+    // Ordering follows the signature: one "Order" to-do per signed selection.
+    expect(
+      sqlite.prepare("SELECT source_record_id AS id FROM project_operations WHERE source_record_type = 'staff_task' AND json_extract(sage_payload_json, '$.selectionStep') = 'order' ORDER BY source_record_id").all(),
+    ).toEqual([{ id: "faucet" }, { id: "tile" }])
     expect(mocks.announce).toHaveBeenCalledWith(expect.objectContaining({ kind: "selections_round", outcome: "signed" }))
 
     // The owner can't change a signed pick; staff can, which reopens just that selection.

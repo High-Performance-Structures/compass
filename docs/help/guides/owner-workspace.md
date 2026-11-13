@@ -12,13 +12,13 @@
   "permissions": ["help:read", "project:read"],
   "routes": ["/preview/projects/[id]/owner", "/preview/projects/[id]/owner/budget", "/preview/projects/[id]/owner/change-orders", "/preview/projects/[id]/owner/change-orders/[changeOrderId]", "/preview/projects/[id]/owner/conversations", "/preview/projects/[id]/owner/conversations/[channelId]", "/preview/projects/[id]/owner/documents", "/preview/projects/[id]/owner/photos", "/preview/projects/[id]/owner/schedule", "/preview/projects/[id]/owner/selections", "/preview/projects/[id]/owner/team", "/preview/projects/[id]/owner/updates", "/preview/projects/[id]/owner/updates/[updateId]", "/preview/projects/[id]/owner/warranty"],
   "owner": "Compass product team",
-  "lastReviewed": "2026-10-28"
+  "lastReviewed": "2026-11-12"
 }
 ---
 
 ## Start in the Right Project {#start}
 
-The project name and number at the top identify the workspace you are viewing. If you have access to more than one project, use the project switcher and confirm the name and number again before approving a selection, requesting a change, sending a message, or submitting a warranty claim.
+The project name and number at the top identify the workspace you are viewing. If you have access to more than one project, use the project switcher and confirm the name and number again before confirming a selection choice, requesting a change, sending a message, or submitting a warranty claim.
 
 The navigation shows only the areas available for the active project and your assignment. Information in this workspace is owner-approved or owner-published; it is not the project team's complete internal record. An empty page can mean nothing has been published for owners yet.
 
@@ -32,7 +32,7 @@ Use the left navigation on a larger screen or project controls on a smaller scre
 
 **Selections & Decisions** contains specifications the project team has published for owner review. Open an item and check the product, manufacturer, model, color or finish, allowance, quoted price, difference, schedule impact, notes, and revision.
 
-Use **Request pricing / alternative** when you need another option or clarification. Use **Approve selection** only after reviewing the exact revision and terms in the confirmation. Compass records your name, time, and approved revision. A selection approval does not place an order and does not replace a required change-order approval. If the specification changes, wait for the project team to publish a new revision before approving again.
+Use **Request pricing / alternative** when you need another option or clarification. Use **Confirm my choice** only after reviewing the exact revision and terms in the confirmation. Compass records your name, time, and chosen revision as your choice. Your choice becomes final when you sign the Selection Phase document the project team sends you; confirming it does not place an order or change your contract. If the specification changes, wait for the project team to publish a new revision before choosing again.
 
 ## Follow Updates and Schedule {#updates-schedule}
 

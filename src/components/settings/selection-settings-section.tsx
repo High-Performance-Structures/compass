@@ -4,7 +4,9 @@
  * Settings > Workflows > Selections: the company's selection rounds (name,
  * the schedule item that sets the due date, days before it), default lead
  * times by category, how many days ahead a long lead time is flagged, the
- * owner-price markup, and the variance-to-change-order threshold. Also
+ * owner-price markup, the variance-to-change-order threshold, owner choice
+ * confirmation, replacement change orders, and who is told about a price
+ * change during a signature. Also
  * offers the "Save to Compass" bookmarks-bar button.
  */
 import * as React from "react"
@@ -14,13 +16,17 @@ import { toast } from "sonner"
 import { getFeatureSettingsForEditor, resetFeatureSettings, saveFeatureSettings } from "@/app/actions/feature-settings"
 import { SaveToCompassBookmarklet } from "@/components/selections/save-to-compass-bookmarklet"
 import { Button } from "@/components/ui/button"
+import { Checkbox } from "@/components/ui/checkbox"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { FEATURE_SETTINGS } from "@/lib/feature-settings/registry"
 import { newRoundId, selectionSettingsSchema, type SelectionRound, type SelectionSettings } from "@/lib/feature-settings/selection-settings"
 import { moveLine } from "@/lib/shared/line-order"
+import { USER_ROLE_OPTIONS, isInternalStaffRole } from "@/lib/user-roles"
 
 const GROUP = FEATURE_SETTINGS.selections
+// Only the company's own staff roles can be told about a price change.
+const STAFF_ROLE_OPTIONS = USER_ROLE_OPTIONS.filter((option) => isInternalStaffRole(option.value))
 
 type LeadRow = { readonly key: string; readonly category: string; readonly days: string }
 
@@ -43,6 +49,9 @@ export function SelectionSettingsSection(): React.ReactElement {
   const [warnDays, setWarnDays] = React.useState(String(GROUP.defaults.leadTimeWarningDays))
   const [markup, setMarkup] = React.useState("")
   const [threshold, setThreshold] = React.useState(String(GROUP.defaults.changeOrderThresholdPercent))
+  const [ownerChoice, setOwnerChoice] = React.useState(GROUP.defaults.ownerChoiceConfirmation)
+  const [replacementCo, setReplacementCo] = React.useState(GROUP.defaults.replacementChangeOrder)
+  const [noticeRoles, setNoticeRoles] = React.useState<SelectionSettings["priceChangeNoticeRoles"]>(GROUP.defaults.priceChangeNoticeRoles)
   const [pending, startTransition] = React.useTransition()
 
   const load = React.useCallback(async () => {
@@ -58,6 +67,9 @@ export function SelectionSettingsSection(): React.ReactElement {
     setWarnDays(String(value.leadTimeWarningDays))
     setMarkup(value.ownerMarkupPercent === null ? "" : String(value.ownerMarkupPercent))
     setThreshold(String(value.changeOrderThresholdPercent))
+    setOwnerChoice(value.ownerChoiceConfirmation)
+    setReplacementCo(value.replacementChangeOrder)
+    setNoticeRoles(value.priceChangeNoticeRoles)
     setCanEdit(result.data.canEdit)
     setCustomized(result.data.customized)
     setLoaded(true)
@@ -86,6 +98,9 @@ export function SelectionSettingsSection(): React.ReactElement {
       leadTimeWarningDays: warnDaysValue === null ? GROUP.defaults.leadTimeWarningDays : Math.round(warnDaysValue),
       ownerMarkupPercent: numberOrNull(markup),
       changeOrderThresholdPercent: thresholdValue ?? GROUP.defaults.changeOrderThresholdPercent,
+      ownerChoiceConfirmation: ownerChoice,
+      replacementChangeOrder: replacementCo,
+      priceChangeNoticeRoles: [...noticeRoles],
     }
     const checked = selectionSettingsSchema.safeParse(value)
     if (!checked.success) {
@@ -222,6 +237,42 @@ export function SelectionSettingsSection(): React.ReactElement {
               <p className="text-xs text-muted-foreground">A selection variance more than this percent over budget is handled as a change order needing the owner&apos;s signature.</p>
             </div>
           </div>
+
+          <fieldset className="space-y-2">
+            <legend className="text-sm font-medium">Approvals and changes</legend>
+            <div className="flex items-start gap-2">
+              <Checkbox id="selection-owner-choice" checked={ownerChoice} disabled={disabled} onCheckedChange={(checked) => setOwnerChoice(checked === true)} />
+              <div className="space-y-0.5">
+                <Label htmlFor="selection-owner-choice">Owners can confirm their choice by click</Label>
+                <p className="text-xs text-muted-foreground">Records the owner&apos;s choice on a published decision. Only a signed document approves a selection, either way.</p>
+              </div>
+            </div>
+            <div className="flex items-start gap-2">
+              <Checkbox id="selection-replacement-co" checked={replacementCo} disabled={disabled} onCheckedChange={(checked) => setReplacementCo(checked === true)} />
+              <div className="space-y-0.5">
+                <Label htmlFor="selection-replacement-co">Replacing an ordered or installed selection starts a change order</Label>
+                <p className="text-xs text-muted-foreground">A draft change order for the owner to sign, made with the new selection.</p>
+              </div>
+            </div>
+            <div className="space-y-1 pt-1">
+              <p className="text-sm">Tell these project roles when a price changes while a Selection Phase is out for signature</p>
+              <div className="grid gap-1 sm:grid-cols-2">
+                {STAFF_ROLE_OPTIONS.map((option) => (
+                  <div key={option.value} className="flex items-center gap-2">
+                    <Checkbox
+                      id={`selection-notice-${option.value}`}
+                      checked={noticeRoles.includes(option.value)}
+                      disabled={disabled}
+                      onCheckedChange={(checked) =>
+                        setNoticeRoles((current) => (checked === true ? [...current.filter((role) => role !== option.value), option.value] : current.filter((role) => role !== option.value)))
+                      }
+                    />
+                    <Label htmlFor={`selection-notice-${option.value}`} className="font-normal">{option.label}</Label>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </fieldset>
 
           <div className="flex flex-wrap items-center gap-2">
             {canEdit ? (

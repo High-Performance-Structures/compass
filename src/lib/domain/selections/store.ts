@@ -7,11 +7,21 @@ import { selectionDeletionAllowed } from "@/lib/selections/deletion"
 import type { Db } from "@/lib/server/action-context"
 import { assertListFields } from "@/lib/shared/statuses"
 
+import { insertCopyStatement } from "./copy-rows"
+import { staffStatusChangeBlocker } from "./locks"
 import { automaticSelectionStatus, selectionStatusSources, selectionStatusTarget, type SelectionStatusEvent } from "./status-machine"
-import { PROJECT_SELECTION_STATUSES, type ProjectSelectionStatus } from "./statuses"
+import { PROJECT_SELECTION_STATUSES, SELECTION_REPLACEMENT_REASONS, type ProjectSelectionStatus, type SelectionReplacementReason } from "./statuses"
 
 // Enumerated columns are checked against their shared list before every write.
-const SELECTION_LISTS = { status: PROJECT_SELECTION_STATUSES }
+const SELECTION_LISTS = { status: PROJECT_SELECTION_STATUSES, replacementReason: SELECTION_REPLACEMENT_REASONS }
+
+/**
+ * True while no other selection replaces the row being written. A replaced
+ * selection stays on record as it was, so no status write touches it. The
+ * outer table is named in full: inside the subquery a bare "id" would be the
+ * replacement's.
+ */
+const notReplaced = sql`NOT EXISTS (SELECT 1 FROM project_finish_selections AS replacement WHERE replacement.replaces_selection_id = project_finish_selections.id)`
 
 /*
  * The only code that inserts, updates or deletes project finish selections and their rooms
@@ -94,7 +104,9 @@ export async function updateFinishSelections(db: Db, where: SQL | undefined, pat
 
 /**
  * A staff status change: lands only while the selection still has
- * `expected`, the status the person saw. False when it changed meanwhile.
+ * `expected`, the status the person saw, and no selection replaces it.
+ * False when that changed meanwhile. Throws when the move is locked: an
+ * installed selection does not move, an ordered one only on to Installed.
  */
 export async function setSelectionStatusByStaff(
   db: Db,
@@ -107,6 +119,8 @@ export async function setSelectionStatusByStaff(
     readonly values?: FinishSelectionPatch
   },
 ): Promise<boolean> {
+  const blocker = staffStatusChangeBlocker(input.expected, input.status, false)
+  if (blocker) throw new Error(blocker)
   const values = { ...withoutStatus(input.values ?? {}), status: input.status }
   assertListFields("project_finish_selections", values, SELECTION_LISTS)
   const result = await db
@@ -118,6 +132,7 @@ export async function setSelectionStatusByStaff(
         eq(projectFinishSelections.projectId, input.projectId),
         // The stored value may be off the list (an old spelling), so compare as text.
         sql`${projectFinishSelections.status} = ${input.expected}`,
+        notReplaced,
       ),
     )
     .run()
@@ -151,6 +166,7 @@ export function automaticSelectionStatusStatement(
         eq(projectFinishSelections.id, move.selectionId),
         eq(projectFinishSelections.projectId, move.projectId),
         sql`${projectFinishSelections.status} = ${move.stored}`,
+        notReplaced,
       ),
     )
     .returning({ id: projectFinishSelections.id })
@@ -158,13 +174,14 @@ export function automaticSelectionStatusStatement(
 
 /**
  * `event`'s status as a column expression: the event's target where the row
- * is in one of its source statuses at write time, otherwise unchanged. For
- * writes whose other columns land regardless (an owner approval records the
- * approval even on an ordered selection; a reopen clears it everywhere).
+ * is in one of its source statuses at write time (and not replaced),
+ * otherwise unchanged. For writes whose other columns land regardless (a
+ * signature records the approval even on an ordered selection; a reopen
+ * clears it everywhere).
  */
 function statusAfterEvent(event: SelectionStatusEvent): SQL {
   const to = selectionStatusTarget(event)
-  return sql`CASE WHEN ${inArray(projectFinishSelections.status, [...selectionStatusSources(event)])} THEN ${to} ELSE ${projectFinishSelections.status} END`
+  return sql`CASE WHEN ${inArray(projectFinishSelections.status, [...selectionStatusSources(event)])} AND ${notReplaced} THEN ${to} ELSE ${projectFinishSelections.status} END`
 }
 
 /** Columns plus `event`'s status move (see statusAfterEvent), as a batch statement. */
@@ -192,6 +209,70 @@ export async function updateFinishSelectionsWithEvent(
     .set({ ...withoutStatus(patch), status: statusAfterEvent(event) })
     .where(where)
     .run()
+}
+
+/**
+ * A new selection replacing `input.replacesSelectionId`, as one statement for
+ * the caller's batch: copied from that row (room, name, category, quantity,
+ * cost and phase codes, follow-up links, order) only while it still has
+ * `input.expected` and nothing replaces it yet. The old product fields are
+ * left off: the new pick is a different product, carried by its choice. It
+ * starts hidden from the owner, unapproved and outside any Selection Phase
+ * (its change order is its owner signature). The unique index on
+ * replaces_selection_id allows one replacement per selection.
+ */
+export function insertReplacementSelectionStatement(
+  db: Db,
+  input: {
+    readonly id: string
+    readonly projectId: string
+    readonly replacesSelectionId: string
+    readonly expected: string
+    readonly reason: SelectionReplacementReason
+    readonly status: ProjectSelectionStatus
+    readonly notes: string | null
+    readonly now: string
+  },
+): Statement {
+  assertListFields("project_finish_selections", { status: input.status, replacementReason: input.reason }, SELECTION_LISTS)
+  return insertCopyStatement(
+    db,
+    projectFinishSelections,
+    {
+      id: input.id,
+      sourceSystem: "compass",
+      sourceRecordId: null,
+      sourceWorkbookId: null,
+      sourceSheetName: null,
+      manufacturer: null,
+      model: null,
+      colorFinish: null,
+      choiceOptionsJson: null,
+      supplierName: null,
+      productUrl: null,
+      status: input.status,
+      ownerVisible: false,
+      ownerApproved: false,
+      approvedBy: null,
+      approvedAt: null,
+      rfqOperationId: null,
+      purchaseOrderOperationId: null,
+      notes: input.notes,
+      roundKey: null,
+      syncStatus: "manual",
+      lastSyncedAt: null,
+      replacesSelectionId: input.replacesSelectionId,
+      replacementReason: input.reason,
+      createdAt: input.now,
+      updatedAt: input.now,
+    },
+    and(
+      eq(projectFinishSelections.id, input.replacesSelectionId),
+      eq(projectFinishSelections.projectId, input.projectId),
+      sql`${projectFinishSelections.status} = ${input.expected}`,
+      notReplaced,
+    ),
+  )
 }
 
 /** The ids of the rows the delete removed. */

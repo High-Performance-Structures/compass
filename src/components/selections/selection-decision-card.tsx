@@ -178,11 +178,12 @@ export function DecisionCard({
       )}
       {item.approvedAt && (
         <p className="mt-3 text-sm text-primary">
-          Revision {item.revision} approved by {item.approvedByName} ·{" "}
+          Owner&apos;s choice: revision {item.revision}, confirmed by {item.approvedByName} ·{" "}
           {new Date(item.approvedAt).toLocaleString("en-US", {
             dateStyle: "medium",
             timeStyle: "short",
           })}
+          {item.status === "approved" ? " · Approved (signed)" : " · not final until the owner signs the Selection Phase"}
         </p>
       )}
       {item.changeOrderId && (
@@ -206,32 +207,33 @@ export function DecisionCard({
             >
               Request pricing / alternative
             </Button>
-            {!item.approvedAt && (
+            {!item.approvedAt && workspace.ownerChoiceConfirmation && (
               <AlertDialog>
                 <AlertDialogTrigger asChild>
                   <Button disabled={pending || item.approvalBlocker !== null}>
-                    Approve selection
+                    Confirm my choice
                   </Button>
                 </AlertDialogTrigger>
                 <AlertDialogContent>
                   <AlertDialogHeader>
-                    <AlertDialogTitle>Approve {spec.name}?</AlertDialogTitle>
+                    <AlertDialogTitle>Confirm your choice for {spec.name}?</AlertDialogTitle>
                     <AlertDialogDescription>
-                      You are approving revision {item.revision}:{" "}
+                      You are choosing revision {item.revision}:{" "}
                       {[spec.manufacturer, spec.model, spec.colorFinish]
                         .filter(Boolean)
                         .join(" · ") || spec.name}
                       , at {selectionMoney(item.quotedCents)} with an allowance
                       of {selectionMoney(item.allowanceCents)}. Timing:{" "}
                       {item.scheduleImpact}. Your name, time, and the exact
-                      terms will be recorded. This does not place an order or
-                      replace change-order approval.
+                      terms will be recorded as your choice. It becomes final
+                      when you sign the Selection Phase document; it does not
+                      place an order or change your contract.
                     </AlertDialogDescription>
                   </AlertDialogHeader>
                   <AlertDialogFooter>
                     <AlertDialogCancel>Keep reviewing</AlertDialogCancel>
                     <AlertDialogAction onClick={approve}>
-                      Approve this revision
+                      Confirm my choice
                     </AlertDialogAction>
                   </AlertDialogFooter>
                 </AlertDialogContent>
@@ -255,7 +257,7 @@ export function DecisionCard({
       )}
       {owner && !workspace.canWrite && (
         <p className="mt-3 text-xs text-muted-foreground">
-          Preview only. The assigned owner can request pricing and approve
+          Preview only. The assigned owner can request pricing and confirm their choice on
           published decisions.
         </p>
       )}

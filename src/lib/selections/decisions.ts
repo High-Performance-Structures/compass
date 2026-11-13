@@ -87,7 +87,7 @@ export function approvalBlocker(input: {
     return "This selection has not been published for your review."
   if (!input.current)
     return "The specification changed. Your team must publish the revised selection before approval."
-  if (input.approvedAt) return "This revision is already approved."
+  if (input.approvedAt) return "You've already confirmed your choice for this revision."
   if (input.openRequests > 0)
     return "Your team must resolve the outstanding pricing or alternative request before approval."
   if (

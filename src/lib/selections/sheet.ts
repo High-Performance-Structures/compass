@@ -117,7 +117,7 @@ const SELECTION_LIST_FILTERS: readonly { readonly value: SelectionListFilter; re
   { value: "open", label: "Open" },
   { value: "needed", label: "Needed" },
   { value: "with_owner", label: "With owner" },
-  { value: "approved", label: "Approved" },
+  { value: "approved", label: "Approved (signed)" },
   { value: "ordered", label: "Ordered" },
   { value: "installed", label: "Installed" },
   { value: "all", label: "All" },

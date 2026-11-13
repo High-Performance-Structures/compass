@@ -17,11 +17,11 @@ export function selectionReport(
     rows.push({
       title: spec.name,
       status: partner
-        ? `Owner approved · Revision ${item.revision}`
+        ? `Owner's choice · Revision ${item.revision}`
         : !item.current
           ? "Specification changed — revision pending"
           : item.approvedAt
-            ? `Owner approved · Revision ${item.revision}`
+            ? `Owner's choice · Revision ${item.revision}`
             : `Awaiting decision · Revision ${item.revision}`,
       fields: [
         ["Category", spec.category],
@@ -36,8 +36,8 @@ export function selectionReport(
               ["Allowance", selectionMoney(item.allowanceCents)],
               ["Quoted price", selectionMoney(item.quotedCents)],
               ["Decision due", item.decisionDueDate],
-              ["Approved by", item.approvedByName],
-              ["Approved at", item.approvedAt],
+              ["Owner's choice by", item.approvedByName],
+              ["Owner's choice at", item.approvedAt],
             ] satisfies PortalReportItem["fields"])
           : []),
       ],

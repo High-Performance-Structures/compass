@@ -45,12 +45,12 @@ export function selectionStatusLabel(status: ProjectSelectionStatus, labels: Sel
 
 /**
  * The label for a status string that may not be a stored status: the owner
- * portal shows "awaiting_owner_approval" for a selection staff approved
+ * portal shows "awaiting_owner_approval" for a selection staff marked approved
  * before the owner signed off.
  */
 export function selectionProgressLabel(status: string, labels: SelectionStatusLabels = DEFAULT_SELECTION_STATUS_LABELS): string {
   if (isProjectSelectionStatus(status)) return selectionStatusLabel(status, labels)
-  if (status === "awaiting_owner_approval") return "Awaiting owner approval"
+  if (status === "awaiting_owner_approval") return "Awaiting owner signature"
   const text = status.replaceAll("_", " ")
   return text.charAt(0).toLocaleUpperCase() + text.slice(1)
 }

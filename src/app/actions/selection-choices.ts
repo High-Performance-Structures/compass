@@ -37,7 +37,10 @@ import {
 } from "@/lib/domain/selections/choices-read"
 import { loadLeadTimeContext, loadSelectionLeadTimeWarnings } from "@/lib/domain/selections/lead-time-read"
 import type { SelectionLeadTimeWarning } from "@/lib/domain/selections/lead-time-rules"
+import { loadSelectionLock, loadSelectionReplacement, type SelectionReplacementLink } from "@/lib/domain/selections/lock-read"
+import type { SelectionLock } from "@/lib/domain/selections/locks"
 import { loadOwnerChoiceBoard, type OwnerBoardSelection } from "@/lib/domain/selections/owner-board-read"
+import { notifyPriceChangesDuringSignature } from "@/lib/domain/selections/price-change-notice"
 import { selectionPickIsSigned } from "@/lib/domain/selections/round-signing"
 import { checkRoundsReady, loadRoundCards, type RoundCard } from "@/lib/domain/selections/rounds-server"
 import { updateFinishSelectionsWithEvent } from "@/lib/domain/selections/store"
@@ -114,6 +117,11 @@ async function staffChoice(projectId: string, choiceId: string) {
   return { ...context, choice }
 }
 
+/** Why the selection's pick and chosen product can't change (ordered, installed or replaced), or null. */
+async function pickLockMessage(db: Awaited<ReturnType<typeof staffSelectionContext>>["db"], projectId: string, selectionId: string): Promise<string | null> {
+  return (await loadSelectionLock(db, projectId, selectionId))?.lock?.message ?? null
+}
+
 /** The selection's current pick, or null. */
 async function currentPickId(db: Awaited<ReturnType<typeof staffSelectionContext>>["db"], selectionId: string): Promise<string | null> {
   const row = await db
@@ -144,19 +152,26 @@ export type SelectionDetail = {
   readonly todos: readonly SelectionTodoView[]
   readonly rfqs: readonly SelectionRfqView[]
   readonly draftRfqs: readonly DraftRfqOption[]
+  /** Why the pick and product are fixed (ordered, installed or replaced), or null. */
+  readonly lock: SelectionLock | null
+  /** The selection that replaced this one, and the one this one replaces. */
+  readonly replacedBy: SelectionReplacementLink | null
+  readonly replaces: SelectionReplacementLink | null
 }
 
 /** Everything the staff detail panel shows for one selection. */
 export async function getSelectionDetail(projectId: string, selectionId: string): Promise<ActionResult<SelectionDetail>> {
   try {
     const { db, userId } = await audienceAccess(projectId, selectionId, "staff", false)
-    const [panel, todos, rfqs, draftRfqs] = await Promise.all([
+    const [panel, todos, rfqs, draftRfqs, lock, replacement] = await Promise.all([
       loadSelectionChoicesPanel(db, projectId, selectionId, "staff", userId),
       loadSelectionTodos(db, projectId, selectionId),
       loadSelectionRfqs(db, projectId, selectionId),
       loadDraftRfqOptions(db, projectId),
+      loadSelectionLock(db, projectId, selectionId),
+      loadSelectionReplacement(db, projectId, selectionId),
     ])
-    return { success: true, data: { panel, todos, rfqs, draftRfqs } }
+    return { success: true, data: { panel, todos, rfqs, draftRfqs, lock: lock?.lock ?? null, ...replacement } }
   } catch (error) {
     return failure(error, "Unable to load the selection.")
   }
@@ -202,6 +217,11 @@ export async function saveSelectionChoice(
     if (choiceId) {
       const existing = await choiceInProject(db, projectId, choiceId)
       if (!existing || existing.selectionId !== selectionId) return { success: false, error: "Choice not found" }
+      // The pick of an ordered or installed selection is the product bought; it stays as it was.
+      if (existing.chosen) {
+        const locked = await pickLockMessage(db, projectId, selectionId)
+        if (locked) return { success: false, error: locked }
+      }
       const { status, ...fields } = value
       const expected = input.expectedStatus ?? null
       // An unchanged status is left out, so a status someone else set meanwhile stays.
@@ -213,6 +233,21 @@ export async function saveSelectionChoice(
         expected === status ? undefined : { expected, to: status },
       )
       if (!saved) return { success: false, error: "Someone changed this choice's status while you were editing. Refresh and try again." }
+      // Allowed while the selection is out for the owner's signature, but the job's managers are told.
+      await notifyPriceChangesDuringSignature(db, {
+        projectId,
+        changes: [
+          {
+            choiceId,
+            selectionId,
+            title: fields.title,
+            before: { priceCents: existing.priceCents, ownerPriceCents: existing.ownerPriceCents },
+            after: { priceCents: fields.priceCents, ownerPriceCents: fields.ownerPriceCents },
+          },
+        ],
+        actor: context.user,
+        now,
+      })
       refresh(projectId)
       return { success: true, data: { id: choiceId } }
     }
@@ -240,7 +275,11 @@ export async function saveSelectionChoice(
 
 export async function deleteSelectionChoice(projectId: string, choiceId: string): Promise<Done> {
   try {
-    const { db, user } = await staffChoice(projectId, choiceId)
+    const { db, user, choice } = await staffChoice(projectId, choiceId)
+    if (choice.chosen) {
+      const locked = await pickLockMessage(db, projectId, choice.selectionId)
+      if (locked) return { success: false, error: locked }
+    }
     await deleteChoiceRow(db, projectId, choiceId)
     await checkRoundsReady(db, projectId, user.id)
     refresh(projectId)
@@ -268,8 +307,9 @@ export async function reorderSelectionChoices(projectId: string, selectionId: st
 
 /**
  * Marks the choice the owner went with (clearing any other), or clears it.
- * Staff can set it at any time; the owner can change their pick on a
- * selection published to them until it is approved.
+ * Staff can set it until the selection is ordered or installed; the owner
+ * can change their pick on a selection published to them until they confirm
+ * their choice. An ordered or installed pick changes only by replacement.
  */
 export async function setSelectionChoiceChosen(
   projectId: string,
@@ -285,7 +325,10 @@ export async function setSelectionChoiceChosen(
       const choice = await choiceInProject(access.db, projectId, choiceId)
       if (!choice || !(await selectionPublishedToOwner(access.db, projectId, choice.selectionId))) return { success: false, error: "Choice not found" }
       if (await selectionApprovedByOwner(access.db, projectId, choice.selectionId)) {
-        return { success: false, error: "This selection is already approved. Ask your builder to reopen it." }
+        return { success: false, error: "You've already confirmed your choice for this selection. Ask your builder to reopen it." }
+      }
+      if (await pickLockMessage(access.db, projectId, choice.selectionId)) {
+        return { success: false, error: "This selection can't be changed here any more (it has been ordered). Ask your builder." }
       }
       if (await selectionPickIsSigned(access.db, choice.selectionId, await currentPickId(access.db, choice.selectionId))) {
         return { success: false, error: "You've signed for this selection. Ask your builder to change it." }
@@ -296,6 +339,9 @@ export async function setSelectionChoiceChosen(
       return { success: true, data: { id: choiceId } }
     }
     const { db, choice, user } = await staffChoice(projectId, choiceId)
+    // Ordered and installed picks change only through a replacement (a new selection).
+    const locked = await pickLockMessage(db, projectId, choice.selectionId)
+    if (locked) return { success: false, error: locked }
     const before = await currentPickId(db, choice.selectionId)
     const wasSigned = await selectionPickIsSigned(db, choice.selectionId, before)
     const now = new Date().toISOString()
@@ -304,7 +350,7 @@ export async function setSelectionChoiceChosen(
       audience: "staff",
       note: note?.trim().slice(0, 500) || null,
     })
-    // Changing a signed pick reopens just this selection; the next round signature covers it.
+    // Changing a signed pick reopens just this selection (never an ordered or installed one); the next round signature covers it.
     if (wasSigned && (!chosen || before !== choiceId)) {
       await updateFinishSelectionsWithEvent(
         db,

@@ -569,12 +569,16 @@ describe("RFQ selection integration", () => {
     expect(
       await updateProjectSelectionStatus("project-a", "selection-a", "ordered")
     ).toMatchObject({ success: true })
+    // The owner's click is their recorded choice, not a signature.
     expect(
       await testDb.db.select().from(projectFinishSelections).get()
     ).toMatchObject({
-      ownerApproved: true,
-      approvedBy: "owner-a",
+      ownerApproved: false,
+      approvedBy: null,
       status: "ordered",
+    })
+    expect(await testDb.db.select().from(decisions).get()).toMatchObject({
+      approvedBy: "owner-a",
     })
   })
 })
@@ -638,20 +642,48 @@ it("allows only the request's owner to edit or withdraw it", async () => {
   })
 })
 
-it.each(["ordered", "installed", "rfq_sent", "deferred"] as const)(
-  "owner approval preserves %s progress",
+it.each(["owner_review", "ordered", "installed", "rfq_sent", "deferred"] as const)(
+  "the owner's choice is recorded without approving: %s stays",
   async (status) => {
     await testDb.db.update(projectFinishSelections).set({ status })
     await publish()
+    // Publishing moves needed/proposed on to With owner; set the case's status after it.
+    await testDb.db.update(projectFinishSelections).set({ status })
+    const before = await testDb.db.select().from(projectFinishSelections).get()
     signIn("owner-a")
     expect(
       await approveSelectionDecision("project-a", "selection-a", 1)
     ).toEqual({ success: true })
+    // Only a signed document approves: no status move, no owner approval, no row edit.
     expect(
       await testDb.db.select().from(projectFinishSelections).get()
-    ).toMatchObject({ status, ownerApproved: true })
+    ).toMatchObject({ status, ownerApproved: false, approvedAt: null, updatedAt: before?.updatedAt })
+    expect(await testDb.db.select().from(decisions).get()).toMatchObject({
+      approvedBy: "owner-a",
+    })
+    expect(
+      await testDb.db.select().from(events).where(eq(events.kind, "owner_approved"))
+    ).toHaveLength(1)
+    // No "Order" to-do until the owner signs.
+    expect(
+      await testDb.db.select().from(projectOperations).where(eq(projectOperations.sourceRecordId, "selection-a"))
+    ).toHaveLength(0)
   }
 )
+
+it("a company can turn off the owner's click confirmation; the signed Selection Phase still records the choice", async () => {
+  await testDb.db.insert(organizationFeatureSettings).values({
+    organizationId: "org-a",
+    featureKey: "selections",
+    value: JSON.stringify({ ownerChoiceConfirmation: false }),
+    updatedAt: date,
+  })
+  await publish()
+  signIn("owner-a")
+  expect(await approveSelectionDecision("project-a", "selection-a", 1)).toMatchObject({ success: false, error: expect.stringMatching(/sign the Selection Phase/) })
+  expect(await testDb.db.select().from(decisions).get()).toMatchObject({ approvedAt: null })
+  expect((await getSelectionWorkspace("project-a", "owner")).ownerChoiceConfirmation).toBe(false)
+})
 
 it.each(["withdraw", "resolve"])(
   "retains request history after %s and unpublication",

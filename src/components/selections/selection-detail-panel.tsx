@@ -28,6 +28,7 @@ import { SelectionComments } from "@/components/selections/selection-comments"
 import { AttachPhotosDialog, FollowUpsDialog, PasteLinkDialog, PickForOwnerDialog } from "@/components/selections/selection-detail-dialogs"
 import { SelectionLinkCard } from "@/components/selections/selection-link-card"
 import { SelectionPriceRequest } from "@/components/selections/selection-price-request"
+import { SelectionReplaceDialog, type SelectionReplaceKind } from "@/components/selections/selection-replace-dialog"
 import { SelectionRoundTemplateControls } from "@/components/selections/selection-round-template-controls"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -40,6 +41,7 @@ import type { SupplierOption } from "@/lib/domain/selections/selection-sheet-rea
 import { formatCents, formatDate } from "@/lib/format"
 import { moveLine } from "@/lib/shared/line-order"
 import type { SelectionSheetRow } from "@/lib/selections/sheet"
+import { REPLACEMENT_REASON_LABELS } from "@/lib/domain/selections/locks"
 import type { SelectionStatusLabels } from "@/lib/domain/selections/status-labels"
 
 type Dialogs =
@@ -50,6 +52,7 @@ type Dialogs =
   | { readonly kind: "followUps"; readonly choice: SelectionChoiceView }
   | { readonly kind: "pick"; readonly choice: SelectionChoiceView }
   | { readonly kind: "price" }
+  | { readonly kind: "replace"; readonly replaceKind: SelectionReplaceKind }
 
 /** A to-do for this selection, made in place: title and an optional due date. */
 function SelectionTodoForm({
@@ -190,8 +193,42 @@ export function SelectionDetailPanel({
         <div className="flex flex-wrap items-center gap-3">
           <span className="text-sm font-medium">Status</span>
           {/* Keyed on the status so an automatic move or another edit shows after refresh. */}
-          <ProjectSelectionStatusSelect key={row.status} projectId={projectId} selectionId={row.id} status={row.status} labels={statusLabels} onChanged={onChanged} />
+          <ProjectSelectionStatusSelect
+            key={`${row.status}:${detail?.replacedBy ? "replaced" : ""}`}
+            projectId={projectId}
+            selectionId={row.id}
+            status={row.status}
+            labels={statusLabels}
+            replaced={detail?.replacedBy !== null && detail?.replacedBy !== undefined}
+            onChanged={onChanged}
+          />
         </div>
+        {detail?.replaces && (
+          <p className="text-sm text-muted-foreground">
+            Replaces {detail.replaces.name}
+            {detail.replaces.reason ? ` (${REPLACEMENT_REASON_LABELS[detail.replaces.reason].toLocaleLowerCase()})` : ""}. Its change order is in Change orders.
+          </p>
+        )}
+        {detail?.lock && (
+          <div className="flex flex-col gap-2 rounded-md border p-2 text-sm">
+            <p>
+              {detail.replacedBy ? <>Replaced by <b>{detail.replacedBy.name}</b>. </> : null}
+              {detail.lock.message}
+            </p>
+            {!detail.replacedBy && (detail.lock.kind === "installed" || detail.lock.kind === "ordered") && (
+              <div>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setDialog({ kind: "replace", replaceKind: detail.lock?.kind === "installed" ? "installed" : "ordered" })}
+                >
+                  {detail.lock.kind === "installed" ? "Replace installed item" : "Owner changed selection after purchase"}
+                </Button>
+              </div>
+            )}
+          </div>
+        )}
         <span className="text-sm">
           Allowance {row.allowanceCents !== null ? <b>{formatCents(row.allowanceCents)}</b> : <span className="text-muted-foreground">not published</span>}
           {row.dueDate && <> · due {formatDate(row.dueDate)}</>}
@@ -389,6 +426,18 @@ export function SelectionDetailPanel({
           choiceTitle={dialog.choice.title}
           current={dialog.choice.dependentSelectionIds}
           options={followUpOptions}
+          open
+          onOpenChange={(open) => !open && setDialog({ kind: "none" })}
+          onSaved={reload}
+        />
+      )}
+      {dialog.kind === "replace" && (
+        <SelectionReplaceDialog
+          projectId={projectId}
+          selectionId={row.id}
+          selectionName={row.name}
+          kind={dialog.replaceKind}
+          choices={order}
           open
           onOpenChange={(open) => !open && setDialog({ kind: "none" })}
           onSaved={reload}

@@ -1,12 +1,16 @@
 import { z } from "zod/v4"
 
+import { USER_ROLES } from "@/lib/domain/identity/statuses"
+
 /*
  * Settings > Workflows > Selections: the company's selection rounds (which
  * schedule item sets each round's due date), default lead times by
  * selection category, how many days ahead a long lead time is flagged, the
  * markup that prefills a choice's owner price from the supplier price, and
- * the over-budget percent at which a variance is treated as a change order.
- * Pure and client-safe.
+ * the over-budget percent at which a variance is treated as a change order,
+ * whether owners confirm their choice by click, whether replacing an ordered
+ * or installed selection starts a change order, and which project roles are
+ * told when a price changes during a signature. Pure and client-safe.
  */
 
 const roundSchema = z.object({
@@ -36,6 +40,15 @@ export const selectionSettingsSchema = z.object({
   ownerMarkupPercent: z.number().min(0).max(1000).nullable(),
   /** A variance this far over budget is handled as a change order needing the owner's signature. */
   changeOrderThresholdPercent: z.number().min(0).max(100),
+  /**
+   * Owners may press "Confirm my choice" on a published decision. It records
+   * their choice only; a signed document approves either way.
+   */
+  ownerChoiceConfirmation: z.boolean(),
+  /** "Replace installed item" and "Owner changed selection after purchase" start a draft change order. */
+  replacementChangeOrder: z.boolean(),
+  /** Project roles told when a choice's price changes while its Selection Phase is out for signature. */
+  priceChangeNoticeRoles: z.array(z.enum(USER_ROLES)).max(USER_ROLES.length),
 })
 
 export type SelectionSettings = z.infer<typeof selectionSettingsSchema>
@@ -50,12 +63,15 @@ const DEFAULT_SELECTION_SETTINGS: SelectionSettings = {
   leadTimeWarningDays: 7,
   ownerMarkupPercent: null,
   changeOrderThresholdPercent: 10,
+  ownerChoiceConfirmation: true,
+  replacementChangeOrder: true,
+  priceChangeNoticeRoles: ["project_manager", "assistant_project_manager", "project_administrator"],
 }
 
 export const SELECTION_SETTINGS_GROUP = {
   label: "Selections",
   description:
-    "Selection Phases and the schedule items that set their due dates, default lead times by category and how early a long lead time is flagged, the markup that fills in owner prices, and when a variance becomes a change order.",
+    "Selection Phases and the schedule items that set their due dates, default lead times by category and how early a long lead time is flagged, the markup that fills in owner prices, when a variance becomes a change order, owner choice confirmation, replacement change orders, and who hears about price changes during a signature.",
   defaults: DEFAULT_SELECTION_SETTINGS,
   schema: selectionSettingsSchema,
 }

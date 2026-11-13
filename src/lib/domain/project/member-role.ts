@@ -2,6 +2,7 @@ import { and, eq } from "drizzle-orm"
 
 import { projectMembers } from "@/db/schema"
 import { openInvitationForProject } from "@/lib/domain/identity/reads"
+import { peopleView } from "@/lib/domain/identity/views"
 import { invitedPreviewInvitationId } from "@/lib/invited-preview"
 import type { Db } from "@/lib/server/action-context"
 
@@ -39,4 +40,25 @@ export function projectRolesForUserQuery(db: Db, userId: string) {
     .selectDistinct({ role: projectMembers.role })
     .from(projectMembers)
     .where(eq(projectMembers.userId, userId))
+}
+
+/**
+ * The project's active members whose project role passes `matches` (a role
+ * predicate from @/lib/user-roles, or a company setting's role list), with
+ * the email notices go to. For notifying a job's team by role.
+ */
+export async function projectMembersWithRole(
+  db: Db,
+  projectId: string,
+  matches: (role: string) => boolean
+): Promise<readonly { readonly userId: string; readonly email: string }[]> {
+  const people = peopleView()
+  const rows = await db
+    .select({ userId: projectMembers.userId, role: projectMembers.role, email: people.email, googleEmail: people.googleEmail })
+    .from(projectMembers)
+    .innerJoin(people, eq(people.id, projectMembers.userId))
+    .where(and(eq(projectMembers.projectId, projectId), eq(people.isActive, true)))
+  return rows
+    .filter((row) => matches(row.role))
+    .map((row) => ({ userId: row.userId, email: row.googleEmail?.trim() || row.email }))
 }

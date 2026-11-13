@@ -115,9 +115,23 @@ export async function choiceInProject(
   db: Db,
   projectId: string,
   choiceId: string,
-): Promise<{ readonly id: string; readonly selectionId: string } | null> {
+): Promise<{
+  readonly id: string
+  readonly selectionId: string
+  readonly title: string
+  readonly chosen: boolean
+  readonly priceCents: number | null
+  readonly ownerPriceCents: number | null
+} | null> {
   const row = await db
-    .select({ id: projectSelectionChoices.id, selectionId: projectSelectionChoices.selectionId })
+    .select({
+      id: projectSelectionChoices.id,
+      selectionId: projectSelectionChoices.selectionId,
+      title: projectSelectionChoices.title,
+      chosen: projectSelectionChoices.chosen,
+      priceCents: projectSelectionChoices.priceCents,
+      ownerPriceCents: projectSelectionChoices.ownerPriceCents,
+    })
     .from(projectSelectionChoices)
     .where(and(eq(projectSelectionChoices.id, choiceId), eq(projectSelectionChoices.projectId, projectId)))
     .get()
@@ -371,7 +385,10 @@ export async function selectionPublishedToOwner(db: Db, projectId: string, selec
   return row?.published === true
 }
 
-/** Whether the owner has approved the selection's published decision. */
+/**
+ * Whether the owner has confirmed their choice on the selection's published
+ * decision (a recorded preference; only a signature approves).
+ */
 export async function selectionApprovedByOwner(db: Db, projectId: string, selectionId: string): Promise<boolean> {
   const row = await db
     .select({ approvedAt: projectSelectionDecisions.approvedAt })

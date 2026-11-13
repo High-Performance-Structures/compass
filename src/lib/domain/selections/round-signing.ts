@@ -29,22 +29,14 @@ import { peopleView } from "@/lib/domain/identity/views"
 import { projectChangeOrderLines, projectChangeOrders } from "@/db/schema-change-orders"
 import { projectSelectionChoices, projectSelectionRoundSignatureItems, projectSelectionRoundSignatures } from "@/db/schema-selection-choices"
 import { projectSelectionDecisions } from "@/db/schema-selection-decisions"
-import { changeOrderNumber, changeOrderNumberColumns } from "@/lib/change-orders/numbering"
 import { chunkD1Values } from "@/lib/d1-query"
-import {
-  insertChangeOrderHistoryStatement,
-  insertChangeOrderLineStatement,
-  insertChangeOrderStatement,
-  updateChangeOrdersStatement,
-} from "@/lib/domain/estimates/store"
+import { updateChangeOrdersStatement } from "@/lib/domain/estimates/store"
 import { SELECTION_ROUND_VARIANCE_SOURCE } from "@/lib/domain/estimates/variance-rules"
 import {
   approveVariance,
-  changeOrderInsuranceLines,
   createVariance,
   projectVarianceSettings,
   saveVarianceLines,
-  type VarianceActor,
 } from "@/lib/domain/estimates/variances"
 import { announceEsignOutcome } from "@/lib/esign/announce"
 import { prepareEstimateSignaturePdf } from "@/lib/estimates/signature-pdf"
@@ -59,6 +51,8 @@ import type { Db } from "@/lib/server/action-context"
 
 import { pickedByLabel } from "./choice-rules"
 import { loadChoicePanels } from "./choices-read"
+import { createSelectionChangeOrder, type SelectionChangeOrderActor } from "./selection-change-orders"
+import { ensureSelectionTodo } from "./selection-todos"
 import { insertRoundSignatureStatements, roundSignatureTransitionStatement, transitionRoundSignature, updateRoundSignature } from "./round-signature-store"
 import { updateFinishSelectionsWithEventStatement } from "./store"
 import { resolvedContactColumns, withContactDirectory } from "@/lib/domain/contacts/resolved-columns"
@@ -231,89 +225,7 @@ function hostName(url: string): string {
 
 // ---- sending
 
-type Actor = VarianceActor & { readonly name: string }
-
-/**
- * The change order (signature pending, signed in the round document) for a
- * round's difference from the allowance. Priced at owner prices, which
- * already include the builder fee, so no fee lines are added; project
- * liability insurance is added the way change orders from estimates get it.
- */
-async function createRoundChangeOrder(
-  db: Db,
-  input: { readonly projectId: string; readonly signatureId: string; readonly roundName: string; readonly lines: readonly { costCode: string; description: string; amountCents: number }[]; readonly actor: Actor; readonly now: string },
-): Promise<string> {
-  const [project, existing] = await Promise.all([
-    db.select({ projectNumber: projects.projectNumber }).from(projects).where(eq(projects.id, input.projectId)).get(),
-    db.select(changeOrderNumberColumns).from(projectChangeOrders).where(eq(projectChangeOrders.projectId, input.projectId)),
-  ])
-  const id = crypto.randomUUID()
-  const number = changeOrderNumber(project?.projectNumber ?? null, existing)
-  const insurance = await changeOrderInsuranceLines({ db, projectId: input.projectId, lines: input.lines })
-  const allLines = [
-    ...input.lines.map((line) => ({ ...line, derivedFrom: null })),
-    ...insurance.map((line) => ({ costCode: line.costCode, description: line.description, amountCents: line.amountCents, derivedFrom: line.derivedFrom })),
-  ]
-  const amountCents = allLines.reduce((total, line) => total + line.amountCents, 0)
-  await db.batch([
-    insertChangeOrderStatement(db, {
-      id,
-      projectId: input.projectId,
-      changeOrderNumber: number,
-      recordType: "change_order",
-      title: `${input.roundName} Selection Phase`,
-      scope: `Selections in the ${input.roundName} Selection Phase ${amountCents >= 0 ? "over" : "under"} the allowance.`,
-      reason: "The owner's selections differ from the allowance.",
-      amountCents,
-      status: "signature_pending",
-      audience: "owner",
-      requesterType: "internal",
-      requesterUserId: input.actor.id,
-      requesterName: input.actor.name.slice(0, 200),
-      sourceType: "selection_round",
-      sourceRecordId: input.signatureId,
-      budgetTreatment: "additive",
-      changeOrderKind: "description",
-      foxitStatus: "sent",
-      sageStatus: "not_ready",
-      createdBy: input.actor.id,
-      submittedAt: input.now,
-      createdAt: input.now,
-      updatedAt: input.now,
-    }),
-    insertChangeOrderLineStatement(
-      db,
-      allLines.map((line, index) => ({
-        id: crypto.randomUUID(),
-        projectId: input.projectId,
-        changeOrderId: id,
-        lineNumber: index + 1,
-        description: line.description,
-        phaseCode: line.costCode.slice(0, 2),
-        costCode: line.costCode,
-        amountCents: line.amountCents,
-        derivedFrom: line.derivedFrom,
-        createdAt: input.now,
-        updatedAt: input.now,
-      })),
-    ),
-    insertChangeOrderHistoryStatement(db, {
-      id: crypto.randomUUID(),
-      projectId: input.projectId,
-      changeOrderId: id,
-      eventType: "created_from_selection_round",
-      fromStatus: null,
-      toStatus: "signature_pending",
-      actorUserId: input.actor.id,
-      actorName: input.actor.name.slice(0, 200),
-      actorRole: input.actor.role.slice(0, 80),
-      note: `Created for the owner's signature on the ${input.roundName} Selection Phase.`,
-      metadataJson: JSON.stringify({ selectionRoundSignatureId: input.signatureId, amountCents }),
-      createdAt: input.now,
-    }),
-  ])
-  return id
-}
+type Actor = SelectionChangeOrderActor
 
 async function renderRoundPdf(env: CloudflareEnv, projectId: string, roundKey: string, signatureId: string, signerLabels: readonly string[]): Promise<{ readonly pdfBase64: string; readonly fields: Parameters<typeof createFoxitPreparedEnvelope>[0]["fields"] }> {
   const quickAction = Reflect.get(env.BROWSER, "quickAction")
@@ -371,7 +283,25 @@ export async function prepareRoundSignature(input: {
   const signatureId = crypto.randomUUID()
   let changeOrderId: string | null = null
   if (view.document.treatment === "change_order" && overage.lines.length > 0) {
-    changeOrderId = await createRoundChangeOrder(db, { projectId, signatureId, roundName: view.roundName, lines: overage.lines, actor, now })
+    // Signature pending: the owner signs it inside the round document.
+    const created = await createSelectionChangeOrder(db, {
+      projectId,
+      start: { kind: "in_signature" },
+      sourceType: "selection_round",
+      sourceRecordId: signatureId,
+      title: `${view.roundName} Selection Phase`,
+      scope: `Selections in the ${view.roundName} Selection Phase ${view.document.deltaCents >= 0 ? "over" : "under"} the allowance.`,
+      reason: "The owner's selections differ from the allowance.",
+      lines: overage.lines,
+      history: {
+        eventType: "created_from_selection_round",
+        note: `Created for the owner's signature on the ${view.roundName} Selection Phase.`,
+        metadata: { selectionRoundSignatureId: signatureId },
+      },
+      actor,
+      now,
+    })
+    changeOrderId = created.id
   } else if (view.document.treatment === "variance" && overage.lines.length > 0) {
     const created = await createVariance({
       db,
@@ -603,6 +533,8 @@ export async function handleRoundSignatureEvent(input: {
   // Another delivery of this event signed it first; it runs the follow-ups.
   if (signed.meta.changes === 0) return false
 
+  await orderTodosForSigned(db, signature, now)
+
   const sender = signature.createdBy
     ? await db.select({ id: people.id, role: people.role, displayName: people.displayName, email: people.email, firstName: people.firstName, lastName: people.lastName }).from(people).where(eq(people.id, signature.createdBy)).get()
     : undefined
@@ -632,6 +564,33 @@ export async function handleRoundSignatureEvent(input: {
     sentBy: signature.createdBy,
   })
   return true
+}
+
+/**
+ * The selections this signature approved get staff's "Order" to-do: only a
+ * signed document approves a selection, so ordering waits for it (the
+ * owner's click only records their choice). A failure is logged; the
+ * signature stands.
+ */
+async function orderTodosForSigned(db: Db, signature: SignatureRow, now: string): Promise<void> {
+  try {
+    const approved = await db
+      .select({ id: projectFinishSelections.id, name: projectFinishSelections.name })
+      .from(projectSelectionRoundSignatureItems)
+      .innerJoin(projectFinishSelections, eq(projectFinishSelections.id, projectSelectionRoundSignatureItems.selectionId))
+      .where(
+        and(
+          eq(projectSelectionRoundSignatureItems.signatureId, signature.id),
+          eq(projectFinishSelections.status, "approved"),
+          eq(projectFinishSelections.approvedAt, now),
+        ),
+      )
+    for (const selection of approved) {
+      await ensureSelectionTodo(db, { projectId: signature.projectId, selectionId: selection.id, selectionName: selection.name, step: "order", actorId: signature.createdBy, now })
+    }
+  } catch (error) {
+    console.error("[selections] order to-dos after signing failed", error)
+  }
 }
 
 /** For the print page of a prepared signature: who signs, and the change order or variance it carries. */

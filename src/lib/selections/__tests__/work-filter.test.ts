@@ -160,7 +160,7 @@ describe("selections work filter", () => {
       "1 unpublished",
       "1 late risk",
     ])
-    expect(publishRoomPills([decision("a", { approvedAt: "2026-11-02" })]).map((pill) => pill.label)).toEqual(["all approved"])
+    expect(publishRoomPills([decision("a", { approvedAt: "2026-11-02" })]).map((pill) => pill.label)).toEqual(["all chosen"])
     expect(publishRoomPills([decision("a", { current: false })]).map((pill) => pill.label)).toEqual(["1 revision needed"])
   })
 

@@ -3,7 +3,7 @@
  * reconcile its rooms and selections into the project. Writes go through the
  * selections store. Access is resolved by the caller.
  */
-import { and, eq } from "drizzle-orm"
+import { and, eq, notInArray } from "drizzle-orm"
 
 import { projectFinishSelectionRooms, projectFinishSelections } from "@/db/schema"
 import { googleAuth } from "@/db/schema-google"
@@ -14,6 +14,7 @@ import { getGoogleConfig, getGoogleCryptoSalt, parseServiceAccountKey } from "@/
 import { parseFinishScheduleWorkbook } from "@/lib/selections/google-finish-schedule-import"
 import type { Db, ProjectContext } from "@/lib/server/action-context"
 
+import { LOCKED_SELECTION_STATUSES } from "./locks"
 import {
   importedSelectionIdentity,
   importedSourceChanged,
@@ -41,6 +42,8 @@ export type FinishScheduleImportAccess = {
 }
 
 /** Adds the organization's Google Sheets client to a staff selections context. */
+const LOCKED_STATUSES: ReadonlySet<string> = new Set(LOCKED_SELECTION_STATUSES)
+
 export async function finishScheduleImportAccess(
   context: ProjectContext & { readonly organizationId: string }
 ): Promise<FinishScheduleImportAccess> {
@@ -300,15 +303,22 @@ export async function applyFinishScheduleImport(
       conflictCount += 1
       continue
     }
+    // An ordered or installed selection keeps its product: a workbook change to it is a conflict for staff.
+    if (LOCKED_STATUSES.has(existing.status) && importedSourceChanged(existing, sourceValues)) {
+      conflictCount += 1
+      continue
+    }
     const approvalNeedsReview =
       (existing.ownerApproved || existing.status === "approved") &&
       importedSourceChanged(existing, sourceValues)
     // The workbook changed an approved row: the approval no longer covers it,
     // so it reopens (back to the owner). Otherwise the status is left alone,
     // so a status staff set meanwhile is never overwritten by the import.
+    // Both writes skip a row that became ordered or installed after the read.
+    const stillUnlocked = and(eq(projectFinishSelections.id, existing.id), notInArray(projectFinishSelections.status, [...LOCKED_SELECTION_STATUSES]))
     statements.push(
       approvalNeedsReview
-        ? updateFinishSelectionsWithEventStatement(db, eq(projectFinishSelections.id, existing.id), "reopen", {
+        ? updateFinishSelectionsWithEventStatement(db, stillUnlocked, "reopen", {
             ...sourceValues,
             sourceRecordId,
             ownerApproved: false,
@@ -316,7 +326,7 @@ export async function applyFinishScheduleImport(
             approvedAt: null,
             syncStatus: "selection_change_review"
           })
-        : updateFinishSelectionsStatement(db, eq(projectFinishSelections.id, existing.id), {
+        : updateFinishSelectionsStatement(db, LOCKED_STATUSES.has(existing.status) ? eq(projectFinishSelections.id, existing.id) : stillUnlocked, {
             ...sourceValues,
             sourceRecordId,
             syncStatus: "imported"

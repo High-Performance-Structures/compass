@@ -69,6 +69,7 @@ const workspace: SelectionWorkspace = {
   projectId: "project-a",
   audience: "staff",
   canWrite: false,
+  ownerChoiceConfirmation: true,
   statusLabels: DEFAULT_SELECTION_STATUS_LABELS,
   items,
   changeOrders: [],

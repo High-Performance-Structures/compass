@@ -81,7 +81,7 @@ describe("portal reports", () => {
   })
   it("prints technical details without owner terms or approval identity for partners, even if supplied", () => {
     const text = JSON.stringify(selectionReport([item], "sub_vendor"))
-    expect(text).toContain("Owner approved")
+    expect(text).toContain("Owner's choice")
     expect(text).toContain("Henry")
     expect(text).toContain("Quantity")
     expect(text).not.toContain("Private")

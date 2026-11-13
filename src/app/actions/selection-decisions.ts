@@ -13,10 +13,11 @@ import {
   projectSelectionRequests as requests,
   projectSelectionProcurementLinks as links,
 } from "@/db/schema-selection-decisions"
+import { recordActivityEvent } from "@/lib/activity-log"
 import { selectionAccess } from "@/lib/domain/selections/access"
-import { ensureSelectionTodo } from "@/lib/domain/selections/selection-todos"
+import { readProjectSelectionSettings } from "@/lib/domain/selections/project-settings"
 import { advanceSelectionStatus, advanceSelectionsForPurchaseOrder } from "@/lib/domain/selections/status-advance"
-import { updateFinishSelectionsStatement, updateFinishSelectionsWithEventStatement } from "@/lib/domain/selections/store"
+import { updateFinishSelectionsStatement } from "@/lib/domain/selections/store"
 import {
   approvalBlocker,
   moneyCents,
@@ -264,6 +265,12 @@ export async function approveSelectionDecision(
       throw new Error(
         "This decision changed. Refresh and review the current revision."
       )
+    // A company may leave choices to the signed Selection Phase alone.
+    const { organizationId, settings } = await readProjectSelectionSettings(db, projectId)
+    if (!settings.ownerChoiceConfirmation)
+      throw new Error(
+        "Your builder records your choice when you sign the Selection Phase document."
+      )
     const change = decision.changeOrderId
       ? await db
           .select({ status: projectChangeOrders.status })
@@ -350,32 +357,29 @@ export async function approveSelectionDecision(
           .from(decisions)
           .where(eq(decisions.lastMutationId, token))
       ),
-      // The approval lands only with the decision update above (same token);
-      // its status move never rewinds procurement or installation progress.
-      updateFinishSelectionsWithEventStatement(
-        db,
-        and(
-          eq(projectFinishSelections.id, selectionId),
-          sql`EXISTS (SELECT 1 FROM ${decisions} WHERE ${decisions.selectionId} = ${selectionId} AND ${decisions.lastMutationId} = ${token})`
-        ),
-        "owner_approve",
-        {
-          ownerApproved: true,
-          approvedBy: user.id,
-          approvedAt: now,
-          updatedAt: now,
-        }
-      ),
     ])
     if (result[0].meta.changes !== 1)
       throw new Error(
         "The selection or its approval conditions changed. Refresh before approving."
       )
-    // Approved: staff get an "Order" to-do (the approval is already saved).
-    try {
-      await ensureSelectionTodo(db, { projectId, selectionId, selectionName: row.name, step: "order", actorId: user.id, now })
-    } catch (todoError) {
-      console.error("[selections] order to-do failed", todoError)
+    // The owner's choice is recorded (decision + history event above, and
+    // Activity here). It is not an approval: the selection's status, pricing,
+    // budget, variances and change orders change only when the owner signs
+    // (Selection Phase signature). Ordering follows that signature.
+    if (organizationId) {
+      await recordActivityEvent({
+        db,
+        organizationId,
+        projectId,
+        actor: user,
+        category: "field",
+        action: "selection_owner_choice_recorded",
+        entityType: "project_finish_selection",
+        entityId: selectionId,
+        summary: `${actorName} confirmed their choice for ${row.name} (revision ${expectedRevision}). Not final until the owner signs.`,
+        metadata: { revision: expectedRevision, quotedCents: decision.quotedCents, allowanceCents: decision.allowanceCents },
+        createdAt: now,
+      })
     }
     revalidate(projectId)
     return { success: true }

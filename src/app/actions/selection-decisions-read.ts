@@ -26,6 +26,7 @@ import type {
   SelectionDecisionItem,
   SelectionWorkspace,
 } from "@/lib/selections/types"
+import { readProjectSelectionSettings } from "@/lib/domain/selections/project-settings"
 import { readProjectSelectionStatusLabels } from "@/lib/domain/selections/status-labels-server"
 
 export async function getSelectionWorkspace(
@@ -42,6 +43,7 @@ export async function getSelectionWorkspace(
     operations,
     approvalHistory,
     statusLabels,
+    selectionSettings,
   ] = await Promise.all([
     db
       .select()
@@ -109,6 +111,7 @@ export async function getSelectionWorkspace(
           .orderBy(asc(projectSelectionDecisionEvents.createdAt)),
     // The job's company names its statuses, also for owners and partners.
     readProjectSelectionStatusLabels(db, projectId),
+    readProjectSelectionSettings(db, projectId),
   ])
   // Reuse the portal's recipient checks; a link never grants a supplier new access.
   const partnerPreview =
@@ -164,9 +167,10 @@ export async function getSelectionWorkspace(
         approvedAt: partner ? null : (decision?.approvedAt ?? null),
         approvedByName: partner ? null : (decision?.approvedByName ?? null),
         status:
+          // Approved by staff's hand, not by the owner's signature (owner_approved is set only by signing).
           audience === "owner" &&
           row.status === "approved" &&
-          !decision?.approvedAt
+          !row.ownerApproved
             ? "awaiting_owner_approval"
             : row.status,
         selectionUpdatedAt: partner ? "" : row.updatedAt,
@@ -249,6 +253,7 @@ export async function getSelectionWorkspace(
     projectId,
     audience,
     statusLabels,
+    ownerChoiceConfirmation: selectionSettings.settings.ownerChoiceConfirmation,
     canWrite:
       audience === "staff"
         ? await canFeature(user, "finish-selections", "update")
