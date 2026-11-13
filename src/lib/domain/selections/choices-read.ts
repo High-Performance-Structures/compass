@@ -398,6 +398,21 @@ export async function linkInProject(
   return row ?? null
 }
 
+/** How many of the owner's suggestions on the selection still wait for staff pricing. */
+export async function pendingOwnerSuggestionCount(db: Db, selectionId: string, userId: string): Promise<number> {
+  const rows = await db
+    .select({ id: projectSelectionChoices.id })
+    .from(projectSelectionChoices)
+    .where(
+      and(
+        eq(projectSelectionChoices.selectionId, selectionId),
+        eq(projectSelectionChoices.suggestedByUserId, userId),
+        eq(projectSelectionChoices.ownerPricingPending, true),
+      ),
+    )
+  return rows.length
+}
+
 /** The product link the owner added to their suggested choice (the first), or null. */
 export async function ownerChoiceLinkUrl(db: Db, projectId: string, choiceId: string, userId: string): Promise<string | null> {
   const row = await db

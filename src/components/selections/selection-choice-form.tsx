@@ -55,6 +55,8 @@ export function SelectionChoiceForm({
   const [error, setError] = React.useState<string | null>(null)
   const [pending, startTransition] = React.useTransition()
   const formId = React.useId()
+  // An owner's suggestion waiting for staff to enter its owner price.
+  const ownerPriceNeeded = choice?.ownerPricingPending === true
 
   React.useEffect(() => {
     if (!open) return
@@ -130,8 +132,17 @@ export function SelectionChoiceForm({
               <Input id={`${formId}-price`} name="price" inputMode="decimal" placeholder="0.00" defaultValue={dollars(choice?.priceCents ?? null)} />
             </div>
             <div className="grid gap-1.5">
-              <Label htmlFor={`${formId}-owner-price`}>Owner price</Label>
-              <Input id={`${formId}-owner-price`} name="ownerPrice" inputMode="decimal" placeholder="0.00" defaultValue={dollars(choice?.ownerPriceCents ?? null)} />
+              <Label htmlFor={`${formId}-owner-price`} className={ownerPriceNeeded ? "text-warning" : undefined}>
+                {ownerPriceNeeded ? "Owner price needed" : "Owner price"}
+              </Label>
+              <Input
+                id={`${formId}-owner-price`}
+                name="ownerPrice"
+                inputMode="decimal"
+                placeholder="0.00"
+                aria-describedby={ownerPriceNeeded ? `${formId}-owner-price-needed` : undefined}
+                defaultValue={dollars(choice?.ownerPriceCents ?? null)}
+              />
             </div>
             <div className="grid gap-1.5">
               <Label htmlFor={`${formId}-lead`}>Lead time (days)</Label>
@@ -139,6 +150,11 @@ export function SelectionChoiceForm({
             </div>
           </div>
           <p className="-mt-1 text-xs text-muted-foreground">Owner price is what the owner sees, including the builder fee.</p>
+          {ownerPriceNeeded && (
+            <p id={`${formId}-owner-price-needed`} role="note" className="-mt-1 text-xs font-medium text-warning">
+              The owner suggested this choice. Enter its owner price (supplier price plus markup): it stays &quot;Pending staff pricing&quot; until you do. The markup doesn&apos;t fill it in, and the product page&apos;s price is only the supplier price.
+            </p>
+          )}
           <div className="grid gap-1.5">
             <Label>Status</Label>
             <SearchableCombobox

@@ -21,6 +21,7 @@ import type { Db } from "@/lib/server/action-context"
 import { assertListFields } from "@/lib/shared/statuses"
 
 import { insertCopyStatement } from "./copy-rows"
+import { OWNER_PENDING_SUGGESTIONS_MAX } from "./owner-suggestion-rules"
 import {
   type SelectionAuthorAudience,
   type SelectionChoiceStatus,
@@ -299,7 +300,12 @@ export async function insertOwnerSuggestedChoice(db: Db, choice: ChoiceInsert, l
   assertListFields("project_selection_choices", choice, CHOICE_LISTS)
   if (link) assertListFields("project_selection_links", link, LINK_LISTS)
   const insert = db.insert(projectSelectionChoices).values(choice)
-  const undo = db.delete(projectSelectionChoices).where(and(eq(projectSelectionChoices.id, choice.id), sql`NOT ${ownerSuggestionAllowed}`))
+  // At most OWNER_PENDING_SUGGESTIONS_MAX pending suggestions per owner per selection (this one counted).
+  const overCap = sql`(SELECT count(*) FROM project_selection_choices AS mine WHERE mine.selection_id = ${choice.selectionId}
+    AND mine.suggested_by_user_id = ${choice.suggestedByUserId ?? null} AND mine.owner_pricing_pending = 1) > ${OWNER_PENDING_SUGGESTIONS_MAX}`
+  const undo = db
+    .delete(projectSelectionChoices)
+    .where(and(eq(projectSelectionChoices.id, choice.id), sql`(NOT ${ownerSuggestionAllowed} OR ${overCap})`))
   const results = await db.batch(link ? [insert, db.insert(projectSelectionLinks).values(link), undo] : [insert, undo])
   return (results.at(-1)?.meta.changes ?? 0) === 0
 }

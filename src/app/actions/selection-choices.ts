@@ -38,6 +38,7 @@ import { loadSelectionLock, loadSelectionReplacement, pickChangeBlocker, selecti
 import { APPROVED_PICK_MESSAGE, OUT_FOR_SIGNATURE_MESSAGE } from "@/lib/domain/selections/locks"
 import type { SelectionLock } from "@/lib/domain/selections/locks"
 import { loadOwnerChoiceBoard, type OwnerBoardSelection } from "@/lib/domain/selections/owner-board-read"
+import { archivePricedSuggestionTodos } from "@/lib/domain/selections/owner-suggestions"
 import { notifyPriceChangesDuringSignature } from "@/lib/domain/selections/price-change-notice"
 import { checkRoundsReady, loadRoundCards, type RoundCard } from "@/lib/domain/selections/rounds-server"
 import {
@@ -244,7 +245,10 @@ export async function saveSelectionChoice(
       // The pick of an ordered or installed selection is the product bought; a replaced selection is read-only.
       const locked = await choiceLockMessage(db, projectId, selectionId, existing.chosen)
       if (locked) return { success: false, error: locked }
-      const { status, ...fields } = value
+      const { status, ...defaulted } = value
+      // An owner's suggestion is priced only by an owner price staff type in:
+      // the markup never fills it from the (website) supplier price.
+      const fields = existing.ownerPricingPending ? { ...defaulted, ownerPriceCents: parsed.value.ownerPriceCents } : defaulted
       const expected = input.expectedStatus ?? null
       // Out for signature, only prices change (the job's managers are told below).
       const pricesOnly = await selectionOutForSignature(db, selectionId)
@@ -291,6 +295,10 @@ export async function saveSelectionChoice(
         actor: context.user,
         now,
       })
+      // Priced now: its "Price owner's suggested choice" to-do has nothing left to do.
+      if (existing.ownerPricingPending && fields.ownerPriceCents !== null) {
+        await archivePricedSuggestionTodos(db, projectId, [{ choiceId, selectionId }], now)
+      }
       refresh(projectId)
       return { success: true, data: { id: choiceId } }
     }

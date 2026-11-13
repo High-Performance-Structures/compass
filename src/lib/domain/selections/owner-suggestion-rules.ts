@@ -13,6 +13,9 @@ import { normalizeSupplierUrl } from "@/lib/selections/link-preview"
 
 export const OWNER_SUGGESTION_NAME_MAX = 200
 export const OWNER_SUGGESTION_NOTE_MAX = 4000
+/** Pending (not yet priced) suggestions one owner may have on one selection. */
+export const OWNER_PENDING_SUGGESTIONS_MAX = 5
+export const OWNER_SUGGESTION_CAP_MESSAGE = `You already have ${OWNER_PENDING_SUGGESTIONS_MAX} suggestions waiting for your builder to price on this selection. Delete one, or wait until they are priced.`
 
 export type OwnerSuggestionInput = {
   readonly name: string

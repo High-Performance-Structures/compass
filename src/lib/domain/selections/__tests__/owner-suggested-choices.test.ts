@@ -50,7 +50,7 @@ import {
   setChoicePricesFromRfq,
   updateOwnerSuggestedChoice as updateSuggestionRow,
 } from "@/lib/domain/selections/choices-store"
-import { ensureOwnerSuggestionTodo } from "@/lib/domain/selections/owner-suggestions"
+import { archivePricedSuggestionTodos, ensureOwnerSuggestionTodo } from "@/lib/domain/selections/owner-suggestions"
 import {
   ownerCanChangeSuggestion,
   parseOwnerSuggestion,
@@ -255,19 +255,31 @@ describe("owner-suggested choices", () => {
     expect(sqlite.prepare("SELECT count(*) AS n FROM project_selection_links WHERE choice_id = ?").get(plain)).toEqual({ n: 0 })
   })
 
-  it("2: staff setting the owner price (or the markup filling it) clears pending; RFQ prices with markup do too", async () => {
+  it("2: only an owner price staff type in clears pending (the markup never fills it from the website price); its to-do is archived", async () => {
     const id = await suggest()
     // Staff see who suggested it, the supplier price, and that it waits for them.
     const panel = await getSelectionChoicesPanel("p1", "tile")
     if (!panel.success) throw new Error(panel.error)
     expect(panel.data.choices.find((choice) => choice.id === id)).toMatchObject({ suggestedByOwner: true, suggestedByName: "Olive Owner", ownerPricingPending: true, priceCents: 2899 })
+    // A save with the owner price blank: the 20% markup does NOT fill it in; still pending, to-do still open.
     expect(await saveSelectionChoice("p1", "tile", id, { title: "Zellige", price: "28.99", ownerPrice: "" })).toMatchObject({ success: true })
-    // The 20% markup fills the owner price the normal way: priced.
-    expect(choiceRow(id)).toMatchObject({ owner_price_cents: 3479, owner_pricing_pending: 0, owner_priced_at: expect.any(String) })
+    expect(choiceRow(id)).toMatchObject({ price_cents: 2899, owner_price_cents: null, owner_pricing_pending: 1, owner_priced_at: null })
+    expect(todos().find((todo) => todo.title.includes("Zellige"))?.status).toBe("open")
+    // Staff type the owner price: priced, and the pricing to-do is archived.
+    expect(await saveSelectionChoice("p1", "tile", id, { title: "Zellige", price: "28.99", ownerPrice: "41.50" })).toMatchObject({ success: true })
+    expect(choiceRow(id)).toMatchObject({ owner_price_cents: 4150, owner_pricing_pending: 0, owner_priced_at: expect.any(String) })
+    expect(todos().find((todo) => todo.title.includes("Zellige"))?.status).toBe("archived")
+    // A choice staff made (not a suggestion) still gets the markup.
+    const staffMade = await saveSelectionChoice("p1", "tile", null, { title: "Staff tile", price: "10" })
+    if (!staffMade.success) throw new Error(staffMade.error)
+    expect(choiceRow(staffMade.data.id)).toMatchObject({ owner_price_cents: 1200, owner_pricing_pending: 0 })
 
     const other = await suggest("faucet", { name: "Bridge faucet" })
+    // A supplier's RFQ quote (not the website) with the markup prices it; its to-do is archived in the same flow.
     await setChoicePricesFromRfq(drizzleOverSqlite(sqlite), "p1", [{ choiceId: other, selectionId: "faucet", priceCents: 10000 }], null, NOW, 20)
     expect(choiceRow(other)).toMatchObject({ owner_price_cents: 12000, owner_pricing_pending: 0, owner_priced_at: NOW })
+    await archivePricedSuggestionTodos(drizzleOverSqlite(sqlite), "p1", [{ choiceId: other, selectionId: "faucet" }], NOW)
+    expect(todos().find((todo) => todo.title.includes("Bridge faucet"))?.status).toBe("archived")
     // An RFQ price without a markup leaves the owner price empty: still pending.
     sqlite.exec("UPDATE project_selection_choices SET owner_price_cents = NULL, owner_pricing_pending = 1, owner_priced_at = NULL WHERE id = '" + other + "'")
     await setChoicePricesFromRfq(drizzleOverSqlite(sqlite), "p1", [{ choiceId: other, selectionId: "faucet", priceCents: 10000 }], null, NOW, null)
@@ -346,6 +358,37 @@ describe("owner-suggested choices", () => {
     `)
     expect(await insertOwnerSuggestedChoice(db, row("c-signed"), null)).toBe(false)
     expect(await addOwnerSuggestedChoice("p1", "tile", { name: "X", url: "", note: "" })).toMatchObject({ success: false, error: expect.stringMatching(/approved/) })
+  })
+
+  it("2: at most five pending suggestions per owner per selection, refused in the write", async () => {
+    for (const name of ["A", "B", "C", "D", "E"]) await suggest("tile", { name, url: "" })
+    const capped = { success: false, error: "You already have 5 suggestions waiting for your builder to price on this selection. Delete one, or wait until they are priced." }
+    expect(await addOwnerSuggestedChoice("p1", "tile", { name: "F", url: "", note: "" })).toEqual(capped)
+    // The write refuses on its own (a stale count can't slip past).
+    const db = drizzleOverSqlite(sqlite)
+    const row = { id: "sixth", projectId: "p1", selectionId: "tile", title: "F", status: "proposed" as const, sortOrder: 9, suggestedByUserId: "owner", suggestedAt: NOW, ownerPricingPending: true, createdAt: NOW, updatedAt: NOW }
+    expect(await insertOwnerSuggestedChoice(db, row, null)).toBe(false)
+    expect(choiceRow("sixth")).toBeUndefined()
+    // Another owner and another selection have their own room.
+    asOwner("owner-2", "Otto Owner")
+    expect(await addOwnerSuggestedChoice("p1", "tile", { name: "Otto's", url: "", note: "" })).toMatchObject({ success: true })
+    asOwner()
+    expect(await addOwnerSuggestedChoice("p1", "faucet", { name: "F", url: "", note: "" })).toMatchObject({ success: true })
+    // Once staff price one, the owner may add another.
+    const first = sqlite.prepare("SELECT id FROM project_selection_choices WHERE title = 'A'").get() as { id: string }
+    expect(await saveSelectionChoice("p1", "tile", first.id, { title: "A", ownerPrice: "100" })).toMatchObject({ success: true })
+    expect(await addOwnerSuggestedChoice("p1", "tile", { name: "F", url: "", note: "" })).toMatchObject({ success: true })
+  })
+
+  it("3: a failed pricing to-do is logged; the owner's choice is saved and reported saved", async () => {
+    const logged = vi.spyOn(console, "error").mockImplementation(() => undefined)
+    // The to-do write fails (no operations table).
+    sqlite.exec("PRAGMA foreign_keys = OFF; DROP TABLE project_operations;")
+    const result = await addOwnerSuggestedChoice("p1", "tile", { name: "Zellige", url: "", note: "" })
+    expect(result).toMatchObject({ success: true })
+    if (result.success) expect(choiceRow(result.data.id)).toMatchObject({ title: "Zellige", owner_pricing_pending: 1 })
+    expect(logged).toHaveBeenCalledWith("Unable to create the pricing to-do for an owner's suggested choice", expect.objectContaining({ selectionId: "tile" }))
+    logged.mockRestore()
   })
 
   it("4: only owners on a published selection; a staff preview can't add one", async () => {

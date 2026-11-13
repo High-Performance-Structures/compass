@@ -17,6 +17,8 @@ export const EMPTY_LINK_PREVIEW: LinkPreview = { title: null, imageUrl: null, si
 
 const MAX_HTML_BYTES = 600_000
 const DEFAULT_TIMEOUT_MS = 5_000
+/** Redirects followed (each target checked like the first address). */
+const MAX_REDIRECTS = 3
 
 /**
  * A link a person may save: http(s) only, no credentials, and not a local or
@@ -41,7 +43,21 @@ function isPrivateHost(hostname: string): boolean {
   const host = hostname.toLowerCase().replace(/^\[|\]$/g, "")
   if (host === "localhost" || host.endsWith(".localhost") || host.endsWith(".local") || host.endsWith(".internal")) return true
   if (!host.includes(".") && !host.includes(":")) return true
-  if (host.includes(":")) return host === "::1" || host.startsWith("fc") || host.startsWith("fd") || host.startsWith("fe80")
+  // IPv6: loopback, unspecified and IPv4-compatible (::...), unique-local,
+  // link-local, and IPv4-mapped or
+  // IPv4-translated forms (::ffff:127.0.0.1, which URL rewrites to ::ffff:7f00:1),
+  // which could reach a private IPv4 host.
+  if (host.includes(":")) {
+    return (
+      host === "::1" ||
+      host.startsWith("::") ||
+      host.startsWith("fc") ||
+      host.startsWith("fd") ||
+      host.startsWith("fe80") ||
+      host.startsWith("0:0:0:0:0:ffff:") ||
+      host.startsWith("64:ff9b:")
+    )
+  }
   const parts = host.split(".").map(Number)
   if (parts.length !== 4 || parts.some((part) => !Number.isInteger(part))) return false
   const [a = 0, b = 0] = parts
@@ -122,25 +138,65 @@ export function parseLinkPreview(html: string, pageUrl: string): LinkPreview {
   }
 }
 
-/** Fetches and parses a product page; never throws. */
+/**
+ * Reads at most `maxBytes` of the body, then stops reading (the rest is
+ * never buffered, which keeps a huge page from filling the Worker's memory).
+ */
+async function readCappedText(response: Response, maxBytes: number): Promise<string> {
+  const body = response.body
+  if (!body) return ""
+  const reader = body.getReader()
+  const decoder = new TextDecoder()
+  let text = ""
+  let read = 0
+  try {
+    while (read < maxBytes) {
+      const { done, value } = await reader.read()
+      if (done) break
+      const chunk = value.byteLength > maxBytes - read ? value.subarray(0, maxBytes - read) : value
+      read += chunk.byteLength
+      text += decoder.decode(chunk, { stream: true })
+    }
+    return text + decoder.decode()
+  } finally {
+    // Stop the download; a body already finished cancels harmlessly.
+    await reader.cancel().catch(() => undefined)
+  }
+}
+
+/**
+ * Fetches and parses a product page; never throws. Redirects are followed by
+ * hand (at most MAX_REDIRECTS), and each target must pass
+ * normalizeSupplierUrl, so a public page can't bounce the request to a
+ * private host. At most MAX_HTML_BYTES of the page are read.
+ */
 export async function fetchLinkPreview(
   url: string,
   options: { readonly timeoutMs?: number; readonly fetcher?: typeof fetch } = {},
 ): Promise<LinkPreview> {
   const fetcher = options.fetcher ?? fetch
+  const signal = AbortSignal.timeout(options.timeoutMs ?? DEFAULT_TIMEOUT_MS)
   try {
-    const response = await fetcher(url, {
-      redirect: "follow",
-      signal: AbortSignal.timeout(options.timeoutMs ?? DEFAULT_TIMEOUT_MS),
-      headers: { accept: "text/html,application/xhtml+xml", "user-agent": "Mozilla/5.0 (compatible; CompassLinkPreview/1.0)" },
-    })
-    if (!response.ok) return EMPTY_LINK_PREVIEW
-    const type = response.headers.get("content-type") ?? ""
-    if (type && !type.includes("html")) return EMPTY_LINK_PREVIEW
-    // A redirect to a private host is not read.
-    if (response.url && !normalizeSupplierUrl(response.url)) return EMPTY_LINK_PREVIEW
-    const html = (await response.text()).slice(0, MAX_HTML_BYTES)
-    return parseLinkPreview(html, response.url || url)
+    let current = normalizeSupplierUrl(url)
+    for (let hop = 0; current !== null; hop += 1) {
+      const response = await fetcher(current, {
+        redirect: "manual",
+        signal,
+        headers: { accept: "text/html,application/xhtml+xml", "user-agent": "Mozilla/5.0 (compatible; CompassLinkPreview/1.0)" },
+      })
+      if (response.status >= 300 && response.status < 400) {
+        await response.body?.cancel().catch(() => undefined)
+        const location = response.headers.get("location")
+        if (!location || hop >= MAX_REDIRECTS) return EMPTY_LINK_PREVIEW
+        current = normalizeSupplierUrl(new URL(location, current).toString())
+        continue
+      }
+      if (!response.ok) return EMPTY_LINK_PREVIEW
+      const type = response.headers.get("content-type") ?? ""
+      if (type && !type.includes("html")) return EMPTY_LINK_PREVIEW
+      return parseLinkPreview(await readCappedText(response, MAX_HTML_BYTES), current)
+    }
+    return EMPTY_LINK_PREVIEW
   } catch {
     return EMPTY_LINK_PREVIEW
   }

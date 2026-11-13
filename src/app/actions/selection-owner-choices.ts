@@ -18,10 +18,15 @@ import { revalidatePath } from "next/cache"
 import { actionFailure, errorMessage, type ActionResult } from "@/lib/action-result"
 import { recordActivityEvent } from "@/lib/activity-log"
 import { selectionAccess } from "@/lib/domain/selections/access"
-import { choiceInProject, nextChoiceSortOrder, ownerChoiceLinkUrl, selectionApprovedByOwner, selectionInProject, selectionPublishedToOwner } from "@/lib/domain/selections/choices-read"
+import { choiceInProject, nextChoiceSortOrder, ownerChoiceLinkUrl, pendingOwnerSuggestionCount, selectionApprovedByOwner, selectionInProject, selectionPublishedToOwner } from "@/lib/domain/selections/choices-read"
 import { deleteOwnerSuggestedChoice as deleteSuggestionRow, insertOwnerSuggestedChoice, updateOwnerSuggestedChoice as updateSuggestionRow } from "@/lib/domain/selections/choices-store"
 import { pickChangeBlocker } from "@/lib/domain/selections/lock-read"
-import { parseOwnerSuggestion, type OwnerSuggestionInput } from "@/lib/domain/selections/owner-suggestion-rules"
+import {
+  OWNER_PENDING_SUGGESTIONS_MAX,
+  OWNER_SUGGESTION_CAP_MESSAGE,
+  parseOwnerSuggestion,
+  type OwnerSuggestionInput,
+} from "@/lib/domain/selections/owner-suggestion-rules"
 import { ensureOwnerSuggestionTodo } from "@/lib/domain/selections/owner-suggestions"
 import { readProjectSelectionSettings } from "@/lib/domain/selections/project-settings"
 import { archiveOwnerSuggestionTodo } from "@/lib/domain/selections/selection-todos"
@@ -103,6 +108,10 @@ export async function addOwnerSuggestedChoice(projectId: string, selectionId: st
     const { access } = allowed
     const blocked = await suggestionBlocker(access, projectId, selectionId)
     if (blocked) return { success: false, error: blocked }
+    // The write checks the cap again.
+    if ((await pendingOwnerSuggestionCount(access.db, selectionId, access.user.id)) >= OWNER_PENDING_SUGGESTIONS_MAX) {
+      return { success: false, error: OWNER_SUGGESTION_CAP_MESSAGE }
+    }
 
     const preview = await previewOf(parsed.value.url)
     const id = crypto.randomUUID()
@@ -134,18 +143,28 @@ export async function addOwnerSuggestedChoice(projectId: string, selectionId: st
     )
     if (!kept) {
       const why = await suggestionBlocker(access, projectId, selectionId)
-      return { success: false, error: why ?? "This selection can't take a new choice now. Refresh and try again." }
+      if (why) return { success: false, error: why }
+      if ((await pendingOwnerSuggestionCount(access.db, selectionId, access.user.id)) >= OWNER_PENDING_SUGGESTIONS_MAX) {
+        return { success: false, error: OWNER_SUGGESTION_CAP_MESSAGE }
+      }
+      return { success: false, error: "This selection can't take a new choice now. Refresh and try again." }
     }
-    await ensureOwnerSuggestionTodo(access.db, {
-      projectId,
-      organizationId: allowed.organizationId,
-      selectionId,
-      selectionName: allowed.selectionName,
-      choiceId: id,
-      choiceTitle: parsed.value.title,
-      actorId: access.user.id,
-      now,
-    })
+    // The choice is saved: a failed to-do is logged, not reported to the
+    // owner (a retry would add the choice twice). Staff still see it pending.
+    try {
+      await ensureOwnerSuggestionTodo(access.db, {
+        projectId,
+        organizationId: allowed.organizationId,
+        selectionId,
+        selectionName: allowed.selectionName,
+        choiceId: id,
+        choiceTitle: parsed.value.title,
+        actorId: access.user.id,
+        now,
+      })
+    } catch (error) {
+      console.error("Unable to create the pricing to-do for an owner's suggested choice", { projectId, selectionId, choiceId: id, error })
+    }
     if (allowed.organizationId) {
       await recordActivityEvent({
         db: access.db,
