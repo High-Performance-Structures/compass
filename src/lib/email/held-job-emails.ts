@@ -234,7 +234,7 @@ export async function postHeldJobEmail(input: {
   readonly emailId: string
   readonly projectId: string
 }): Promise<ActionResult<PostedHeldJobEmail>> {
-  const { db, organizationId, reviewer } = input
+  const { db, organizationId } = input
   const [email] = await db
     .select()
     .from(inboundEmails)
