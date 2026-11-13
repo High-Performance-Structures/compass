@@ -287,10 +287,10 @@ export async function assignProjectTasks(
 // Date moves
 // ---------------------------------------------------------------------------
 // Every write of a schedule item's start date, workdays or end date goes
-// through dateMoveStatements (a test enforces it): an item whose dates
-// actually change asks its assignees again, single (confirmation-machine.ts
-// dates_moved) and multiple (assignee-response-machine.ts reset), in the same
-// atomic batch as the new dates.
+// through dateMoveStatements (a test enforces it): unless the company turned
+// it off, an item whose dates actually change asks its assignees again,
+// single (confirmation-machine.ts dates_moved) and multiple
+// (assignee-response-machine.ts reset), in the same batch as the new dates.
 
 /** A task's new dates; `workdays` only when the duration itself was edited. */
 export type DateMove = TaskDates & { readonly workdays?: number }
@@ -298,6 +298,8 @@ export type DateMoves = ReadonlyMap<string, DateMove>
 
 /** The to-do follows its schedule item ("shift"), or the caller leaves it ("leave"). */
 type LinkedTodos = "shift" | "leave"
+/** The company's rule (Settings › Schedule confirmations; date-move-rules.ts reads it). */
+export type DateMoveRules = { readonly reaskOnDateMove: boolean }
 
 /**
  * One task's move. The re-ask statements run before the date write and only
@@ -311,21 +313,42 @@ function dateMoveStatements(
   taskId: string,
   dates: DateMove,
   now: string,
+  rules: DateMoveRules,
   linkedTodos: LinkedTodos
+): D1PreparedStatement[] {
+  return [
+    ...(linkedTodos === "shift"
+      ? [linkedTodoDateUpdateStatement(database, { scheduleTaskId: taskId, nextStartDate: dates.startDate, nextEndDate: dates.endDateCalculated, updatedAt: now })]
+      : []),
+    ...(rules.reaskOnDateMove ? reaskStatements(database, projectId, taskId, dates, now) : []),
+    database
+      .prepare(
+        `UPDATE schedule_tasks
+         SET start_date = ?, end_date_calculated = ?, workdays = COALESCE(?, workdays), updated_at = ?
+         WHERE id = ? AND project_id = ?`
+      )
+      .bind(dates.startDate, dates.endDateCalculated, dates.workdays ?? null, now, taskId, projectId),
+  ]
+}
+
+/**
+ * Asks the assignees of a task that really moved again: multi-assignee rows
+ * reset, and the single assignee once asked or answered (items that ask for
+ * nothing, or wait for an account, stay; a pending proposal for the old dates
+ * is cleared). Both run before the date write, while the stored dates differ.
+ */
+function reaskStatements(
+  database: D1Database,
+  projectId: string,
+  taskId: string,
+  dates: DateMove,
+  now: string
 ): D1PreparedStatement[] {
   const workdays = dates.workdays ?? null
   const moved = `(start_date IS NOT ? OR end_date_calculated IS NOT ? OR workdays IS NOT COALESCE(?, workdays))`
   const movedValues = [dates.startDate, dates.endDateCalculated, workdays]
   const confirmation = confirmationMachine.transitions.dates_moved
   return [
-    ...(linkedTodos === "shift"
-      ? [linkedTodoDateUpdateStatement(database, {
-          scheduleTaskId: taskId,
-          nextStartDate: dates.startDate,
-          nextEndDate: dates.endDateCalculated,
-          updatedAt: now,
-        })]
-      : []),
     database
       .prepare(
         `UPDATE schedule_task_assignees
@@ -338,22 +361,10 @@ function dateMoveStatements(
            AND EXISTS (SELECT 1 FROM schedule_tasks WHERE id = ? AND project_id = ? AND ${moved})`
       )
       .bind(
-        dates.startDate,
-        workdays,
-        dates.endDateCalculated,
-        RESET.responseStatus,
-        RESET.dateResponseStatus,
-        RESET.durationResponseStatus,
-        now,
-        now,
-        taskId,
-        taskId,
-        projectId,
-        ...movedValues
+        dates.startDate, workdays, dates.endDateCalculated,
+        RESET.responseStatus, RESET.dateResponseStatus, RESET.durationResponseStatus,
+        now, now, taskId, taskId, projectId, ...movedValues
       ),
-    // The single assignee: asked again once the account was asked or had
-    // answered; items that ask for nothing, or wait for an account, stay. A
-    // pending proposal is for the old dates and is cleared.
     database
       .prepare(
         `UPDATE schedule_tasks
@@ -367,13 +378,6 @@ function dateMoveStatements(
            AND ${moved}`
       )
       .bind(confirmation.to, now, now, taskId, projectId, ...confirmation.from, ...movedValues),
-    database
-      .prepare(
-        `UPDATE schedule_tasks
-         SET start_date = ?, end_date_calculated = ?, workdays = COALESCE(?, workdays), updated_at = ?
-         WHERE id = ? AND project_id = ?`
-      )
-      .bind(dates.startDate, dates.endDateCalculated, workdays, now, taskId, projectId),
   ]
 }
 
@@ -387,14 +391,15 @@ export async function runWithDateUpdates(
   projectId: string,
   updates: DateMoves,
   updatedAt: string,
-  failureMessage: string
+  failureMessage: string,
+  rules: DateMoveRules
 ): Promise<void> {
   await runD1Batch(
     database,
     [
       leading,
       ...[...updates].flatMap(([taskId, dates]) =>
-        dateMoveStatements(database, projectId, taskId, dates, updatedAt, "shift")
+        dateMoveStatements(database, projectId, taskId, dates, updatedAt, rules, "shift")
       ),
     ],
     failureMessage
@@ -410,11 +415,12 @@ export async function persistScheduleDateUpdates(
   projectId: string,
   updates: DateMoves,
   updatedAt: string,
+  rules: DateMoveRules,
   linkedTodos: LinkedTodos = "shift"
 ): Promise<void> {
   for (const group of itemGroups([...updates])) {
     const statements = group.flatMap(([taskId, dates]) =>
-      dateMoveStatements(database, projectId, taskId, dates, updatedAt, linkedTodos)
+      dateMoveStatements(database, projectId, taskId, dates, updatedAt, rules, linkedTodos)
     )
     await runD1Batch(database, statements, "Schedule date update batch failed")
   }

@@ -83,6 +83,7 @@ async function dailyLogFollowUpRules(db: Db, organizationId: string): Promise<Da
     todoTypes: settings.todoTypes,
     workedMovesToInProgress: settings.workedMovesToInProgress,
     todosCanComplete: settings.todosCanComplete,
+    completeClearsBlock: settings.completeClearsBlock,
     carryBlocked: settings.carryBlocked,
     todoCostCodes: settings.todoCostCodes,
     tickAddsLine: settings.todoCostCodes && settings.tickAddsLine,
@@ -402,9 +403,11 @@ export async function applyDailyLogFollowUps(
       status = next
     }
     const completedFrom = status
-    const signedOff = update.completed === true && rules.todosCanComplete
     // A Completed sign-off on a blocked to-do also clears the block (most
-    // likely forgotten): history says so before it says completed.
+    // likely forgotten): history says so before it says completed. A company
+    // can turn that off (Settings), and the to-do then stays blocked.
+    const keepsBlock = rules.completeClearsBlock === false && automaticTodoStatusAfter("unblock", status) !== null
+    const signedOff = update.completed === true && rules.todosCanComplete && !keepsBlock
     const clearedBySignOff = signedOff ? step("unblock") : null
     if (clearedBySignOff !== null) {
       history.push({ organizationId, projectId, todoId: todo.id, kind: "unblocked", dailyLogId, fromStatus: status, toStatus: clearedBySignOff, note: "Cleared by the Completed sign-off", actorId: userId, createdAt: stamp() })

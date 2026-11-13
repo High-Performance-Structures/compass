@@ -166,6 +166,7 @@ describe("date moves ask again", () => {
   const NOW = "2026-11-12T20:00:00.000Z"
   const MOVED = { startDate: "2026-09-21", endDateCalculated: "2026-09-23" }
   const SAME = { startDate: "2026-09-14", endDateCalculated: "2026-09-16" }
+  const REASK = { reaskOnDateMove: true }
 
   function scheduled(rows: readonly (readonly [string, string, number, string | null])[]) {
     const sqlite = migratedSqlite()
@@ -202,7 +203,7 @@ describe("date moves ask again", () => {
     ] as const
     const { database, confirmations } = scheduled(rows)
     const moves = new Map(rows.map(([id]) => [id, id === "unmoved" ? SAME : MOVED]))
-    await persistScheduleDateUpdates(database, "p1", moves, "t2")
+    await persistScheduleDateUpdates(database, "p1", moves, "t2", REASK)
 
     expect(confirmations()).toEqual([
       reasked("confirmed"),
@@ -221,7 +222,7 @@ describe("date moves ask again", () => {
     await persistScheduleDateUpdates(database, "p1", new Map([
       ["longer", { startDate: "2026-09-14", endDateCalculated: "2026-09-17", workdays: 4 }],
       ["same", { ...SAME, workdays: 3 }],
-    ]), "t2")
+    ]), "t2", REASK)
     expect(confirmations()).toEqual([reasked("longer", "2026-09-14", 4), kept("same", "confirmed", "2026-09-14")])
   })
 
@@ -234,7 +235,7 @@ describe("date moves ask again", () => {
         VALUES (?, ?, 'person-1', '2026-09-14', 3, '2026-09-16', 'confirmed', 'confirmed', 'confirmed', 's0', 'a0', '${NOW}', '${NOW}')`)
         .run(`a-${task}`, task)
     }
-    await persistScheduleDateUpdates(database, "p1", new Map([["moved", MOVED], ["unmoved", SAME]]), "t2")
+    await persistScheduleDateUpdates(database, "p1", new Map([["moved", MOVED], ["unmoved", SAME]]), "t2", REASK)
     expect(sqlite.prepare("SELECT schedule_task_id, source_start_date, response_status, responded_at, assigned_at FROM schedule_task_assignees ORDER BY rowid").all()).toEqual([
       { schedule_task_id: "moved", source_start_date: "2026-09-21", response_status: "pending", responded_at: null, assigned_at: "t2" },
       { schedule_task_id: "unmoved", source_start_date: "2026-09-14", response_status: "confirmed", responded_at: "s0", assigned_at: "a0" },
@@ -244,8 +245,19 @@ describe("date moves ask again", () => {
   it("asks again when a dependency or calendar change moves the dates", async () => {
     const { database, confirmations } = scheduled([["confirmed", "confirmed", 1, "u1"]])
     const leading = database.prepare("UPDATE projects SET name = name WHERE id = 'p1'")
-    await runWithDateUpdates(database, leading, "p1", new Map([["confirmed", MOVED]]), "t2", "failed")
+    await runWithDateUpdates(database, leading, "p1", new Map([["confirmed", MOVED]]), "t2", "failed", REASK)
     expect(confirmations()).toEqual([reasked("confirmed")])
+  })
+
+  it("keeps answers on moved dates when the company turned asking again off", async () => {
+    const { sqlite, database, confirmations } = scheduled([["confirmed", "confirmed", 1, "u1"]])
+    sqlite.exec("PRAGMA foreign_keys = OFF")
+    sqlite.exec(`INSERT INTO schedule_task_assignees (id, schedule_task_id, participant_id, source_start_date, source_workdays,
+        source_end_date, response_status, date_response_status, duration_response_status, responded_at, assigned_at, created_at, updated_at)
+      VALUES ('a1', 'confirmed', 'person-1', '2026-09-14', 3, '2026-09-16', 'confirmed', 'confirmed', 'confirmed', 's0', 'a0', '${NOW}', '${NOW}')`)
+    await persistScheduleDateUpdates(database, "p1", new Map([["confirmed", MOVED]]), "t2", { reaskOnDateMove: false })
+    expect(confirmations()).toEqual([kept("confirmed", "confirmed")])
+    expect(sqlite.prepare("SELECT response_status FROM schedule_task_assignees").get()).toEqual({ response_status: "confirmed" })
   })
 })
 

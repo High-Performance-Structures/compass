@@ -25,6 +25,7 @@ import {
   recalcCriticalPath,
   runWithDateUpdates,
 } from "@/lib/domain/schedule/store"
+import { scheduleDateMoveRules } from "@/lib/domain/schedule/date-move-rules"
 import { isScheduleShiftReasonRequired } from "@/lib/schedule/publication-history"
 import { recordScheduleShift } from "@/lib/schedule/record-shift"
 import { resolveScheduleShiftReason, summarizeScheduleShift } from "@/lib/schedule/shift-tracking"
@@ -93,7 +94,7 @@ export async function createDependency(data: {
       updatedSchedule.exceptions
     )
     const shiftSummary = summarizeScheduleShift(schedule.tasks, updatedTasks)
-    await persistScheduleDateUpdates(env.DB, data.projectId, updatedTasks, new Date().toISOString())
+    await persistScheduleDateUpdates(env.DB, data.projectId, updatedTasks, new Date().toISOString(), await scheduleDateMoveRules(db, orgId))
     if (shiftReasonResult?.success) {
       await recordScheduleShift({
         db,
@@ -195,7 +196,8 @@ export async function updateDependency(data: {
       data.projectId,
       recalculated,
       new Date().toISOString(),
-      "Dependency update batch failed"
+      "Dependency update batch failed",
+      await scheduleDateMoveRules(db, orgId)
     )
     if (shiftReasonResult?.success) {
       await recordScheduleShift({

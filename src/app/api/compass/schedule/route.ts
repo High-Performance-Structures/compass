@@ -33,6 +33,7 @@ import {
   updateTask,
   type DateMove,
 } from "@/lib/domain/schedule/store"
+import { scheduleDateMoveRules } from "@/lib/domain/schedule/date-move-rules"
 import { calculateEndDate } from "@/lib/schedule/business-days"
 import { normalizeScheduleProgress } from "@/lib/schedule/progress"
 import type { TaskStatus } from "@/lib/schedule/types"
@@ -204,7 +205,7 @@ async function updateTaskAction(db: Db, database: D1Database, orgId: string, bod
       exceptions
     ))
     updates.set(taskId, { startDate, endDateCalculated: endDate, workdays })
-    await persistScheduleDateUpdates(database, task.projectId, updates, new Date().toISOString(), "leave")
+    await persistScheduleDateUpdates(database, task.projectId, updates, new Date().toISOString(), await scheduleDateMoveRules(db, orgId), "leave")
   }
 
   if (status) {
@@ -265,7 +266,7 @@ async function createDependency(db: Db, database: D1Database, orgId: string, bod
   const exceptions = await loadProjectExceptions(db, projectId)
   const { tasks } = await projectSchedule(db, projectId)
   const updates = propagateFrom(predecessorId, tasks, [...existingDeps, dependency], exceptions)
-  await persistScheduleDateUpdates(database, projectId, updates, new Date().toISOString(), "leave")
+  await persistScheduleDateUpdates(database, projectId, updates, new Date().toISOString(), await scheduleDateMoveRules(db, orgId), "leave")
 
   await recalcCriticalPath(db, projectId)
   revalidateSchedule(projectId)

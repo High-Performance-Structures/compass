@@ -199,6 +199,19 @@ describe("to-do status writes", () => {
     })
   })
 
+  it("a company can keep blocked to-dos blocked on a Completed sign-off", async () => {
+    sqlite.exec(`INSERT INTO organization_feature_settings (organization_id, feature_key, value, updated_at)
+      VALUES ('org-1', 'daily-log-followups', '{"completeClearsBlock":false}', '${NOW}')`)
+    await apply(await checkedLog([
+      { todoId: "t1", worked: false, completed: true, blocked: null },
+      { todoId: "t2", worked: false, completed: true, blocked: null },
+    ]))
+
+    expect(statusOf("t1")).toEqual({ status: "complete" })
+    expect(statusOf("t2")).toEqual({ status: "blocked" })
+    expect(events("t2")).toEqual([{ kind: "worked", from_status: "blocked", to_status: "blocked" }])
+  })
+
   it("a sign-off on a blocked to-do staff changed meanwhile writes neither the clear nor the completion", async () => {
     const checked = await checkedLog([{ todoId: "t2", worked: false, completed: true, blocked: null }])
     sqlite.exec("UPDATE project_operations SET status = 'archived' WHERE id = 't2'")

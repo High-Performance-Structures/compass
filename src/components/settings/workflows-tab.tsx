@@ -40,6 +40,7 @@ import { SageAddRequestSettingsSection } from "@/components/settings/sage-add-re
 import { SelectionSettingsSection } from "@/components/settings/selection-settings-section"
 import { SelectionStatusNamesSection } from "@/components/settings/selection-status-names-section"
 import { ScheduleConflictSettingsSection } from "@/components/settings/schedule-conflict-settings-section"
+import { ScheduleConfirmationSettingsSection } from "@/components/settings/schedule-confirmation-settings-section"
 import { FieldCostCodeEditor } from "@/components/settings/field-cost-code-editor"
 import { FieldAppSettingsSection } from "@/components/settings/field-app-settings-section"
 import { DailyLogSettingsSection } from "@/components/settings/daily-log-settings-section"
@@ -233,6 +234,7 @@ const WORKFLOW_AREAS = [
   { value: "daily-logs", label: "Daily logs", description: "Required fields, cost codes, to-dos and client contact on logs, and missing log reminders." },
   { value: "project-timeline", label: "Project timeline", description: "What each job's Overview shows under What's happening." },
   { value: "schedule-conflicts", label: "Schedule conflicts", description: "Crews or companies never flagged as double-booked, and other spellings of the same name." },
+  { value: "schedule-confirmations", label: "Schedule confirmations", description: "Whether moving an item's dates asks its subs and vendors to confirm the new dates." },
   { value: "estimates", label: "Estimates", description: "One contract estimate per job, or several at once, by department." },
   { value: "trade-docs", label: "Trade docs", description: "What each kind of vendor must have on file, when documents expire, the certificate check, and bills while documents are missing." },
   { value: "contract-deposits", label: "Contract deposits", description: "Whether received deposits are applied to new pay applications automatically." },
@@ -350,6 +352,8 @@ function WorkflowAreaSection({ area }: { readonly area: WorkflowArea }): React.R
       return <ChangeOrderAcceptanceSettingsSection />
     case "schedule-conflicts":
       return <ScheduleConflictSettingsSection />
+    case "schedule-confirmations":
+      return <ScheduleConfirmationSettingsSection />
     case "project-timeline":
       return <ProjectTimelineSettingsSection />
     case "field-app":

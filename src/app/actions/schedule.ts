@@ -50,6 +50,7 @@ import {
   taskInsertQuery,
   taskUpdateQuery,
 } from "@/lib/domain/schedule/store"
+import { scheduleDateMoveRules } from "@/lib/domain/schedule/date-move-rules"
 import { updateProjects } from "@/lib/domain/project/store"
 import { loadScheduleTemplateItemImport } from "@/lib/domain/schedule/template-items"
 import { operationInsertQuery } from "@/lib/domain/operations/store"
@@ -630,7 +631,7 @@ export async function updateTask(
     } else {
       await db.batch([taskUpdate, ...peopleQueries])
     }
-    await persistScheduleDateUpdates(env.DB, task.projectId, dateUpdates, now)
+    await persistScheduleDateUpdates(env.DB, task.projectId, dateUpdates, now, await scheduleDateMoveRules(db, orgId))
     if (shiftReasonResult?.success) {
       await recordScheduleShift({
         db,
