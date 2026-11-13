@@ -30,8 +30,9 @@ import { chunkD1InsertRows, isBatchGuardFailure } from "@/lib/d1-query"
 import { budgetLineProgress, payApplicationLineEntry, retainageAtPercent, retainageAtRate } from "@/lib/domain/budget/rules"
 import { insertOperations, operationDeleteQuery } from "@/lib/domain/operations/store"
 import { readListedBills } from "@/lib/domain/financials/receivables"
+import { formatCents } from "@/lib/format"
 import { returnPayApplicationToDraft, sendPayApplicationForReview } from "@/lib/domain/budget/pay-application-review"
-import { listedBillFor } from "@/lib/domain/financials/rules"
+import { listedBillFor, type BillRef } from "@/lib/domain/financials/rules"
 import {
   deleteBudgetApplicationsStatement,
   deleteBudgetLinesStatement,
@@ -106,6 +107,8 @@ export type ProjectFinancialWorkflowItem = {
   readonly importedFrom: RecordSource | null
   /** The received-payments item this imported record is a copy of; the queue lists it there, not here. */
   readonly shownUnder: string | null
+  /** When the copy's amount differs from the listed bill's: what the import recorded. */
+  readonly shownUnderNote: string | null
   readonly updatedAt: string
 }
 
@@ -390,6 +393,23 @@ function revalidateFinancialPaths(projectId: string): void {
   revalidatePath("/dashboard")
 }
 
+/**
+ * Where an imported copy of a bill is listed with received payments, and
+ * what the import recorded when its amount differs (another stage of the bill).
+ */
+function shownUnder(
+  row: typeof projectOperations.$inferSelect,
+  listedBills: readonly (BillRef & { readonly label: string })[]
+): Pick<ProjectFinancialWorkflowItem, "shownUnder" | "shownUnderNote"> {
+  const match = listedBillFor(row, listedBills)
+  if (!match) return { shownUnder: null, shownUnderNote: null }
+  const source = row.sourceSystem.startsWith("buildertrend") ? "Buildertrend" : row.sourceSystem.startsWith("sage") ? "Sage" : "The Drive import"
+  return {
+    shownUnder: match.bill.label,
+    shownUnderNote: match.recordedCents === match.bill.cents ? null : `${match.bill.label}: ${source} recorded ${formatCents(match.recordedCents)}`,
+  }
+}
+
 export async function getProjectFinancialWorkflowItems(
   projectId: string
 ): Promise<readonly ProjectFinancialWorkflowItem[]> {
@@ -486,8 +506,7 @@ export async function getProjectFinancialWorkflowItems(
       readOnly: isReadOnlyImportedFinancial,
       sourceLabel: row.sourceSystem === "sage" ? "Sage / Square" : null,
       importedFrom: row.sourceSystem.startsWith("buildertrend") ? "buildertrend" : null,
-      // An imported copy of a bill listed with received payments (the queue shows it there).
-      shownUnder: listedBillFor(row, listedBills)?.label ?? null,
+      ...shownUnder(row, listedBills),
       updatedAt: row.updatedAt,
     }
   })

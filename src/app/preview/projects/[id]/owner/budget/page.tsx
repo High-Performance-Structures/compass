@@ -14,7 +14,7 @@ import {
 
 import { getProjectDepositRequests } from "@/app/actions/project-contract-deposits"
 import { getOwnerPayApplicationBalances } from "@/app/actions/received-payments"
-import { BUDGET_PROJECTION_SOURCE } from "@/lib/domain/financials/rules"
+import { ownerPayApplicationHistory } from "@/lib/domain/financials/rules"
 import { formatCents } from "@/lib/format"
 import type { DepositRequestSummary } from "@/lib/deposits/deposit-requests"
 import { printPreviewHref } from "@/lib/print/print-documents"
@@ -112,7 +112,7 @@ export default async function OwnerBudgetPage({
     projectNumber: preview.project.projectNumber,
   })
   // The contract budget is stored like a pay application but isn't one.
-  const payApplications = budget.applications.filter((application) => application.sourceSystem !== BUDGET_PROJECTION_SOURCE)
+  const payApplications = ownerPayApplicationHistory(budget.applications)
   const reconciliation = budget.reconciliation
   const { reconciliationRequired } = reconciliation
   const messageShortcut = projectAudienceMessageShortcut({

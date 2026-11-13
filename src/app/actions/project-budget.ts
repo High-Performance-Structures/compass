@@ -3,7 +3,7 @@
 import { requireProjectAudienceReadUser } from "@/lib/project-audience-request-server"
 
 import { and, asc, desc, eq, ne, notInArray, sql } from "drizzle-orm"
-import { ownerPayApplicationsOnce } from "@/lib/domain/financials/rules"
+import { OWNER_HIDDEN_APPLICATION_STATUSES, ownerPayApplicationsOnce } from "@/lib/domain/financials/rules"
 
 import { getDb } from "@/db"
 import {
@@ -593,7 +593,7 @@ export async function getProjectBudgetSummary(
                 // A replaced contract budget revision isn't billing history (owners
                 // saw every old revision as another pay application), nor is a
                 // voided or replaced imported draw.
-                notInArray(projectBudgetApplications.status, ["building", "budget_superseded", "void", "superseded"])
+                notInArray(projectBudgetApplications.status, [...OWNER_HIDDEN_APPLICATION_STATUSES])
               )
             )
             .orderBy(

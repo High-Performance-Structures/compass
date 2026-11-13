@@ -174,7 +174,10 @@ export async function readProjectReceivables(
 export async function readListedBills(db: Db, scope: ProjectReceivableScope): Promise<readonly (BillRef & { readonly label: string })[]> {
   const [rows, drawSources, invoiceSources] = await Promise.all([
     listedReceivables(db, scope, {}),
-    db.select({ id: projectBudgetApplications.id, source: projectBudgetApplications.sourceRecordId }).from(projectBudgetApplications).where(eq(projectBudgetApplications.projectId, scope.projectId)),
+    db
+      .select({ id: projectBudgetApplications.id, source: projectBudgetApplications.sourceRecordId, earned: projectBudgetApplications.totalEarnedLessRetainage })
+      .from(projectBudgetApplications)
+      .where(eq(projectBudgetApplications.projectId, scope.projectId)),
     db
       .select({ id: invoices.id, source: invoices.sourceExternalId })
       .from(invoices)
@@ -182,8 +185,13 @@ export async function readListedBills(db: Db, scope: ProjectReceivableScope): Pr
   ])
   // A cutover row may name the bill by its source record (a Drive file, a Buildertrend id).
   const sourceIds = new Map([...drawSources, ...invoiceSources].map((row) => [row.id, row.source]))
+  // An imported G702 copy may carry the draw's total earned instead of its amount due.
+  const earnedCents = new Map(drawSources.map((row) => [row.id, storedDollarsToCents(row.earned)]))
   // The list as received payments shows it (each bill once), so the label names a row staff can find.
-  return receivablesOncePerBill(rows).map(({ row: { bill, label } }) => ({ ...bill, ids: [...bill.ids, ...bill.ids.map((id) => (id ? sourceIds.get(id) ?? null : null))], label }))
+  return receivablesOncePerBill(rows).map(({ row: { bill, label } }) => {
+    const earned = bill.kind === "draw" ? bill.ids.flatMap((id) => (id && earnedCents.has(id) ? [earnedCents.get(id) ?? 0] : [])) : []
+    return { ...bill, ids: [...bill.ids, ...bill.ids.map((id) => (id ? sourceIds.get(id) ?? null : null))], otherCents: earned, label }
+  })
 }
 
 type ListedReceivableRow = {

@@ -131,6 +131,7 @@ export function ProjectFinancialWorkspace({
   // Imported copies of bills listed under Received payments show there, once.
   const queueItems = items.filter((item) => item.shownUnder === null)
   const shownElsewhere = items.length - queueItems.length
+  const differingCopies = items.flatMap((item) => (item.shownUnderNote ? [item.shownUnderNote] : []))
   const router = useRouter()
   const [isPending, startTransition] = useTransition()
   const [message, setMessage] = useState<string | null>(null)
@@ -353,6 +354,7 @@ export function ProjectFinancialWorkspace({
         {shownElsewhere > 0 && (
           <p className="px-4 pt-3 text-xs text-muted-foreground">
             {shownElsewhere === 1 ? "1 imported bill is" : `${shownElsewhere} imported bills are`} shown under Received payments.
+            {differingCopies.length > 0 && ` Amounts differ: ${differingCopies.join("; ")}.`}
           </p>
         )}
 

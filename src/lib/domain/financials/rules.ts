@@ -628,6 +628,23 @@ export type BillRef = {
   readonly ids: readonly (string | null)[]
   readonly number: string | null
   readonly cents: number
+  /**
+   * Other amounts the same bill is known by: a draw's total earned less
+   * retainage, which some imported G702 copies carry instead of the amount due.
+   */
+  readonly otherCents?: readonly number[]
+}
+
+function amountsAgree(left: BillRef, right: BillRef): boolean {
+  return left.cents === right.cents || (left.otherCents ?? []).includes(right.cents) || (right.otherCents ?? []).includes(left.cents)
+}
+
+/**
+ * A number that names one bill on its own (it carries the job's prefix, like
+ * "O-170-003"), not a bare sequence like "3".
+ */
+function isJobSpecificNumber(value: string): boolean {
+  return /\D/.test(value.trim()) && /\d/.test(value)
 }
 
 function invoiceNumberKey(value: string): string {
@@ -642,7 +659,7 @@ export function billSequence(value: string): string | null {
 
 /** Whether two billed records are the same bill (same cents, and a shared id or a matching number). */
 function sameBill(left: BillRef, right: BillRef): boolean {
-  if (left.cents !== right.cents) return false
+  if (!amountsAgree(left, right)) return false
   const ids = new Set(left.ids.flatMap((id) => (id?.trim() ? [id.trim()] : [])))
   if (right.ids.some((id) => Boolean(id?.trim()) && ids.has(id?.trim() ?? ""))) return true
   if (!left.number?.trim() || !right.number?.trim()) return false
@@ -674,16 +691,22 @@ function workflowCandidates(row: WorkflowRow): readonly BillKind[] {
  * The listed bill an imported workflow invoice or pay request is a copy of,
  * or null. The workflow list leaves the copy out and says where it is.
  */
-export function listedBillFor<T extends BillRef>(row: WorkflowRow, listed: readonly T[]): T | null {
+export function listedBillFor<T extends BillRef>(row: WorkflowRow, listed: readonly T[]): { readonly bill: T; readonly recordedCents: number } | null {
   const kinds = workflowCandidates(row)
   if (kinds.length === 0 || row.amount === null) return null
   const cents = storedDollarsToCents(row.amount)
-  return (
-    listed.find((bill) =>
-      kinds.includes(bill.kind) &&
-      sameBill(bill, { kind: bill.kind, ids: [row.sourceRecordId], number: row.sourceRecordNumber, cents })
-    ) ?? null
+  const same = listed.find((bill) =>
+    kinds.includes(bill.kind) &&
+    sameBill(bill, { kind: bill.kind, ids: [row.sourceRecordId], number: row.sourceRecordNumber, cents })
   )
+  if (same) return { bill: same, recordedCents: cents }
+  // An imported owner invoice whose number names one bill on the job (O-170-003) is
+  // that invoice even when the import recorded another stage of it; the difference
+  // is shown, not hidden.
+  const number = row.sourceRecordNumber?.trim() ?? ""
+  if (row.sourceRecordType !== "owner_invoice" || !isJobSpecificNumber(number)) return null
+  const byNumber = listed.find((bill) => bill.kind === "invoice" && bill.number !== null && invoiceNumberKey(bill.number) === invoiceNumberKey(number))
+  return byNumber ? { bill: byNumber, recordedCents: cents } : null
 }
 
 /**
@@ -744,3 +767,20 @@ export function receivablesOncePerBill<T extends ListedReceivable>(rows: readonl
   }
   return rows.filter((row) => !left.has(row)).map((row) => ({ row, sameBillAs: sameBillAs.get(row) ?? null }))
 }
+
+/** Statuses owners never see as billing: a draw still being written, a replaced budget revision, a voided or replaced import. */
+export const OWNER_HIDDEN_APPLICATION_STATUSES = ["building", "budget_superseded", "void", "superseded"] as const
+
+/**
+ * The owner's pay application history: no contract budget (stored like a pay
+ * application but not one), nothing in OWNER_HIDDEN_APPLICATION_STATUSES, and
+ * each bill once (ownerPayApplicationsOnce).
+ */
+export function ownerPayApplicationHistory<
+  T extends { readonly sourceSystem: string; readonly status: string; readonly applicationNumber: string; readonly currentPaymentDue: number },
+>(rows: readonly T[]): T[] {
+  return ownerPayApplicationsOnce(rows.filter((row) => !isListValue(OWNER_HIDDEN_APPLICATION_STATUSES, row.status))).filter(
+    (row) => row.sourceSystem !== BUDGET_PROJECTION_SOURCE
+  )
+}
+
