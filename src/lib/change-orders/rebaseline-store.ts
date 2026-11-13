@@ -28,7 +28,6 @@ import {
 } from "@/lib/domain/financials/store"
 import { contractEstimateConditions } from "@/lib/estimates/estimate-family"
 import { rebuildProjectContractBudget } from "@/lib/financials/contract-budget-store"
-import { afterChangeOrdersExecuted } from "@/lib/change-orders/executed-follow-ups"
 import { estimateOption } from "@/lib/domain/estimates/change-order-rules"
 import type { ProjectChangeOrderEstimateOption } from "@/lib/change-orders/types"
 
@@ -300,7 +299,6 @@ export async function executeBaselineReplacement(
   const [head, ...tail] = statements
   if (!head) return { success: false, error: "The replacement could not be prepared." }
   await db.batch([head, ...tail])
-  await afterChangeOrdersExecuted(db, { projectId, changeOrderIds: [changeOrder.id], actorId: actor.id })
   return { success: true }
 }
 

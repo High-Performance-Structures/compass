@@ -6,9 +6,10 @@
  * enough that the owner should choose soon. Never includes supplier names
  * or supplier prices. Callers resolve owner access first.
  */
-import { and, asc, eq, isNotNull } from "drizzle-orm"
+import { and, asc, eq, inArray, isNotNull } from "drizzle-orm"
 
 import { projectFinishSelections, projects } from "@/db/schema"
+import { projectSelectionRoundSignatureItems, projectSelectionRoundSignatures } from "@/db/schema-selection-choices"
 import { projectSelectionDecisions } from "@/db/schema-selection-decisions"
 import { chunkD1Values } from "@/lib/d1-query"
 import type { Db } from "@/lib/server/action-context"
@@ -30,6 +31,12 @@ export type OwnerBoardSelection = {
   readonly signed: boolean
   /** The name of the selection that replaced this one (it is kept as it was), or null. */
   readonly replacedByName: string | null
+  /**
+   * Why the owner can't change the pick here (the same rules as the pick
+   * write): "ordered", "installed", "approved" or "out for signature"; null
+   * when they can.
+   */
+  readonly pickFixed: "ordered" | "installed" | "approved" | "out for signature" | null
   readonly panel: SelectionChoicesPanel
   /** Names of the selections each choice opens, by choice id. */
   readonly followUpNames: Readonly<Record<string, readonly string[]>>
@@ -47,6 +54,7 @@ export async function loadOwnerChoiceBoard(db: Db, projectId: string, viewerUser
       dueDate: projectSelectionDecisions.decisionDueDate,
       approvedAt: projectSelectionDecisions.approvedAt,
       status: projectFinishSelections.status,
+      ownerApproved: projectFinishSelections.ownerApproved,
       roundKey: projectFinishSelections.roundKey,
     })
     .from(projectFinishSelections)
@@ -63,6 +71,21 @@ export async function loadOwnerChoiceBoard(db: Db, projectId: string, viewerUser
     .select({ name: projectFinishSelections.name, replaces: projectFinishSelections.replacesSelectionId })
     .from(projectFinishSelections)
     .where(and(eq(projectFinishSelections.projectId, projectId), isNotNull(projectFinishSelections.replacesSelectionId)))
+  const outForSignature = new Set(
+    (
+      await Promise.all(
+        chunkD1Values(published.map((row) => row.id)).map((ids) =>
+          db
+            .select({ id: projectSelectionRoundSignatureItems.selectionId })
+            .from(projectSelectionRoundSignatureItems)
+            .innerJoin(projectSelectionRoundSignatures, eq(projectSelectionRoundSignatures.id, projectSelectionRoundSignatureItems.signatureId))
+            .where(and(inArray(projectSelectionRoundSignatureItems.selectionId, ids), inArray(projectSelectionRoundSignatures.status, ["preparing", "sent"]))),
+        ),
+      )
+    )
+      .flat()
+      .map((row) => row.id),
+  )
   const replacedBy = new Map(replacements.flatMap((row) => (row.replaces ? [[row.replaces, row.name] as const] : [])))
   const project = await db.select({ organizationId: projects.organizationId }).from(projects).where(eq(projects.id, projectId)).get()
   const leadTimes: LeadTimeContext | null = project?.organizationId
@@ -80,6 +103,14 @@ export async function loadOwnerChoiceBoard(db: Db, projectId: string, viewerUser
       approved: Boolean(row.approvedAt),
       signed: panel.choices.some((choice) => choice.chosen && signed.get(row.id) === choice.id),
       replacedByName: replacedBy.get(row.id) ?? null,
+      pickFixed:
+        row.status === "ordered" || row.status === "installed"
+          ? row.status
+          : row.ownerApproved
+            ? "approved"
+            : outForSignature.has(row.id)
+              ? "out for signature"
+              : null,
       panel,
       // Only follow-ups already published to the owner are named.
       followUpNames: Object.fromEntries(

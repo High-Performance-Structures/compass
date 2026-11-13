@@ -41,27 +41,25 @@ vi.mock("@/lib/permission-enforcement", () => ({ requireFeaturePermission: vi.fn
 vi.mock("@/app/actions/project-audience-preview", () => ({ getProjectAudiencePreview: vi.fn(async () => ({ rfqs: [], operations: [] })) }))
 
 import { deleteProjectSelection, updateProjectSelection } from "@/app/actions/project-selections"
-import { getSelectionDetail, getSelectionSheet, saveSelectionChoice, setSelectionChoiceChosen } from "@/app/actions/selection-choices"
+import { deleteSelectionChoice, getSelectionDetail, getSelectionSheet, saveSelectionChoice, setSelectionChoiceChosen } from "@/app/actions/selection-choices"
 import { publishSelectionDecision } from "@/app/actions/selection-decisions"
 import { getSelectionWorkspace } from "@/app/actions/selection-decisions-read"
-import { createReplacementChangeOrder, ownerChangedSelectionAfterPurchase, replaceInstalledSelection } from "@/app/actions/selection-replacements"
+import { ownerChangedSelectionAfterApproval, ownerChangedSelectionAfterPurchase, replaceInstalledSelection } from "@/app/actions/selection-replacements"
 import { sendRoundForSignature } from "@/app/actions/selection-round-signing"
 import { assignSelectionRound } from "@/app/actions/selection-templates"
 import { dailyLogFollowUpSetup } from "@/lib/daily-logs/log-followups-server"
 import { setSelectionChoiceChosen as setChosenRow, updateSelectionChoice } from "@/lib/domain/selections/choices-store"
-import { applyExecutedReplacementChangeOrder } from "@/lib/domain/selections/replacement-signing"
 import { supplierCouldntFillSelection } from "@/app/actions/selection-replacements"
 import { updateProjectSelectionStatus } from "@/app/actions/project-selections"
 import { advanceSelectionsForPurchaseOrder } from "@/lib/domain/selections/status-advance"
 import { getRoundSigning } from "@/app/actions/selection-round-signing"
 import { getOwnerChoiceBoard } from "@/app/actions/selection-choices"
 import { addSelectionLink } from "@/app/actions/selection-choices"
-import { canFeature } from "@/lib/permission-enforcement"
 import { selectionSettingsSchema } from "@/lib/feature-settings/selection-settings"
 import { FEATURE_SETTINGS } from "@/lib/feature-settings/registry"
 import { specificationJson } from "@/lib/selections/decisions"
 import { projectFinishSelections } from "@/db/schema"
-import { eq } from "drizzle-orm"
+import { and, eq } from "drizzle-orm"
 
 type Sqlite = InstanceType<typeof Database>
 const NOW = "2026-11-12T12:00:00.000Z"
@@ -155,14 +153,14 @@ afterEach(() => {
 
 const base = { roomName: "Kitchen", roomType: "", category: "Tile", name: "Backsplash", description: "", quantity: "", manufacturer: "", model: "", colorFinish: "", supplierName: "", productUrl: "", costCode: "09 30 00", phaseCode: "", notes: "", changeReason: "" }
 
-async function installedTileReplacedBySubway(): Promise<{ readonly hex: string; readonly subway: string; readonly replacementId: string; readonly changeOrderId: string | null }> {
+async function installedTileReplacedBySubway(): Promise<{ readonly hex: string; readonly subway: string; readonly replacementId: string; readonly todoId: string | null }> {
   const hex = await choice("tile", "Hex", "4185")
   const subway = await choice("tile", "Subway", "3200")
   await setSelectionChoiceChosen("p1", hex, true)
   sqlite.exec("UPDATE project_finish_selections SET status = 'installed' WHERE id = 'tile'")
   const done = await replaceInstalledSelection("p1", "tile", subway, null)
   if (!done.success) throw new Error(done.error)
-  return { hex, subway, replacementId: done.data.selectionId, changeOrderId: done.data.changeOrderId }
+  return { hex, subway, replacementId: done.data.selectionId, todoId: done.data.todoId }
 }
 
 describe("review follow-ups", () => {
@@ -198,7 +196,8 @@ describe("review follow-ups", () => {
     const recipients = mocks.notice.mock.calls[0]?.[0].recipients.map((recipient: { userId: string }) => recipient.userId).sort()
     // apm's membership says "project-manager"; the actor (staff) isn't told; "named" is the job's PM by name.
     expect(recipients).toEqual(["apm", "named"])
-    expect(selectionSettingsSchema.safeParse({ ...FEATURE_SETTINGS.selections.defaults, priceChangeNoticeRoles: ["client"] }).success).toBe(false)
+    // Outside roles are dropped from the setting.
+    expect(selectionSettingsSchema.parse({ ...FEATURE_SETTINGS.selections.defaults, priceChangeNoticeRoles: ["client"] }).priceChangeNoticeRoles).toEqual([])
   })
 
   it("3: an ordered or installed selection can't be published again, and edits never clear its approval or move its cost code", async () => {
@@ -231,50 +230,6 @@ describe("review follow-ups", () => {
     `)
     const sheet = await getSelectionSheet("p1")
     expect(Object.fromEntries(sheet.rows.map((row) => [row.id, row.signed]))).toEqual({ faucet: false, tile: true })
-  })
-
-  it("5a: executing a replacement's change order approves the replacement and adds its Order to-do, once", async () => {
-    const { replacementId, changeOrderId } = await installedTileReplacedBySubway()
-    if (!changeOrderId) throw new Error("no change order")
-    const db = drizzleOverSqlite(sqlite)
-    expect(await applyExecutedReplacementChangeOrder(db, { projectId: "p1", changeOrderId, actorId: "staff" })).toBe(false)
-    sqlite.exec(`UPDATE project_change_orders SET status = 'executed' WHERE id = '${changeOrderId}'`)
-    expect(await applyExecutedReplacementChangeOrder(db, { projectId: "p1", changeOrderId, actorId: "staff" })).toBe(true)
-    expect(await applyExecutedReplacementChangeOrder(db, { projectId: "p1", changeOrderId, actorId: "staff" })).toBe(false)
-    expect(sqlite.prepare("SELECT status, owner_approved FROM project_finish_selections WHERE id = ?").get(replacementId)).toEqual({ status: "approved", owner_approved: 1 })
-    expect(
-      sqlite.prepare("SELECT count(*) AS n FROM project_operations WHERE source_record_id = ? AND json_extract(sage_payload_json, '$.selectionStep') = 'order'").get(replacementId),
-    ).toEqual({ n: 1 })
-    const sheet = await getSelectionSheet("p1")
-    expect(sheet.rows.find((row) => row.id === replacementId)?.signed).toBe(true)
-  })
-
-  it("5b: a replacement without a change order gets one from 'Create change order', once", async () => {
-    sqlite.exec(`UPDATE organization_feature_settings SET value = json_set(value, '$.replacementChangeOrder', json('false')) WHERE feature_key = 'selections'`)
-    const { replacementId, changeOrderId } = await installedTileReplacedBySubway()
-    expect(changeOrderId).toBeNull()
-    const made = await createReplacementChangeOrder("p1", replacementId)
-    expect(made).toMatchObject({ success: true })
-    expect(await createReplacementChangeOrder("p1", replacementId)).toMatchObject({ success: false, error: expect.stringMatching(/already/) })
-    expect(await createReplacementChangeOrder("p1", "faucet")).toMatchObject({ success: false })
-    const detail = await getSelectionDetail("p1", replacementId)
-    expect(detail.success && detail.data.replacementChangeOrder).toMatchObject({ status: "draft" })
-    expect(sqlite.prepare("SELECT amount_cents FROM project_change_orders").get()).toEqual({ amount_cents: 320000 })
-  })
-
-  it("5b: a change order number taken meanwhile is retried", async () => {
-    // The first insert is refused as a duplicate number (as when another change order took it); the retry lands.
-    let refusals = 0
-    // better-sqlite3's user functions (missing from this project's typings).
-    Reflect.apply(Reflect.get(sqlite, "function"), sqlite, ["refuse_once", { deterministic: false }, () => (refusals++ === 0 ? 1 : 0)])
-    sqlite.exec(`
-      CREATE TRIGGER number_taken BEFORE INSERT ON project_change_orders
-      WHEN refuse_once() = 1
-      BEGIN SELECT RAISE(ABORT, 'UNIQUE constraint failed: project_change_orders.project_id, project_change_orders.change_order_number'); END;
-    `)
-    const { changeOrderId } = await installedTileReplacedBySubway()
-    expect(changeOrderId).not.toBeNull()
-    expect(refusals).toBeGreaterThanOrEqual(2)
   })
 
   it("5c: replacement, ordered, installed and replaced selections never join a Selection Phase, but can leave one", async () => {
@@ -321,7 +276,7 @@ describe("review follow-ups", () => {
     ])
   })
 
-  it("11: a replacement carries follow-up links, and can't be deleted while its change order is live", async () => {
+  it("11: a replacement carries follow-up links", async () => {
     const hex = await choice("tile", "Hex", "4185")
     const subway = await choice("tile", "Subway", "3200")
     const brass = await choice("faucet", "Brass", "380")
@@ -341,9 +296,8 @@ describe("review follow-ups", () => {
         { choice_id: brass, selection_id: done.data.selectionId },
       ].sort((a, b) => (a.choice_id + a.selection_id).localeCompare(b.choice_id + b.selection_id)),
     )
-    expect(await deleteProjectSelection("p1", done.data.selectionId)).toMatchObject({ success: false })
-    sqlite.exec("UPDATE project_change_orders SET status = 'void'")
-    expect(await deleteProjectSelection("p1", done.data.selectionId)).toMatchObject({ success: true })
+    // The replaced selection stays on record.
+    expect(await deleteProjectSelection("p1", "tile")).toMatchObject({ success: false })
   })
 
   it("R2-2: ordered, replaced and older-approved rows are outside the phase document, its progress and its change order", async () => {
@@ -378,33 +332,8 @@ describe("review follow-ups", () => {
     expect((await getSelectionWorkspace("p1", "sub_vendor")).items.map((item) => item.id)).toContain("tile")
   })
 
-  it("R2-5: a declined replacement change order counts as ended", async () => {
-    const { replacementId, changeOrderId } = await installedTileReplacedBySubway()
-    sqlite.exec(`UPDATE project_change_orders SET status = 'declined' WHERE id = '${changeOrderId}'`)
-    const detail = await getSelectionDetail("p1", replacementId)
-    expect(detail.success && detail.data.replacementChangeOrder).toBeNull()
-    expect(await createReplacementChangeOrder("p1", replacementId)).toMatchObject({ success: true })
-    // Declined and a new live one: delete is blocked by the live one only.
-    sqlite.exec(`UPDATE project_change_orders SET status = 'declined'`)
-    expect(await deleteProjectSelection("p1", replacementId)).toMatchObject({ success: true })
-  })
-
-  it("R2-6: without change-order permission the replacement is made and the change order left for someone who may", async () => {
-    vi.mocked(canFeature).mockResolvedValue(false)
-    const hex = await choice("tile", "Hex", "4185")
-    const subway = await choice("tile", "Subway", "3200")
-    await setSelectionChoiceChosen("p1", hex, true)
-    sqlite.exec("UPDATE project_finish_selections SET status = 'installed' WHERE id = 'tile'")
-    const done = await replaceInstalledSelection("p1", "tile", subway, null)
-    expect(done).toMatchObject({ success: true, data: { changeOrderId: null, changeOrderError: expect.stringMatching(/permission/) } })
-    if (!done.success) throw new Error(done.error)
-    const detail = await getSelectionDetail("p1", done.data.selectionId)
-    expect(detail.success && detail.data.canCreateChangeOrder).toBe(false)
-    vi.mocked(canFeature).mockResolvedValue(true)
-  })
-
   it("R2-7 + R2-10: replaced rows are hidden from partners, marked on the owner board, and refuse links in the write", async () => {
-    const { replacementId } = await installedTileReplacedBySubway()
+    await installedTileReplacedBySubway()
     sqlite.exec("UPDATE project_finish_selections SET owner_approved = 1 WHERE id = 'tile'")
     const db = drizzleOverSqlite(sqlite)
     mocks.audience.mockResolvedValueOnce({ db, user: { id: "vendor" }, staff: false, actorName: "Vendor" })
@@ -414,9 +343,6 @@ describe("review follow-ups", () => {
     expect(board.find((item) => item.id === "tile")?.replacedByName).toBe("Backsplash")
     expect(await addSelectionLink("p1", "tile", null, "https://example.com/x")).toMatchObject({ success: false })
     expect(sqlite.prepare("SELECT count(*) AS n FROM project_selection_links WHERE selection_id = 'tile'").get()).toEqual({ n: 0 })
-    // One live change order per replacement, even on a double submit.
-    expect(await createReplacementChangeOrder("p1", replacementId)).toMatchObject({ success: false })
-    expect(sqlite.prepare("SELECT count(*) AS n FROM project_change_orders WHERE source_record_id = ?").get(replacementId)).toEqual({ n: 1 })
   })
 
   it("R2-8: an older owner approval reads 'Approved' to the owner, not 'not final'", async () => {
@@ -459,15 +385,6 @@ describe("review follow-ups", () => {
     expect(sqlite.prepare("SELECT owner_price_cents FROM project_selection_choices WHERE id = ?").get(hex)).toEqual({ owner_price_cents: 418500 })
   })
 
-  it("R3-4: a price change while a replacement change order is with the owner tells the managers", async () => {
-    const { replacementId, changeOrderId } = await installedTileReplacedBySubway()
-    sqlite.exec(`UPDATE project_change_orders SET status = 'signature_pending' WHERE id = '${changeOrderId}'`)
-    const hexCopy = (sqlite.prepare("SELECT id FROM project_selection_choices WHERE selection_id = ? AND title = 'Hex'").get(replacementId) as { id: string }).id
-    expect(await saveSelectionChoice("p1", replacementId, hexCopy, { title: "Hex", price: "1", ownerPrice: "4300" })).toMatchObject({ success: true })
-    const notice = mocks.notice.mock.calls[0]?.[0]
-    expect(notice.body).toMatch(/Replacement change order .* is with the owner, not signed yet \(this is not the choice on the document\)/)
-  })
-
   it("R3-5: a locked selection moved to another room shows its new room to partners and owners", async () => {
     const db = drizzleOverSqlite(sqlite)
     const row = await db.select().from(projectFinishSelections).where(eq(projectFinishSelections.id, "tile")).get()
@@ -503,18 +420,18 @@ describe("review follow-ups", () => {
     expect(mocks.notice.mock.calls[0]?.[0].recipients.map((recipient: { userId: string }) => recipient.userId)).toEqual(["admin-pa"])
   })
 
-  it("R4-6: an order the supplier couldn't fill can be replaced, also a replacement with an executed change order", async () => {
-    const { replacementId, changeOrderId } = await installedTileReplacedBySubway()
-    sqlite.exec(`UPDATE project_change_orders SET status = 'executed' WHERE id = '${changeOrderId}'`)
-    sqlite.exec(`UPDATE project_finish_selections SET status = 'ordered' WHERE id = '${replacementId}'`)
+  it("R4-6: an order the supplier couldn't fill can be replaced (also a replacement), with a change-order to-do and no change order", async () => {
+    const { replacementId } = await installedTileReplacedBySubway()
+    sqlite.exec(`UPDATE project_finish_selections SET status = 'ordered', owner_approved = 1 WHERE id = '${replacementId}'`)
     expect(await updateProjectSelectionStatus("p1", replacementId, "unavailable", "ordered")).toMatchObject({ success: true })
     const detail = await getSelectionDetail("p1", replacementId)
     expect(detail.success && detail.data.canReplaceUnfilled).toBe(true)
     const hexCopy = (sqlite.prepare("SELECT id FROM project_selection_choices WHERE selection_id = ? AND title = 'Hex'").get(replacementId) as { id: string }).id
     const done = await supplierCouldntFillSelection("p1", replacementId, hexCopy, "discontinued")
     if (!done.success) throw new Error(done.error)
-    // One line at the new pick's full owner price; staff edit the amounts on the change order.
-    expect(sqlite.prepare("SELECT amount_cents FROM project_change_order_lines WHERE change_order_id = ? AND derived_from IS NULL").all(done.data.changeOrderId)).toEqual([{ amount_cents: 418500 }])
+    // Nothing writes change-order lines; staff write the change order from the to-do.
+    expect(sqlite.prepare("SELECT count(*) AS n FROM project_change_order_lines").get()).toEqual({ n: 0 })
+    expect(done.data.todoId).not.toBeNull()
     expect(await supplierCouldntFillSelection("p1", "faucet", null, null)).toMatchObject({ success: false })
   })
 
@@ -652,5 +569,87 @@ describe("review follow-ups", () => {
     sqlite.exec("UPDATE project_finish_selections SET status = 'owner_review' WHERE id = 'tile'")
     const actor = { id: "staff", email: "pm@example.com", displayName: "Pat PM", firstName: null, lastName: null, role: "project_manager" }
     expect(await advanceSelectionsForPurchaseOrder(drizzleOverSqlite(sqlite), { projectId: "p1", purchaseOrderId: "po-1", purchaseOrderNumber: "PO-1", status: "sent", actor })).toEqual([])
+  })
+
+  it("R8-2: an approved selection not yet ordered can be replaced ('Owner changed after approval') with a change-order to-do", async () => {
+    const hex = await choice("tile", "Hex", "4185")
+    const subway = await choice("tile", "Subway", "3200")
+    await setSelectionChoiceChosen("p1", hex, true)
+    // Not approved yet: the pick just changes, no replacement.
+    expect(await ownerChangedSelectionAfterApproval("p1", "tile", subway, null)).toMatchObject({ success: false, error: expect.stringMatching(/approved selection/) })
+    sqlite.exec("UPDATE project_finish_selections SET status = 'approved', owner_approved = 1, source_system = 'buildertrend' WHERE id = 'tile'")
+    const detail = await getSelectionDetail("p1", "tile")
+    expect(detail.success && detail.data.canReplaceApproved).toBe(true)
+    const done = await ownerChangedSelectionAfterApproval("p1", "tile", subway, "prefers the subway tile")
+    if (!done.success) throw new Error(done.error)
+    expect(sqlite.prepare("SELECT status, owner_approved AS a FROM project_finish_selections WHERE id = 'tile'").get()).toEqual({ status: "approved", a: 1 })
+    expect(sqlite.prepare("SELECT replacement_reason AS reason, status FROM project_finish_selections WHERE id = ?").get(done.data.selectionId)).toEqual({ reason: "owner_changed_after_approval", status: "proposed" })
+    expect(sqlite.prepare("SELECT count(*) AS n FROM project_change_orders").get()).toEqual({ n: 0 })
+    expect(sqlite.prepare("SELECT assignee_name AS assignee, json_extract(sage_payload_json, '$.replacedSelectionId') AS replaced FROM project_operations WHERE id = ?").get(done.data.todoId)).toEqual({ assignee: "Pat PM", replaced: "tile" })
+    // Ordered ones go through "Owner changed after purchase" instead.
+    const brass = await choice("faucet", "Brass", "380")
+    await setSelectionChoiceChosen("p1", brass, true)
+    sqlite.exec("UPDATE project_finish_selections SET status = 'ordered', owner_approved = 1 WHERE id = 'faucet'")
+    expect(await ownerChangedSelectionAfterApproval("p1", "faucet", null, null)).toMatchObject({ success: false })
+  })
+
+  it("R8-1: the change-order to-do goes to the project manager, else the next role (APM, then project administrator)", async () => {
+    sqlite.exec("DELETE FROM project_members WHERE user_id = 'staff'")
+    const { todoId } = await installedTileReplacedBySubway()
+    expect(sqlite.prepare("SELECT assignee_name AS assignee FROM project_operations WHERE id = ?").get(todoId)).toEqual({ assignee: "Ari APM" })
+  })
+
+  it("R8-3: an unsigned ordered selection with a pick stays in the Selection Phase and is billed; without a pick it's left out", async () => {
+    const hex = await choice("tile", "Hex", "4185")
+    await setSelectionChoiceChosen("p1", hex, true)
+    sqlite.exec("UPDATE project_finish_selections SET status = 'ordered' WHERE id IN ('tile', 'faucet')")
+    const view = await getRoundSigning("p1", "rough-in")
+    if (!view.success) throw new Error(view.error)
+    expect(view.data.document.toSign.map((line) => ({ id: line.selectionId, delta: line.deltaCents }))).toEqual([{ id: "tile", delta: 418500 - 320000 }])
+    expect(view.data.document.lines.map((line) => line.selectionId)).not.toContain("faucet")
+  })
+
+  it("R8-4: out for signature, choices change only in price, and neither choices nor the selection can be deleted", async () => {
+    const hex = await choice("tile", "Hex", "4185")
+    const subway = await choice("tile", "Subway", "3200")
+    const brass = await choice("faucet", "Brass", "380")
+    await setSelectionChoiceChosen("p1", hex, true)
+    await setSelectionChoiceChosen("p1", brass, true)
+    expect(await sendRoundForSignature("p1", "rough-in", ["owner@example.com"])).toMatchObject({ success: true })
+    expect(await saveSelectionChoice("p1", "tile", subway, { title: "Subway tile", price: "1", ownerPrice: "3200" })).toMatchObject({ success: false, error: expect.stringMatching(/out for signature/) })
+    expect(await saveSelectionChoice("p1", "tile", subway, { title: "Subway", price: "1", ownerPrice: "3300" })).toMatchObject({ success: true })
+    expect(sqlite.prepare("SELECT title, owner_price_cents AS price FROM project_selection_choices WHERE id = ?").get(subway)).toEqual({ title: "Subway", price: 330000 })
+    expect(await deleteSelectionChoice("p1", subway)).toMatchObject({ success: false, error: expect.stringMatching(/out for signature/) })
+    // Deleting the selection itself is refused while it is out (the guard also applies in the write).
+    const { selectionDeletionAllowed } = await import("@/lib/selections/deletion")
+    sqlite.exec("UPDATE project_selection_decisions SET published = 0 WHERE selection_id = 'tile'")
+    expect(await drizzleOverSqlite(sqlite).delete(projectFinishSelections).where(and(eq(projectFinishSelections.id, "tile"), selectionDeletionAllowed("tile"))).returning()).toHaveLength(0)
+    sqlite.exec("UPDATE project_selection_round_signatures SET status = 'cancelled'")
+    expect(await deleteSelectionChoice("p1", subway)).toMatchObject({ success: true })
+  })
+
+  it("R8-5: the owner board doesn't offer choices on ordered, approved or out-for-signature selections", async () => {
+    const db = drizzleOverSqlite(sqlite)
+    for (const id of ["tile", "faucet"]) {
+      const row = await db.select().from(projectFinishSelections).where(eq(projectFinishSelections.id, id)).get()
+      if (!row) throw new Error("no row")
+      sqlite.prepare("UPDATE project_selection_decisions SET specification_json = ? WHERE selection_id = ?").run(specificationJson(row), id)
+    }
+    sqlite.exec("UPDATE project_finish_selections SET status = 'ordered' WHERE id = 'tile'")
+    mocks.audience.mockResolvedValueOnce({ db, user: { id: "owner" }, staff: false, actorName: "Olive Owner" })
+    const board = await getOwnerChoiceBoard("p1")
+    expect(Object.fromEntries(board.map((item) => [item.id, item.pickFixed]))).toEqual({ tile: "ordered", faucet: null })
+  })
+
+  it("R8-6: a bad notice role is dropped, never the whole Selections setting; the workbook reopen waits on no owner approval", async () => {
+    const { parseFeatureSettings } = await import("@/lib/feature-settings/registry")
+    const parsed = parseFeatureSettings(
+      "selections",
+      JSON.stringify({ ...FEATURE_SETTINGS.selections.defaults, rounds: [{ id: "only", name: "Only", scheduleItem: "", bufferDays: 7 }], priceChangeNoticeRoles: ["client", "project_manager", "not_a_role"] }),
+    )
+    expect(parsed.rounds.map((round) => round.id)).toEqual(["only"])
+    expect(parsed.priceChangeNoticeRoles).toEqual(["project_manager"])
+    const source = readFileSync("src/lib/domain/selections/finish-schedule-import.ts", "utf8")
+    expect(source).toContain("and(stillUnlocked, eq(projectFinishSelections.ownerApproved, false))")
   })
 })

@@ -1,6 +1,6 @@
 import { z } from "zod/v4"
 
-import { USER_ROLES } from "@/lib/domain/identity/statuses"
+import { USER_ROLES, type UserRole } from "@/lib/domain/identity/statuses"
 import { isInternalStaffRole } from "@/lib/user-roles"
 
 /*
@@ -9,9 +9,9 @@ import { isInternalStaffRole } from "@/lib/user-roles"
  * selection category, how many days ahead a long lead time is flagged, the
  * markup that prefills a choice's owner price from the supplier price, and
  * the over-budget percent at which a variance is treated as a change order,
- * whether owners confirm their choice by click, whether replacing an ordered
- * or installed selection starts a change order, and which project roles are
- * told when a price changes during a signature. Pure and client-safe.
+ * whether owners confirm their choice by click, and which project roles are
+ * told when a price changes during a signature (the first of them on the
+ * job gets a replacement's change-order to-do). Pure and client-safe.
  */
 
 const roundSchema = z.object({
@@ -46,14 +46,20 @@ export const selectionSettingsSchema = z.object({
    * their choice only; a signed document approves either way.
    */
   ownerChoiceConfirmation: z.boolean(),
-  /** "Replace installed item" and "Owner changed selection after purchase" start a draft change order. */
-  replacementChangeOrder: z.boolean(),
-  /** Project roles told when a choice's price changes while its Selection Phase is out for signature. */
-  priceChangeNoticeRoles: z
-    .array(z.enum(USER_ROLES))
-    .max(USER_ROLES.length)
-    .refine((roles) => roles.every(isInternalStaffRole), "Only company staff roles can be told."),
+  /**
+   * Project roles told when a choice's price changes while its Selection
+   * Phase is out for signature, and (the first one on the job) assigned a
+   * replacement's change-order to-do. Only company staff roles are kept: an
+   * unknown or outside role is dropped, never the whole Selections setting.
+   */
+  priceChangeNoticeRoles: z.array(z.string()).max(USER_ROLES.length * 2).transform(staffRoles),
 })
+
+/** The listed roles that are company staff roles, each once. */
+function staffRoles(roles: readonly string[]): UserRole[] {
+  const known = roles.flatMap((role) => USER_ROLES.filter((candidate) => candidate === role))
+  return [...new Set(known.filter((role) => isInternalStaffRole(role)))]
+}
 
 export type SelectionSettings = z.infer<typeof selectionSettingsSchema>
 export type SelectionRound = z.infer<typeof roundSchema>
@@ -68,14 +74,13 @@ const DEFAULT_SELECTION_SETTINGS: SelectionSettings = {
   ownerMarkupPercent: null,
   changeOrderThresholdPercent: 10,
   ownerChoiceConfirmation: true,
-  replacementChangeOrder: true,
   priceChangeNoticeRoles: ["project_manager", "assistant_project_manager", "project_administrator"],
 }
 
 export const SELECTION_SETTINGS_GROUP = {
   label: "Selections",
   description:
-    "Selection Phases and the schedule items that set their due dates, default lead times by category and how early a long lead time is flagged, the markup that fills in owner prices, when a variance becomes a change order, owner choice confirmation, replacement change orders, and who hears about price changes during a signature.",
+    "Selection Phases and the schedule items that set their due dates, default lead times by category and how early a long lead time is flagged, the markup that fills in owner prices, when a variance becomes a change order, owner choice confirmation, and who hears about price changes during a signature (and gets a replacement's change-order to-do).",
   defaults: DEFAULT_SELECTION_SETTINGS,
   schema: selectionSettingsSchema,
 }

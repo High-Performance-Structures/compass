@@ -14,10 +14,10 @@ import {
   type SelectionChoiceInput,
 } from "@/lib/domain/selections/choice-rules"
 import { categoryLeadTimeDays } from "@/lib/feature-settings/selection-settings"
-import { canFeature } from "@/lib/permission-enforcement"
 import { readFeatureSettings } from "@/lib/feature-settings/server"
 import {
   activeVendorInOrganization,
+  choiceFields,
   choiceInProject,
   commentInProject,
   linkInProject,
@@ -34,7 +34,8 @@ import {
 } from "@/lib/domain/selections/choices-read"
 import { loadLeadTimeContext, loadSelectionLeadTimeWarnings } from "@/lib/domain/selections/lead-time-read"
 import type { SelectionLeadTimeWarning } from "@/lib/domain/selections/lead-time-rules"
-import { loadSelectionLock, loadSelectionReplacement, pickChangeBlocker, replacementChangeOrderFor, type SelectionReplacementLink } from "@/lib/domain/selections/lock-read"
+import { loadSelectionLock, loadSelectionReplacement, pickChangeBlocker, selectionOutForSignature, type SelectionReplacementLink } from "@/lib/domain/selections/lock-read"
+import { APPROVED_PICK_MESSAGE, OUT_FOR_SIGNATURE_MESSAGE } from "@/lib/domain/selections/locks"
 import type { SelectionLock } from "@/lib/domain/selections/locks"
 import { loadOwnerChoiceBoard, type OwnerBoardSelection } from "@/lib/domain/selections/owner-board-read"
 import { notifyPriceChangesDuringSignature } from "@/lib/domain/selections/price-change-notice"
@@ -154,10 +155,8 @@ export type SelectionDetail = {
   /** The selection that replaced this one, and the one this one replaces. */
   readonly replacedBy: SelectionReplacementLink | null
   readonly replaces: SelectionReplacementLink | null
-  /** A replacement's change order (not void or declined), or null. */
-  readonly replacementChangeOrder: { readonly id: string; readonly number: string; readonly status: string } | null
-  /** The viewer may create change orders ("Create change order"). */
-  readonly canCreateChangeOrder: boolean
+  /** Approved (or signed) and not ordered, installed or replaced: "Owner changed after approval" can replace it. */
+  readonly canReplaceApproved: boolean
   /** Marked Unavailable after it was ordered and not replaced yet: "Supplier couldn't fill" can replace it. */
   readonly canReplaceUnfilled: boolean
 }
@@ -169,15 +168,14 @@ export async function getSelectionDetail(projectId: string, selectionId: string)
     const { db } = context
     if (!(await selectionInProject(db, projectId, selectionId))) throw new Error("Selection not found")
     const userId = context.user.id
-    const [panel, todos, rfqs, draftRfqs, lock, replacement, replacementChangeOrder, canCreateChangeOrder] = await Promise.all([
+    const [panel, todos, rfqs, draftRfqs, lock, replacement, approved] = await Promise.all([
       loadSelectionChoicesPanel(db, projectId, selectionId, "staff", userId),
       loadSelectionTodos(db, projectId, selectionId),
       loadSelectionRfqs(db, projectId, selectionId),
       loadDraftRfqOptions(db, projectId),
       loadSelectionLock(db, projectId, selectionId),
       loadSelectionReplacement(db, projectId, selectionId),
-      replacementChangeOrderFor(db, projectId, selectionId),
-      canFeature(context.user, "change-orders", "create"),
+      pickChangeBlocker(db, projectId, selectionId),
     ])
     return {
       success: true,
@@ -188,8 +186,8 @@ export async function getSelectionDetail(projectId: string, selectionId: string)
         draftRfqs,
         lock: lock?.lock ?? null,
         ...replacement,
-        replacementChangeOrder,
-        canCreateChangeOrder,
+        // "Approved" is the one blocker it can be replaced past (locked rows have their own Replace paths).
+        canReplaceApproved: lock !== null && lock.lock === null && approved === APPROVED_PICK_MESSAGE,
         canReplaceUnfilled: lock !== null && lock.status === "unavailable" && lock.releasedFromOrder && replacement.replacedBy === null,
       },
     }
@@ -243,18 +241,33 @@ export async function saveSelectionChoice(
       if (locked) return { success: false, error: locked }
       const { status, ...fields } = value
       const expected = input.expectedStatus ?? null
+      // Out for signature, only prices change (the job's managers are told below).
+      const pricesOnly = await selectionOutForSignature(db, selectionId)
+      if (pricesOnly) {
+        const stored = await choiceFields(db, projectId, choiceId)
+        const otherChange =
+          !stored ||
+          stored.title !== fields.title ||
+          stored.description !== fields.description ||
+          stored.leadTimeDays !== fields.leadTimeDays ||
+          stored.vendorId !== fields.vendorId ||
+          stored.supplierName !== fields.supplierName ||
+          stored.status !== status
+        if (otherChange) return { success: false, error: `${OUT_FOR_SIGNATURE_MESSAGE} Only its prices can change.` }
+      }
       // An unchanged status is left out, so a status someone else set meanwhile stays.
       const saved = await updateSelectionChoice(
         db,
         projectId,
         choiceId,
-        { ...fields, updatedAt: now },
-        expected === status ? undefined : { expected, to: status },
+        pricesOnly ? { priceCents: fields.priceCents, ownerPriceCents: fields.ownerPriceCents, updatedAt: now } : { ...fields, updatedAt: now },
+        pricesOnly || expected === status ? undefined : { expected, to: status },
+        pricesOnly,
       )
       if (!saved) {
         const lockedNow = await choiceLockMessage(db, projectId, selectionId, existing.chosen)
         const fallback = existing.chosen
-          ? "This pick is covered by a signature or priced on a replacement change order, so it can't be edited. Pick a different choice to change it."
+          ? "This pick is approved or covered by a signature, so it can't be edited."
           : "Someone changed this choice's status while you were editing. Refresh and try again."
         return { success: false, error: lockedNow ?? fallback }
       }
@@ -305,6 +318,7 @@ export async function deleteSelectionChoice(projectId: string, choiceId: string)
     const { db, user, choice } = await staffChoice(projectId, choiceId)
     const locked = await choiceLockMessage(db, projectId, choice.selectionId, choice.chosen)
     if (locked) return { success: false, error: locked }
+    if (await selectionOutForSignature(db, choice.selectionId)) return { success: false, error: OUT_FOR_SIGNATURE_MESSAGE }
     // The write re-checks the lock, so a selection ordered meanwhile keeps its pick.
     if (!(await deleteChoiceRow(db, projectId, choiceId))) {
       return { success: false, error: "This choice can't be deleted now: it is an approved or signed pick, or it changed. Refresh and try again." }

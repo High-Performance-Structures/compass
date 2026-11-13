@@ -44,7 +44,7 @@ function cards(
 ): readonly RoundCard[] {
   // The same selections the phase document covers (outsidePhaseWork).
   const selections = rows
-    .filter((row) => !outsidePhaseWork({ status: row.status, replaced: row.replaced, ownerApproved: row.ownerApproved, signedCurrentPick: row.signed }))
+    .filter((row) => !outsidePhaseWork({ status: row.status, replaced: row.replaced, ownerApproved: row.ownerApproved, signedCurrentPick: row.signed, hasPick: row.pickTitle !== null }))
     .map((row) => ({ roundKey: row.roundKey, hasPick: row.pickTitle !== null, deltaCents: row.deltaCents }))
   return rounds.map((round) => ({
     key: round.id,

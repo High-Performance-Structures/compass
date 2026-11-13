@@ -35,19 +35,29 @@ import {
   isExternallyPublishedChangeOrderStatus,
   type ChangeOrderStatus,
 } from "@/lib/change-orders/status"
-import { canViewChangeOrder, changeOrderRequesterType, type ChangeOrderRequesterType } from "@/lib/change-orders/access"
+import {
+  canViewChangeOrder,
+  changeOrderRequesterType,
+  type ChangeOrderRequesterType,
+} from "@/lib/change-orders/access"
 import { displayChangeOrderRequesterType } from "@/lib/change-orders/provenance"
 import { getCloudflareContext } from "@/lib/db"
 import { rebuildProjectContractBudget } from "@/lib/financials/contract-budget-store"
-import { afterChangeOrdersExecuted } from "@/lib/change-orders/executed-follow-ups"
 import {
   executeBaselineReplacement,
   rebaselineViewData,
   requireRebaselineSelection,
   type RebaselineViewData,
 } from "@/lib/change-orders/rebaseline-store"
-import { isChangeOrderBudgetTreatment, rebaselineEstimateDocumentLinks, type ChangeOrderBudgetTreatment } from "@/lib/change-orders/rebaseline"
-import { canFeature, requireFeaturePermission } from "@/lib/permission-enforcement"
+import {
+  isChangeOrderBudgetTreatment,
+  rebaselineEstimateDocumentLinks,
+  type ChangeOrderBudgetTreatment,
+} from "@/lib/change-orders/rebaseline"
+import {
+  canFeature,
+  requireFeaturePermission,
+} from "@/lib/permission-enforcement"
 import { assertProjectAccess } from "@/lib/domain/project/access"
 import { projectMemberRole } from "@/lib/domain/project/member-role"
 import type { ProjectAudience } from "@/lib/project-audience-access"
@@ -1090,7 +1100,6 @@ export async function updateProjectChangeOrder(
         projectId,
         actorUserId: context.user.id,
       })
-      await afterChangeOrdersExecuted(context.db, { projectId, changeOrderIds: [changeOrderId], actorId: context.user.id })
     }
     revalidateChangeOrderPaths(projectId)
     return { success: true, id: changeOrderId }

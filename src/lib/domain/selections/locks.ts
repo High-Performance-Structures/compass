@@ -115,20 +115,24 @@ export function staffEditBlocker(input: {
 /**
  * Why a selection with `status` can't be replaced for `reason`, or null.
  * "Replace installed item" needs an installed selection; "Owner changed
- * selection after purchase" an ordered one; "Supplier couldn't fill" an
- * Unavailable one that was marked so from Ordered (`releasedFromOrder`). A
- * selection is replaced once.
+ * after approval" an approved (or signed) one not yet ordered or installed;
+ * "Owner changed selection after purchase" an ordered one; "Supplier
+ * couldn't fill" an Unavailable one that was marked so from Ordered
+ * (`releasedFromOrder`). A selection is replaced once.
  */
 export function replacementBlocker(
   status: string,
   replaced: boolean,
   reason: SelectionReplacementReason,
-  releasedFromOrder = false,
+  options: { readonly releasedFromOrder?: boolean; readonly approved?: boolean } = {},
 ): string | null {
   if (replaced) return "This selection was already replaced. Make changes on the replacement."
   if (reason === "installed_replaced" && status !== "installed") return "Only an installed selection can be replaced this way."
+  if (reason === "owner_changed_after_approval" && (!options.approved || status === "ordered" || status === "installed")) {
+    return "Only an approved selection that isn't ordered or installed yet can be changed this way."
+  }
   if (reason === "owner_changed_after_purchase" && status !== "ordered") return "Only an ordered selection can be changed this way."
-  if (reason === "supplier_couldnt_fill" && !(status === "unavailable" && releasedFromOrder)) {
+  if (reason === "supplier_couldnt_fill" && !(status === "unavailable" && options.releasedFromOrder)) {
     return "Only a selection marked Unavailable after it was ordered can be replaced this way."
   }
   return null
@@ -139,38 +143,24 @@ export function replacementStartStatus(hasPick: boolean): ProjectSelectionStatus
   return hasPick ? "proposed" : "needed"
 }
 
-/**
- * The one line a replacement's draft change order starts with (owner
- * decision 2026-11-12): for Replace and "supplier couldn't fill", the new
- * pick's full owner price when known, else $0; for an owner change, $0.
- * Staff then edit the change order's amounts on the change-order screens.
- */
-export function replacementLineAmount(reason: SelectionReplacementReason, pickOwnerPriceCents: number | null): number {
-  return reason === "owner_changed_after_purchase" ? 0 : (pickOwnerPriceCents ?? 0)
-}
-
-export function replacementLineDescription(selectionName: string, pickTitle: string | null, label: string): string {
-  return `${selectionName}: ${pickTitle ?? "new selection to be made"} (${label.toLocaleLowerCase()})`.slice(0, 500)
-}
-
-/** How each replacement reason reads to staff and on the change order. */
+/** How each replacement reason reads to staff, and on the change-order to-do. */
 export const REPLACEMENT_REASON_LABELS: Readonly<Record<SelectionReplacementReason, string>> = {
   installed_replaced: "Installed item replaced",
+  owner_changed_after_approval: "Owner changed selection after approval",
   owner_changed_after_purchase: "Owner changed selection after purchase",
   supplier_couldnt_fill: "Supplier couldn't fill the order",
 }
 
 /**
- * Whether a selection in a Selection Phase is outside the phase's work: it
- * is ordered, installed or replaced, or the owner's approval is recorded
- * without a signature on its current pick (an older approval). Those are
- * left out of the phase document, its progress and its change order, so
- * nothing is billed twice and a phase never waits on them.
- *
- * Older approvals are selections imported already approved (Buildertrend):
- * the owner agreed to them and they were billed there, so a Selection Phase
- * must not sign or bill them again. Their pick can't change either (an
- * approved selection changes only by change order; pickChangeBlocker).
+ * Whether a selection in a Selection Phase is outside the phase's work:
+ * replaced; approved by the owner without a signature on its current pick
+ * (an older approval, e.g. imported from Buildertrend: agreed and billed
+ * there, never signed or billed again here); or ordered or installed with
+ * no pick (nothing to sign, and the phase must not wait on it). Those are
+ * left out of the phase document, its progress and its change order.
+ * Ordered and installed selections WITH a pick and no signature stay in, so
+ * their difference from the allowance is billed. A signed pick stays in as
+ * "signed earlier" (shown, not billed again).
  */
 export function outsidePhaseWork(row: {
   readonly status: string
@@ -178,8 +168,10 @@ export function outsidePhaseWork(row: {
   readonly ownerApproved: boolean
   /** A signed Selection Phase covers its current pick. */
   readonly signedCurrentPick: boolean
+  readonly hasPick: boolean
 }): boolean {
-  return row.status === "ordered" || row.status === "installed" || row.replaced || (row.ownerApproved && !row.signedCurrentPick)
+  const locked = row.status === "ordered" || row.status === "installed"
+  return row.replaced || (row.ownerApproved && !row.signedCurrentPick) || (locked && !row.hasPick)
 }
 
 export const APPROVED_PICK_MESSAGE = "This selection is approved. Use a change order to change it."

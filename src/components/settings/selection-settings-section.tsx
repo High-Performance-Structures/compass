@@ -5,8 +5,8 @@
  * the schedule item that sets the due date, days before it), default lead
  * times by category, how many days ahead a long lead time is flagged, the
  * owner-price markup, the variance-to-change-order threshold, owner choice
- * confirmation, replacement change orders, and who is told about a price
- * change during a signature. Also
+ * confirmation, and who is told about a price change during a signature
+ * (and gets a replacement's change-order to-do). Also
  * offers the "Save to Compass" bookmarks-bar button.
  */
 import * as React from "react"
@@ -50,7 +50,6 @@ export function SelectionSettingsSection(): React.ReactElement {
   const [markup, setMarkup] = React.useState("")
   const [threshold, setThreshold] = React.useState(String(GROUP.defaults.changeOrderThresholdPercent))
   const [ownerChoice, setOwnerChoice] = React.useState(GROUP.defaults.ownerChoiceConfirmation)
-  const [replacementCo, setReplacementCo] = React.useState(GROUP.defaults.replacementChangeOrder)
   const [noticeRoles, setNoticeRoles] = React.useState<SelectionSettings["priceChangeNoticeRoles"]>(GROUP.defaults.priceChangeNoticeRoles)
   const [pending, startTransition] = React.useTransition()
 
@@ -68,7 +67,6 @@ export function SelectionSettingsSection(): React.ReactElement {
     setMarkup(value.ownerMarkupPercent === null ? "" : String(value.ownerMarkupPercent))
     setThreshold(String(value.changeOrderThresholdPercent))
     setOwnerChoice(value.ownerChoiceConfirmation)
-    setReplacementCo(value.replacementChangeOrder)
     setNoticeRoles(value.priceChangeNoticeRoles)
     setCanEdit(result.data.canEdit)
     setCustomized(result.data.customized)
@@ -99,7 +97,6 @@ export function SelectionSettingsSection(): React.ReactElement {
       ownerMarkupPercent: numberOrNull(markup),
       changeOrderThresholdPercent: thresholdValue ?? GROUP.defaults.changeOrderThresholdPercent,
       ownerChoiceConfirmation: ownerChoice,
-      replacementChangeOrder: replacementCo,
       priceChangeNoticeRoles: [...noticeRoles],
     }
     const checked = selectionSettingsSchema.safeParse(value)
@@ -247,15 +244,8 @@ export function SelectionSettingsSection(): React.ReactElement {
                 <p className="text-xs text-muted-foreground">Records the owner&apos;s choice on a published decision. Only a signed document approves a selection, either way.</p>
               </div>
             </div>
-            <div className="flex items-start gap-2">
-              <Checkbox id="selection-replacement-co" checked={replacementCo} disabled={disabled} onCheckedChange={(checked) => setReplacementCo(checked === true)} />
-              <div className="space-y-0.5">
-                <Label htmlFor="selection-replacement-co">Replacing an ordered or installed selection starts a change order</Label>
-                <p className="text-xs text-muted-foreground">A draft change order for the owner to sign, made with the new selection.</p>
-              </div>
-            </div>
             <div className="space-y-1 pt-1">
-              <p className="text-sm">Tell these project roles when a price changes while a Selection Phase is out for signature</p>
+              <p className="text-sm">Tell these project roles when a price changes while a Selection Phase is out for signature (the first of them on the job also gets a replacement's change-order to-do)</p>
               <div className="grid gap-1 sm:grid-cols-2">
                 {STAFF_ROLE_OPTIONS.map((option) => (
                   <div key={option.value} className="flex items-center gap-2">

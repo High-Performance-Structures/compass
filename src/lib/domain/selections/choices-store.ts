@@ -51,33 +51,29 @@ const selectionReplaced = sql`EXISTS (SELECT 1 FROM project_finish_selections AS
 const selectionApproved = sql`EXISTS (SELECT 1 FROM project_finish_selections AS approved WHERE approved.id = project_selection_choices.selection_id AND approved.owner_approved = 1)`
 /** A signed Selection Phase covered this choice (as the pick). */
 const choiceSigned = sql`EXISTS (SELECT 1 FROM project_selection_round_signature_items AS signed_item INNER JOIN project_selection_round_signatures AS signed_round ON signed_round.id = signed_item.signature_id WHERE signed_item.choice_id = project_selection_choices.id AND signed_round.status = 'signed')`
-/**
- * A replacement's change order is out for signature or executed: the pick
- * it prices is fixed (a draft change order can still follow a new pick).
- */
-const replacementOrderLive = sql`EXISTS (SELECT 1 FROM project_change_orders AS replacement_change WHERE replacement_change.source_type = 'selection_replacement' AND replacement_change.source_record_id = project_selection_choices.selection_id AND replacement_change.status NOT IN ('draft', 'void', 'declined'))`
-/**
- * The choice may be edited or deleted. Not the pick when its selection is
- * ordered, installed or approved, a signature covers it, or a replacement change
- * order out for signature or executed prices it (change the pick instead;
- * a draft is re-priced in place); nothing on a replaced selection.
- */
-const choiceWritable = sql`NOT ((project_selection_choices.chosen = 1 AND (${selectionLocked} OR ${choiceSigned} OR ${selectionApproved} OR ${replacementOrderLive})) OR ${selectionReplaced})`
+/** The selection is in a Selection Phase signature being prepared or sent. */
+const outForSignature = sql`EXISTS (SELECT 1 FROM project_selection_round_signature_items AS out_item INNER JOIN project_selection_round_signatures AS out_round ON out_round.id = out_item.signature_id
+  WHERE out_round.status IN ('preparing', 'sent') AND out_item.selection_id = project_selection_choices.selection_id)`
 /** The selection's current pick is covered by a signed Selection Phase. */
 const currentPickSigned = sql`EXISTS (SELECT 1 FROM project_selection_round_signature_items AS signed_item INNER JOIN project_selection_round_signatures AS signed_round ON signed_round.id = signed_item.signature_id
   WHERE signed_round.status = 'signed' AND signed_item.selection_id = project_selection_choices.selection_id
     AND signed_item.choice_id = (SELECT current_pick.id FROM project_selection_choices AS current_pick WHERE current_pick.selection_id = project_selection_choices.selection_id AND current_pick.chosen = 1))`
-/** The selection is in a Selection Phase signature being prepared or sent. */
-const outForSignature = sql`EXISTS (SELECT 1 FROM project_selection_round_signature_items AS out_item INNER JOIN project_selection_round_signatures AS out_round ON out_round.id = out_item.signature_id
-  WHERE out_round.status IN ('preparing', 'sent') AND out_item.selection_id = project_selection_choices.selection_id)`
+/**
+ * A choice's prices may change: not the pick of an ordered, installed or
+ * approved selection or a signed pick, and nothing on a replaced selection.
+ * Allowed while the selection is out for signature (the job's managers are
+ * told; price-change-notice.ts).
+ */
+const choicePriceWritable = sql`NOT ((project_selection_choices.chosen = 1 AND (${selectionLocked} OR ${choiceSigned} OR ${selectionApproved})) OR ${selectionReplaced})`
+/** The choice may be edited (beyond its prices) or deleted: as above, and not while the selection is out for signature. */
+const choiceWritable = sql`(${choicePriceWritable} AND NOT ${outForSignature})`
 /**
  * The selection's pick may change (staff or owner; owner decision
  * 2026-11-12): not ordered, installed or replaced (Replace instead), not
  * approved and its pick not signed (a change order instead; includes
- * imported approvals), not out for signature, and no replacement change
- * order out or executed prices it.
+ * imported approvals), and not out for signature.
  */
-const pickChangeable = sql`NOT (${selectionLocked} OR ${selectionReplaced} OR ${replacementOrderLive} OR ${selectionApproved} OR ${currentPickSigned} OR ${outForSignature})`
+const pickChangeable = sql`NOT (${selectionLocked} OR ${selectionReplaced} OR ${selectionApproved} OR ${currentPickSigned} OR ${outForSignature})`
 
 // ---- choices
 
@@ -108,6 +104,8 @@ export async function updateSelectionChoice(
   patch: Omit<ChoicePatch, "status">,
   /** `expected` null: an older form that didn't send what it saw; written as before. */
   status?: { readonly expected: string | null; readonly to: SelectionChoiceStatus },
+  /** Only prices change (allowed while the selection is out for signature). */
+  pricesOnly = false,
 ): Promise<boolean> {
   const values = status ? { ...patch, status: status.to } : patch
   assertListFields("project_selection_choices", values, CHOICE_LISTS)
@@ -119,7 +117,7 @@ export async function updateSelectionChoice(
         eq(projectSelectionChoices.id, choiceId),
         eq(projectSelectionChoices.projectId, projectId),
         status && status.expected !== null ? sql`${projectSelectionChoices.status} = ${status.expected}` : undefined,
-        choiceWritable,
+        pricesOnly ? choicePriceWritable : choiceWritable,
       ),
     )
     .run()
@@ -221,7 +219,7 @@ export async function setChoicePricesFromRfq(
       eq(projectSelectionChoices.id, price.choiceId),
       eq(projectSelectionChoices.selectionId, price.selectionId),
       eq(projectSelectionChoices.projectId, projectId),
-      choiceWritable,
+      choicePriceWritable,
     )
     const ownerPrice = ownerPriceFromMarkup(price.priceCents, ownerMarkupPercent)
     // A blank owner price is filled from the markup; one staff set stays.

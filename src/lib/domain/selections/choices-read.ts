@@ -375,6 +375,22 @@ export async function linkInProject(
   return row ?? null
 }
 
+/** A choice's editable fields as stored, to tell a price-only edit from others. */
+export async function choiceFields(db: Db, projectId: string, choiceId: string) {
+  return db
+    .select({
+      title: projectSelectionChoices.title,
+      description: projectSelectionChoices.description,
+      leadTimeDays: projectSelectionChoices.leadTimeDays,
+      vendorId: projectSelectionChoices.vendorId,
+      supplierName: projectSelectionChoices.supplierName,
+      status: projectSelectionChoices.status,
+    })
+    .from(projectSelectionChoices)
+    .where(and(eq(projectSelectionChoices.id, choiceId), eq(projectSelectionChoices.projectId, projectId)))
+    .get()
+}
+
 /** Owners only reach a selection's rows once staff have published it to them. */
 export async function selectionPublishedToOwner(db: Db, projectId: string, selectionId: string): Promise<boolean> {
   const row = await db

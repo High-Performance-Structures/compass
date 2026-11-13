@@ -1,34 +1,35 @@
 /**
- * Replacing a locked selection (owner decisions 2026-11-12, locks.ts):
+ * Replacing a selection that doesn't change in place (owner decisions
+ * 2026-11-12, locks.ts):
  *
  * - "Replace installed item": the installed item must be replaced and a
  *   different product is chosen (required).
- * - "Owner changed selection after purchase": the selection was ordered and
- *   the owner wants something else; the new product may be chosen now or
- *   later.
+ * - "Owner changed selection after approval": approved (or signed) and not
+ *   yet ordered or installed; the owner wants something else.
+ * - "Owner changed selection after purchase": the selection was ordered.
+ * - "Supplier couldn't fill": marked Unavailable after it was ordered.
  *
- * Either way the old selection stays on record exactly as it was (its
- * status, pick, choices and history), and a NEW selection replaces it: the
- * same room, name, category, quantity and cost code, copies of the old
- * selection's choices (with their links and photos), and the new pick when
- * there is one. It starts hidden from the owner and outside any Selection
- * Phase. Unless the company turned it off (Settings › Selections), a draft
- * change order is created for it the usual way (the owner signs that change
- * order), priced at the new pick's owner price when it has one; staff
- * complete it (removal, restocking, credit) before sending.
+ * The old selection stays on record exactly as it was (its status, pick,
+ * choices and history), and a NEW selection replaces it: the same room,
+ * name, category, quantity and cost code, copies of the old selection's
+ * choices (with their links and photos), and the new pick when there is
+ * one. It starts hidden from the owner and outside any Selection Phase.
+ * Compass writes no change order: the job's project manager (or the next
+ * selection manager) gets a to-do, linked to both selections, to write it
+ * on the change-order screens; the owner signs that change order.
  */
 import { and, eq } from "drizzle-orm"
 
 import { projectFinishSelections } from "@/db/schema"
 import { projectSelectionChoices, projectSelectionLinks, projectSelectionPhotos } from "@/db/schema-selection-choices"
-import { recordActivityEvents } from "@/lib/activity-log"
+import { recordActivityEvents, type ActivityActor } from "@/lib/activity-log"
 import type { Db } from "@/lib/server/action-context"
 
 import { copyChoicesToReplacementStatements } from "./choices-store"
-import { replacementChangeOrderFor, selectionIsReplaced } from "./lock-read"
-import { REPLACEMENT_REASON_LABELS, replacementBlocker, replacementLineAmount, replacementLineDescription, replacementStartStatus } from "./locks"
-import { readProjectSelectionSettings } from "./project-settings"
-import { createSelectionChangeOrder, type SelectionChangeOrderActor } from "./selection-change-orders"
+import { selectionIsReplaced, signedSelectionIds } from "./lock-read"
+import { REPLACEMENT_REASON_LABELS, replacementBlocker, replacementStartStatus } from "./locks"
+import { selectionManagers } from "./selection-managers"
+import { ensureSelectionTodo } from "./selection-todos"
 import type { SelectionReplacementReason } from "./statuses"
 import { insertReplacementSelectionStatement } from "./store"
 
@@ -36,9 +37,8 @@ export type ReplaceSelectionResult =
   | {
       readonly ok: true
       readonly selectionId: string
-      /** The draft change order, or null when it could not be created (the replacement stands). */
-      readonly changeOrder: { readonly id: string; readonly number: string } | null
-      readonly changeOrderError: string | null
+      /** The to-do to write its change order, or null when one is already open. */
+      readonly todoId: string | null
     }
   | { readonly ok: false; readonly error: string }
 
@@ -60,9 +60,7 @@ export async function replaceLockedSelection(
     /** A choice of the old selection, other than its pick, to pick on the new one; required to replace an installed item. */
     readonly choiceId: string | null
     readonly note: string | null
-    readonly actor: SelectionChangeOrderActor
-    /** The actor may create change orders; without it the replacement is made and the change order left to someone who may. */
-    readonly canCreateChangeOrder: boolean
+    readonly actor: ActivityActor & { readonly id: string }
   },
 ): Promise<ReplaceSelectionResult> {
   const old = await db
@@ -73,12 +71,17 @@ export async function replaceLockedSelection(
       status: projectFinishSelections.status,
       costCode: projectFinishSelections.costCode,
       procurementReleasedAt: projectFinishSelections.procurementReleasedAt,
+      ownerApproved: projectFinishSelections.ownerApproved,
     })
     .from(projectFinishSelections)
     .where(and(eq(projectFinishSelections.id, input.selectionId), eq(projectFinishSelections.projectId, input.projectId)))
     .get()
   if (!old) return failed("Selection not found.")
-  const blocker = replacementBlocker(old.status, await selectionIsReplaced(db, old.id), input.reason, old.procurementReleasedAt !== null)
+  const approved = old.ownerApproved || (await signedSelectionIds(db, input.projectId)).has(old.id)
+  const blocker = replacementBlocker(old.status, await selectionIsReplaced(db, old.id), input.reason, {
+    releasedFromOrder: old.procurementReleasedAt !== null,
+    approved,
+  })
   if (blocker) return failed(blocker)
 
   const [choices, links, photos] = await Promise.all([
@@ -102,8 +105,6 @@ export async function replaceLockedSelection(
     return failed("Choose the different product that replaces the installed item. Add it as a choice first if it isn't listed.")
   }
 
-  // Read before the write, so nothing after it can fail the saved replacement.
-  const { settings } = await readProjectSelectionSettings(db, input.projectId)
   const now = new Date().toISOString()
   const newId = crypto.randomUUID()
   const label = REPLACEMENT_REASON_LABELS[input.reason]
@@ -145,23 +146,24 @@ export async function replaceLockedSelection(
     throw error
   }
 
-  const created = !settings.replacementChangeOrder
-    ? { changeOrder: null, changeOrderError: null }
-    : !input.canCreateChangeOrder
-      ? { changeOrder: null, changeOrderError: "You don't have permission to create change orders. Ask someone who does to use Create change order on the new selection." }
-      : await replacementChangeOrder(db, {
-          projectId: input.projectId,
-          newId,
-          old,
-          // Priced for the copy of the chosen product on the new selection.
-          pick: pick && newPickId ? { id: newPickId, title: pick.title, ownerPriceCents: pick.ownerPriceCents } : null,
-          label,
-          note,
-          reason: input.reason,
-          actor: input.actor,
-          now,
-        })
-  const { changeOrder, changeOrderError } = created
+  // Staff write the change order on the change-order screens; the job's
+  // first selection manager (project manager, else the next role) gets a to-do.
+  const managers = await selectionManagers(db, input.projectId)
+  const todoId = await ensureSelectionTodo(db, {
+    projectId: input.projectId,
+    selectionId: newId,
+    selectionName: old.name,
+    step: "replacement_change_order",
+    actorId: input.actor.id,
+    now,
+    assigneeName: managers[0]?.name ?? null,
+    replacedSelectionId: old.id,
+    description:
+      `${label}: ${old.roomName} · ${old.name} is replaced by a new selection` +
+      (pick ? ` with ${pick.title}` : "") +
+      ". Write the change order for it on the change-order screens (both selections are linked to this to-do)" +
+      (note ? `. ${note}` : "."),
+  })
 
   await recordActivityEvents(db, [
     {
@@ -172,108 +174,10 @@ export async function replaceLockedSelection(
       action: "selection_replaced",
       entityType: "project_finish_selection",
       entityId: old.id,
-      summary: `${old.name} (${old.status}) was replaced by a new selection: ${label.toLocaleLowerCase()}${pick ? `, ${pick.title} chosen` : ""}.${changeOrder ? ` Draft change order ${changeOrder.number} created.` : ""}`,
-      metadata: { replacementSelectionId: newId, reason: input.reason, choiceId: pick?.id ?? null, changeOrderId: changeOrder?.id ?? null },
+      summary: `${old.name} (${old.status}) was replaced by a new selection: ${label.toLocaleLowerCase()}${pick ? `, ${pick.title} chosen` : ""}. A to-do to write its change order was made.`,
+      metadata: { replacementSelectionId: newId, reason: input.reason, choiceId: pick?.id ?? null, todoId },
       createdAt: now,
     },
   ])
-  return { ok: true, selectionId: newId, changeOrder, changeOrderError }
-}
-
-/** The draft change order a replacement starts; a failure is reported, the replacement stands. */
-async function replacementChangeOrder(
-  db: Db,
-  input: {
-    readonly projectId: string
-    readonly newId: string
-    readonly old: { readonly id: string; readonly name: string; readonly roomName: string; readonly costCode: string | null }
-    readonly pick: { readonly id: string; readonly title: string; readonly ownerPriceCents: number | null } | null
-    readonly label: string
-    readonly note: string | null
-    readonly reason: SelectionReplacementReason
-    readonly actor: SelectionChangeOrderActor
-    readonly now: string
-  },
-): Promise<{ readonly changeOrder: { readonly id: string; readonly number: string } | null; readonly changeOrderError: string | null }> {
-  const { old, pick, label, note } = input
-  try {
-    // One line, written once here; staff edit the amounts on the change-order screens.
-    const amountCents = replacementLineAmount(input.reason, pick?.ownerPriceCents ?? null)
-    const changeOrder = await createSelectionChangeOrder(db, {
-      projectId: input.projectId,
-      start: { kind: "draft" },
-      sourceType: "selection_replacement",
-      sourceRecordId: input.newId,
-      title: `${label}: ${old.name}`,
-      scope:
-        `${old.roomName} · ${old.name}: ${label.toLocaleLowerCase()}` +
-        (pick ? `, replaced with ${pick.title}.` : "; the new selection is still to be made.") +
-        " The earlier selection stays on record.",
-      reason: note ?? label,
-      lines: [
-        { costCode: old.costCode?.trim() || null, description: replacementLineDescription(old.name, pick?.title ?? null, label), amountCents },
-      ],
-      history: {
-        eventType: "created_from_selection_replacement",
-        note: `Created when ${old.name} was replaced (${label.toLocaleLowerCase()}). Complete the amounts before sending it for the owner's signature.`,
-        metadata: { replacedSelectionId: old.id, selectionId: input.newId, reason: input.reason },
-      },
-      actor: input.actor,
-      now: input.now,
-    })
-    return { changeOrder, changeOrderError: null }
-  } catch (error) {
-    // The one-live-change-order index refuses a second (a double submit).
-    if (error instanceof Error && /UNIQUE constraint failed.*source_record_id/i.test(error.message)) {
-      return { changeOrder: null, changeOrderError: "This replacement already has a change order." }
-    }
-    console.error("[selections] replacement change order failed", error)
-    return { changeOrder: null, changeOrderError: error instanceof Error ? error.message : "The change order could not be created." }
-  }
-}
-
-/**
- * Starts the draft change order for a replacement that has none (it failed
- * when the replacement was made, or the company setting was off then). The
- * current pick on the replacement prices it.
- */
-export async function startReplacementChangeOrder(
-  db: Db,
-  input: { readonly projectId: string; readonly selectionId: string; readonly actor: SelectionChangeOrderActor },
-): Promise<{ readonly ok: true; readonly id: string; readonly number: string } | { readonly ok: false; readonly error: string }> {
-  const selection = await db
-    .select({ replacesSelectionId: projectFinishSelections.replacesSelectionId, reason: projectFinishSelections.replacementReason })
-    .from(projectFinishSelections)
-    .where(and(eq(projectFinishSelections.id, input.selectionId), eq(projectFinishSelections.projectId, input.projectId)))
-    .get()
-  if (!selection?.replacesSelectionId || !selection.reason) return { ok: false, error: "Only a replacement selection gets this change order." }
-  if (await replacementChangeOrderFor(db, input.projectId, input.selectionId)) return { ok: false, error: "This replacement already has a change order." }
-  const old = await db
-    .select({
-      id: projectFinishSelections.id,
-      name: projectFinishSelections.name,
-      roomName: projectFinishSelections.roomName,
-      costCode: projectFinishSelections.costCode,
-    })
-    .from(projectFinishSelections)
-    .where(and(eq(projectFinishSelections.id, selection.replacesSelectionId), eq(projectFinishSelections.projectId, input.projectId)))
-    .get()
-  if (!old) return { ok: false, error: "The replaced selection was not found." }
-  const pick = await db
-    .select({ id: projectSelectionChoices.id, title: projectSelectionChoices.title, ownerPriceCents: projectSelectionChoices.ownerPriceCents })
-    .from(projectSelectionChoices)
-    .where(and(eq(projectSelectionChoices.selectionId, input.selectionId), eq(projectSelectionChoices.chosen, true)))
-    .get()
-  const created = await replacementChangeOrder(db, {
-    projectId: input.projectId,
-    newId: input.selectionId,
-    old,
-    pick: pick ?? null,
-    label: REPLACEMENT_REASON_LABELS[selection.reason],
-    note: null,
-    reason: selection.reason,
-    actor: input.actor,
-    now: new Date().toISOString(),
-  })
-  return created.changeOrder ? { ok: true, ...created.changeOrder } : { ok: false, error: created.changeOrderError ?? "The change order could not be created." }
+  return { ok: true, selectionId: newId, todoId }
 }

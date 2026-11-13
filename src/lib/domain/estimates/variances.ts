@@ -40,7 +40,6 @@ import { DEFAULT_VARIANCE_SETTINGS, type VarianceSettings } from "@/lib/feature-
 import { readFeatureSettings } from "@/lib/feature-settings/server"
 import { contractEstimateConditions } from "@/lib/estimates/estimate-family"
 import { rebuildProjectContractBudget } from "@/lib/financials/contract-budget-store"
-import { afterChangeOrdersExecuted } from "@/lib/change-orders/executed-follow-ups"
 import type { Db } from "@/lib/server/action-context"
 import { cleanText } from "@/lib/shared/guards"
 
@@ -425,7 +424,6 @@ export async function approveVariance(input: {
   )
   const [first, ...rest] = statements
   if (first) await db.batch([first, ...rest])
-  await afterChangeOrdersExecuted(db, { projectId, changeOrderIds: [changeOrderId], actorId: actor.id })
   const budget = await rebuildProjectContractBudget({ db, projectId, actorUserId: actor.id })
   if (project.organizationId) {
     await recordActivityEvent({

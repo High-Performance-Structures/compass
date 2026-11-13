@@ -324,7 +324,8 @@ export async function applyFinishScheduleImport(
     const stillUnlocked = and(eq(projectFinishSelections.id, existing.id), notInArray(projectFinishSelections.status, [...LOCKED_SELECTION_STATUSES]))
     statements.push(
       approvalNeedsReview
-        ? updateFinishSelectionsWithEventStatement(db, stillUnlocked, "reopen", {
+        ? // Only while no owner approval landed meanwhile (an approved row is a conflict, above).
+          updateFinishSelectionsWithEventStatement(db, and(stillUnlocked, eq(projectFinishSelections.ownerApproved, false)), "reopen", {
             ...sourceValues,
             sourceRecordId,
             ...clearApprovalPatch(),

@@ -52,10 +52,10 @@ export type SelectionRoundSignatureStatus = (typeof SELECTION_ROUND_SIGNATURE_ST
 export const SELECTION_OVERAGE_TREATMENTS = ["none", "variance", "change_order"] as const
 
 /**
- * Why a selection replaces an ordered or installed one: the installed item
- * had to be replaced with a different product, the owner changed their mind
- * after it was purchased, or the supplier couldn't fill the order (it was
- * marked Unavailable from Ordered).
+ * Why a selection replaces another: the installed item had to be replaced
+ * with a different product, the owner changed their mind after it was
+ * approved (not yet ordered) or purchased, or the supplier couldn't fill the
+ * order (it was marked Unavailable from Ordered).
  */
-export const SELECTION_REPLACEMENT_REASONS = ["installed_replaced", "owner_changed_after_purchase", "supplier_couldnt_fill"] as const
+export const SELECTION_REPLACEMENT_REASONS = ["installed_replaced", "owner_changed_after_approval", "owner_changed_after_purchase", "supplier_couldnt_fill"] as const
 export type SelectionReplacementReason = (typeof SELECTION_REPLACEMENT_REASONS)[number]

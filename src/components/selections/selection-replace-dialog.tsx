@@ -11,7 +11,7 @@
 import * as React from "react"
 import Link from "next/link"
 
-import { ownerChangedSelectionAfterPurchase, replaceInstalledSelection, supplierCouldntFillSelection } from "@/app/actions/selection-replacements"
+import { ownerChangedSelectionAfterApproval, ownerChangedSelectionAfterPurchase, replaceInstalledSelection, supplierCouldntFillSelection } from "@/app/actions/selection-replacements"
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Label } from "@/components/ui/label"
@@ -23,13 +23,18 @@ import { formatCents } from "@/lib/format"
 // The radio value for "no new product yet" (choice ids are UUIDs).
 const NOT_CHOSEN = "not-chosen"
 
-export type SelectionReplaceKind = "installed" | "ordered" | "unfilled"
+export type SelectionReplaceKind = "installed" | "approved" | "ordered" | "unfilled"
 
 const COPY: Readonly<Record<SelectionReplaceKind, { readonly title: string; readonly action: string; readonly pickLabel: string }>> = {
   installed: {
     title: "Replace installed item",
     action: "Replace installed item",
     pickLabel: "Replacement product",
+  },
+  approved: {
+    title: "Owner changed selection after approval",
+    action: "Make a new selection",
+    pickLabel: "Owner's new choice (optional)",
   },
   ordered: {
     title: "Owner changed selection after purchase",
@@ -66,7 +71,7 @@ export function SelectionReplaceDialog({
   const [choiceId, setChoiceId] = React.useState<string | null>(null)
   const [note, setNote] = React.useState("")
   const [error, setError] = React.useState<string | null>(null)
-  const [done, setDone] = React.useState<{ readonly changeOrderId: string | null; readonly changeOrderNumber: string | null; readonly changeOrderError: string | null } | null>(null)
+  const [done, setDone] = React.useState<{ readonly todoId: string | null } | null>(null)
   const [pending, startTransition] = React.useTransition()
   const formId = React.useId()
   const others = choices.filter((choice) => !choice.chosen)
@@ -95,7 +100,9 @@ export function SelectionReplaceDialog({
           ? await replaceInstalledSelection(projectId, selectionId, choiceId, trimmed)
           : kind === "unfilled"
             ? await supplierCouldntFillSelection(projectId, selectionId, choiceId, trimmed)
-            : await ownerChangedSelectionAfterPurchase(projectId, selectionId, choiceId, trimmed)
+            : kind === "approved"
+              ? await ownerChangedSelectionAfterApproval(projectId, selectionId, choiceId, trimmed)
+              : await ownerChangedSelectionAfterPurchase(projectId, selectionId, choiceId, trimmed)
       if (!result.success) {
         setError(result.error)
         return
@@ -112,18 +119,16 @@ export function SelectionReplaceDialog({
           <DialogTitle>{copy.title}</DialogTitle>
           <DialogDescription>
             {selectionName} stays on record exactly as it is. A new selection replaces it
-            {kind === "installed" ? " with the product you choose" : kind === "unfilled" ? " with a product that can be supplied" : ", for the owner's new choice"}, with a draft change order for the owner to sign when your company uses them for replacements.
+            {kind === "installed" ? " with the product you choose" : kind === "unfilled" ? " with a product that can be supplied" : ", for the owner's new choice"}, and the job&apos;s project manager gets a to-do to write its change order on the change-order screens.
           </DialogDescription>
         </DialogHeader>
         {done ? (
           <div className="flex flex-col gap-2 text-sm">
             <p>The new selection was made.</p>
-            {done.changeOrderId ? (
-              <Link className="text-primary underline" href={`/dashboard/projects/${encodeURIComponent(projectId)}/change-orders/${encodeURIComponent(done.changeOrderId)}`}>
-                Open draft change order {done.changeOrderNumber}: complete the amounts, then send it for the owner&apos;s signature
+            {done.todoId ? (
+              <Link className="text-primary underline" href={`/dashboard/projects/${encodeURIComponent(projectId)}/todos?item=${encodeURIComponent(done.todoId)}`}>
+                Open the to-do to write its change order
               </Link>
-            ) : done.changeOrderError ? (
-              <p className="text-destructive">The change order could not be created ({done.changeOrderError}). Create it from Change orders.</p>
             ) : null}
           </div>
         ) : (

@@ -29,7 +29,6 @@ import { AttachPhotosDialog, FollowUpsDialog, PasteLinkDialog, PickForOwnerDialo
 import { SelectionLinkCard } from "@/components/selections/selection-link-card"
 import { SelectionPriceRequest } from "@/components/selections/selection-price-request"
 import { SelectionReplaceDialog, type SelectionReplaceKind } from "@/components/selections/selection-replace-dialog"
-import { createReplacementChangeOrder } from "@/app/actions/selection-replacements"
 import { SelectionRoundTemplateControls } from "@/components/selections/selection-round-template-controls"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -213,20 +212,15 @@ export function SelectionDetailPanel({
               Replaces {detail.replaces.name}
               {detail.replaces.reason ? ` (${REPLACEMENT_REASON_LABELS[detail.replaces.reason].toLocaleLowerCase()})` : ""}.
             </span>
-            {detail.replacementChangeOrder ? (
-              <Link
-                className="text-primary hover:underline"
-                href={`/dashboard/projects/${encodeURIComponent(projectId)}/change-orders/${encodeURIComponent(detail.replacementChangeOrder.id)}`}
-              >
-                Change order {detail.replacementChangeOrder.number}
-              </Link>
-            ) : detail.canCreateChangeOrder ? (
-              <Button type="button" variant="outline" size="sm" disabled={pending} onClick={() => run(() => createReplacementChangeOrder(projectId, row.id))}>
-                Create change order
-              </Button>
-            ) : (
-              <span>No change order yet.</span>
-            )}
+            <span>Its change order is written on the change-order screens (see its to-do).</span>
+          </div>
+        )}
+        {detail?.canReplaceApproved && (
+          <div className="flex flex-wrap items-center gap-2 rounded-md border p-2 text-sm">
+            <span>Approved: its pick changes only by change order.</span>
+            <Button type="button" variant="outline" size="sm" onClick={() => setDialog({ kind: "replace", replaceKind: "approved" })}>
+              Owner changed selection after approval
+            </Button>
           </div>
         )}
         {detail?.canReplaceUnfilled && (

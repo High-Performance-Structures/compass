@@ -1,9 +1,9 @@
 /**
  * Reads for locked and replaced selections (rules in locks.ts).
  */
-import { and, asc, desc, eq, inArray, notInArray } from "drizzle-orm"
+import { and, asc, eq, inArray } from "drizzle-orm"
 
-import { projectChangeOrders, projectFinishSelections } from "@/db/schema"
+import { projectFinishSelections } from "@/db/schema"
 import { projectSelectionChoices, projectSelectionRoundSignatureItems, projectSelectionRoundSignatures } from "@/db/schema-selection-choices"
 import { chunkD1Values } from "@/lib/d1-query"
 import type { Db } from "@/lib/server/action-context"
@@ -88,17 +88,14 @@ export async function loadSelectionReplacement(
   }
 }
 
-/** Change order statuses that mean the owner signed (or it was accepted) and it took effect. */
-export const EXECUTED_CHANGE_ORDER_STATUSES = ["executed", "sage_pending", "synced", "closed"] as const
-
 /**
  * The job's selections a signature covers for their CURRENT pick: the pick
- * is the choice the latest signed Selection Phase covered, or the selection
- * is a replacement whose change order was executed. "Approved" without one (set
- * by hand, an older click approval, or a pick changed since) isn't signed.
+ * is the choice the latest signed Selection Phase covered. "Approved"
+ * without one (set by hand, an older click approval, a pick changed since)
+ * isn't signed.
  */
 export async function signedSelectionIds(db: Db, projectId: string): Promise<ReadonlySet<string>> {
-  const [rounds, picks, replacements] = await Promise.all([
+  const [rounds, picks] = await Promise.all([
     db
       .select({ selectionId: projectSelectionRoundSignatureItems.selectionId, choiceId: projectSelectionRoundSignatureItems.choiceId })
       .from(projectSelectionRoundSignatureItems)
@@ -109,78 +106,43 @@ export async function signedSelectionIds(db: Db, projectId: string): Promise<Rea
       .select({ selectionId: projectSelectionChoices.selectionId, choiceId: projectSelectionChoices.id })
       .from(projectSelectionChoices)
       .where(and(eq(projectSelectionChoices.projectId, projectId), eq(projectSelectionChoices.chosen, true))),
-    // A replacement's executed change order covers its pick (which can't change once the change order is out).
-    db
-      .selectDistinct({ id: projectChangeOrders.sourceRecordId })
-      .from(projectChangeOrders)
-      .where(
-        and(
-          eq(projectChangeOrders.projectId, projectId),
-          eq(projectChangeOrders.sourceType, "selection_replacement"),
-          inArray(projectChangeOrders.status, [...EXECUTED_CHANGE_ORDER_STATUSES]),
-        ),
-      ),
   ])
   // Later signatures overwrite earlier ones.
   const signedChoice = new Map(rounds.map((row) => [row.selectionId, row.choiceId]))
-  const signed = new Set(picks.flatMap((pick) => (signedChoice.get(pick.selectionId) === pick.choiceId ? [pick.selectionId] : [])))
-  for (const row of replacements) if (row.id) signed.add(row.id)
-  return signed
+  return new Set(picks.flatMap((pick) => (signedChoice.get(pick.selectionId) === pick.choiceId ? [pick.selectionId] : [])))
 }
 
-/** Change order statuses that end a replacement's change order without the owner signing. */
-const CLOSED_UNSIGNED_CHANGE_ORDER_STATUSES = ["void", "declined"] as const
-
-/** The replacement selection's latest change order that isn't void or declined, or null. */
-export async function replacementChangeOrderFor(
-  db: Db,
-  projectId: string,
-  selectionId: string,
-): Promise<{ readonly id: string; readonly number: string; readonly status: string; readonly kind: string | null } | null> {
+/** Whether the selection is in a Selection Phase signature being prepared or sent. */
+export async function selectionOutForSignature(db: Db, selectionId: string): Promise<boolean> {
   const row = await db
-    .select({ id: projectChangeOrders.id, number: projectChangeOrders.changeOrderNumber, status: projectChangeOrders.status, kind: projectChangeOrders.changeOrderKind })
-    .from(projectChangeOrders)
-    .where(
-      and(
-        eq(projectChangeOrders.projectId, projectId),
-        eq(projectChangeOrders.sourceType, "selection_replacement"),
-        eq(projectChangeOrders.sourceRecordId, selectionId),
-        notInArray(projectChangeOrders.status, [...CLOSED_UNSIGNED_CHANGE_ORDER_STATUSES]),
-      ),
-    )
-    .orderBy(desc(projectChangeOrders.createdAt))
+    .select({ id: projectSelectionRoundSignatureItems.selectionId })
+    .from(projectSelectionRoundSignatureItems)
+    .innerJoin(projectSelectionRoundSignatures, eq(projectSelectionRoundSignatures.id, projectSelectionRoundSignatureItems.signatureId))
+    .where(and(eq(projectSelectionRoundSignatureItems.selectionId, selectionId), inArray(projectSelectionRoundSignatures.status, ["preparing", "sent"])))
     .get()
-  return row ?? null
+  return row !== undefined
 }
 
 /**
  * Why the selection's pick can't change now (staff or owner), or null. The
  * same rules the pick write enforces (choices-store pickChangeable), read
  * here for the message: ordered, installed or replaced (its lock message);
- * approved or its pick signed ("Use a change order"); out for signature; a
- * replacement change order out or executed.
+ * approved or its pick signed ("Use a change order"); out for signature.
  */
 export async function pickChangeBlocker(db: Db, projectId: string, selectionId: string): Promise<string | null> {
   const state = await loadSelectionLock(db, projectId, selectionId)
   if (!state) return "Selection not found"
   if (state.lock) return state.lock.message
-  const [row, signed, out, liveOrder] = await Promise.all([
+  const [row, signed, out] = await Promise.all([
     db
       .select({ approved: projectFinishSelections.ownerApproved })
       .from(projectFinishSelections)
       .where(eq(projectFinishSelections.id, selectionId))
       .get(),
     signedSelectionIds(db, projectId),
-    db
-      .select({ id: projectSelectionRoundSignatureItems.selectionId })
-      .from(projectSelectionRoundSignatureItems)
-      .innerJoin(projectSelectionRoundSignatures, eq(projectSelectionRoundSignatures.id, projectSelectionRoundSignatureItems.signatureId))
-      .where(and(eq(projectSelectionRoundSignatureItems.selectionId, selectionId), inArray(projectSelectionRoundSignatures.status, ["preparing", "sent"])))
-      .get(),
-    replacementChangeOrderFor(db, projectId, selectionId),
+    selectionOutForSignature(db, selectionId),
   ])
   if (row?.approved || signed.has(selectionId)) return APPROVED_PICK_MESSAGE
   if (out) return OUT_FOR_SIGNATURE_MESSAGE
-  if (liveOrder && liveOrder.status !== "draft") return "The pick can't change now: its replacement change order is out for signature or executed."
   return null
 }

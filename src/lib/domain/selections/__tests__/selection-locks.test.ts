@@ -205,7 +205,7 @@ describe("locked selections", () => {
 })
 
 describe("replacing a locked selection", () => {
-  it("replaces an installed item with a different product: the old one stays, the new one has the pick and a draft change order", async () => {
+  it("replaces an installed item with a different product: the old one stays, the new one has the pick, the PM gets a change-order to-do", async () => {
     const hex = await choice("tile", "Hex", "4185")
     const subway = await choice("tile", "Subway", "3200")
     await setSelectionChoiceChosen("p1", hex, true)
@@ -241,15 +241,16 @@ describe("replacing a locked selection", () => {
     ])
     expect(sqlite.prepare("SELECT url FROM project_selection_links WHERE selection_id = ?").all(done.data.selectionId)).toEqual([{ url: "https://example.com/subway" }])
 
-    expect(sqlite.prepare("SELECT id, status, record_type, source_type, source_record_id, amount_cents FROM project_change_orders").get()).toEqual({
-      id: done.data.changeOrderId,
-      status: "draft",
-      record_type: "change_order",
-      source_type: "selection_replacement",
-      source_record_id: done.data.selectionId,
-      amount_cents: 320000,
-    })
-    expect(sqlite.prepare("SELECT cost_code, amount_cents FROM project_change_order_lines").all()).toEqual([{ cost_code: "09 30 00", amount_cents: 320000 }])
+    // No change order is written; the project manager gets a to-do to write it, linked to both selections.
+    expect(sqlite.prepare("SELECT count(*) AS n FROM project_change_orders").get()).toEqual({ n: 0 })
+    expect(sqlite.prepare("SELECT count(*) AS n FROM project_change_order_lines").get()).toEqual({ n: 0 })
+    const todo = sqlite.prepare("SELECT id, title, assignee_name AS assignee, source_record_id AS selection, json_extract(sage_payload_json, '$.replacedSelectionId') AS replaced FROM project_operations WHERE json_extract(sage_payload_json, '$.selectionStep') = 'replacement_change_order'").get() as { id: string; title: string; assignee: string; selection: string; replaced: string }
+    expect(todo).toMatchObject({ assignee: "Pat PM", selection: done.data.selectionId, replaced: "tile" })
+    expect(done.data.todoId).toBe(todo.id)
+    for (const id of ["tile", done.data.selectionId]) {
+      const shown = await getSelectionDetail("p1", id)
+      expect(shown.success && shown.data.todos.map((item) => item.id)).toContain(todo.id)
+    }
 
     // Once only; and the replaced selection no longer moves or changes.
     expect(await replaceInstalledSelection("p1", "tile", subway, null)).toMatchObject({ success: false, error: expect.stringMatching(/already replaced/) })
@@ -276,15 +277,16 @@ describe("replacing a locked selection", () => {
       replacement_reason: "owner_changed_after_purchase",
     })
     expect(sqlite.prepare("SELECT count(*) AS n FROM project_selection_choices WHERE selection_id = ? AND chosen = 1").get(done.data.selectionId)).toEqual({ n: 0 })
-    // A draft change order with no amount yet: staff price it once the new choice is made.
-    expect(sqlite.prepare("SELECT status, amount_cents FROM project_change_orders").get()).toEqual({ status: "draft", amount_cents: 0 })
+    // No change order; a to-do to write one.
+    expect(sqlite.prepare("SELECT count(*) AS n FROM project_change_orders").get()).toEqual({ n: 0 })
+    expect(done.data.todoId).not.toBeNull()
     expect(await updateProjectSelectionStatus("p1", "faucet", "installed", "ordered")).toMatchObject({ success: false })
   })
 })
 
 describe("company settings", () => {
-  it("chooses who hears about a price change and whether a replacement starts a change order", async () => {
-    sqlite.exec(`UPDATE organization_feature_settings SET value = json_set(value, '$.priceChangeNoticeRoles', json('["field_crew"]'), '$.replacementChangeOrder', json('false')) WHERE feature_key = 'selections'`)
+  it("chooses who hears about a price change; the first of them gets a replacement's change-order to-do", async () => {
+    sqlite.exec(`UPDATE organization_feature_settings SET value = json_set(value, '$.priceChangeNoticeRoles', json('["field_crew"]')) WHERE feature_key = 'selections'`)
     const hex = await choice("tile", "Hex", "4185")
     const subway = await choice("tile", "Subway", "3200")
     const brass = await choice("faucet", "Brass", "380")
@@ -294,11 +296,10 @@ describe("company settings", () => {
     expect(await saveSelectionChoice("p1", "tile", hex, { title: "Hex", price: "1", ownerPrice: "4500" })).toMatchObject({ success: true })
     expect(mocks.notice.mock.calls[0]?.[0].recipients).toEqual([{ userId: "crew", email: "crew@example.com" }])
 
-    sqlite.exec("UPDATE project_finish_selections SET status = 'installed' WHERE id = 'tile'")
+    sqlite.exec("UPDATE project_selection_round_signatures SET status = 'cancelled'; UPDATE project_finish_selections SET status = 'installed' WHERE id = 'tile'")
     const done = await replaceInstalledSelection("p1", "tile", subway, null)
-    expect(done).toMatchObject({ success: true, data: { changeOrderId: null, changeOrderError: null } })
-    // Only the round's own change order exists.
-    expect(sqlite.prepare("SELECT source_type FROM project_change_orders").all()).toEqual([{ source_type: "selection_round" }])
+    if (!done.success) throw new Error(done.error)
+    expect(sqlite.prepare("SELECT assignee_name AS assignee FROM project_operations WHERE id = ?").get(done.data.todoId)).toEqual({ assignee: "Cy Crew" })
   })
 })
 

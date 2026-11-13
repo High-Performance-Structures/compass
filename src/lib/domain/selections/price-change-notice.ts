@@ -1,7 +1,6 @@
 /**
  * A choice's price may change while its selection is out for the owner's
- * signature (a Selection Phase signature being prepared or sent, or its
- * replacement change order with the owner and unsigned), but the
+ * signature (a Selection Phase signature being prepared or sent), but the
  * job's members in the company's chosen project roles are told (Settings ›
  * Selections; by default project managers, assistant project managers and
  * project administrators): product, old price, new price, and that it is out
@@ -14,21 +13,18 @@
  */
 import { and, eq, inArray } from "drizzle-orm"
 
-import { projectChangeOrders, projectFinishSelections } from "@/db/schema"
-import { projectSelectionChoices, projectSelectionRoundSignatureItems, projectSelectionRoundSignatures } from "@/db/schema-selection-choices"
+import { projectFinishSelections } from "@/db/schema"
+import { projectSelectionRoundSignatureItems, projectSelectionRoundSignatures } from "@/db/schema-selection-choices"
 import { recordActivityEvents, type ActivityActor } from "@/lib/activity-log"
-import { namedProjectManager, projectMembersWithRole } from "@/lib/domain/project/member-role"
 import { formatCents } from "@/lib/format"
 import { createNotificationEvent, createSystemNotificationEvent } from "@/lib/notifications/events"
 import type { Db } from "@/lib/server/action-context"
-import { isInternalStaffRole, projectRoleMatches } from "@/lib/user-roles"
 
 import { readProjectSelectionSettings } from "./project-settings"
+import { selectionManagers } from "./selection-managers"
 
 /** Round signature statuses that mean the owner's document is out for signature. */
 const OUT_FOR_SIGNATURE = ["preparing", "sent"] as const
-/** A replacement change order with the owner and not signed yet. */
-const REPLACEMENT_WITH_OWNER = ["submitted", "approved_for_owner", "signature_pending"] as const
 
 /** A document out for the owner's signature that covers a selection. */
 type SigningDocument = {
@@ -36,7 +32,7 @@ type SigningDocument = {
   readonly selectionName: string
   /** The choice the document prices for the selection. */
   readonly signedChoiceId: string | null
-  /** "the Rough-in Selection Phase", "replacement change order CO-3". */
+  /** "the Rough-in Selection Phase". */
   readonly name: string
   readonly state: string
 }
@@ -100,27 +96,6 @@ export async function notifyPriceChangesDuringSignature(
           inArray(projectSelectionRoundSignatureItems.selectionId, [...new Set(changes.map((change) => change.selectionId))]),
         ),
       )
-    // A replacement's change order with the owner, not yet signed, is out for signature too.
-    const replacementOut = await db
-      .select({
-        selectionId: projectFinishSelections.id,
-        signedChoiceId: projectSelectionChoices.id,
-        status: projectChangeOrders.status,
-        number: projectChangeOrders.changeOrderNumber,
-        selectionName: projectFinishSelections.name,
-      })
-      .from(projectChangeOrders)
-      .innerJoin(projectFinishSelections, eq(projectFinishSelections.id, projectChangeOrders.sourceRecordId))
-      // The change order was written for the current pick.
-      .leftJoin(projectSelectionChoices, and(eq(projectSelectionChoices.selectionId, projectFinishSelections.id), eq(projectSelectionChoices.chosen, true)))
-      .where(
-        and(
-          eq(projectChangeOrders.projectId, input.projectId),
-          eq(projectChangeOrders.sourceType, "selection_replacement"),
-          inArray(projectChangeOrders.status, [...REPLACEMENT_WITH_OWNER]),
-          inArray(projectFinishSelections.id, [...new Set(changes.map((change) => change.selectionId))]),
-        ),
-      )
     const documents: readonly SigningDocument[] = [
       ...out.map((row) => ({
         selectionId: row.selectionId,
@@ -128,13 +103,6 @@ export async function notifyPriceChangesDuringSignature(
         signedChoiceId: row.signedChoiceId,
         name: `the ${row.roundName} Selection Phase`,
         state: row.status === "sent" ? "out for the owner's signature" : "being prepared for the owner's signature",
-      })),
-      ...replacementOut.map((row) => ({
-        selectionId: row.selectionId,
-        selectionName: row.selectionName,
-        signedChoiceId: row.signedChoiceId,
-        name: `replacement change order ${row.number}`,
-        state: "with the owner, not signed yet",
       })),
     ]
     if (documents.length === 0) return
@@ -145,18 +113,11 @@ export async function notifyPriceChangesDuringSignature(
     })
     if (affected.length === 0) return
 
-    const { organizationId, settings } = await readProjectSelectionSettings(db, input.projectId)
+    const { organizationId } = await readProjectSelectionSettings(db, input.projectId)
     if (!organizationId) return
     const actorId = input.actor?.id ?? null
-    const roles = settings.priceChangeNoticeRoles
-    // Membership roles are free text ("project-manager"); compare however they're spelled.
-    const members = await projectMembersWithRole(db, input.projectId, (role) => projectRoleMatches(role, roles))
-    // The project manager named on the job counts as one, even without a membership.
-    const named = projectRoleMatches("project_manager", roles) ? await namedProjectManager(db, input.projectId) : null
-    const byUser = new Map([...members, ...(named ? [named] : [])].map((member) => [member.userId, member]))
-    // Only company staff are told, whatever the setting holds.
-    const recipients = [...byUser.values()]
-      .filter((member) => member.userId !== actorId && isInternalStaffRole(member.accountRole))
+    const recipients = (await selectionManagers(db, input.projectId))
+      .filter((member) => member.userId !== actorId)
       .map((member) => ({ userId: member.userId, email: member.email }))
 
     await recordActivityEvents(

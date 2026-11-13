@@ -19,7 +19,6 @@ import { insertChangeOrderHistoryStatement, updateChangeOrdersStatement } from "
 import { DEFAULT_CHANGE_ORDER_ACCEPTANCE_SETTINGS } from "@/lib/feature-settings/contract-settings"
 import { readFeatureSettings } from "@/lib/feature-settings/server"
 import { rebuildProjectContractBudget } from "@/lib/financials/contract-budget-store"
-import { afterChangeOrdersExecuted } from "@/lib/change-orders/executed-follow-ups"
 import type { Db } from "@/lib/server/action-context"
 import { canManageUserAccessRole } from "@/lib/user-roles"
 import { resolvedContactColumns, withContactDirectory } from "@/lib/domain/contacts/resolved-columns"
@@ -265,7 +264,6 @@ export async function recordChangeOrderManualAcceptance(input: {
   ])
 
   const budget = await rebuildProjectContractBudget({ db, projectId, actorUserId: user.id })
-  await afterChangeOrdersExecuted(db, { projectId, changeOrderIds: [changeOrderId], actorId: user.id })
   if (input.organizationId) {
     await recordActivityEvent({
       db,

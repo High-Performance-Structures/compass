@@ -51,12 +51,12 @@ export async function projectMembersWithRole(
   db: Db,
   projectId: string,
   matches: (role: string) => boolean
-): Promise<readonly { readonly userId: string; readonly email: string; readonly accountRole: string }[]> {
+): Promise<readonly { readonly userId: string; readonly email: string; readonly accountRole: string; readonly role: string; readonly name: string }[]> {
   const people = peopleView()
   const memberships = membershipsView()
   // accountRole: the role the person holds in the job's company (whether they are its staff).
   const rows = await db
-    .select({ userId: projectMembers.userId, role: projectMembers.role, email: people.email, googleEmail: people.googleEmail, accountRole: memberships.role })
+    .select({ userId: projectMembers.userId, role: projectMembers.role, email: people.email, googleEmail: people.googleEmail, accountRole: memberships.role, name: people.displayName })
     .from(projectMembers)
     .innerJoin(projects, eq(projects.id, projectMembers.projectId))
     .innerJoin(people, eq(people.id, projectMembers.userId))
@@ -64,7 +64,7 @@ export async function projectMembersWithRole(
     .where(and(eq(projectMembers.projectId, projectId), eq(people.isActive, true)))
   return rows
     .filter((row) => matches(row.role))
-    .map((row) => ({ userId: row.userId, email: row.googleEmail?.trim() || row.email, accountRole: row.accountRole }))
+    .map((row) => ({ userId: row.userId, email: row.googleEmail?.trim() || row.email, accountRole: row.accountRole, role: row.role, name: row.name?.trim() || row.email }))
 }
 
 /**
@@ -74,7 +74,7 @@ export async function projectMembersWithRole(
 export async function namedProjectManager(
   db: Db,
   projectId: string
-): Promise<{ readonly userId: string; readonly email: string; readonly accountRole: string } | null> {
+): Promise<{ readonly userId: string; readonly email: string; readonly accountRole: string; readonly name: string } | null> {
   const project = await db
     .select({ name: projects.projectManager, organizationId: projects.organizationId })
     .from(projects)
@@ -92,5 +92,5 @@ export async function namedProjectManager(
     .where(and(eq(people.isActive, true), sql`lower(trim(${people.displayName})) = lower(${name})`))
     .limit(2)
   const only = matches.length === 1 ? matches[0] : undefined
-  return only ? { userId: only.userId, email: only.googleEmail?.trim() || only.email, accountRole: only.accountRole } : null
+  return only ? { userId: only.userId, email: only.googleEmail?.trim() || only.email, accountRole: only.accountRole, name } : null
 }

@@ -42,7 +42,6 @@ import { announceEsignOutcome } from "@/lib/esign/announce"
 import { prepareEstimateSignaturePdf } from "@/lib/estimates/signature-pdf"
 import { readFeatureSettings } from "@/lib/feature-settings/server"
 import { rebuildProjectContractBudget } from "@/lib/financials/contract-budget-store"
-import { afterChangeOrdersExecuted } from "@/lib/change-orders/executed-follow-ups"
 import { createFoxitPreparedEnvelope, downloadFoxitExecutedEnvelope } from "@/lib/foxit/esign"
 import { getProjectDocumentDriveContext } from "@/lib/google/project-document-drive"
 import { internalDomainSet, resolveRecordFolder } from "@/lib/paper-trail/folders"
@@ -175,6 +174,7 @@ export async function loadRoundSigningView(db: Db, projectId: string, organizati
       replaced: replaced.has(selection.id),
       ownerApproved: selection.ownerApproved,
       signedCurrentPick: pick !== null && signed.get(selection.id) === pick.id,
+      hasPick: pick !== null,
     })
   })
   const lines: RoundDocumentLineInput[] = inPhase.map((selection) => {
@@ -545,9 +545,6 @@ export async function handleRoundSignatureEvent(input: {
   if (signed.meta.changes === 0) return false
 
   await orderTodosForSigned(db, signature, now)
-  if (signature.changeOrderId && changeOrder?.recordType === "change_order") {
-    await afterChangeOrdersExecuted(db, { projectId: signature.projectId, changeOrderIds: [signature.changeOrderId], actorId: signature.createdBy })
-  }
 
   const sender = signature.createdBy
     ? await db.select({ id: people.id, role: people.role, displayName: people.displayName, email: people.email, firstName: people.firstName, lastName: people.lastName }).from(people).where(eq(people.id, signature.createdBy)).get()

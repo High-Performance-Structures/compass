@@ -3,24 +3,22 @@
 import { revalidatePath } from "next/cache"
 
 import { actionFailure, errorMessage, type ActionResult } from "@/lib/action-result"
-import { replaceLockedSelection, startReplacementChangeOrder } from "@/lib/domain/selections/replacement"
-import { canFeature, requireFeaturePermission } from "@/lib/permission-enforcement"
+import { replaceLockedSelection } from "@/lib/domain/selections/replacement"
 import { projectContext } from "@/lib/server/action-context"
 import type { SelectionReplacementReason } from "@/lib/domain/selections/statuses"
 
 /*
- * Staff actions for a locked selection (src/lib/domain/selections/locks.ts):
- * "Replace installed item" and "Owner changed selection after purchase".
- * Each makes a new selection that replaces the old one (kept on record) and
- * a draft change order for it.
+ * Staff actions for a selection that doesn't change in place
+ * (src/lib/domain/selections/locks.ts): "Replace installed item", "Owner
+ * changed selection after approval", "Owner changed selection after
+ * purchase" and "Supplier couldn't fill". Each makes a new selection that
+ * replaces the old one (kept on record) and a to-do to write its change order.
  */
 
 export type SelectionReplacementDone = {
   readonly selectionId: string
-  readonly changeOrderId: string | null
-  readonly changeOrderNumber: string | null
-  /** Set when the replacement saved but its change order didn't. */
-  readonly changeOrderError: string | null
+  /** The to-do to write its change order (null when one is already open). */
+  readonly todoId: string | null
 }
 
 /** Staff selections access for a write; refused for the read-only demo account and company. */
@@ -48,21 +46,12 @@ async function replace(
       reason,
       choiceId,
       note,
-      actor: { ...user, name: user.displayName ?? user.email },
-      canCreateChangeOrder: await canFeature(user, "change-orders", "create"),
+      actor: user,
     })
     if (!result.ok) return actionFailure(result.error)
     revalidatePath(`/dashboard/projects/${projectId}/selections`)
-    revalidatePath(`/dashboard/projects/${projectId}/change-orders`)
-    return {
-      success: true,
-      data: {
-        selectionId: result.selectionId,
-        changeOrderId: result.changeOrder?.id ?? null,
-        changeOrderNumber: result.changeOrder?.number ?? null,
-        changeOrderError: result.changeOrderError,
-      },
-    }
+    revalidatePath(`/dashboard/projects/${projectId}/todos`)
+    return { success: true, data: { selectionId: result.selectionId, todoId: result.todoId } }
   } catch (error) {
     return actionFailure(errorMessage(error, "Unable to replace the selection."))
   }
@@ -76,6 +65,16 @@ export async function replaceInstalledSelection(
   note: string | null,
 ): Promise<ActionResult<SelectionReplacementDone>> {
   return replace(projectId, selectionId, "installed_replaced", choiceId, note)
+}
+
+/** The owner changed their mind after the selection was approved (not yet ordered or installed); the new product may be picked now or later. */
+export async function ownerChangedSelectionAfterApproval(
+  projectId: string,
+  selectionId: string,
+  choiceId: string | null,
+  note: string | null,
+): Promise<ActionResult<SelectionReplacementDone>> {
+  return replace(projectId, selectionId, "owner_changed_after_approval", choiceId, note)
 }
 
 /** The owner changed their mind after the selection was ordered; the new product may be picked now or later. */
@@ -96,22 +95,4 @@ export async function supplierCouldntFillSelection(
   note: string | null,
 ): Promise<ActionResult<SelectionReplacementDone>> {
   return replace(projectId, selectionId, "supplier_couldnt_fill", choiceId, note)
-}
-
-/** Starts the draft change order for a replacement that has none. */
-export async function createReplacementChangeOrder(
-  projectId: string,
-  selectionId: string,
-): Promise<ActionResult<{ readonly changeOrderId: string; readonly changeOrderNumber: string }>> {
-  try {
-    const { db, user } = await writeContext(projectId)
-    await requireFeaturePermission(user, "change-orders", "create")
-    const result = await startReplacementChangeOrder(db, { projectId, selectionId, actor: { ...user, name: user.displayName ?? user.email } })
-    if (!result.ok) return actionFailure(result.error)
-    revalidatePath(`/dashboard/projects/${projectId}/selections`)
-    revalidatePath(`/dashboard/projects/${projectId}/change-orders`)
-    return { success: true, data: { changeOrderId: result.id, changeOrderNumber: result.number } }
-  } catch (error) {
-    return actionFailure(errorMessage(error, "Unable to create the change order."))
-  }
 }

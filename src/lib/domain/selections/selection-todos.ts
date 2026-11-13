@@ -6,7 +6,7 @@
  * selection step it is for, so the same open step is not created twice.
  * Finishing a to-do stays a person's decision: nothing here closes one.
  */
-import { and, asc, eq, inArray, sql } from "drizzle-orm"
+import { and, asc, eq, inArray, or, sql } from "drizzle-orm"
 
 import { projectOperations, projects } from "@/db/schema"
 import { countProjectOperations } from "@/lib/domain/operations/queries"
@@ -21,7 +21,7 @@ import type { Db } from "@/lib/server/action-context"
 
 /** The selection steps that make a to-do. */
 
-export type SelectionTodoStep = "price_choices" | "order" | "owner_question" | "order_lead_time"
+export type SelectionTodoStep = "price_choices" | "order" | "owner_question" | "order_lead_time" | "replacement_change_order"
 
 const STEP_TEXT: Readonly<Record<SelectionTodoStep, { readonly title: string; readonly description: string; readonly priority: string }>> = {
   price_choices: {
@@ -42,6 +42,11 @@ const STEP_TEXT: Readonly<Record<SelectionTodoStep, { readonly title: string; re
   order_lead_time: {
     title: "Place long-lead order for",
     description: "This selection has a long lead time. Order it soon so it arrives in time.",
+    priority: "high",
+  },
+  replacement_change_order: {
+    title: "Create a change order for this replacement:",
+    description: "A new selection replaces an approved, ordered or installed one. Write the change order for it on the change-order screens and send it for the owner's signature.",
     priority: "high",
   },
 }
@@ -80,7 +85,11 @@ export async function loadSelectionTodos(db: Db, projectId: string, selectionId:
     .where(
       and(
         eq(projectOperations.projectId, projectId),
-        eq(projectOperations.sourceRecordId, selectionId),
+        // Its own to-dos, and a replacement's change-order to-do on the selection it replaces.
+        or(
+          eq(projectOperations.sourceRecordId, selectionId),
+          sql`json_extract(${projectOperations.sagePayloadJson}, '$.replacedSelectionId') = ${selectionId}`,
+        ),
         inArray(projectOperations.sourceRecordType, [...PROJECT_TODO_RECORD_TYPES]),
       ),
     )
@@ -115,6 +124,10 @@ export async function ensureSelectionTodo(
     readonly dueDate?: string | null
     /** Replaces the step's standard description. */
     readonly description?: string
+    /** Who it is assigned to (a name); the project manager named on the job when left out. */
+    readonly assigneeName?: string | null
+    /** The selection a replacement replaces: the to-do shows on both. */
+    readonly replacedSelectionId?: string
   },
 ): Promise<string | null> {
   const statuses = await loadRecordStatusListForProject(db, input.projectId, "todo")
@@ -166,7 +179,7 @@ export async function ensureSelectionTodo(
     status: "open",
     priority: text.priority,
     assigneeType: "internal",
-    assigneeName: project.projectManager,
+    assigneeName: input.assigneeName ?? project.projectManager,
     dueDate: input.dueDate ?? null,
     sageJobId: project.sageJobId,
     sageJobNumber: project.sageJobNumber,
@@ -176,6 +189,7 @@ export async function ensureSelectionTodo(
       selectionId: input.selectionId,
       selectionStep: input.step,
       ...(input.onceKey !== undefined ? { selectionStepKey: input.onceKey } : {}),
+      ...(input.replacedSelectionId !== undefined ? { replacedSelectionId: input.replacedSelectionId } : {}),
       taskType: "staff_task",
       title,
     }),

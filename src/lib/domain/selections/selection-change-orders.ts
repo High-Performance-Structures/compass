@@ -1,9 +1,9 @@
 /**
- * Change orders that selections create: the one a Selection Phase signature
- * carries for its difference from the allowance (round-signing.ts), and the
- * draft one a replacement after purchase or installation starts
- * (replacement.ts). Priced at owner prices, which already include the
- * builder fee, so no fee lines are added; project liability insurance is
+ * The change order a Selection Phase signature carries for its difference
+ * from the allowance (round-signing.ts): the only change order selections
+ * write (a replacement gets a to-do; staff write its change order). Priced
+ * at owner prices, which already include the builder fee, so no fee lines
+ * are added; project liability insurance is
  * added the way change orders from estimates get it (variance rules, fee by
  * contract type: docs and src/lib/domain/estimates/variances.ts).
  */
@@ -22,19 +22,11 @@ import type { Db } from "@/lib/server/action-context"
 
 export type SelectionChangeOrderActor = VarianceActor & { readonly name: string }
 
-export type SelectionChangeOrderLine = {
-  /** Set to know the line's id afterwards (a replacement's pick line); generated otherwise. */
-  readonly id?: string
-  /** Null: not coded yet (a replacement's pick line before its selection has a cost code). */
-  readonly costCode: string | null
-  readonly description: string
-  readonly amountCents: number
-}
+export type SelectionChangeOrderLine = { readonly costCode: string; readonly description: string; readonly amountCents: number }
 
 /** Project liability insurance for the coded, priced lines (change orders get it the way estimates do). */
 async function selectionInsuranceLines(db: Db, projectId: string, lines: readonly SelectionChangeOrderLine[]) {
-  const coded = lines.flatMap((line) => (line.costCode && line.amountCents !== 0 ? [{ costCode: line.costCode, description: line.description, amountCents: line.amountCents }] : []))
-  return changeOrderInsuranceLines({ db, projectId, lines: coded })
+  return changeOrderInsuranceLines({ db, projectId, lines })
 }
 
 /**
@@ -72,12 +64,12 @@ export async function createSelectionChangeOrder(
   const amountCents = allLines.reduce((total, line) => total + line.amountCents, 0)
   const status = input.start.kind === "in_signature" ? "signature_pending" : "draft"
   const lineRows = allLines.map((line, index) => ({
-    id: ("id" in line && line.id) || crypto.randomUUID(),
+    id: crypto.randomUUID(),
     projectId: input.projectId,
     changeOrderId: id,
     lineNumber: index + 1,
     description: line.description,
-    phaseCode: line.costCode ? line.costCode.slice(0, 2) : null,
+    phaseCode: line.costCode.slice(0, 2),
     costCode: line.costCode,
     amountCents: line.amountCents,
     derivedFrom: line.derivedFrom,
