@@ -291,10 +291,13 @@ export function addContactDirectorySchema(sqlite: Sqlite): void {
 }
 
 /** A Drizzle handle over any better-sqlite3 database (for example one built from every migration). */
-export function drizzleOverSqlite(sqlite: Sqlite): ReturnType<typeof getDb> {
+/** Pass `bindLimit: 100` to fail like production D1 on oversized statements. */
+export function drizzleOverSqlite(sqlite: Sqlite, options: { readonly bindLimit?: number } = {}): ReturnType<typeof getDb> {
   const failures: FailureController = { failNextMatching: () => {}, setBindLimit: () => {}, setBeforeBatchHook: () => {} }
+  const d1 = createD1(sqlite, failures)
+  if (options.bindLimit !== undefined) failures.setBindLimit(options.bindLimit)
   // @ts-expect-error The SQLite adapter implements the D1 methods exercised by these integration tests.
-  return getDb(createD1(sqlite, failures))
+  return getDb(d1)
 }
 
 function user(id: string, email: string, role: string, organizationId: string): CorrespondenceContext["user"] {
