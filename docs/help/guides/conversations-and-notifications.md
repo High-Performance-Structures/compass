@@ -12,7 +12,7 @@
   "permissions": ["help:read", "channels:read"],
   "routes": ["/dashboard/conversations", "/dashboard/conversations/[channelId]", "/dashboard/projects/[id]/conversations", "/dashboard/projects/[id]/messages", "/dashboard/settings", "/dashboard/office-maintenance/message-desk"],
   "owner": "Compass product team",
-  "lastReviewed": "2026-10-28"
+  "lastReviewed": "2026-11-13"
 }
 ---
 
@@ -77,6 +77,23 @@ Admins can change these in **Settings → Workflows**.
 When a message assigned to you goes **Stale**, three things happen. Your **Staff Message Desk** link in the sidebar turns red with a count, you get an urgent reminder in notifications, and the bell turns red until you read it. Following up on the message clears the reminder. If it later goes stale again, you get one new reminder. Admins can turn these reminders off in Settings.
 
 The towers at the top show how many open messages are in each group. Taller, redder towers mean more messages are waiting, and clicking a tower lists only those messages. To update several messages at once, tick them and use **Set status** or **Reassign to**. Any status change, note, or reassignment counts as follow-up and clears the flag.
+
+### Held job emails
+
+Email that comes into Compass goes straight to its job's **Messages** whenever Compass can tell which job it's for: it was sent to the job's Compass address, or it names exactly one of your job numbers. It's posted even when:
+
+- **The sender isn't a contact.** Job messages are only for staff, and an email never gives its sender access.
+- **An @name can't be matched.** The job's assigned staff are notified instead. An @name from a sender who isn't a contact is ignored the same way.
+- **No staff are assigned to the job.** The people who review held emails are notified instead.
+- **An attached file can't be saved.** The message is posted without it, with a note that the file is still in the original email.
+
+Compass holds an email for review only when it can't tell which job it's for (it names no job number, or more than one), or when job messages are turned off for that job. Held emails appear under **Held job emails** on the Staff Message Desk. Admins, project managers, and project administrators can see them, and held emails count toward the red number on the **Staff Message Desk** sidebar link.
+
+Each held email shows when it arrived, who sent it, the job, the subject, a short preview, and why it was held. Open it to read the whole email, then:
+
+- **Post to job messages**: choose the job (Compass suggests one) and post the email to that job's Messages, as if it had come through normally. Attached files come along when Compass can still get them from Gmail. Because you're vouching for the email, it doesn't matter if the sender isn't a contact. The job's assigned staff are notified, or you are if no one on the job can be.
+- **Make RFI**: for emails with an RFI tag in the subject, create an RFI on the chosen job.
+- **Dismiss**: take the email off the list without posting it.
 
 ## Notification Preferences {#notification-preferences}
 

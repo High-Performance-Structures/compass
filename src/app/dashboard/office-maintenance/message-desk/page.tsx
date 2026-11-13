@@ -1,6 +1,5 @@
 export const dynamic = "force-dynamic"
 
-import Link from "next/link"
 import { IconInbox, IconPhone } from "@tabler/icons-react"
 
 import {
@@ -8,6 +7,8 @@ import {
   submitCreateStaffMessage,
   submitRouteGotoTextToMessageDesk,
 } from "@/app/actions/staff-message-desk"
+import { getHeldJobEmails } from "@/app/actions/inbound-email-review"
+import { getInboundSmsReviewQueue, getInboundSmsTaskAssignees } from "@/app/actions/inbound-sms-review"
 import {
   Select,
   SelectContent,
@@ -20,6 +21,11 @@ import { Button } from "@/components/ui/button"
 import { SearchableComboboxField } from "@/components/searchable-combobox"
 import { PageHeader } from "@/components/page-header"
 import { MessageDeskBoard } from "@/components/staff-message-desk/message-desk-board"
+import { HeldJobEmails } from "@/components/staff-message-desk/held-job-emails"
+import { InboundTextReviewList } from "@/components/staff-message-desk/inbound-text-review"
+import { getCurrentUser } from "@/lib/auth"
+import { canManageProjectRegistry } from "@/lib/permissions"
+import { canReviewHeldJobEmails } from "@/lib/staff-message-desk"
 
 function fieldClassName(): string {
   return "h-10 border bg-background px-3 text-sm"
@@ -30,8 +36,12 @@ function timestamp(value: string): string {
   return Number.isNaN(parsed.getTime()) ? value : parsed.toLocaleString()
 }
 
-export default async function StaffMessageDeskPage(): Promise<React.ReactElement> {
-  const result = await getStaffMessageDesk()
+export default async function StaffMessageDeskPage({
+  searchParams,
+}: {
+  readonly searchParams: Promise<{ readonly section?: string | string[] }>
+}): Promise<React.ReactElement> {
+  const [result, user, params] = await Promise.all([getStaffMessageDesk(), getCurrentUser(), searchParams])
   if (!result.success) {
     return (
       <main className="mx-auto w-full max-w-3xl p-6">
@@ -42,6 +52,13 @@ export default async function StaffMessageDeskPage(): Promise<React.ReactElement
   }
   const { records, assignees, inboundTexts, viewerId, agingThresholds } = result.data
   const openCount = records.filter((record) => record.status !== "closed").length
+  // Held job emails: registry managers and project managers. Full text routing: registry managers.
+  const canRouteTexts = canManageProjectRegistry(user)
+  const [heldEmails, textQueue, textTaskAssignees] = await Promise.all([
+    canReviewHeldJobEmails(user) ? getHeldJobEmails() : null,
+    canRouteTexts ? getInboundSmsReviewQueue() : null,
+    canRouteTexts ? getInboundSmsTaskAssignees() : null,
+  ])
 
   return (
     <main className="mx-auto flex w-full max-w-6xl flex-1 flex-col gap-6 overflow-y-auto p-4 lg:p-6">
@@ -127,6 +144,16 @@ export default async function StaffMessageDeskPage(): Promise<React.ReactElement
         thresholds={agingThresholds}
       />
 
+      {heldEmails?.success ? (
+        <HeldJobEmails
+          items={heldEmails.data.items}
+          projects={heldEmails.data.projects}
+          defaultOpen={params.section === "held-emails"}
+        />
+      ) : heldEmails ? (
+        <p className="text-sm text-destructive">{heldEmails.error}</p>
+      ) : null}
+
       <section className="space-y-4 border-t pt-6" aria-labelledby="inbound-text-routing">
         <div className="flex items-center gap-2 border-b pb-2">
           <IconInbox className="size-5 text-muted-foreground" />
@@ -135,7 +162,9 @@ export default async function StaffMessageDeskPage(): Promise<React.ReactElement
             <p className="text-sm text-muted-foreground">Routing is manual. Creating a Desk record does not claim or process the GoTo event.</p>
           </div>
         </div>
-        {inboundTexts.length === 0 ? (
+        {textQueue && textTaskAssignees ? (
+          <InboundTextReviewList queue={textQueue} taskAssignees={textTaskAssignees} deskAssignees={assignees} />
+        ) : inboundTexts.length === 0 ? (
           <div className="border border-dashed p-8 text-center text-sm text-muted-foreground">No unhandled inbound texts.</div>
         ) : inboundTexts.map((item) => (
           <article key={item.id} className="border bg-background p-4 shadow-sm">
@@ -144,13 +173,7 @@ export default async function StaffMessageDeskPage(): Promise<React.ReactElement
                 <h3 className="font-semibold">Text sender ending {item.senderPhone.replace(/\D/g, "").slice(-4) || "unknown"}</h3>
                 <p className="text-sm text-muted-foreground">{timestamp(item.receivedAt)}</p>
               </div>
-              <Badge asChild variant="secondary">
-                <Link
-                  href={`/dashboard/office-maintenance/inbound-email#inbound-sms-${encodeURIComponent(item.id)}`}
-                >
-                  Needs review
-                </Link>
-              </Badge>
+              <Badge variant="secondary">Needs review</Badge>
             </div>
             <p className="mt-4 whitespace-pre-wrap border-l-2 pl-3 text-sm leading-6">
               {item.messageBody ?? "No message body was retained."}

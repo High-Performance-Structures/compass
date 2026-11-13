@@ -70,6 +70,7 @@ const webhookPaths = [
 const scheduledMaintenancePaths = [
   "/api/email/gmail-sync",
   "/api/operations/email/retry-invitations",
+  "/api/operations/email/held-backlog",
   "/api/operations/feedback/reconcile",
   "/api/operations/goto/recover-message-bodies",
   "/api/operations/paper-trail/run",
@@ -87,6 +88,9 @@ const scheduledMaintenancePaths = [
   "/api/operations/weather/refresh",
   "/api/operations/project-calendars/sync",
   "/api/operations/client-meetings/transcripts",
+  "/api/operations/data-health/run",
+  // Bearer secret for the regression smoke run, or the signed-in admin's session (checked in the route).
+  "/api/operations/data-health/report",
 ]
 
 export function isPublicPath(pathname: string): boolean {

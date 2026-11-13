@@ -2,6 +2,7 @@ import "server-only"
 
 import type { getDb } from "@/db"
 import { insertReplyThread } from "@/lib/domain/correspondence/email-store"
+import { sameTrustedInternalEmailMailbox, trustedInternalEmailDomains } from "@/lib/email/internal-email-alias"
 
 const DEFAULT_REPLY_MAILBOX = "jarvis@hps-colorado.com"
 
@@ -38,6 +39,17 @@ export function replyMailboxEmail(env: unknown): string {
   const mailbox = envString(env, "COMPASS_REPLY_MAILBOX") ?? DEFAULT_REPLY_MAILBOX
   const parts = splitEmailAddress(mailbox) ?? splitEmailAddress(DEFAULT_REPLY_MAILBOX)
   return parts ? `${parts.localPart}@${parts.domain}` : DEFAULT_REPLY_MAILBOX
+}
+
+/**
+ * Mail Compass sent itself: from its own mailbox (any +tag), or the same
+ * mailbox name on a trusted company domain. Its job numbers never route it.
+ * Live intake and the held-email backlog both use this.
+ */
+export function isCompassMailboxSender(env: unknown, fromAddress: string): boolean {
+  const mailbox = replyMailboxEmail(env).toLowerCase()
+  const sender = fromAddress.trim().toLowerCase().replace(/\+[^@]*@/, "@")
+  return sender === mailbox || sameTrustedInternalEmailMailbox({ senderEmail: sender, memberEmail: mailbox, trustedDomains: trustedInternalEmailDomains(env) })
 }
 
 export function trackedReplyAddress(input: {

@@ -184,6 +184,11 @@ export const HELP_TOPIC_LOCATIONS: Readonly<Record<string, HelpTopicLocation>> =
     "guideSlug": "company-settings",
     "sectionId": "statuses"
   },
+  "settings.company.data-health": {
+    "guideId": "settings.company",
+    "guideSlug": "company-settings",
+    "sectionId": "data-health"
+  },
   "settings.company.paper-trail": {
     "guideId": "settings.company",
     "guideSlug": "company-settings",

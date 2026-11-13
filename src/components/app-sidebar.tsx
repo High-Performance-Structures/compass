@@ -676,7 +676,7 @@ function SidebarNav({
           icon: IconPhone,
           alert: {
             count: staleMessageCount,
-            label: `${staleMessageCount} stale ${staleMessageCount === 1 ? "message" : "messages"} assigned to you`,
+            label: `${staleMessageCount} ${staleMessageCount === 1 ? "item needs" : "items need"} you on the Staff Message Desk`,
           },
         },
         {

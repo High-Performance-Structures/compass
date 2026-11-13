@@ -72,6 +72,7 @@ const workspace: SelectionWorkspace = {
   audience: "staff",
   canWrite: false,
   ownerChoiceConfirmation: true,
+  ownerSuggestedChoices: true,
   statusLabels: DEFAULT_SELECTION_STATUS_LABELS,
   items,
   changeOrders: [],

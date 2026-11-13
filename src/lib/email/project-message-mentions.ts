@@ -12,13 +12,36 @@ function normalized(value: string): string {
   return value.trim().normalize("NFKC").toLocaleLowerCase().replace(/\s+/g, " ")
 }
 
-/** Only explicit @tokens count; ordinary email addresses never mention anyone. */
+/**
+ * What the sender wrote, without quoted history: "> ..." lines and the
+ * "On ... wrote:" line that introduces them can't mention anyone again.
+ * Text written below a quote still counts. Curly quotes become straight.
+ */
+function newestPart(text: string): string {
+  return text
+    .split(/\r?\n/)
+    .filter((line) => !/^\s*>/.test(line) && !/^\s*On\b.*\bwrote:\s*$/i.test(line))
+    .join("\n")
+    .replace(/[\u201C\u201D]/g, '"')
+}
+
+/** True when the newest part of the email @mentions someone by name. */
+export function inboundMessageMentionsSomeone(text: string): boolean {
+  return /(?:^|[\s(])@(?=["\p{L}])/u.test(newestPart(text))
+}
+
+/**
+ * Only explicit @Name tokens count; ordinary email addresses never mention
+ * anyone, and an "@" before a space or number ("14 in @ 16 in o.c.") means "at".
+ */
 export function inboundProjectMessageRecipients(
   text: string,
   staff: readonly InboundMessagePerson[],
 ): readonly InboundMessagePerson[] | null {
-  const matches = Array.from(text.matchAll(/(?:^|[\s(])@(?:"([^"\r\n]+)"|([\p{L}\p{N}_][\p{L}\p{N}_.-]*))/gu))
-  if (Array.from(text.matchAll(/(?:^|[\s(])@/g)).length !== matches.length) return null
+  const written = newestPart(text)
+  const matches = Array.from(written.matchAll(/(?:^|[\s(])@(?:"([^"\r\n]+)"|(\p{L}[\p{L}\p{N}_.-]*))/gu))
+  // An @ that starts like a name but can't be read (e.g. an unclosed quote) holds the email for review.
+  if (Array.from(written.matchAll(/(?:^|[\s(])@(?=["\p{L}])/gu)).length !== matches.length) return null
   if (matches.length === 0) {
     const assigned = staff.filter((person) => person.assigned)
     return assigned.length > 0 && assigned.length <= 30 ? assigned : null

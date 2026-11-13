@@ -21,6 +21,7 @@ import type { Db } from "@/lib/server/action-context"
 import { assertListFields } from "@/lib/shared/statuses"
 
 import { insertCopyStatement } from "./copy-rows"
+import { OWNER_PENDING_SUGGESTIONS_MAX } from "./owner-suggestion-rules"
 import {
   type SelectionAuthorAudience,
   type SelectionChoiceStatus,
@@ -107,7 +108,9 @@ export async function updateSelectionChoice(
   /** Only prices change (allowed while the selection is out for signature). */
   pricesOnly = false,
 ): Promise<boolean> {
-  const values = status ? { ...patch, status: status.to } : patch
+  // Staff setting the owner price prices an owner's suggestion (no longer pending).
+  const priced = typeof patch.ownerPriceCents === "number" ? ownerPricedValues(patch.updatedAt ?? new Date().toISOString()) : {}
+  const values = status ? { ...patch, ...priced, status: status.to } : { ...patch, ...priced }
   assertListFields("project_selection_choices", values, CHOICE_LISTS)
   const result = await db
     .update(projectSelectionChoices)
@@ -223,11 +226,15 @@ export async function setChoicePricesFromRfq(
     )
     const ownerPrice = ownerPriceFromMarkup(price.priceCents, ownerMarkupPercent)
     // A blank owner price is filled from the markup; one staff set stays.
+    // An owner's suggestion is priced once it has an owner price.
+    const ownerPriced = sql`COALESCE(${projectSelectionChoices.ownerPriceCents}, ${ownerPrice}) IS NOT NULL`
     const setPrice = db
       .update(projectSelectionChoices)
       .set({
         priceCents: price.priceCents,
         ownerPriceCents: sql`COALESCE(${projectSelectionChoices.ownerPriceCents}, ${ownerPrice})`,
+        ownerPricingPending: sql`CASE WHEN ${ownerPriced} THEN 0 ELSE ${projectSelectionChoices.ownerPricingPending} END`,
+        ownerPricedAt: sql`CASE WHEN ${ownerPriced} AND ${projectSelectionChoices.ownerPricingPending} = 1 THEN ${now} ELSE ${projectSelectionChoices.ownerPricedAt} END`,
         updatedAt: now,
       })
       .where(where)
@@ -259,6 +266,111 @@ export function companyMergeSelectionChoiceStatements(database: D1Database, move
       )
       .bind(move.destinationId, move.now, move.sourceId, move.organizationId, ...guard.binds),
   ]
+}
+
+// ---- owner-suggested choices (owner decision 2026-11-13)
+//
+// An owner adds their own choice to a published selection. It is marked as
+// theirs and pending until staff set the owner price (updateSelectionChoice
+// and setChoicePricesFromRfq clear it); the product page's price is only the
+// supplier price. The owner adds, edits and deletes it under the same locks
+// as the pick (pickChangeable), on a selection still published to them and
+// whose choice they haven't confirmed; edits and deletes only while it is
+// still theirs and pending. Every rule is checked inside the write.
+
+/** The values that mark an owner's suggestion priced by staff (when it was pending). */
+function ownerPricedValues(now: string) {
+  return {
+    ownerPricingPending: false,
+    ownerPricedAt: sql`CASE WHEN ${projectSelectionChoices.ownerPricingPending} = 1 THEN ${now} ELSE ${projectSelectionChoices.ownerPricedAt} END`,
+  }
+}
+
+/** The owner may add to, or change their suggestion on, the choice's selection now. */
+const ownerSuggestionAllowed = sql`(${pickChangeable} AND EXISTS (SELECT 1 FROM project_selection_decisions AS owner_decision
+  WHERE owner_decision.selection_id = project_selection_choices.selection_id AND owner_decision.published = 1 AND owner_decision.approved_at IS NULL))`
+
+/**
+ * Adds the owner's suggested choice and its owner-added product link in one
+ * batch (one transaction). The choice is taken back in the same batch when
+ * the selection doesn't allow it (ownerSuggestionAllowed); its link goes with
+ * it (cascade). False when nothing was kept.
+ */
+export async function insertOwnerSuggestedChoice(db: Db, choice: ChoiceInsert, link: LinkInsert | null): Promise<boolean> {
+  assertListFields("project_selection_choices", choice, CHOICE_LISTS)
+  if (link) assertListFields("project_selection_links", link, LINK_LISTS)
+  const insert = db.insert(projectSelectionChoices).values(choice)
+  // At most OWNER_PENDING_SUGGESTIONS_MAX pending suggestions per owner per selection (this one counted).
+  const overCap = sql`(SELECT count(*) FROM project_selection_choices AS mine WHERE mine.selection_id = ${choice.selectionId}
+    AND mine.suggested_by_user_id = ${choice.suggestedByUserId ?? null} AND mine.owner_pricing_pending = 1) > ${OWNER_PENDING_SUGGESTIONS_MAX}`
+  const undo = db
+    .delete(projectSelectionChoices)
+    .where(and(eq(projectSelectionChoices.id, choice.id), sql`(NOT ${ownerSuggestionAllowed} OR ${overCap})`))
+  const results = await db.batch(link ? [insert, db.insert(projectSelectionLinks).values(link), undo] : [insert, undo])
+  return (results.at(-1)?.meta.changes ?? 0) === 0
+}
+
+/** Only the suggester's own suggestion, while pending and allowed. */
+function ownSuggestion(projectId: string, choiceId: string, userId: string) {
+  return and(
+    eq(projectSelectionChoices.id, choiceId),
+    eq(projectSelectionChoices.projectId, projectId),
+    eq(projectSelectionChoices.suggestedByUserId, userId),
+    eq(projectSelectionChoices.ownerPricingPending, true),
+    ownerSuggestionAllowed,
+  )
+}
+
+/**
+ * Saves the owner's edit of their own suggestion (compare-and-set: only
+ * while it is theirs, pending and allowed). `link` replaces the product link
+ * the owner added (null removes it; undefined leaves it); the link changes
+ * only when the choice's edit landed in the same batch. False when nothing
+ * was written.
+ */
+export async function updateOwnerSuggestedChoice(
+  db: Db,
+  input: {
+    readonly projectId: string
+    readonly choiceId: string
+    readonly userId: string
+    readonly patch: { readonly title: string; readonly description: string | null; readonly priceCents?: number | null; readonly updatedAt: string }
+    readonly link?: LinkInsert | null
+  },
+): Promise<boolean> {
+  if (input.link) assertListFields("project_selection_links", input.link, LINK_LISTS)
+  const edit = db.update(projectSelectionChoices).set(input.patch).where(ownSuggestion(input.projectId, input.choiceId, input.userId))
+  if (input.link === undefined) {
+    const result = await edit.run()
+    return result.meta.changes > 0
+  }
+  // The edit landed: the choice is still the owner's pending suggestion, stamped with this edit.
+  const landed = sql`EXISTS (SELECT 1 FROM project_selection_choices AS edited WHERE edited.id = ${input.choiceId}
+    AND edited.suggested_by_user_id = ${input.userId} AND edited.owner_pricing_pending = 1 AND edited.updated_at = ${input.patch.updatedAt})`
+  const ownLinks = and(
+    eq(projectSelectionLinks.choiceId, input.choiceId),
+    eq(projectSelectionLinks.addedByUserId, input.userId),
+    eq(projectSelectionLinks.addedByAudience, "owner"),
+  )
+  const link = input.link
+  const removeOld = db.delete(projectSelectionLinks).where(and(ownLinks, landed, link ? ne(projectSelectionLinks.id, link.id) : undefined))
+  const [result] = await db.batch(
+    link
+      ? [
+          edit,
+          removeOld,
+          db.insert(projectSelectionLinks).values(link),
+          db.delete(projectSelectionLinks).where(and(eq(projectSelectionLinks.id, link.id), sql`NOT ${landed}`)),
+        ]
+      : [edit, removeOld],
+  )
+  return result.meta.changes > 0
+}
+
+/** Deletes the owner's own pending suggestion (its links go with it). False when nothing was deleted. */
+export async function deleteOwnerSuggestedChoice(db: Db, projectId: string, choiceId: string, userId: string): Promise<boolean> {
+  const result = await db.delete(projectSelectionChoices).where(ownSuggestion(projectId, choiceId, userId)).run()
+  return result.meta.changes > 0
 }
 
 // ---- dependents

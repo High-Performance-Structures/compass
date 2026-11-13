@@ -1,7 +1,8 @@
 import { afterEach, describe, expect, it, vi } from "vitest"
 import { readFileSync } from "node:fs"
 import { openCorrespondenceTestDatabase, type CorrespondenceTestDatabase, addContactDirectorySchema } from "./helpers/correspondence-core"
-import { routeProjectInboundEmail, routeProjectInboundSms } from "@/lib/email/project-inbound-routing"
+import { routeProjectInboundSms } from "@/lib/email/project-inbound-routing"
+import { routeProjectInboundEmail } from "@/lib/email/project-email-intake"
 import { routeInboundProjectMessage } from "@/lib/email/project-message-routing"
 import type { InboundCandidate } from "@/lib/email/gmail-message-parser"
 
@@ -34,15 +35,15 @@ function input(db: CorrespondenceTestDatabase) {
   return { db: db.db, env: { COMPASS_CORRESPONDENCE_ENABLED: "true" }, organizationId: "org-a", projectId: "project-a", candidate: candidate(), body: "Please check the finish.", now: "2026-09-05T19:00:00.000Z" }
 }
 describe("[MESSAGE] intake", () => {
-  it("uses the shared authenticated sender route for email and holds unknown senders", async () => {
+  it("uses the shared sender route for email and posts unknown senders to a known job", async () => {
     const db = setup()
     db.sqlite.exec("UPDATE projects SET id='proj-project-a' WHERE id='project-b'")
     const known = candidate({ toAddress: "jarvis+project-proj-project-a@hps-colorado.com", fromAddress: "staff-a@example.test" })
     const result = await routeProjectInboundEmail({ ...input(db), candidate: known })
     expect(result.kind).toBe("routed")
     expect(db.sqlite.prepare("SELECT COUNT(*) AS count FROM correspondence_messages").get()).toEqual({ count: 1 })
-    expect(await routeProjectInboundEmail({ ...input(db), candidate: { ...known, gmailMessageId: "unknown-2", fromAddress: "unknown@example.test" } })).toEqual({ kind: "needs_review", projectId: "proj-project-a" })
-    expect(db.sqlite.prepare("SELECT COUNT(*) AS count FROM correspondence_messages").get()).toEqual({ count: 1 })
+    expect((await routeProjectInboundEmail({ ...input(db), candidate: { ...known, gmailMessageId: "unknown-2", fromAddress: "unknown@example.test" } })).kind).toBe("routed")
+    expect(db.sqlite.prepare("SELECT COUNT(*) AS count FROM correspondence_messages").get()).toEqual({ count: 2 })
   })
   it("posts an untagged email to the project inbox as a project message", async () => {
     const db = setup()
@@ -62,7 +63,7 @@ describe("[MESSAGE] intake", () => {
   it.each(["email", "sms"] as const)("saves %s in Messages with a notification only for the internal mention", async (source) => {
     const db = setup()
     const result = await routeInboundProjectMessage({ ...input(db), source })
-    expect(result?.status).toBe("routed_message")
+    expect(result.status).toBe("routed_message")
     expect(db.sqlite.prepare("SELECT source,author_user_id,body FROM correspondence_messages").get()).toEqual({ source, author_user_id: null, body: "Please check the finish." })
     expect(db.sqlite.prepare("SELECT user_id,role FROM correspondence_participants").all()).toEqual([{ user_id: "staff-a", role: "staff" }])
     expect(db.sqlite.prepare("SELECT user_id,in_app FROM notification_recipients").all()).toEqual([{ user_id: "staff-a", in_app: 1 }])
@@ -78,35 +79,35 @@ describe("[MESSAGE] intake", () => {
   it.each(['@"Owner A"', '@"Staff B"', "@Staff", "@Nobody"])("holds unavailable/ambiguous mention %s without creating records", async (mention) => {
     const db = setup()
     if (mention === "@Staff") db.sqlite.exec("UPDATE users SET first_name='Staff' WHERE id='revoked-a'")
-    expect(await routeInboundProjectMessage({ ...input(db), candidate: candidate({ subject: `[MESSAGE] ${mention}` }), source: "email" })).toBeNull()
+    expect(await routeInboundProjectMessage({ ...input(db), candidate: candidate({ subject: `[MESSAGE] ${mention}` }), source: "email" })).toEqual({ status: "held", reason: "mention_unmatched" })
     expect(db.sqlite.prepare("SELECT COUNT(*) AS count FROM correspondence_messages").get()).toEqual({ count: 0 })
   })
   it("holds inactive recipients and attachments without dropping content", async () => {
     const db = setup()
     db.sqlite.exec("UPDATE users SET is_active=0 WHERE id='staff-a'")
-    expect(await routeInboundProjectMessage({ ...input(db), source: "sms" })).toBeNull()
+    expect(await routeInboundProjectMessage({ ...input(db), source: "sms" })).toEqual({ status: "held", reason: "mention_unmatched" })
     db.sqlite.exec("UPDATE users SET is_active=1 WHERE id='staff-a'")
-    expect(await routeInboundProjectMessage({ ...input(db), candidate: candidate({ attachments: [{ attachmentId: "file-1", fileName: "photo.jpg", mimeType: "image/jpeg", size: 10, data: null }] }), source: "email" })).toBeNull()
+    expect(await routeInboundProjectMessage({ ...input(db), candidate: candidate({ attachments: [{ attachmentId: "file-1", fileName: "photo.jpg", mimeType: "image/jpeg", size: 10, data: null }] }), source: "email" })).toEqual({ status: "held", reason: "attachment_failed" })
   })
   it("saves an email's files with the project message", async () => {
     const db = setup()
     const env = { COMPASS_CORRESPONDENCE_ENABLED: "true", COMPASS_CORRESPONDENCE_DRIVE_USER: "files@example.test", COMPASS_CORRESPONDENCE_STAGING_FOLDERS: JSON.stringify({ "org-a": "private-folder" }) }
     const withFile = candidate({ attachments: [{ attachmentId: "file-1", fileName: "inspection.pdf", mimeType: "application/pdf", size: 3, data: new Uint8Array([1, 2, 3]) }] })
     const routed = await routeInboundProjectMessage({ ...input(db), env, candidate: withFile, source: "email" })
-    expect(routed?.status).toBe("routed_message")
+    expect(routed.status).toBe("routed_message")
     expect(db.sqlite.prepare("SELECT name, message_id AS messageId, drive_file_id AS driveFileId, owner_user_id AS ownerUserId FROM correspondence_attachments").all())
-      .toEqual([{ name: "inspection.pdf", messageId: routed?.id, driveFileId: "drive-inspection.pdf", ownerUserId: "staff-a" }])
+      .toEqual([{ name: "inspection.pdf", messageId: routed.status === "routed_message" ? routed.id : null, driveFileId: "drive-inspection.pdf", ownerUserId: "staff-a" }])
   })
   it("keeps an email with files in review when private file storage isn't set up", async () => {
     const db = setup()
     const withFile = candidate({ attachments: [{ attachmentId: "file-1", fileName: "inspection.pdf", mimeType: "application/pdf", size: 3, data: new Uint8Array([1, 2, 3]) }] })
-    expect(await routeInboundProjectMessage({ ...input(db), candidate: withFile, source: "email" })).toBeNull()
+    expect(await routeInboundProjectMessage({ ...input(db), candidate: withFile, source: "email" })).toEqual({ status: "held", reason: "attachment_failed" })
     expect(db.sqlite.prepare("SELECT COUNT(*) AS count FROM correspondence_messages").get()).toEqual({ count: 0 })
   })
   it("respects notification preferences and messaging availability", async () => {
     const db = setup()
     db.sqlite.exec("INSERT INTO notification_preferences(user_id,in_app_enabled,updated_at) VALUES ('staff-a',0,'2026-09-05')")
-    expect(await routeInboundProjectMessage({ ...input(db), env: {}, source: "email" })).toBeNull()
+    expect(await routeInboundProjectMessage({ ...input(db), env: {}, source: "email" })).toEqual({ status: "held", reason: "messaging_off" })
     await routeInboundProjectMessage({ ...input(db), source: "email" })
     expect(db.sqlite.prepare("SELECT in_app FROM notification_recipients").get()).toEqual({ in_app: 0 })
   })

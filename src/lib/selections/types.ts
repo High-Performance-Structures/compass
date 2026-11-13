@@ -59,6 +59,8 @@ export type SelectionWorkspace = {
   readonly canWrite: boolean
   /** Owners may confirm their choice by click (company setting; a signature approves either way). */
   readonly ownerChoiceConfirmation: boolean
+  /** Owners may add their own choices ("Add my own choice"; company setting). */
+  readonly ownerSuggestedChoices: boolean
   /** The job's company status names (Settings › Selections › Status names). */
   readonly statusLabels: SelectionStatusLabels
   readonly items: readonly SelectionDecisionItem[]

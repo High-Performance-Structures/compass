@@ -19,6 +19,7 @@ import { ProjectAgingSettingsSection } from "@/components/settings/project-aging
 import { PortfolioMapSettingsSection } from "@/components/settings/portfolio-map-settings-section"
 import { WeatherAlertSettingsSection } from "@/components/settings/weather-alert-settings-section"
 import { NotificationDigestSettingsSection } from "@/components/settings/notification-digest-settings-section"
+import { DataHealthSettingsSection } from "@/components/settings/data-health-settings-section"
 import { LinkedJobSettingsSection } from "@/components/settings/linked-job-settings-section"
 import { SquareAlertSettingsSection } from "@/components/settings/square-alert-settings-section"
 import { EstimateSettingsSection } from "@/components/settings/estimate-settings-section"
@@ -256,6 +257,7 @@ const WORKFLOW_AREAS = [
   { value: "project-aging", label: "Project aging", description: "When client follow-ups turn due and overdue." },
   { value: "portfolio-map", label: "Portfolio map", description: "Which state the dashboard map shows, and which job statuses and departments appear on it, in which phase." },
   { value: "notification-digest", label: "Notification digest", description: "When change and activity notices are collected into one email, text and push per person (noon and 5 pm by default), and which notices are still sent right away." },
+  { value: "data-health", label: "Data health", description: "A daily, read-only check for record statuses Compass doesn't allow and database tables or columns it doesn't expect, and who is told." },
   { value: "weather-alerts", label: "Weather & fire alerts", description: "Snow, rain, wind, cold, heat, wildfire distance, smoke and air quality that flag a job on the map's Weather and Fire & smoke layers." },
   { value: "client-interactions", label: "Client interactions", description: "How client contact is logged." },
   { value: "project-duplicates", label: "Duplicate project check", description: "Departments whose customers place repeat orders." },
@@ -303,6 +305,8 @@ function WorkflowAreaSection({ area }: { readonly area: WorkflowArea }): React.R
       return <WeatherAlertSettingsSection />
     case "notification-digest":
       return <NotificationDigestSettingsSection />
+    case "data-health":
+      return <DataHealthSettingsSection />
     case "linked-jobs":
       return <LinkedJobSettingsSection />
     case "square-payments":

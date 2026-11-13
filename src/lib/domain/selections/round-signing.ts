@@ -196,6 +196,7 @@ export async function loadRoundSigningView(db: Db, projectId: string, organizati
       costCode: selection.costCode,
       pickedBy: choice ? pickedByLabel(choice) : null,
       signedEarlier: choice !== null && signed.get(selection.id) === choice.id,
+      ownerPricingPending: choice?.ownerPricingPending ?? false,
     }
   })
   const contractKind = contractKindOf(variance?.contractType ?? "fixed_price")

@@ -1,6 +1,7 @@
 import { and, eq, isNull } from "drizzle-orm"
 
 import type { getDb } from "@/db"
+import { errorWithCauses } from "@/lib/action-result"
 import {
   projects,
 } from "@/db/schema"
@@ -343,14 +344,20 @@ export async function ensureProjectAudienceConversation(input: {
   await ensureMembers(input.db, channelId, desiredMembers, input.now)
 
   if (input.externalUserId && input.importedContactId) {
-    await adoptImportedConversationsForContact({
-      db: input.db,
-      projectId: input.projectId,
-      projectContactId: input.importedContactId,
-      userId: input.externalUserId,
-      audience: input.audience,
-      now: input.now,
-    })
+    // Joining old imported threads is a convenience on top of access: if it
+    // fails, the grant still stands and the next grant for this contact retries.
+    try {
+      await adoptImportedConversationsForContact({
+        db: input.db,
+        projectId: input.projectId,
+        projectContactId: input.importedContactId,
+        userId: input.externalUserId,
+        audience: input.audience,
+        now: input.now,
+      })
+    } catch (error) {
+      console.error("[project-access] imported conversations not joined", input.projectId, input.importedContactId, errorWithCauses(error))
+    }
   }
   // Clients on the same job see each other's client conversations (company setting).
   if (input.audience === "owner") {

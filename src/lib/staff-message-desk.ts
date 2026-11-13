@@ -1,4 +1,7 @@
-import { isInternalStaffRole } from "@/lib/user-roles"
+import type { AuthUser } from "@/lib/auth"
+import { isDemoOrg, isDemoUser } from "@/lib/demo"
+import { canManageProjectRegistry, getPermissions } from "@/lib/permissions"
+import { canManageUserAccessRole, isInternalStaffRole, isProjectLeadRole } from "@/lib/user-roles"
 
 export type StaffMessageDeskUser = Readonly<{
   readonly id: string
@@ -18,6 +21,26 @@ export function isStaffMessageDeskUser(
     user.organizationType === "internal" &&
     isInternalStaffRole(user.role)
   )
+}
+
+/**
+ * Who reviews job emails Compass held back (the desk's "Held job emails"):
+ * anyone who manages the project registry, plus project managers and project
+ * administrators, who run jobs day to day.
+ */
+export function canReviewHeldJobEmails(user: AuthUser | null): boolean {
+  if (canManageProjectRegistry(user)) return true
+  if (!user || !user.isActive) return false
+  if (isDemoUser(user.id) || (user.organizationId !== null && isDemoOrg(user.organizationId))) return false
+  return isProjectLeadRole(user.role)
+}
+
+/**
+ * The role half of canReviewHeldJobEmails, for choosing whom to notify about
+ * a job email when the job has no staff (accounts already known active).
+ */
+export function isHeldJobEmailReviewerRole(role: string): boolean {
+  return canManageUserAccessRole(role) || getPermissions(role, "organization").includes("update") || isProjectLeadRole(role)
 }
 
 export function isEligibleStaffMessageAssignee(

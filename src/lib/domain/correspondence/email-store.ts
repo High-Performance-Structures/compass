@@ -125,7 +125,29 @@ export async function upsertInboundEmail(db: Db, row: InboundEmailInsert): Promi
     })
 }
 
-/** Staff posted a reviewed email to a project record. */
+/**
+ * Staff take a held email to act on it: only one reviewer can, so the same
+ * email is never posted twice or posted and dismissed at once. False when it
+ * is no longer waiting for review.
+ */
+export async function claimInboundEmailForReview(db: Db, emailId: string, organizationId: string): Promise<boolean> {
+  const rows = await db
+    .update(inboundEmails)
+    .set({ matchedStatus: "posting" })
+    .where(and(eq(inboundEmails.id, emailId), eq(inboundEmails.organizationId, organizationId), eq(inboundEmails.matchedStatus, "needs_review")))
+    .returning({ id: inboundEmails.id })
+  return rows.length === 1
+}
+
+/** Puts a claimed email back on the review list after the action failed. */
+export async function releaseInboundEmailClaim(db: Db, emailId: string): Promise<void> {
+  await db
+    .update(inboundEmails)
+    .set({ matchedStatus: "needs_review" })
+    .where(and(eq(inboundEmails.id, emailId), eq(inboundEmails.matchedStatus, "posting")))
+}
+
+/** Staff posted a claimed email to a project record. */
 export async function markInboundEmailPosted(
   db: Db,
   emailId: string,
@@ -134,12 +156,12 @@ export async function markInboundEmailPosted(
   await db
     .update(inboundEmails)
     .set({ projectId: posted.projectId, matchedStatus: "posted", postedMessageId: posted.postedMessageId })
-    .where(eq(inboundEmails.id, emailId))
+    .where(and(eq(inboundEmails.id, emailId), eq(inboundEmails.matchedStatus, "posting")))
 }
 
 /** Dismisses an email still waiting for review in this organization. */
-export async function dismissInboundEmailForReview(db: Db, emailId: string, organizationId: string): Promise<void> {
-  await db
+export async function dismissInboundEmailForReview(db: Db, emailId: string, organizationId: string): Promise<boolean> {
+  const rows = await db
     .update(inboundEmails)
     .set({ matchedStatus: "dismissed" })
     .where(
@@ -149,6 +171,8 @@ export async function dismissInboundEmailForReview(db: Db, emailId: string, orga
         eq(inboundEmails.matchedStatus, "needs_review")
       )
     )
+    .returning({ id: inboundEmails.id })
+  return rows.length === 1
 }
 
 /** Points tracked email threads about a merged company at the kept one, so later replies land on it. */

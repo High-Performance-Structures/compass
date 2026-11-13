@@ -24,9 +24,9 @@ import {
 } from "@/lib/email/gmail-message-parser"
 import { emailRetryAt, isEmailRateLimit } from "./delivery-recovery"
 import { claimMailbox, deferMailbox, mailboxCooldown, releaseMailbox } from "./mailbox-state"
-import { replyMailboxEmail } from "@/lib/email/reply-tracking"
+import { isCompassMailboxSender, replyMailboxEmail } from "@/lib/email/reply-tracking"
 import { isReplyMessage } from "@/lib/email/reply-detection"
-import { routeProjectInboundEmail } from "@/lib/email/project-inbound-routing"
+import { routeProjectInboundEmail } from "@/lib/email/project-email-intake"
 import { announceTrackedRecordReply } from "@/lib/email/tracked-record-replies"
 import { isTrackedRecordKind, isVendorLevelKind } from "@/lib/email/tracked-record-email"
 import { postTradeDocReply } from "@/lib/trade-docs/email-replies"
@@ -355,7 +355,7 @@ async function importCandidate(input: {
     env: input.env,
     db: input.db,
     organizationId: input.organizationId,
-    candidate: input.candidate,
+    candidate: input.candidate, matchJobNumbers: !replyThread && !isCompassMailboxSender(input.env, input.candidate.fromAddress), // job numbers count only without a tracked reply thread, never for Compass's own mail
   })
   if (projectRoute.kind === "other_organization") return "other_org"
   if (projectRoute.kind === "needs_review") {
@@ -574,7 +574,7 @@ class GmailRateLimitError extends Error {
   }
 }
 
-async function fetchJson(input: {
+export async function fetchGmailJson(input: {
   readonly url: string
   readonly accessToken: string
 }): Promise<unknown> {
@@ -595,7 +595,7 @@ async function fetchJson(input: {
   return JSON.parse(text)
 }
 
-async function hydrateCandidateAttachments(input: {
+export async function hydrateCandidateAttachments(input: {
   readonly candidate: InboundCandidate
   readonly accessToken: string
 }): Promise<InboundCandidate> {
@@ -605,7 +605,7 @@ async function hydrateCandidateAttachments(input: {
       const attachmentUrl = new URL(
         `https://gmail.googleapis.com/gmail/v1/users/me/messages/${input.candidate.gmailMessageId}/attachments/${attachment.attachmentId}`
       )
-      const response = await fetchJson({
+      const response = await fetchGmailJson({
         url: attachmentUrl.toString(),
         accessToken: input.accessToken,
       })
@@ -680,7 +680,7 @@ async function syncGmailInboundRepliesWithLease(input: {
       listUrl.searchParams.set("q", query)
       listUrl.searchParams.set("maxResults", String(maxResults))
       if (pageToken) listUrl.searchParams.set("pageToken", pageToken)
-      const listResponse = await fetchJson({
+      const listResponse = await fetchGmailJson({
         url: listUrl.toString(),
         accessToken: access.accessToken,
       })
@@ -711,7 +711,7 @@ async function syncGmailInboundRepliesWithLease(input: {
           `https://gmail.googleapis.com/gmail/v1/users/me/messages/${id}`
         )
         messageUrl.searchParams.set("format", "full")
-        const messageResponse = await fetchJson({
+        const messageResponse = await fetchGmailJson({
           url: messageUrl.toString(),
           accessToken: access.accessToken,
         })
