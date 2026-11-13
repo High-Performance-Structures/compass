@@ -1,5 +1,6 @@
-import Database from "better-sqlite3"
-import { afterEach, describe, expect, it } from "vitest"
+import { describe, expect, it } from "vitest"
+
+import { newSqlite } from "@/lib/daily-logs/__tests__/sqlite-d1"
 
 import {
   linkedScheduleTaskId,
@@ -51,15 +52,9 @@ describe("linked schedule to-dos", () => {
 })
 
 describe("linked to-do date synchronization", () => {
-  const databases: ReturnType<typeof Database>[] = []
-
-  afterEach(() => {
-    for (const database of databases.splice(0)) database.close()
-  })
-
   it("preserves schedule-relative offsets without touching unrelated rows", () => {
-    const database = new Database(":memory:")
-    databases.push(database)
+    // node:sqlite, which binds D1-style numbered parameters (?1) positionally.
+    const database = newSqlite()
     database.exec(`
       CREATE TABLE schedule_tasks (
         id TEXT PRIMARY KEY,
@@ -90,13 +85,9 @@ describe("linked to-do date synchronization", () => {
     `)
 
     database.prepare(LINKED_TODO_DATE_UPDATE_SQL).run(
-      "2026-08-20",
-      "schedule-1",
-      "2026-08-24",
-      "schedule-1",
+      JSON.stringify({ "schedule-1": ["2026-08-20", "2026-08-24"] }),
       "new",
-      "schedule-1",
-      "schedule-1"
+      "project-1"
     )
 
     const rows = database

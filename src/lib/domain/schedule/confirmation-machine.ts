@@ -7,11 +7,17 @@
  *             any ──await_account──▶ unavailable    (asked, but nobody has an account yet)
  *             any ──stop───────────▶ not_requested  (no answer needed)
  *             proposed ──reject_proposal──▶ pending (staff turned the new dates down)
+ *             proposed ──accept_proposal──▶ pending (staff took the new dates: confirm them)
+ *             pending | confirmed | declined | proposed ──dates_moved──▶ pending
+ *                       (staff moved the dates, by hand or through a dependency:
+ *                        the assignee confirms the new ones)
  *
  *   assignee: any asked ──confirm / decline / propose──▶ confirmed / declined / proposed
  *
- * Staff events are what the item form, bulk assign and accepting a proposal
- * write today (staffConfirmationEvent picks one), from any state. Assignee
+ * request / await_account / stop are what the item form and bulk assign
+ * write (staffConfirmationEvent picks one), from any state. Accepting a
+ * proposal is compare-and-set on the proposal staff reviewed, and a date move
+ * re-asks only items already asked of an account (./store.ts). Assignee
  * answers are compare-and-set in ./store.ts (recordConfirmationAnswer) on the
  * dates and request the assignee answered, so a late answer never lands on
  * moved dates or a new request, and a double submit lands once.
@@ -37,6 +43,8 @@ export const confirmationMachine = defineMachine({
     await_account: { from: SCHEDULE_CONFIRMATION_STATUSES, to: "unavailable" },
     stop: { from: SCHEDULE_CONFIRMATION_STATUSES, to: "not_requested" },
     reject_proposal: { from: ["proposed"], to: "pending" },
+    accept_proposal: { from: ["proposed"], to: "pending" },
+    dates_moved: { from: ["pending", "confirmed", "declined", "proposed"], to: "pending" },
     confirm: { from: ASKED, to: "confirmed" },
     decline: { from: ASKED, to: "declined" },
     propose: { from: ASKED, to: "proposed" },

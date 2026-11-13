@@ -3,6 +3,8 @@
 import * as React from "react"
 import type { Icon } from "@tabler/icons-react"
 import Link from "next/link"
+
+import { cn } from "@/lib/utils"
 import { usePathname, useSearchParams } from "next/navigation"
 
 import {
@@ -34,8 +36,11 @@ export interface NavLinkItem {
   readonly title: string
   readonly url: string
   readonly icon?: Icon
-  /** Turns the link red with a count, e.g. stale messages for this user. */
-  readonly alert?: { readonly count: number; readonly label: string }
+  /**
+   * A count beside the link. The default "alert" turns the link red (stale
+   * messages for this user); "unread" is a plain count (unread job messages).
+   */
+  readonly alert?: { readonly count: number; readonly label: string; readonly tone?: "alert" | "unread" }
 }
 
 export interface NavGroupItem {
@@ -144,12 +149,13 @@ function NavLink({
     conversationPanel !== null,
   )
   const alert = item.alert && item.alert.count > 0 ? item.alert : null
+  const urgent = alert !== null && alert.tone !== "unread"
   const content = (
     <>
       {item.icon && !nested ? <item.icon className={COLLAPSED_ONLY_ICON} /> : null}
       <span>{item.title}</span>
       {alert ? (
-        <span className="ml-auto rounded-sm bg-destructive px-1.5 text-xs font-semibold leading-5 text-destructive-foreground tabular-nums group-data-[collapsible=icon]:hidden">
+        <span className={cn("ml-auto rounded-sm px-1.5 text-xs font-semibold leading-5 tabular-nums group-data-[collapsible=icon]:hidden", urgent ? "bg-destructive text-destructive-foreground" : "bg-primary text-primary-foreground")}>
           {alert.count > 9 ? "9+" : alert.count}
         </span>
       ) : null}
@@ -179,7 +185,7 @@ function NavLink({
         tooltip={alert ? `${item.title}: ${alert.label}` : item.title}
         isActive={isActive}
         aria-label={alert ? `${item.title}, ${alert.label}` : item.title}
-        className={alert ? "text-destructive hover:text-destructive data-[active=true]:text-destructive" : undefined}
+        className={urgent ? "text-destructive hover:text-destructive data-[active=true]:text-destructive" : undefined}
       >
         {opensPanel ? (
           <button type="button" onClick={() => conversationPanel?.open()}>

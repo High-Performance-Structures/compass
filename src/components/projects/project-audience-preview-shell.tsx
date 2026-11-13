@@ -1,6 +1,7 @@
 import type * as React from "react"
 import { CompassMark } from "@/components/compass-mark"
 import { ReleaseStageLabel } from "@/components/release-stage-label"
+import { ProjectMessagesUnreadBadge } from "@/components/projects/project-messages-unread-badge"
 import Link from "next/link"
 import {
   IconPalette,
@@ -287,6 +288,7 @@ export function ProjectAudiencePreviewShell({
             >
               {item.icon}
               {item.label}
+              {item.section === "conversations" && !viewerIsInternal && <ProjectMessagesUnreadBadge projectId={projectId} />}
             </Link>
           ))}
         </nav>
@@ -414,6 +416,7 @@ export function ProjectAudiencePreviewShell({
               >
                 {item.icon}
                 {item.label}
+                {item.section === "conversations" && !viewerIsInternal && <ProjectMessagesUnreadBadge projectId={projectId} />}
               </Link>
             ))}
           </nav>

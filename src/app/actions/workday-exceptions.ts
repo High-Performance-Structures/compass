@@ -18,6 +18,8 @@ import {
   exceptionUpdateStatement,
   runWithDateUpdates,
 } from "@/lib/domain/schedule/store"
+import { dateMovesLimitError } from "@/lib/domain/schedule/date-moves"
+import { scheduleDateMoveRules } from "@/lib/domain/schedule/date-move-rules"
 import type { Db } from "@/lib/server/action-context"
 import { isScheduleShiftReasonRequired } from "@/lib/schedule/publication-history"
 import { recordScheduleShift } from "@/lib/schedule/record-shift"
@@ -129,6 +131,8 @@ export async function createWorkdayException(
       ...existingExceptions,
       newException,
     ])
+    const tooMany = dateMovesLimitError(updatedTasks, 1)
+    if (tooMany) return { success: false, error: tooMany }
     const shiftSummary = summarizeScheduleShift(tasksBefore, updatedTasks)
     await runWithDateUpdates(
       env.DB,
@@ -136,7 +140,8 @@ export async function createWorkdayException(
       projectId,
       updatedTasks,
       now,
-      "Workday exception schedule batch failed"
+      "Workday exception schedule batch failed",
+      await scheduleDateMoveRules(db, orgId)
     )
     if (shiftReasonResult?.success) {
       await recordScheduleShift({
@@ -227,6 +232,8 @@ export async function updateWorkdayException(
         exception.id === exceptionId ? updatedException : exception
       )
     )
+    const tooMany = dateMovesLimitError(updatedTasks, 1)
+    if (tooMany) return { success: false, error: tooMany }
     const shiftSummary = summarizeScheduleShift(tasksBefore, updatedTasks)
     await runWithDateUpdates(
       env.DB,
@@ -234,7 +241,8 @@ export async function updateWorkdayException(
       existing.projectId,
       updatedTasks,
       updatedAt,
-      "Workday exception schedule batch failed"
+      "Workday exception schedule batch failed",
+      await scheduleDateMoveRules(db, orgId)
     )
     if (shiftReasonResult?.success) {
       await recordScheduleShift({
@@ -306,6 +314,8 @@ export async function deleteWorkdayException(
       existing.projectId,
       remainingExceptions
     )
+    const tooMany = dateMovesLimitError(updatedTasks, 1)
+    if (tooMany) return { success: false, error: tooMany }
     const shiftSummary = summarizeScheduleShift(tasksBefore, updatedTasks)
     await runWithDateUpdates(
       env.DB,
@@ -313,7 +323,8 @@ export async function deleteWorkdayException(
       existing.projectId,
       updatedTasks,
       updatedAt,
-      "Workday exception schedule batch failed"
+      "Workday exception schedule batch failed",
+      await scheduleDateMoveRules(db, orgId)
     )
     if (shiftReasonResult?.success) {
       await recordScheduleShift({

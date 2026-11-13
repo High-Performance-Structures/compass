@@ -98,6 +98,8 @@ const fieldDailyLogFollowUpSetupSchema = z.object({
     workedMovesToInProgress: z.boolean(),
     // Added with Completed on logs; packets saved before it allow it, the default.
     todosCanComplete: z.boolean().default(true),
+    // Added later; unset (packets saved before it) counts as on: completing clears the block.
+    completeClearsBlock: z.boolean().optional(),
     carryBlocked: z.boolean(),
     todoCostCodes: z.boolean(),
     tickAddsLine: z.boolean(),

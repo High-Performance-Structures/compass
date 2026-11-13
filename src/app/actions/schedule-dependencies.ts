@@ -19,12 +19,13 @@ import {
 } from "@/lib/domain/schedule/rules"
 import {
   deleteDependency as deleteDependencyRow,
+  dependencyInsertStatement,
   dependencyUpdateStatement,
-  insertDependency,
-  persistScheduleDateUpdates,
   recalcCriticalPath,
   runWithDateUpdates,
 } from "@/lib/domain/schedule/store"
+import { dateMovesLimitError } from "@/lib/domain/schedule/date-moves"
+import { scheduleDateMoveRules } from "@/lib/domain/schedule/date-move-rules"
 import { isScheduleShiftReasonRequired } from "@/lib/schedule/publication-history"
 import { recordScheduleShift } from "@/lib/schedule/record-shift"
 import { resolveScheduleShiftReason, summarizeScheduleShift } from "@/lib/schedule/shift-tracking"
@@ -76,24 +77,33 @@ export async function createDependency(data: {
     const schedule = await readWorkingSchedule(context.data, data.projectId)
 
     const dependencyId = crypto.randomUUID()
-    await insertDependency(db, {
+    const dependency = {
       id: dependencyId,
       predecessorId: data.predecessorId,
       successorId: data.successorId,
       type: data.type,
       lagDays: data.lagDays
-    })
-
-    // propagate dates from predecessor
-    const updatedSchedule = await readWorkingSchedule(context.data, data.projectId)
+    }
+    // The moves the new dependency causes, decided before anything is saved
+    // so a change too large to apply is refused whole.
     const updatedTasks = propagateFrom(
       data.predecessorId,
-      updatedSchedule.tasks,
-      updatedSchedule.dependencies,
-      updatedSchedule.exceptions
+      schedule.tasks,
+      [...schedule.dependencies, dependency],
+      schedule.exceptions
     )
+    const tooMany = dateMovesLimitError(updatedTasks, 1)
+    if (tooMany) return { success: false, error: tooMany }
     const shiftSummary = summarizeScheduleShift(schedule.tasks, updatedTasks)
-    await persistScheduleDateUpdates(env.DB, data.projectId, updatedTasks, new Date().toISOString())
+    await runWithDateUpdates(
+      env.DB,
+      dependencyInsertStatement(env.DB, dependency),
+      data.projectId,
+      updatedTasks,
+      new Date().toISOString(),
+      "Dependency create batch failed",
+      await scheduleDateMoveRules(db, orgId)
+    )
     if (shiftReasonResult?.success) {
       await recordScheduleShift({
         db,
@@ -188,6 +198,8 @@ export async function updateDependency(data: {
       ],
       schedule.exceptions
     )
+    const tooMany = dateMovesLimitError(recalculated, 1)
+    if (tooMany) return { success: false, error: tooMany }
     const shiftSummary = summarizeScheduleShift(schedule.tasks, recalculated)
     await runWithDateUpdates(
       env.DB,
@@ -195,7 +207,8 @@ export async function updateDependency(data: {
       data.projectId,
       recalculated,
       new Date().toISOString(),
-      "Dependency update batch failed"
+      "Dependency update batch failed",
+      await scheduleDateMoveRules(db, orgId)
     )
     if (shiftReasonResult?.success) {
       await recordScheduleShift({

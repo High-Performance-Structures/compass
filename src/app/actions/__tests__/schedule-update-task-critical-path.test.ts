@@ -12,6 +12,7 @@ vi.mock("next/cache", () => ({ revalidatePath: mocks.revalidatePath }))
 vi.mock("@/lib/activity-log", () => ({ recordActivityEvent: mocks.recordActivityEvent }))
 vi.mock("@/lib/schedule/publication-history", () => ({ isScheduleShiftReasonRequired: async () => false }))
 vi.mock("@/lib/schedule/record-shift", () => ({ recordScheduleShift: vi.fn() }))
+vi.mock("@/lib/domain/schedule/date-move-rules", () => ({ scheduleDateMoveRules: async () => ({ reaskOnDateMove: true }) }))
 vi.mock("@/lib/domain/schedule/access", () => ({
   canViewWorkingSchedule: vi.fn(), readProjectSchedule: vi.fn(), readWorkingSchedule: mocks.readWorkingSchedule,
   scheduleReadContext: vi.fn(), scheduleSwitcherProjects: vi.fn(),

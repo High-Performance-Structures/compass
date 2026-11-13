@@ -143,6 +143,14 @@ export function DailyLogFollowUpSettingsSection(): React.ReactElement {
             onChange={(todosCanComplete) => update({ todosCanComplete })}
           />
           <SwitchRow
+            id="daily-log-complete-clears-block"
+            label="Completing a blocked to-do clears the block"
+            help="Marked Completed on a log, a Blocked to-do is finished too and its history shows the block cleared. Off: it stays Blocked until the block is cleared."
+            checked={settings.completeClearsBlock}
+            disabled={disabled || !settings.todosCanComplete}
+            onChange={(completeClearsBlock) => update({ completeClearsBlock })}
+          />
+          <SwitchRow
             id="daily-log-carry-blocked"
             label="Show blocked to-dos on the next log"
             help="The crew answers Still blocked or Cleared today."

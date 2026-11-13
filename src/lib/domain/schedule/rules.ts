@@ -349,15 +349,15 @@ const CLEARED_PROPOSAL = {
 } as const
 
 /**
- * The column values an item edit writes. Dates are not included: they move
- * in the paired date batch so linked to-dos shift from the previous dates.
+ * The column values an item edit writes. Dates (start, workdays, end) are
+ * not included: they move through the store's date moves, which shift linked
+ * to-dos from the previous dates and ask assignees again.
  * A reassignment or a changed confirmation rule restarts confirmation; an
  * accepted subcontractor proposal becomes a draft that is confirmed anew once
  * published.
  */
 export function taskEditValues(input: {
   readonly data: TaskEditInput
-  readonly workdays: number
   readonly status: TaskStatus
   readonly percentComplete: number
   readonly times: { readonly startTime: string | null; readonly endTime: string | null } | null
@@ -367,12 +367,11 @@ export function taskEditValues(input: {
   readonly restartConfirmation: { readonly status: ScheduleConfirmationStatus; readonly requestedAt: string | null } | null
   readonly acceptChangeProposal: boolean
   readonly now: string
-}): Partial<typeof scheduleTasks.$inferInsert> {
+}): Omit<Partial<typeof scheduleTasks.$inferInsert>, "startDate" | "workdays" | "endDateCalculated"> {
   const { data } = input
   return {
     ...(data.title && { title: data.title }),
     ...(data.notes !== undefined && { notes: data.notes?.trim() || null }),
-    workdays: input.workdays,
     ...(input.times && { startTime: input.times.startTime, endTime: input.times.endTime }),
     ...(data.phase && { phase: data.phase }),
     ...(data.displayColor && { displayColor: data.displayColor }),
@@ -387,17 +386,19 @@ export function taskEditValues(input: {
     ...(data.subVendorVisible !== undefined && { subVendorVisible: data.subVendorVisible }),
     ...(data.doneBy !== undefined && { doneBy: doneByValue(data.doneBy) }),
     ...(data.confirmationRequired !== undefined && { confirmationRequired: input.confirmationRequired }),
-    ...(input.restartConfirmation
-      ? {
-          confirmationStatus: input.restartConfirmation.status,
-          confirmationRequestedAt: input.restartConfirmation.requestedAt,
-          ...CLEARED_PROPOSAL,
-        }
-      : {}),
     ...(input.acceptChangeProposal
       ? {
           confirmationStatus: confirmationStatusAfter(input.confirmationRequired ? "request" : "stop"),
           confirmationRequestedAt: input.confirmationRequired ? input.now : null,
+          ...CLEARED_PROPOSAL,
+        }
+      : {}),
+    // A reassignment or changed rule in the same save wins over an accepted
+    // proposal: a new assignee without an account waits for one.
+    ...(input.restartConfirmation
+      ? {
+          confirmationStatus: input.restartConfirmation.status,
+          confirmationRequestedAt: input.restartConfirmation.requestedAt,
           ...CLEARED_PROPOSAL,
         }
       : {}),

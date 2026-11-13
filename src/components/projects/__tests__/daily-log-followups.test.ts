@@ -56,6 +56,17 @@ describe("daily log to-do and client contact fields", () => {
     expect(html).toContain("moves it to Done when the log is saved")
   })
 
+  it("offers Completed on a blocked to-do unless the company keeps blocked to-dos blocked", () => {
+    const render = (completeClearsBlock: boolean): string => renderToStaticMarkup(
+      createElement(DailyLogTodoChecklist, { idPrefix: "log", todos, costCodes, rules: { ...rules, completeClearsBlock }, worked: [], completed: [], doneLabel: "Done", onToggle: noop, onToggleCompleted: noop }),
+    )
+    expect(render(true)).toContain('id="log-todo-t2-completed"')
+    const off = render(false)
+    expect(off).toContain('id="log-todo-t1-completed"')
+    expect(off).not.toContain('id="log-todo-t2-completed"')
+    expect(off).toContain("Clear the block to complete")
+  })
+
   it("lists ordered and approved selections first and folds the rest", () => {
     const selections = [
       { id: "s1", name: "Faucet", roomName: "Kitchen", status: "ordered" },
