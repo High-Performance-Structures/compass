@@ -18,6 +18,7 @@ import { loadChoicePanels, type SelectionChoicesPanel } from "./choices-read"
 import { loadLeadTimeContext, neededByFor, type LeadTimeContext } from "./lead-time-read"
 import { choiceLeadTime, type ChoiceLeadTime } from "./lead-time-rules"
 import { signedChoices } from "./round-signing"
+import { roomRankSql } from "@/lib/domain/selections/room-order"
 
 export type OwnerBoardSelection = {
   readonly id: string
@@ -60,7 +61,7 @@ export async function loadOwnerChoiceBoard(db: Db, projectId: string, viewerUser
     .from(projectFinishSelections)
     .innerJoin(projectSelectionDecisions, eq(projectSelectionDecisions.selectionId, projectFinishSelections.id))
     .where(and(eq(projectFinishSelections.projectId, projectId), eq(projectSelectionDecisions.published, true)))
-    .orderBy(asc(projectFinishSelections.roomName), asc(projectFinishSelections.sortOrder), asc(projectFinishSelections.name))
+    .orderBy(asc(roomRankSql()), asc(projectFinishSelections.roomName), asc(projectFinishSelections.sortOrder), asc(projectFinishSelections.name))
   if (published.length === 0) return []
   const chunks = await Promise.all(
     chunkD1Values(published.map((row) => row.id)).map((ids) => loadChoicePanels(db, projectId, ids, "owner", viewerUserId)),

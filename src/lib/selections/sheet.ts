@@ -94,6 +94,9 @@ export function selectionSheetRows(input: SelectionSheetInput): readonly Selecti
   for (const parentId of parentOf.values()) followUps.set(parentId, (followUps.get(parentId) ?? 0) + 1)
 
   const position = new Map(input.selections.map((row, index) => [row.id, String(index).padStart(6, "0")]))
+  // Rooms keep the order the rows arrive in (the job's room order, room-order.ts).
+  const roomPosition = new Map<string, string>()
+  for (const row of input.selections) if (!roomPosition.has(row.roomName)) roomPosition.set(row.roomName, String(roomPosition.size).padStart(6, "0"))
   return input.selections.map((row) => {
     const choices = input.choices.filter((choice) => choice.selectionId === row.id)
     const pick = choices.find((choice) => choice.chosen) ?? null
@@ -126,7 +129,7 @@ export function selectionSheetRows(input: SelectionSheetInput): readonly Selecti
       replaced: row.replaced ?? false,
       replacement: row.replacement ?? false,
       ownerApproved: row.ownerApproved ?? false,
-      orderKey: [topRow.roomName.toLocaleLowerCase(), position.get(top) ?? "", parentId ? "1" : "0", position.get(row.id) ?? ""].join("\u0000"),
+      orderKey: [roomPosition.get(topRow.roomName) ?? "", position.get(top) ?? "", parentId ? "1" : "0", position.get(row.id) ?? ""].join("\u0000"),
     }
   })
 }

@@ -435,3 +435,38 @@ export function copyChoicesToReplacementStatements(
   )
   return [...choices, ...links, ...photos, ...opens, openedBy]
 }
+
+/**
+ * After copying several selections together (Duplicate room), keeps the
+ * copies' follow-up links among themselves. Copying each selection with
+ * copyChoicesToReplacementStatements already links a copied choice to the
+ * copied follow-up (whichever of the two was copied first); it also leaves
+ * a copied choice opening the original follow-up and an original choice
+ * opening the copied follow-up. These deletes remove those two. `pairs` maps
+ * each original selection to its copy; `fromChoiceIds` and `newChoiceIds`
+ * are the copied choices.
+ */
+export function relinkDuplicatedDependentsStatements(
+  db: Db,
+  input: {
+    readonly pairs: readonly { readonly fromId: string; readonly newId: string }[]
+    readonly fromChoiceIds: readonly string[]
+    readonly newChoiceIds: readonly string[]
+  },
+): BatchItem<"sqlite">[] {
+  // D1 allows 100 bound values per statement, so long choice lists go in chunks.
+  const chunks = (ids: readonly string[]): string[][] =>
+    Array.from({ length: Math.ceil(ids.length / 90) }, (_, index) => ids.slice(index * 90, index * 90 + 90))
+  return input.pairs.flatMap((pair) => [
+    ...chunks(input.newChoiceIds).map((ids) =>
+      db
+        .delete(projectSelectionChoiceDependents)
+        .where(and(eq(projectSelectionChoiceDependents.selectionId, pair.fromId), inArray(projectSelectionChoiceDependents.choiceId, ids))),
+    ),
+    ...chunks(input.fromChoiceIds).map((ids) =>
+      db
+        .delete(projectSelectionChoiceDependents)
+        .where(and(eq(projectSelectionChoiceDependents.selectionId, pair.newId), inArray(projectSelectionChoiceDependents.choiceId, ids))),
+    ),
+  ])
+}

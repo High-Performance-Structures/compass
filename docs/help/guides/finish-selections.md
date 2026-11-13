@@ -12,13 +12,25 @@
   "permissions": ["help:read", "project:read"],
   "routes": ["/dashboard/projects/[id]/selections"],
   "owner": "Project operations",
-  "lastReviewed": "2026-11-12"
+  "lastReviewed": "2026-11-13"
 }
 ---
 
 ## Prepare Rooms {#prepare-rooms}
 
 Open project **Selections** and review the room list before adding products. Use room names matching the plans so owner reviews, RFQ scope, purchasing, and field room sheets refer to the same places.
+
+Under **Work on › Finish specs**, each room has a **…** menu:
+
+- **Rename or change type**: every selection in the room moves with it, and owners see the new name. A room rename never counts as a product change, so published selections stay current.
+- **Duplicate room**: copies every selection, with its choices, supplier links and photos, into a new room right after it. The copies wait for a decision: nothing is picked or approved.
+- **Delete room**: removes the room and its selections after you confirm. A room can't be deleted while any of its selections is approved, ordered, installed or out for signature; move those to another room first.
+
+Choose **Add room** beside **Import workbook** to add an empty room. Drag a room by its handle (or use its small arrows) to change the order; owners, the Selections sheet, Selection Phases and printouts use the same order. Dragging is off while a filter is on.
+
+Each selection's **More** menu has **Duplicate** (a copy named "… (copy)" in the same room) and **Move to room** (its follow-up selections move with it; the pick and any approval stay).
+
+When you re-import a workbook, rooms you renamed or reordered in Compass keep your changes, and rooms you deleted are left out. Tick **Bring back rooms deleted in Compass** in the import panel to bring them back.
 
 ## Add a Selection {#add-selection}
 

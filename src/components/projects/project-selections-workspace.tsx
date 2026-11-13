@@ -5,7 +5,9 @@
  * (room, count, "2 need decision" / "all approved" / late risk) with Expand
  * all / Collapse all and Import above. Opening a room shows its selection
  * rows with follow-ups indented, and each row edits through the existing
- * edit sheet. The page's shared filter bar narrows the rooms.
+ * edit sheet. The page's shared filter bar narrows the rooms. Rooms drag
+ * into the order clients see (while no filter is on), and each room and row
+ * has a "…" menu for its room edits (project-selection-room-controls.tsx).
  */
 import { selectionStatusLabel } from "@/lib/domain/selections/status-labels"
 import * as React from "react"
@@ -20,6 +22,7 @@ import {
 import {
   requestSelectionCostCodeSageReview,
 } from "@/app/actions/project-selections"
+import { reorderProjectSelectionRooms } from "@/app/actions/project-selection-rooms"
 import type {
   ProjectSelectionItem,
   ProjectSelectionOptions,
@@ -30,6 +33,8 @@ import { ProjectFinishScheduleImportSheet } from "@/components/projects/project-
 import { ProjectSelectionDeleteButton } from "@/components/projects/project-selection-delete-button"
 import { ProjectSelectionEditForm } from "@/components/projects/project-selection-edit-form"
 import { ProjectSelectionStatusSelect } from "@/components/projects/project-selection-status-select"
+import { AddSelectionRoomButton, SelectionRoomMenu, SelectionRowMenu } from "@/components/projects/project-selection-room-controls"
+import { ReorderHandle, SortableRow, SortableRows } from "@/components/ui/sortable-rows"
 import { DeveloperOnly } from "@/components/developer-mode-provider"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -125,6 +130,9 @@ function ProjectSelectionCostCodeReviewButton({
   )
 }
 
+/** The job's rooms in order, for each row's "Move to room". */
+const RoomNamesContext = React.createContext<readonly string[]>([])
+
 function SelectionRow({
   costCodeMap,
   options,
@@ -137,6 +145,7 @@ function SelectionRow({
   readonly selection: ProjectSelectionItem
 }): React.ReactElement {
   const costCode = selection.costCode ? costCodeMap.get(selection.costCode) : null
+  const roomNames = React.useContext(RoomNamesContext)
 
   return (
     <div className="grid gap-3 border-t px-3 py-3 text-sm lg:grid-cols-[minmax(0,1.2fr)_7rem_minmax(0,.8fr)_minmax(0,.8fr)_9.5rem]">
@@ -224,6 +233,11 @@ function SelectionRow({
         <ProjectSelectionDeleteButton
           projectId={projectId}
           selection={selection}
+        />
+        <SelectionRowMenu
+          projectId={projectId}
+          selection={selection}
+          roomNames={roomNames}
         />
         <ProjectSelectionStatusSelect
           projectId={projectId}
@@ -349,21 +363,31 @@ function EmptyFilteredState({
 
 function EmptySelectionsState({
   projectId,
+  roomTypes,
 }: {
   readonly projectId: string
+  readonly roomTypes: ProjectSelectionOptions["roomTypes"]
 }): React.ReactElement {
   return (
     <div className="border bg-background p-8 text-center">
       <IconPalette className="mx-auto size-7 text-muted-foreground" />
       <h2 className="mt-3 text-sm font-semibold">No selections yet</h2>
       <p className="mt-1 text-sm text-muted-foreground">
-        Use "Add selection" at the top of the page, or import a finish schedule workbook.
+        Add a room, use "Add selection" at the top of the page, or import a finish schedule workbook.
       </p>
       <div className="mt-5 flex flex-wrap justify-center gap-2">
+        <AddSelectionRoomButton projectId={projectId} roomTypes={roomTypes} />
         <ProjectFinishScheduleImportSheet projectId={projectId} />
       </div>
     </div>
   )
+}
+
+/** `rooms` in the order just dragged (until the page refreshes), else as given. */
+function orderedRooms<T extends { readonly roomName: string }>(rooms: readonly T[], order: readonly string[] | null): readonly T[] {
+  if (!order) return rooms
+  const position = new Map(order.map((name, index) => [name, index]))
+  return [...rooms].sort((left, right) => (position.get(left.roomName) ?? order.length) - (position.get(right.roomName) ?? order.length))
 }
 
 export function ProjectSelectionsWorkspace({
@@ -384,6 +408,12 @@ export function ProjectSelectionsWorkspace({
   readonly leadTimeWarnings?: readonly SelectionLeadTimeWarning[]
 }): React.ReactElement {
   const folds = useFoldedGroups()
+  const router = useRouter()
+  // The order just dragged, shown until the refreshed page brings it back.
+  const [order, setOrder] = React.useState<readonly string[] | null>(null)
+  const [orderError, setOrderError] = React.useState<string | null>(null)
+  // The refreshed rooms carry the saved order.
+  React.useEffect(() => setOrder(null), [summary])
   const costCodeMap = React.useMemo(() => buildCostCodeMap(options), [options])
   const lateRisk = React.useMemo(
     () => new Set(leadTimeWarnings.map((warning) => warning.selectionId)),
@@ -391,7 +421,29 @@ export function ProjectSelectionsWorkspace({
   )
 
   if (summary.rooms.length === 0) {
-    return <EmptySelectionsState projectId={projectId} />
+    return <EmptySelectionsState projectId={projectId} roomTypes={options.roomTypes} />
+  }
+
+  const roomNames = summary.rooms.map((room) => room.roomName)
+  const rooms = orderedRooms(filteredSummary.rooms, order)
+  // Reordering a filtered list would be ambiguous, so rooms drag only while every room shows.
+  const canReorder = filteredSummary.totalCount === summary.totalCount && filteredSummary.rooms.length === summary.rooms.length
+
+  function moveRoom(from: number, to: number): void {
+    const next = [...rooms.map((room) => room.roomName)]
+    const [moved] = next.splice(from, 1)
+    if (moved === undefined) return
+    next.splice(to, 0, moved)
+    setOrder(next)
+    setOrderError(null)
+    void reorderProjectSelectionRooms(projectId, next).then((result) => {
+      if (!result.success) {
+        setOrder(null)
+        setOrderError(result.error)
+        return
+      }
+      router.refresh()
+    })
   }
 
   return (
@@ -400,44 +452,55 @@ export function ProjectSelectionsWorkspace({
         state={folds}
         keys={filteredSummary.rooms.map((room) => room.roomName)}
       >
+        <AddSelectionRoomButton projectId={projectId} roomTypes={options.roomTypes} />
         <ProjectFinishScheduleImportSheet projectId={projectId} />
       </FoldedGroupsToolbar>
+      {orderError && <p role="alert" className="text-sm text-destructive">{orderError}</p>}
 
       {filteredSummary.rooms.length === 0 ? (
         <EmptyFilteredState onClear={onClearFilters} />
       ) : (
-        <div className="space-y-2">
-          {filteredSummary.rooms.map((room) => (
-            <FoldedGroup
-              key={room.roomName}
-              title={room.roomName}
-              subtitle={[room.roomType, room.sourceWorkbookId ? "Workbook room" : null]
-                .filter(Boolean)
-                .join(" · ")}
-              count={room.selections.length}
-              pills={specRoomPills(room.selections, lateRisk)}
-              open={folds.isOpen(room.roomName)}
-              onToggle={() => folds.toggle(room.roomName)}
-              actions={
-                <ProjectSelectionCreateForm
-                  projectId={projectId}
-                  options={options}
-                  roomName={room.roomName}
-                  roomType={room.roomType ?? ""}
-                  triggerLabel="Add"
-                  triggerVariant="outline"
-                />
-              }
-            >
-              <SelectionTree
-                costCodeMap={costCodeMap}
-                options={options}
-                projectId={projectId}
-                selections={room.selections}
-              />
-            </FoldedGroup>
-          ))}
-        </div>
+        <RoomNamesContext.Provider value={roomNames}>
+          <div className="space-y-2">
+            <SortableRows ids={rooms.map((room) => room.roomName)} onMove={moveRoom} disabled={!canReorder}>
+              {rooms.map((room, index) => (
+                <SortableRow key={room.roomName} id={room.roomName} index={index}>
+                  <FoldedGroup
+                    title={room.roomName}
+                    subtitle={[room.roomType, room.sourceWorkbookId ? "Workbook room" : null]
+                      .filter(Boolean)
+                      .join(" · ")}
+                    count={room.selections.length}
+                    pills={specRoomPills(room.selections, lateRisk)}
+                    open={folds.isOpen(room.roomName)}
+                    onToggle={() => folds.toggle(room.roomName)}
+                    leading={canReorder ? <ReorderHandle label={room.roomName} /> : null}
+                    actions={
+                      <>
+                        <ProjectSelectionCreateForm
+                          projectId={projectId}
+                          options={options}
+                          roomName={room.roomName}
+                          roomType={room.roomType ?? ""}
+                          triggerLabel="Add"
+                          triggerVariant="outline"
+                        />
+                        <SelectionRoomMenu projectId={projectId} room={room} roomTypes={options.roomTypes} />
+                      </>
+                    }
+                  >
+                    <SelectionTree
+                      costCodeMap={costCodeMap}
+                      options={options}
+                      projectId={projectId}
+                      selections={room.selections}
+                    />
+                  </FoldedGroup>
+                </SortableRow>
+              ))}
+            </SortableRows>
+          </div>
+        </RoomNamesContext.Provider>
       )}
     </div>
   )

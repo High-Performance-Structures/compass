@@ -80,7 +80,8 @@ export async function previewProjectFinishScheduleImport(
 
 export async function importProjectFinishSchedule(
   projectId: string,
-  workbookUrl: string
+  workbookUrl: string,
+  options: { readonly restoreDeletedRooms?: boolean } = {}
 ): Promise<ApplyProjectFinishScheduleImportResult> {
   try {
     const access = await finishScheduleImportAccess(
@@ -99,7 +100,7 @@ export async function importProjectFinishSchedule(
       throw new Error("The workbook contains no finish selections to import.")
     }
 
-    const counts = await applyFinishScheduleImport(access.db, projectId, loaded)
+    const counts = await applyFinishScheduleImport(access.db, projectId, loaded, options)
 
     revalidatePath(`/dashboard/projects/${projectId}/selections`)
     revalidatePath(`/dashboard/projects/${projectId}`)

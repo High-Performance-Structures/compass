@@ -67,6 +67,10 @@ export function updateSelectionRoomsStatement(db: Db, where: SQL | undefined, pa
   return db.update(projectFinishSelectionRooms).set(patch).where(where)
 }
 
+export function deleteSelectionRoomsStatement(db: Db, where: SQL | undefined): Statement {
+  return db.delete(projectFinishSelectionRooms).where(where)
+}
+
 // ---- projectFinishSelections
 
 type FinishSelectionInsert = typeof projectFinishSelections.$inferInsert
@@ -304,6 +308,58 @@ export function insertReplacementSelectionStatement(
         ? sql`(project_finish_selections.owner_approved = 1 OR EXISTS (SELECT 1 FROM project_selection_round_signature_items AS signed_item INNER JOIN project_selection_round_signatures AS signed_round ON signed_round.id = signed_item.signature_id WHERE signed_round.status = 'signed' AND signed_item.selection_id = project_finish_selections.id AND signed_item.choice_id = (SELECT pick.id FROM project_selection_choices AS pick WHERE pick.selection_id = project_finish_selections.id AND pick.chosen = 1)))`
         : undefined,
     ),
+  )
+}
+
+/**
+ * A copy of one selection as a new, undecided selection (Duplicate room,
+ * Duplicate selection), for the caller's batch. Every product field is
+ * copied; the copy starts unapproved, outside any Selection Phase and
+ * unlinked from RFQs, purchase orders and the workbook. A replaced
+ * selection stays on record as it was and is never copied.
+ */
+export function copyFinishSelectionStatement(
+  db: Db,
+  input: {
+    readonly id: string
+    readonly projectId: string
+    readonly fromSelectionId: string
+    readonly roomName: string
+    readonly roomType: string | null
+    readonly name: string
+    readonly parentSelectionId: string | null
+    readonly now: string
+  },
+): Statement {
+  return insertCopyStatement(
+    db,
+    projectFinishSelections,
+    {
+      id: input.id,
+      sourceSystem: "compass",
+      sourceRecordId: null,
+      sourceWorkbookId: null,
+      sourceSheetName: null,
+      roomName: input.roomName,
+      roomType: input.roomType,
+      name: input.name,
+      parentSelectionId: input.parentSelectionId,
+      status: "needed",
+      ownerApproved: false,
+      approvedBy: null,
+      approvedAt: null,
+      rfqOperationId: null,
+      purchaseOrderOperationId: null,
+      roundKey: null,
+      syncStatus: "manual",
+      lastSyncedAt: null,
+      replacesSelectionId: null,
+      replacementReason: null,
+      procurementReleasedAt: null,
+      createdAt: input.now,
+      updatedAt: input.now,
+    },
+    and(eq(projectFinishSelections.id, input.fromSelectionId), eq(projectFinishSelections.projectId, input.projectId), notReplaced),
   )
 }
 
