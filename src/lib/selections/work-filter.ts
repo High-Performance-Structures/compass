@@ -76,12 +76,17 @@ function selectionMatchesWorkFilter(
   return matchesSearch(selection, filter.search)
 }
 
-/** The summary narrowed to the filter, with its counts recomputed; empty rooms drop out. */
+/**
+ * The summary narrowed to the filter, with its counts recomputed. Rooms the
+ * filter leaves empty drop out; with no filter on, every room shows, including
+ * a room with no selections yet (Add room).
+ */
 export function filterSelectionsSummary(
   summary: ProjectSelectionsSummary,
   filter: SelectionWorkFilter,
   divisions: ReadonlyMap<string, string>
 ): ProjectSelectionsSummary {
+  const active = selectionFilterActive(filter)
   const rooms = summary.rooms
     .map((room) => ({
       ...room,
@@ -89,7 +94,7 @@ export function filterSelectionsSummary(
         selectionMatchesWorkFilter(selection, filter, divisions)
       ),
     }))
-    .filter((room) => room.selections.length > 0)
+    .filter((room) => room.selections.length > 0 || !active)
     .map((room) => ({ ...room, selectionCount: room.selections.length }))
   const selections = rooms.flatMap((room) => room.selections)
   return {
