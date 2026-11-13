@@ -1009,7 +1009,6 @@
     "src/components/dashboard/portfolio-map/portfolio-scene.ts": 1101,
     "src/components/nutech/nutech-order-workspace.tsx": 1134,
     "src/components/projects/owner-update-draft-editor.tsx": 1125,
-    "src/components/projects/project-audience-preview.tsx": 861,
     "src/components/projects/project-contract-packet-workspace.tsx": 995,
     "src/components/projects/project-estimate-planswift-import-client.tsx": 866,
     "src/components/projects/project-purchase-order-create-form.tsx": 1059,

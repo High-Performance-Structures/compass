@@ -17,8 +17,11 @@ import { isInternalStaffRole } from "@/lib/user-roles"
  * the viewer's organization, project audience scope and channel membership.
  */
 
-/** The channels the signed-in viewer can see, in sidebar order. */
-export async function readVisibleChannels() {
+/**
+ * The channels the signed-in viewer can see, in sidebar order. The sidebar
+ * leaves out job conversations: each job lists its own on its Messages page.
+ */
+export async function readVisibleChannels(options: { readonly includeProjectChannels?: boolean } = {}) {
   try {
     const user = await conversationRequestViewer(await getCurrentUser())
     if (!user || !user.isActive) {
@@ -82,6 +85,7 @@ export async function readVisibleChannels() {
                 // Imported conversations on a staff-only project stay internal.
                 sql`NOT (${channels.sourceSystem} IS NOT NULL AND EXISTS (SELECT 1 FROM projects p WHERE p.id = ${channels.projectId} AND p.imported_conversations_staff_only = 1))`
               ),
+          options.includeProjectChannels === false ? sql`${channels.projectId} IS NULL` : undefined,
           // not archived
           sql`${channels.archivedAt} IS NULL`
         )

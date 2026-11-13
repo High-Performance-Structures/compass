@@ -4,8 +4,10 @@ import { getCorrespondenceInbox } from "@/app/actions/project-correspondence"
 import { getOwnerDocumentEmailDraft } from "@/app/actions/owner-document-notices"
 import { ProjectCorrespondenceWorkspace } from "@/components/correspondence/project-correspondence-workspace"
 import { decodeProjectRouteId } from "@/lib/project-route-id"
-import Link from "next/link"
-import { withProjectConversationContext } from "@/lib/conversation-navigation"
+import { notFound } from "next/navigation"
+import { ProjectConversationsTab, projectConversationsQueryFromSearch } from "@/components/conversations/project-conversations-tab"
+import { ProjectMessagesTabs } from "@/components/conversations/project-messages-tabs"
+import { getCurrentUser } from "@/lib/auth"
 
 export default async function ProjectMessagesPage({
   params,
@@ -18,11 +20,35 @@ export default async function ProjectMessagesPage({
     readonly quickAdd?: string | readonly string[]
     readonly email?: string | readonly string[]
     readonly documentId?: string | readonly string[]
+    readonly view?: string | readonly string[]
+    readonly scope?: string | readonly string[]
+    readonly filter?: string | readonly string[]
+    readonly q?: string | readonly string[]
+    readonly page?: string | readonly string[]
+    readonly channel?: string | readonly string[]
   }>
 }): Promise<React.ReactElement> {
   const { id: routeProjectId } = await params
   const projectId = decodeProjectRouteId(routeProjectId)
   const query = await searchParams
+  const basePath = `/dashboard/projects/${encodeURIComponent(projectId)}/messages`
+  const conversationsQuery = projectConversationsQueryFromSearch(query)
+  if (conversationsQuery) {
+    const currentUser = await getCurrentUser()
+    if (!currentUser) notFound()
+    return (
+      <div className="flex min-h-0 flex-1 flex-col">
+        <ProjectMessagesTabs active="conversations" emailsHref={basePath} conversationsHref={`${basePath}?view=conversations`} />
+        <ProjectConversationsTab
+          projectId={projectId}
+          basePath={basePath}
+          baseParams={{ view: "conversations" }}
+          currentUser={currentUser}
+          query={conversationsQuery}
+        />
+      </div>
+    )
+  }
   const initialInbox = await getCorrespondenceInbox(projectId)
   // Create email from a billed pay application or a deposit request.
   const emailKind = singleQueryValue(query.email)
@@ -46,20 +72,7 @@ export default async function ProjectMessagesPage({
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <div className="flex flex-wrap items-center justify-between gap-2 border-b px-4 py-2 text-sm">
-        <span className="text-muted-foreground">Project messages · Historical correspondence is being added as it is verified.</span>
-        <Link
-          className="underline underline-offset-4"
-          href={withProjectConversationContext(
-            "/dashboard/conversations",
-            projectId,
-            null,
-          )}
-          prefetch={false}
-        >
-          Existing channels and direct messages
-        </Link>
-      </div>
+      <ProjectMessagesTabs active="emails" emailsHref={basePath} conversationsHref={`${basePath}?view=conversations`} />
     <ProjectCorrespondenceWorkspace
       projectId={projectId}
       initialInbox={initialInbox.data}

@@ -169,6 +169,14 @@ const TARGETS: readonly ProjectTarget[] = [
     icon: <IconClipboardCheck className="size-5 text-muted-foreground" />,
   },
   {
+    section: "messages",
+    title: "Project Messages",
+    description: "Choose a project before opening its emails and conversations.",
+    placeholder: "Search projects for messages...",
+    badge: "Messages context",
+    icon: <IconMessages className="size-5 text-muted-foreground" />,
+  },
+  {
     section: "conversations",
     title: "Project Conversations",
     description: "Choose a project before opening its conversations.",

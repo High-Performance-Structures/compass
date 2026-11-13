@@ -23,6 +23,7 @@ export function getProjectTargetSection(
     case "daily-logs":
     case "duty-log":
     case "estimate":
+    case "messages":
     case "financials":
     case "owner-updates":
     case "photos":

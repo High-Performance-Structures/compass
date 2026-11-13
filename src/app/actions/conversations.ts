@@ -232,8 +232,8 @@ export async function createDirectMessage(targetUserIds: readonly string[]) {
   }
 }
 
-export async function listChannels() {
-  return readVisibleChannels()
+export async function listChannels(options: { readonly includeProjectChannels?: boolean } = {}) {
+  return readVisibleChannels(options)
 }
 
 export async function getChannel(channelId: string) {

@@ -14,8 +14,6 @@ import { usePathname, useSearchParams } from "next/navigation"
 
 import { listChannels } from "@/app/actions/conversations"
 import { listCategories } from "@/app/actions/channel-categories"
-import type { ProjectListItem } from "@/app/actions/projects"
-import { useProjectList } from "@/components/project-list-provider"
 import {
   SidebarGroup,
   SidebarGroupContent,
@@ -78,12 +76,9 @@ export function NavConversations() {
   const isExpanded = state === "expanded"
   const [channels, setChannels] = React.useState<ChannelData[]>([])
   const [categories, setCategories] = React.useState<CategoryData[]>([])
-  // The dashboard layout already loaded the viewer's projects.
-  const projects = useProjectList()
   const [loading, setLoading] = React.useState(true)
   const [createDialogOpen, setCreateDialogOpen] = React.useState(false)
   const [directDialogOpen, setDirectDialogOpen] = React.useState(false)
-  const [projectsOpen, setProjectsOpen] = React.useState(true)
   const [categoryCollapsedStates, setCategoryCollapsedStates] = React.useState<
     Record<string, boolean>
   >({})
@@ -117,7 +112,7 @@ export function NavConversations() {
   React.useEffect(() => {
     async function loadData() {
       const [channelsResult, categoriesResult] = await Promise.all([
-        listChannels(),
+        listChannels({ includeProjectChannels: false }),
         listCategories(),
       ])
 
@@ -161,33 +156,7 @@ export function NavConversations() {
   const directChannels = channels.filter(
     (channel) => channel.type === "text" && channel.audience === "direct"
   )
-  const projectChannels = channels.filter((c) => c.projectId && c.type === "text")
   const voiceChannels = channels.filter((c) => c.type === "voice")
-  const projectChannelsByProject = React.useMemo(() => {
-    const projectById = new Map(projects.map((project) => [project.id, project]))
-    const grouped = new Map<string, ChannelData[]>()
-    const orphanChannels: ChannelData[] = []
-
-    for (const channel of projectChannels) {
-      if (!channel.projectId || !projectById.has(channel.projectId)) {
-        orphanChannels.push(channel)
-        continue
-      }
-      const existing = grouped.get(channel.projectId) ?? []
-      existing.push(channel)
-      grouped.set(channel.projectId, existing)
-    }
-
-    const projectGroups = projects
-      .map((project) => ({
-        project,
-        channels: grouped.get(project.id) ?? [],
-      }))
-      .filter((group) => group.channels.length > 0)
-
-    return { projectGroups, orphanChannels }
-  }, [projectChannels, projects])
-
   // group channels by category (only non-project text channels)
   const channelsByCategory = React.useMemo(() => {
     const grouped = new Map<string | null, ChannelData[]>()
@@ -263,21 +232,6 @@ export function NavConversations() {
       </SidebarMenuItem>
     )
   }
-
-  const renderProjectLabel = (project: ProjectListItem) => (
-    <SidebarMenuItem key={`project-label-${project.id}`}>
-      <div className="px-2 pb-1 pt-2 text-xs font-medium uppercase tracking-wide text-sidebar-foreground/60">
-        <span className="block truncate">
-          {project.projectNumber ?? project.name}
-        </span>
-        {project.projectNumber && (
-          <span className="block truncate normal-case tracking-normal text-sidebar-foreground/45">
-            {project.name}
-          </span>
-        )}
-      </div>
-    </SidebarMenuItem>
-  )
 
   return (
     <>
@@ -388,42 +342,6 @@ export function NavConversations() {
           </Collapsible>
         )
       })}
-
-      {/* project channels */}
-      {projectChannels.length > 0 && (
-        <Collapsible open={projectsOpen} onOpenChange={setProjectsOpen}>
-          <SidebarGroup>
-            <SidebarGroupLabel asChild>
-              <CollapsibleTrigger className="group/collapsible">
-                PROJECT MESSAGES
-                <ChevronRight className="ml-auto transition-transform group-data-[state=open]/collapsible:rotate-90" />
-              </CollapsibleTrigger>
-            </SidebarGroupLabel>
-            <CollapsibleContent>
-              <SidebarGroupContent>
-                <SidebarMenu>
-                  {projectChannelsByProject.projectGroups.map((group) => (
-                    <React.Fragment key={group.project.id}>
-                      {renderProjectLabel(group.project)}
-                      {group.channels.map(renderChannelItem)}
-                    </React.Fragment>
-                  ))}
-                  {projectChannelsByProject.orphanChannels.length > 0 && (
-                    <>
-                      <SidebarMenuItem>
-                        <div className="px-2 pb-1 pt-2 text-xs font-medium uppercase tracking-wide text-sidebar-foreground/60">
-                          Unmapped
-                        </div>
-                      </SidebarMenuItem>
-                      {projectChannelsByProject.orphanChannels.map(renderChannelItem)}
-                    </>
-                  )}
-                </SidebarMenu>
-              </SidebarGroupContent>
-            </CollapsibleContent>
-          </SidebarGroup>
-        </Collapsible>
-      )}
 
       {/* voice channels */}
       {voiceChannels.length > 0 && (
