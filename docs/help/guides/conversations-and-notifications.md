@@ -80,7 +80,14 @@ The towers at the top show how many open messages are in each group. Taller, red
 
 ### Held job emails
 
-Sometimes an email sent to a job's Compass inbox can't be posted on its own. For example, the sender isn't a contact on the job, an @name couldn't be matched, no one on the job can be notified, or an attachment couldn't be saved. Compass holds these emails under **Held job emails** on the Staff Message Desk. Admins, project managers, and project administrators can see them, and held emails count toward the red number on the **Staff Message Desk** sidebar link.
+Email that comes into Compass goes straight to its job's **Messages** whenever Compass can tell which job it's for: it was sent to the job's Compass address, or it names exactly one of your job numbers. It's posted even when:
+
+- **The sender isn't a contact.** Job messages are only for staff, and an email never gives its sender access.
+- **An @name can't be matched.** The job's assigned staff are notified instead.
+- **No staff are assigned to the job.** The people who review held emails are notified instead.
+- **An attached file can't be saved.** The message is posted without it, with a note that the file is still in the original email.
+
+Compass holds an email for review only when it can't tell which job it's for (it names no job number, or more than one), or when job messages are turned off for that job. Held emails appear under **Held job emails** on the Staff Message Desk. Admins, project managers, and project administrators can see them, and held emails count toward the red number on the **Staff Message Desk** sidebar link.
 
 Each held email shows when it arrived, who sent it, the job, the subject, a short preview, and why it was held. Open it to read the whole email, then:
 

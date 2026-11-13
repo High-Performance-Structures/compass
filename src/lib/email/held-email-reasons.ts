@@ -21,6 +21,7 @@ type HeldEmailReason =
   | "sender_unrecognized"
   | "no_destination"
   | "no_job"
+  | "several_jobs"
   | "message_not_posted"
   | "other"
 
@@ -32,6 +33,7 @@ const HELD_EMAIL_REASON_LABEL: Readonly<Record<HeldEmailReason, string>> = {
   sender_unrecognized: "Sender isn't a contact on this job",
   no_destination: "No subject tag to say where it goes",
   no_job: "Compass couldn't tell which job it's for",
+  several_jobs: "The email names more than one job",
   message_not_posted: "Couldn't post to job messages: no one to notify, or an attachment couldn't be saved",
   other: "Compass couldn't post it on its own",
 }
@@ -76,6 +78,7 @@ export function heldEmailReason(input: {
   if (!input.hasActivity) return view(input.projectId ? "other" : "no_job")
   const metadata = parsedMetadata(input.activityMetadata)
   if (isHeldMessageReason(metadata.heldReason)) return view(metadata.heldReason)
+  if (metadata.heldReason === "several_jobs") return view("several_jobs")
   if (metadata.senderAuthorized === false) return view("sender_unrecognized")
   if (metadata.subjectTagged === false) return view("no_destination")
   if (metadata.destination === "message") {

@@ -23,11 +23,9 @@ import {
   stripHtml,
   type InboundCandidate,
 } from "@/lib/email/gmail-message-parser"
-import { matchInboundProject } from "@/lib/email/inbound-routing"
 import {
   projectEmailDestination,
   projectEmailTitle,
-  projectIdFromInboundAddress,
   type ProjectEmailDestination,
 } from "@/lib/email/project-address"
 import {
@@ -691,7 +689,8 @@ async function routeDestination(input: {
     | "routed_video"
     | "routed_message"
 } | HeldProjectMessage | null> {
-  if (input.destination === "message") return routeInboundProjectMessage({ ...input, body: candidateBody(input.candidate), source: input.source.kind === "email" ? "email" : "sms" })
+  // Email to a known job is held only when messaging is off (postWhenJobKnown).
+  if (input.destination === "message") return routeInboundProjectMessage({ ...input, body: candidateBody(input.candidate), source: input.source.kind === "email" ? "email" : "sms", postWhenJobKnown: input.source.kind === "email" })
   if (input.destination === "rfi") return routeRfi(input)
   if (input.destination === "rfq") return routeRfq(input)
   if (input.destination === "change_order") return routeChangeOrder(input)
@@ -712,7 +711,10 @@ async function routeVerifiedProjectInboundMessage(input: {
   readonly source: ProjectInboundSource
   readonly todoDetails?: ReviewedInboundTodoDetails
   /** Where a message without a subject tag goes; none holds it for review. */ readonly untaggedDestination?: ProjectEmailDestination
+  /** False for an email from someone who isn't a contact or staff: it goes to job Messages, never a tagged record. */
+  readonly senderAuthorized?: boolean
 }): Promise<ProjectInboundRouteResult> {
+  const senderAuthorized = input.senderAuthorized ?? true
   const projectId = input.projectId
   const [project] = await input.db
     .select({
@@ -728,7 +730,7 @@ async function routeVerifiedProjectInboundMessage(input: {
     return { kind: "other_organization" }
   }
 
-  const destination = projectEmailDestination(input.candidate.subject) ?? input.untaggedDestination ?? null
+  const destination = senderAuthorized ? projectEmailDestination(input.candidate.subject) ?? input.untaggedDestination ?? null : "message"
   if (!destination) {
     await recordActivityEvent({
       db: input.db,
@@ -742,7 +744,7 @@ async function routeVerifiedProjectInboundMessage(input: {
       entityId: input.candidate.gmailMessageId,
       summary: `Project ${input.source.label.toLowerCase()} from ${senderLabel(input.candidate)} is awaiting routing review.`,
       metadata: {
-        senderAuthorized: true,
+        senderAuthorized,
         subjectTagged: destination !== null,
       },
       createdAt: input.candidate.receivedAt,
@@ -774,13 +776,14 @@ async function routeVerifiedProjectInboundMessage(input: {
       entityType: `project_${input.source.sourceSystem}`,
       entityId: input.candidate.gmailMessageId,
       summary: routed ? `Project message needs review: ${heldMessageReasonLabel(routed.reason)}.` : "Project message needs review: check internal @names, assigned project staff, attachment import, and messaging availability.",
-      metadata: { senderAuthorized: true, destination, heldReason: routed?.reason ?? null },
+      metadata: { senderAuthorized, destination, heldReason: routed?.reason ?? null },
       createdAt: input.candidate.receivedAt,
     })
     return { kind: "needs_review", projectId }
   }
   const title =
     projectEmailTitle(input.candidate.subject) || input.candidate.subject
+  const filesLeftOut = "filesLeftOut" in routed && routed.filesLeftOut === true
   await recordActivityEvent({
     db: input.db,
     id: `project-${input.source.idPrefix}-routed-${input.candidate.gmailMessageId}`,
@@ -794,19 +797,20 @@ async function routeVerifiedProjectInboundMessage(input: {
     summary:
       `Routed project ${input.source.label.toLowerCase()} from ${senderLabel(input.candidate)} to ` +
       `${destinationLabel(destination)}: “${title}”.` +
-      (input.candidate.attachments.length > 0
+      (filesLeftOut ? " Its attached files couldn't be saved, so it was posted without them." : input.candidate.attachments.length > 0
         ? ` Stored ${input.candidate.attachments.length} attached ${
             input.candidate.attachments.length === 1 ? "file" : "files"
           }.`
         : ""),
     metadata: {
       destination,
-      senderAuthorized: true,
+      senderAuthorized,
       attachmentCount: input.candidate.attachments.length,
+      filesLeftOut,
     },
     createdAt: input.candidate.receivedAt,
   })
-  await recordVerifiedInboundClientInteraction({
+  if (senderAuthorized) await recordVerifiedInboundClientInteraction({
     db: input.db,
     organizationId: input.organizationId,
     projectId,
@@ -821,53 +825,22 @@ async function routeVerifiedProjectInboundMessage(input: {
   }
 }
 
-export async function routeProjectInboundEmail(input: {
+/**
+ * An email whose job is already known (its address, or the one job number it
+ * names): route it. A sender who isn't a contact or staff never blocks it.
+ * Job messages are staff-only and sender headers never grant access, so such
+ * an email is posted to the job's Messages instead of its subject tag's record.
+ */
+export async function routeKnownJobEmail(input: {
   readonly env: unknown
   readonly db: Db
   readonly organizationId: string
+  readonly projectId: string
   readonly candidate: InboundCandidate
 }): Promise<ProjectInboundRouteResult> {
-  let projectId = projectIdFromInboundAddress(input.candidate.toAddress)
-  if (!projectId && projectEmailDestination(input.candidate.subject)) {
-    const projectRows = await input.db
-      .select({
-        id: projects.id,
-        projectNumber: projects.projectNumber,
-        name: projects.name,
-      })
-      .from(projects)
-      .where(eq(projects.organizationId, input.organizationId))
-    projectId = matchInboundProject(input.candidate, projectRows)?.id ?? null
-  }
-  if (!projectId) return { kind: "not_project_email" }
-
-  const senderAllowed = await senderCanEmailProject({
-    env: input.env,
-    db: input.db,
-    organizationId: input.organizationId,
-    projectId,
-    senderEmail: input.candidate.fromAddress,
-  })
-  if (!senderAllowed) {
-    await recordActivityEvent({
-      db: input.db,
-      id: `project-email-review-${input.candidate.gmailMessageId}`,
-      organizationId: input.organizationId,
-      projectId,
-      actor: inboundActor(input.candidate, EMAIL_SOURCE),
-      category: "email",
-      action: "project_email.needs_review",
-      entityType: "project_email",
-      entityId: input.candidate.gmailMessageId,
-      summary: `Project email from an unrecognized sender (${input.candidate.fromAddress}) is awaiting review.`,
-      metadata: { senderAuthorized: false, subjectTagged: false },
-      createdAt: input.candidate.receivedAt,
-    })
-    return { kind: "needs_review", projectId }
-  }
-
+  const senderAuthorized = await senderCanEmailProject({ ...input, senderEmail: input.candidate.fromAddress })
   // Staff and contacts email the project inbox without tags: post as a message.
-  return routeVerifiedProjectInboundMessage({ ...input, projectId, source: EMAIL_SOURCE, untaggedDestination: "message" })
+  return routeVerifiedProjectInboundMessage({ ...input, source: EMAIL_SOURCE, untaggedDestination: "message", senderAuthorized })
 }
 
 function normalizedPhone(value: string): string {

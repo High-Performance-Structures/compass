@@ -177,7 +177,7 @@ function storedCandidate(email: StoredEmail): InboundCandidate {
  * files, so the files are fetched from Gmail again. `filesFetched` is false
  * when Gmail could not be reached; the email is then posted without them.
  */
-async function heldEmailCandidate(input: {
+export async function heldEmailCandidate(input: {
   readonly db: Db
   readonly env: unknown
   readonly organizationId: string

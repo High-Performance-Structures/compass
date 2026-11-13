@@ -70,6 +70,7 @@ const webhookPaths = [
 const scheduledMaintenancePaths = [
   "/api/email/gmail-sync",
   "/api/operations/email/retry-invitations",
+  "/api/operations/email/held-backlog",
   "/api/operations/feedback/reconcile",
   "/api/operations/goto/recover-message-bodies",
   "/api/operations/paper-trail/run",

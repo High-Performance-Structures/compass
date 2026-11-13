@@ -2,7 +2,6 @@ import { afterEach, describe, expect, it, vi } from "vitest"
 import { readFileSync } from "node:fs"
 import { openCorrespondenceTestDatabase, type CorrespondenceTestDatabase, addContactDirectorySchema } from "./helpers/correspondence-core"
 import { listHeldJobEmails, postHeldJobEmail } from "@/lib/email/held-job-emails"
-import { routeProjectInboundEmail } from "@/lib/email/project-inbound-routing"
 import { routeInboundProjectMessage } from "@/lib/email/project-message-routing"
 import type { InboundCandidate } from "@/lib/email/gmail-message-parser"
 import type { AuthUser } from "@/lib/auth"
@@ -102,9 +101,8 @@ describe("posting held job emails from the Staff Message Desk", () => {
     const db = setup()
     db.sqlite.exec("UPDATE projects SET id='proj-project-a' WHERE id='project-b'")
     db.sqlite.exec("UPDATE project_members SET project_id='proj-project-a' WHERE project_id='project-a'")
+    // Held before unrecognized senders were posted automatically.
     const email = candidate({ toAddress: "jarvis+project-proj-project-a@example.test" })
-    expect(await routeProjectInboundEmail({ db: db.db, env: ENV, organizationId: "org-a", candidate: email })).toEqual({ kind: "needs_review", projectId: "proj-project-a" })
-    expect(recordActivityEvent).toHaveBeenCalledWith(expect.objectContaining({ metadata: { senderAuthorized: false, subjectTagged: false } }))
     holdEmail(db, email, "proj-project-a")
 
     const result = await postHeldJobEmail({ db: db.db, env: ENV, organizationId: "org-a", reviewer: REVIEWER, emailId: "inbound-held-1", projectId: "proj-project-a" })
