@@ -52,6 +52,7 @@ import { setSelectionChoiceChosen as setChosenRow, updateSelectionChoice } from 
 import { applyExecutedReplacementChangeOrder } from "@/lib/domain/selections/replacement-signing"
 import { supplierCouldntFillSelection } from "@/app/actions/selection-replacements"
 import { updateProjectSelectionStatus } from "@/app/actions/project-selections"
+import { advanceSelectionsForPurchaseOrder } from "@/lib/domain/selections/status-advance"
 import { getRoundSigning } from "@/app/actions/selection-round-signing"
 import { getOwnerChoiceBoard } from "@/app/actions/selection-choices"
 import { addSelectionLink } from "@/app/actions/selection-choices"
@@ -622,5 +623,24 @@ describe("review follow-ups", () => {
     // Cancelled: picks change again.
     sqlite.exec("UPDATE project_selection_round_signatures SET status = 'cancelled'")
     expect(await setSelectionChoiceChosen("p1", subway, true)).toMatchObject({ success: true })
+  })
+
+  it("R4-5: Ordered → Unavailable lets go of the old purchase order (kept on record)", async () => {
+    const hex = await choice("tile", "Hex", "4185")
+    await setSelectionChoiceChosen("p1", hex, true)
+    sqlite.exec(`
+      INSERT INTO project_operations (id, project_id, source_record_type, title, created_at, updated_at) VALUES ('po-1', 'p1', 'purchase_order', 'Tile PO', '2026-11-01T00:00:00.000Z', '${NOW}');
+      INSERT INTO project_selection_procurement_links (id, project_id, selection_id, operation_id, specification_json, created_at) VALUES ('pl', 'p1', 'tile', 'po-1', '{}', '2026-11-01T00:00:00.000Z');
+      UPDATE project_finish_selections SET status = 'ordered', purchase_order_operation_id = 'po-1' WHERE id = 'tile';
+    `)
+    expect(await updateProjectSelectionStatus("p1", "tile", "unavailable", "ordered")).toMatchObject({ success: true })
+    const row = sqlite.prepare("SELECT purchase_order_operation_id AS po, procurement_released_at AS released FROM project_finish_selections WHERE id = 'tile'").get() as { po: string | null; released: string | null }
+    expect(row.po).toBeNull()
+    expect(row.released).not.toBeNull()
+    expect(sqlite.prepare("SELECT count(*) AS n FROM project_selection_procurement_links").get()).toEqual({ n: 1 })
+    // Back with the owner, the old purchase order can't move it to Ordered again.
+    sqlite.exec("UPDATE project_finish_selections SET status = 'owner_review' WHERE id = 'tile'")
+    const actor = { id: "staff", email: "pm@example.com", displayName: "Pat PM", firstName: null, lastName: null, role: "project_manager" }
+    expect(await advanceSelectionsForPurchaseOrder(drizzleOverSqlite(sqlite), { projectId: "p1", purchaseOrderId: "po-1", purchaseOrderNumber: "PO-1", status: "sent", actor })).toEqual([])
   })
 })
