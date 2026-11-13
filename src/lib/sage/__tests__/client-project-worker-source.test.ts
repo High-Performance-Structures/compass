@@ -78,7 +78,15 @@ describe("Sage client/project worker source boundary", () => {
   it("on a retried claim, takes its own earlier add instead of failing", () => {
     // A poll over 10 minutes is claimed again. The first attempt's add is in
     // Sage; refusing it would show "failed" although Sage has the record.
-    expect(source).toContain("bool retry = request.attempt > 1;")
+    // Only Compass's automatic reclaim of a stale claim counts; a staff
+    // "Send to Sage" resend keeps every refusal.
+    expect(source).toContain("bool retry = request.reclaimed;")
+    expect(source).not.toContain("request.attempt > 1")
+    const route = readFileSync(
+      new URL("../../../app/api/integrations/sage/client-project-writes/requests/route.ts", import.meta.url),
+      "utf8"
+    )
+    expect(route).toContain('reclaimed: candidate.status === "running",')
     const guard = source.slice(
       source.indexOf("private static SageRecord RefuseJobWithSameProjectNumber"),
       source.indexOf("private static bool AddedRecently")

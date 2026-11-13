@@ -40,6 +40,7 @@ namespace CompassSageClientProjectWriter
             public string id { get; set; }
             public string claimToken { get; set; }
             public int attempt { get; set; }
+            public bool reclaimed { get; set; }
             public WritePayload payload { get; set; }
         }
         public sealed class WritePayload
@@ -452,9 +453,10 @@ namespace CompassSageClientProjectWriter
             int clientStatus = ResolveCatalog("clnsts", "stsnme", client.status.name);
             if (clientStatus != client.status.expectedNumber)
                 throw new InvalidOperationException("Client status mismatch: Compass expected " + client.status.expectedNumber + " " + client.status.name + ", but Sage resolved " + clientStatus + ".");
-            // attempt > 1: an earlier claim of this write may have added the client
-            // or job before Compass gave up on it (a poll over 10 minutes).
-            bool retry = request.attempt > 1;
+            // Compass reclaimed a claim that went stale mid-write (a poll over 10
+            // minutes): that earlier attempt may already have added the client or
+            // job. A staff resend is not a reclaim, so its refusals still stand.
+            bool retry = request.reclaimed;
             SageRecord clientRecord = FindClient(client, retry);
             if (clientRecord != null && clientRecord.StatusNumber != clientStatus)
                 throw new InvalidOperationException("Matched Sage client has status " + clientRecord.StatusNumber + ", not requested status " + clientStatus + ".");

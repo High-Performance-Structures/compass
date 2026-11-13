@@ -889,6 +889,7 @@ namespace CompassSageClientProjectWriter
                     pending.Add(PrepareContactWrite(write));
                 foreach (ContactTask create in envelope.creates ?? new ContactTask[0])
                     pending.Add(PrepareContactCreate(create));
+                DeferClientLineWritesBesidePeople(pending);
                 // Sage allows ONE API session per process: a second one fails
                 // inside IMBXML.EnableRequests with "Object reference not set to
                 // an instance of an object." So every write and Add of this poll
@@ -896,6 +897,7 @@ namespace CompassSageClientProjectWriter
                 SubmitContactWrites(pending);
                 foreach (PendingContactWrite item in pending)
                 {
+                    if (item.Deferred) continue;
                     if (item.Create) FinishContactCreate(item);
                     else FinishContactWrite(item);
                 }
@@ -976,6 +978,31 @@ namespace CompassSageClientProjectWriter
             public bool Attempted;    // the XML went to Sage; an error does not prove a rollback
             public string Error;
             public Dictionary<string, string> ChildRowsBefore; // Adds only
+            public string ClientLineParent; // a client company write that changes its first contact line
+            public bool Deferred;           // left claimed for the next poll; no XML, no result
+        }
+
+        /**
+         * A client company's email/phone write changes or adds a contact line,
+         * so it must not share a session with a person write or Add under the
+         * same client: two Adds break the Add's "exactly one new line" check,
+         * and both writes were checked against the same pre-session read. The
+         * company write stays claimed and is picked up again after the claim
+         * goes stale (10 minutes), against a fresh read.
+         */
+        private static void DeferClientLineWritesBesidePeople(List<PendingContactWrite> pending)
+        {
+            HashSet<string> people = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (PendingContactWrite item in pending)
+                if (item.Task != null && item.Task.kind == "client_person" && !String.IsNullOrWhiteSpace(item.Task.parentSageRecordId))
+                    people.Add(item.Task.parentSageRecordId);
+            foreach (PendingContactWrite item in pending)
+                if (item.ClientLineParent != null && item.Error == null && people.Contains(item.ClientLineParent))
+                {
+                    item.Deferred = true;
+                    item.Xml = null;
+                    WriteLog("INFO", "Contact " + item.Task.id + " deferred: a person under the same client is written in this poll.");
+                }
         }
 
         private static void RequireContactClaim(ContactTask task)
@@ -1031,6 +1058,7 @@ namespace CompassSageClientProjectWriter
                             clientLine = ClientLineTargetFor(TargetCompany, before);
                     item.Xml = BuildContactXml(task.kind, Convert.ToInt32(before.sageRecordNumber),
                         ContactParentNumber(TargetCompany, task), task.changes, TargetCompany, clientLine);
+                    if (clientLine != null) item.ClientLineParent = before.sageRecordId;
                 }
             }
             catch (Exception error) { item.Error = error.Message; }

@@ -66,6 +66,19 @@ describe("Sage contact writer: company name, email and phone", () => {
     expect(prepare).toContain("clientLine = ClientLineTargetFor(TargetCompany, before);")
   })
 
+  it("never shares a session between a client line write and a person under that client", () => {
+    // Two Adds under one client would break the person Add's "exactly one new
+    // line" read-back, and a create that fails after an attempt is never retried.
+    const defer = block("private static void DeferClientLineWritesBesidePeople", "private static void RequireContactClaim")
+    expect(defer).toContain('item.Task.kind == "client_person"')
+    expect(defer).toContain("people.Contains(item.ClientLineParent)")
+    expect(defer).toContain("item.Xml = null;")
+    const run = block("private static int RunContactBridge()", "private static void ProcessClientDirectoryRefresh")
+    expect(run.indexOf("PrepareContactCreate(create)")).toBeLessThan(run.indexOf("DeferClientLineWritesBesidePeople(pending)"))
+    expect(run.indexOf("DeferClientLineWritesBesidePeople(pending)")).toBeLessThan(run.indexOf("SubmitContactWrites(pending)"))
+    expect(run).toContain("if (item.Deferred) continue;")
+  })
+
   it("never writes Sage tables with SQL; changes go through the Sage API", () => {
     expect(writer).not.toMatch(/\bUPDATE\s+dbo\./i)
     expect(writer).not.toMatch(/\bINSERT\s+INTO\b/i)
