@@ -1,7 +1,6 @@
 import Database from "better-sqlite3"
-import { readdirSync, readFileSync } from "node:fs"
-import { join } from "node:path"
 import { afterEach, beforeEach, describe, expect, it } from "vitest"
+import { applyMigrations } from "@/test/migrated-database"
 
 import { drizzleOverSqlite } from "../../../../../__tests__/helpers/correspondence-core"
 
@@ -27,10 +26,7 @@ const actor = { id: "staff", email: "pm@example.com", displayName: "Pat PM", fir
 function migrated(): Sqlite {
   if (!migratedImage) {
     const db = new Database(":memory:")
-    const dir = join(process.cwd(), "drizzle")
-    for (const file of readdirSync(dir).filter((name) => /^\d{4}_.*\.sql$/.test(name)).sort()) {
-      db.exec(readFileSync(join(dir, file), "utf8").replaceAll("--> statement-breakpoint", ""))
-    }
+    applyMigrations((sql) => db.exec(sql))
     migratedImage = db.serialize()
     db.close()
   }

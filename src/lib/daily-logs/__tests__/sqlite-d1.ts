@@ -1,9 +1,8 @@
 /** Test helper: an in-memory SQLite database with the real schema, behind a D1 stand-in. */
-import { readdirSync, readFileSync } from "node:fs"
 import { createRequire } from "node:module"
-import { join } from "node:path"
 
 import { getDb } from "@/db"
+import { applyMigrations, migratedDatabaseFile } from "@/test/migrated-database"
 
 type Statement = {
   readonly run: (...values: readonly unknown[]) => { readonly changes: number | bigint }
@@ -14,11 +13,11 @@ export type Sqlite = { readonly exec: (sql: string) => void; readonly prepare: (
 
 const nodeRequire = createRequire(import.meta.url)
 
-export function newSqlite(): Sqlite {
+export function newSqlite(path = ":memory:"): Sqlite {
   const imported: unknown = nodeRequire("node:sqlite")
   const Database = imported !== null && typeof imported === "object" ? Reflect.get(imported, "DatabaseSync") : undefined
   if (typeof Database !== "function") throw new Error("node:sqlite is unavailable")
-  const instance: unknown = Reflect.construct(Database, [":memory:"])
+  const instance: unknown = Reflect.construct(Database, [path])
   if (instance === null || typeof instance !== "object") throw new Error("Unable to open SQLite")
   return {
     exec: (sql) => Reflect.apply(Reflect.get(instance, "exec"), instance, [sql]),
@@ -60,16 +59,18 @@ export function d1(sqlite: Sqlite): D1 {
 }
 
 export function migrate(sqlite: Sqlite): void {
-  const dir = join(process.cwd(), "drizzle")
-  for (const file of readdirSync(dir).filter((name) => /^\d{4}_.*\.sql$/.test(name)).sort()) {
-    sqlite.exec(readFileSync(join(dir, file), "utf8").replaceAll("--> statement-breakpoint", ""))
-  }
+  applyMigrations((sql) => sqlite.exec(sql))
 }
 
 
-/** A fresh in-memory database with every migration applied. */
+/**
+ * A fresh database with every migration applied: a private copy of a
+ * template built once per test file (see @/test/migrated-database), so each
+ * test skips replaying ~300 migrations.
+ */
 export function migratedSqlite(): Sqlite {
-  const sqlite = newSqlite()
-  migrate(sqlite)
+  const sqlite = newSqlite(migratedDatabaseFile())
+  // A throwaway copy: keep the rollback journal (batches roll back) in memory and skip fsync.
+  sqlite.exec("PRAGMA journal_mode = MEMORY; PRAGMA synchronous = OFF")
   return sqlite
 }

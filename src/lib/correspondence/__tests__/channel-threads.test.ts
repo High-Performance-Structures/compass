@@ -1,9 +1,8 @@
 import Database from "better-sqlite3"
-import { readdirSync, readFileSync } from "node:fs"
-import { join } from "node:path"
 import { createElement } from "react"
 import { renderToStaticMarkup } from "react-dom/server"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
+import { applyMigrations } from "@/test/migrated-database"
 
 import { drizzleOverSqlite } from "../../../../__tests__/helpers/correspondence-core"
 import type { CorrespondenceContext } from "../access"
@@ -37,10 +36,7 @@ const SNAPSHOT = "Oct 3, 2025 4:12 PM"
 
 function migrated(): Sqlite {
   const sqlite = new Database(":memory:")
-  const dir = join(process.cwd(), "drizzle")
-  for (const file of readdirSync(dir).filter((name) => /^\d{4}_.*\.sql$/.test(name)).sort()) {
-    sqlite.exec(readFileSync(join(dir, file), "utf8").replaceAll("--> statement-breakpoint", ""))
-  }
+  applyMigrations((sql) => sqlite.exec(sql))
   sqlite.exec("PRAGMA foreign_keys = ON")
   return sqlite
 }

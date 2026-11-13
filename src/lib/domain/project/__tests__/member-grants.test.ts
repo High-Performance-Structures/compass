@@ -1,9 +1,10 @@
 import { afterEach, describe, expect, it, vi } from "vitest"
 
-import { sqliteDb } from "@/lib/domain/__tests__/sqlite-d1"
+import { migratedDb } from "@/lib/domain/__tests__/sqlite-d1"
 import { projectContactActiveCondition } from "@/lib/domain/contacts/resolved-project-contacts"
 import { invitationOpenCondition } from "@/lib/domain/identity/store"
 import { insertProjectMembersIfAbsent, removeProjectMemberGrant, upsertProjectMemberRole } from "@/lib/domain/project/store"
+import { insertRow } from "@/test/migrated-database"
 
 // Lets a test revoke the invitation in the gap between the grant and the accept.
 const beforeAccept = vi.hoisted((): { run: (() => void) | null } => ({ run: null }))
@@ -20,24 +21,25 @@ vi.mock("@/lib/domain/identity/store", async (importOriginal) => {
 
 const { claimProjectAccessInvitations } = await import("@/lib/domain/identity/accounts")
 
-const SCHEMA = `
-  CREATE TABLE project_members (id TEXT PRIMARY KEY, project_id TEXT NOT NULL, user_id TEXT NOT NULL, role TEXT NOT NULL,
-    assigned_at TEXT NOT NULL, UNIQUE (project_id, user_id));
-  CREATE TABLE organization_members (id TEXT PRIMARY KEY, organization_id TEXT NOT NULL, user_id TEXT NOT NULL,
-    role TEXT NOT NULL, joined_at TEXT NOT NULL, UNIQUE (organization_id, user_id));
-  CREATE TABLE project_contacts (id TEXT PRIMARY KEY, project_id TEXT NOT NULL, active INTEGER NOT NULL DEFAULT 1);
-  CREATE TABLE project_access_invitations (id TEXT PRIMARY KEY, organization_id TEXT NOT NULL, project_id TEXT NOT NULL,
-    project_contact_id TEXT, email TEXT NOT NULL, role TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'sent',
-    workos_expires_at TEXT, invited_by TEXT NOT NULL, invited_at TEXT NOT NULL, accepted_by TEXT, accepted_at TEXT,
-    created_at TEXT NOT NULL, updated_at TEXT NOT NULL);
-  INSERT INTO project_contacts VALUES ('c1', 'p1', 1);
-  INSERT INTO project_access_invitations (id, organization_id, project_id, project_contact_id, email, role, invited_by,
-    invited_at, created_at, updated_at) VALUES ('i1', 'org', 'p1', 'c1', 'guest@example.test', 'guest', 'staff', 't0', 't0', 't0');
-`
+// Production's schema (every migration), so the unique (project_id, user_id)
+// index, foreign keys and NOT NULL rules all apply as they do on D1.
+function seed(sqlite: ReturnType<typeof migratedDb>["sqlite"]): void {
+  insertRow(sqlite, "organizations", { id: "org" })
+  insertRow(sqlite, "users", { id: "staff" })
+  insertRow(sqlite, "users", { id: "u1" })
+  insertRow(sqlite, "users", { id: "u2" })
+  insertRow(sqlite, "projects", { id: "p1", organization_id: "org" })
+  insertRow(sqlite, "project_contacts", { id: "c1", project_id: "p1", active: 1 })
+  insertRow(sqlite, "project_access_invitations", {
+    id: "i1", organization_id: "org", project_id: "p1", project_contact_id: "c1", email: "guest@example.test",
+    role: "guest", invited_by: "staff", invited_at: "t0", created_at: "t0", updated_at: "t0",
+  })
+}
 
-let current: ReturnType<typeof sqliteDb> | null = null
-function open(): ReturnType<typeof sqliteDb> {
-  current = sqliteDb(SCHEMA)
+let current: ReturnType<typeof migratedDb> | null = null
+function open(): ReturnType<typeof migratedDb> {
+  current = migratedDb()
+  seed(current.sqlite)
   return current
 }
 afterEach(() => {
@@ -58,7 +60,7 @@ const pending = {
 }
 const account = { id: "u1", phone: "555", address: "Main St" }
 
-function members(sqlite: ReturnType<typeof sqliteDb>["sqlite"]): unknown[] {
+function members(sqlite: ReturnType<typeof migratedDb>["sqlite"]): unknown[] {
   return sqlite.prepare("SELECT id, user_id, role FROM project_members ORDER BY user_id").all()
 }
 

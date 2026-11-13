@@ -1,6 +1,7 @@
 import Database from "better-sqlite3"
 
 import { getDb } from "@/db"
+import { migratedDatabase } from "@/test/migrated-database"
 import type { Db } from "@/lib/server/action-context"
 
 type Sqlite = InstanceType<typeof Database>
@@ -48,6 +49,13 @@ export function d1Over(sqlite: Sqlite): unknown {
 export function sqliteDb(schema: string): { readonly sqlite: Sqlite; readonly db: Db } {
   const sqlite = new Database(":memory:")
   sqlite.exec(schema)
+  // @ts-expect-error The test binding implements only what drizzle's D1 driver calls.
+  return { sqlite, db: getDb(d1Over(sqlite)) }
+}
+
+/** A fresh in-memory database with every migration applied (production's schema), plus a drizzle handle. */
+export function migratedDb(): { readonly sqlite: Sqlite; readonly db: Db } {
+  const sqlite = migratedDatabase()
   // @ts-expect-error The test binding implements only what drizzle's D1 driver calls.
   return { sqlite, db: getDb(d1Over(sqlite)) }
 }

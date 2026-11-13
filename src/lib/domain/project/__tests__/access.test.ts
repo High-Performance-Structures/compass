@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest"
 
 import { getDb } from "@/db"
 import { assertProjectAccess } from "@/lib/domain/project/access"
+import { insertRow, migratedDatabase } from "@/test/migrated-database"
 import type { AuthUser } from "@/lib/auth"
 
 type D1Statement = Readonly<{
@@ -43,26 +44,15 @@ function createD1(sqlite: InstanceType<typeof Database>) {
 }
 
 function createDatabase(): InstanceType<typeof Database> {
-  const sqlite = new Database(":memory:")
-  sqlite.exec(`
-    CREATE TABLE projects (
-      id TEXT PRIMARY KEY,
-      project_number TEXT,
-      organization_id TEXT
-    );
-    CREATE TABLE project_members (
-      id TEXT PRIMARY KEY,
-      project_id TEXT NOT NULL,
-      user_id TEXT NOT NULL,
-      role TEXT NOT NULL,
-      assigned_at TEXT NOT NULL
-    );
-    INSERT INTO projects (id, project_number, organization_id) VALUES
-      ('project-1', 'P-1', 'org-1'),
-      ('project-2', 'P-2', 'org-2');
-    INSERT INTO project_members (id, project_id, user_id, role, assigned_at) VALUES
-      ('member-1', 'project-1', 'viewer-1', 'client', '2026-09-06T00:00:00.000Z');
-  `)
+  const sqlite = migratedDatabase()
+  insertRow(sqlite, "organizations", { id: "org-1" })
+  insertRow(sqlite, "organizations", { id: "org-2" })
+  insertRow(sqlite, "users", { id: "viewer-1" })
+  insertRow(sqlite, "projects", { id: "project-1", project_number: "P-1", organization_id: "org-1" })
+  insertRow(sqlite, "projects", { id: "project-2", project_number: "P-2", organization_id: "org-2" })
+  insertRow(sqlite, "project_members", {
+    id: "member-1", project_id: "project-1", user_id: "viewer-1", role: "client", assigned_at: "2026-09-06T00:00:00.000Z",
+  })
   return sqlite
 }
 
