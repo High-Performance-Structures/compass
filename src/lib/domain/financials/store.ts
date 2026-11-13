@@ -101,14 +101,14 @@ function simpleInvoiceKey(key: SimpleInvoiceKey): SQL | undefined {
   return and(eq(invoices.id, key.invoiceId), eq(invoices.organizationId, key.organizationId), eq(invoices.projectId, key.projectId), isNotNull(invoices.invoiceKind))
 }
 
-/** Applies `event` as a compare-and-set on its source states (plus `also`); true when it landed. */
-async function moveSimpleInvoice(db: Db, key: SimpleInvoiceKey, event: SimpleInvoiceEvent, values: Partial<NewInvoice>, also?: SQL): Promise<boolean> {
-  const updated = await db.update(invoices)
-    .set({ ...values, status: simpleInvoiceMachine.transitions[event].to })
-    .where(and(simpleInvoiceKey(key), inArray(invoices.status, [...simpleInvoiceMachine.transitions[event].from]), also))
-    .returning({ id: invoices.id })
-  return updated.length === 1
+/** Applies `event` as a compare-and-set on its source states (plus `also`), unexecuted with `.returning` for a caller's batch. */
+export function simpleInvoiceMoveStatement(db: Db, key: SimpleInvoiceKey, event: SimpleInvoiceEvent, values: Partial<NewInvoice>, also?: SQL) {
+  return db.update(invoices).set({ ...values, status: simpleInvoiceMachine.transitions[event].to })
+    .where(and(simpleInvoiceKey(key), inArray(invoices.status, [...simpleInvoiceMachine.transitions[event].from]), also)).returning({ id: invoices.id })
 }
+/** The same, run: true when it landed. */
+const moveSimpleInvoice = async (db: Db, key: SimpleInvoiceKey, event: SimpleInvoiceEvent, values: Partial<NewInvoice>, also?: SQL): Promise<boolean> =>
+  (await simpleInvoiceMoveStatement(db, key, event, values, also)).length === 1
 
 /** The same for the invoice's Square link (square_state). */
 async function moveSquareLink(db: Db, key: SimpleInvoiceKey, event: SquareLinkEvent, values: Partial<NewInvoice>, also?: SQL): Promise<boolean> {
@@ -136,15 +136,6 @@ export async function finalizeSimpleInvoice(db: Db, key: SimpleInvoiceKey & {
 /** reopen: a final, unpaid invoice back to draft. */
 export async function reopenSimpleInvoice(db: Db, key: SimpleInvoiceKey & { readonly now: string }): Promise<boolean> {
   return moveSimpleInvoice(db, key, "reopen", { updatedAt: key.now }, eq(invoices.amountPaid, 0))
-}
-
-/** reopen as an unexecuted statement (with `.returning`) for the caller's batch, also fenced on `also`. */
-export function reopenSimpleInvoiceStatement(db: Db, key: SimpleInvoiceKey & { readonly now: string; readonly also?: SQL }) {
-  const { from, to } = simpleInvoiceMachine.transitions.reopen
-  return db.update(invoices)
-    .set({ updatedAt: key.now, status: to })
-    .where(and(simpleInvoiceKey(key), inArray(invoices.status, [...from]), eq(invoices.amountPaid, 0), key.also))
-    .returning({ id: invoices.id })
 }
 
 /** void: keeps a final, unpaid invoice for the record. The caller cancels its Sage export and Square invoice only after this lands. */

@@ -58,6 +58,7 @@ import {
   updateSageClientProjectWriteOperations,
   updateVendorCertificateSyncs,
 } from "@/lib/domain/sage-bridge/store"
+import { simpleInvoiceMoveStatement } from "@/lib/domain/financials/store"
 import { applySimpleInvoiceSageResult } from "@/lib/financials/simple-invoice-sage-result"
 import { queueApprovedSageAdd } from "@/lib/sage/directory-add-service"
 import { noNewSageHoldCondition, noNewSageHoldGuard } from "@/lib/sage/sage-held-fields"
@@ -398,6 +399,35 @@ describe("review fixes: certificates, leases, links, void records", () => {
     expect(answers.filter((answer) => answer !== null)).toEqual([{ status: "failed", httpStatus: 202 }])
     expect(await sageResultAlreadyRecorded(db, "sage_invoice_ar_exports", { id: "x1", organizationId: ORG, claimToken: "c1", statuses: ["failed"], sageRecordId: null }))
       .toBe("failed")
+  })
+
+  it("reopen and its export cancel are one batch: never when Sage has the invoice (its record id) or a payment landed", async () => {
+    const reopen = (id: string) => db.batch([
+      simpleInvoiceMoveStatement(db, { invoiceId: `inv-${id}`, organizationId: ORG, projectId: "p1" }, "reopen", { updatedAt: LATER }, and(
+        sql`amount_paid = 0`,
+        sql`NOT EXISTS (SELECT 1 FROM sage_invoice_ar_exports e WHERE e.invoice_id = ${`inv-${id}`}
+          AND (e.status IN ('running', 'succeeded') OR e.sage_record_id IS NOT NULL))`,
+      )),
+      cancelSageInvoiceArExportStatement(db, {
+        organizationId: ORG, invoiceId: `inv-${id}`, now: LATER,
+        when: sql`EXISTS (SELECT 1 FROM invoices WHERE id = ${`inv-${id}`} AND status = 'draft' AND updated_at = ${LATER})`,
+      }),
+    ])
+    for (const id of ["queued", "inSage", "paid"]) {
+      insertInvoiceExport(id, id === "inSage" ? "needs_attention" : "queued", "open")
+      sqlite.prepare("UPDATE invoices SET project_id = 'p1', invoice_kind = 'invoice' WHERE id = ?").run(`inv-${id}`)
+    }
+    sqlite.exec("UPDATE sage_invoice_ar_exports SET sage_record_id = '901' WHERE id = 'inSage'")
+    sqlite.exec("UPDATE invoices SET amount_paid = 10 WHERE id = 'inv-paid'")
+    const [reopened] = await reopen("queued")
+    expect(reopened).toHaveLength(1)
+    expect(statusOf("sage_invoice_ar_exports", "queued")).toBe("cancelled")
+    for (const id of ["inSage", "paid"]) {
+      const [blocked] = await reopen(id)
+      expect(blocked, id).toEqual([])
+      expect(sqlite.prepare("SELECT status FROM invoices WHERE id = ?").get(`inv-${id}`)).toEqual({ status: "open" })
+    }
+    expect([statusOf("sage_invoice_ar_exports", "inSage"), statusOf("sage_invoice_ar_exports", "paid")]).toEqual(["needs_attention", "queued"])
   })
 
   it("queuing a voided invoice's export again changes nothing", async () => {

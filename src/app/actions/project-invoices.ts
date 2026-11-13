@@ -31,7 +31,7 @@ import {
   cancelSquareInvoiceLink,
   deleteDraftSimpleInvoiceStatement,
   finalizeSimpleInvoice,
-  reopenSimpleInvoiceStatement,
+  simpleInvoiceMoveStatement,
   replaceInvoiceLinesStatements,
   simpleInvoiceInsertStatement,
   simpleInvoiceUpdateStatement,
@@ -390,11 +390,11 @@ export async function reopenProjectInvoice(projectId: string, invoiceId: string)
     // succeeded or carrying Sage's record), and its queued export is cancelled
     // only if that reopen landed. Neither can happen without the other.
     const [reopened] = await db.batch([
-      reopenSimpleInvoiceStatement(db, {
-        invoiceId, organizationId, projectId, now,
-        also: sql`NOT EXISTS (SELECT 1 FROM sage_invoice_ar_exports e WHERE e.invoice_id = ${invoiceId}
+      simpleInvoiceMoveStatement(db, { invoiceId, organizationId, projectId }, "reopen", { updatedAt: now }, and(
+        eq(invoices.amountPaid, 0),
+        sql`NOT EXISTS (SELECT 1 FROM sage_invoice_ar_exports e WHERE e.invoice_id = ${invoiceId}
           AND (e.status IN ('running', 'succeeded') OR e.sage_record_id IS NOT NULL))`,
-      }),
+      )),
       cancelSageInvoiceArExportStatement(db, {
         organizationId, invoiceId, now,
         when: sql`EXISTS (SELECT 1 FROM invoices WHERE id = ${invoiceId} AND status = 'draft' AND updated_at = ${now})`,
