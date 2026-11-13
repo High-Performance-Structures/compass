@@ -180,6 +180,21 @@ describe("approving a pay application for billing", () => {
       }
     })
 
+    it("refuses when a payment is recorded or a later draw started after the undo's checks", async () => {
+      await approveProjectOwnerPayApplicationForBilling("bishop", "app-1")
+      exportRow("queued")
+      beforeNextBatch = () => sqlite.prepare(
+        "INSERT INTO pay_application_payment_allocations (id, organization_id, project_id, application_id, payment_id, allocation_cents, created_at, released_at) VALUES ('alloc-x', 'org', 'bishop', 'app-1', 'pay-x', 100, 't', NULL)"
+      ).run()
+      expect((await undoProjectOwnerPayApplicationBilling("bishop", "app-1")).success).toBe(false)
+      expect(row("app-1")).toMatchObject({ status: "billed" })
+      expect(exportStatus()).toEqual({ status: "queued" })
+      sqlite.prepare("UPDATE pay_application_payment_allocations SET released_at = 'voided'").run()
+      beforeNextBatch = () => drizzle(sqlite).insert(projectBudgetApplications).values(application("app-2", "draft", "2026-11-16")).run()
+      expect((await undoProjectOwnerPayApplicationBilling("bishop", "app-1")).success).toBe(false)
+      expect(row("app-1")).toMatchObject({ status: "billed" })
+    })
+
     it("refuses when Sage starts adding the invoice after the undo's checks", async () => {
       await approveProjectOwnerPayApplicationForBilling("bishop", "app-1")
       exportRow("queued")
@@ -188,6 +203,16 @@ describe("approving a pay application for billing", () => {
       expect(row("app-1")).toMatchObject({ status: "billed" })
       expect(exportStatus()).toEqual({ status: "running" })
     })
+  })
+
+  it("bills only the version staff reviewed", async () => {
+    // Opened before Sage's amounts were applied.
+    const stale = await approveProjectOwnerPayApplicationForBilling("bishop", "app-1", "2026-10-15")
+    expect(stale).toMatchObject({ success: false, error: expect.stringMatching(/changed since you opened it/) })
+    // Changed between the approval's read and its write.
+    beforeNextBatch = () => sqlite.prepare("UPDATE project_budget_applications SET current_payment_due = 1, updated_at = 'later' WHERE id = 'app-1'").run()
+    expect((await approveProjectOwnerPayApplicationForBilling("bishop", "app-1", "2026-10-16")).success).toBe(false)
+    expect(row("app-1")).toMatchObject({ status: "internal_review", owner_visible: 0 })
   })
 
   it("refuses clients", async () => {

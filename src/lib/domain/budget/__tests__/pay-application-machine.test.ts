@@ -3,7 +3,7 @@ import { readdirSync, readFileSync, statSync } from "node:fs"
 import { join } from "node:path"
 import { afterEach, beforeEach, describe, expect, it } from "vitest"
 
-import { eq } from "drizzle-orm"
+import { eq, sql } from "drizzle-orm"
 
 import { drizzleOverSqlite } from "../../../../../__tests__/helpers/correspondence-core"
 
@@ -12,8 +12,10 @@ import { isBatchGuardFailure } from "@/lib/d1-query"
 import { payApplicationMachine } from "@/lib/domain/budget/pay-application-machine"
 import { PAY_APPLICATION_STATUSES } from "@/lib/domain/budget/statuses"
 import {
+  budgetLinesUnchanged,
   draftPayApplicationGuardStatement,
   deleteBudgetLinesStatement,
+  readBudgetLinesSignature,
   movePayApplicationStatus,
   updateBudgetApplications,
   updateBudgetLinesStatement,
@@ -205,6 +207,16 @@ describe("freezing a draw for review", () => {
     sqlite.exec("UPDATE project_budget_applications SET current_payment_due = 500")
     sqlite.exec("UPDATE project_budget_lines SET current_work_completed = 0, current_costs = 0, total_costs = 0")
     await expect(sendPayApplicationForReview(drizzleOverSqlite(sqlite), { projectId: "p1", applicationId: "app", now: NOW })).rejects.toThrow(/Enter current work/)
+  })
+
+  it("fingerprints the lines in whole cents, so a re-read matches exactly", async () => {
+    sqlite.exec("UPDATE project_budget_lines SET current_work_completed = 0.1, stored_materials = 0.2, total_costs = 0.30000000000000004")
+    const db = drizzleOverSqlite(sqlite)
+    const signature = await readBudgetLinesSignature(db, "app")
+    expect(Number.isInteger(signature.total)).toBe(true)
+    expect(signature.total).toBe(60)
+    const row = await db.select({ same: sql<number>`${budgetLinesUnchanged("app", signature)}` }).from(projectBudgetLines).limit(1).get()
+    expect(row?.same).toBe(1)
   })
 
   it("a refresh never rewrites the totals of a draw that went to review", async () => {

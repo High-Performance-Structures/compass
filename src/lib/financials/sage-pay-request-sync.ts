@@ -14,7 +14,7 @@ import {
   type CompassCostCode,
   type SyncedPayRequestLine,
 } from "@/lib/domain/budget/sage-pay-request-rules"
-import { restagePayApplicationReview } from "@/lib/domain/budget/pay-application-review"
+import { payApplicationReviewPayload } from "@/lib/domain/budget/pay-application-review"
 import {
   compassDrawStatusIs,
   deleteBudgetLinesStatement,
@@ -189,7 +189,7 @@ function roundCents(value: number): number {
 function lineRows(
   lines: readonly SyncedPayRequestLine[],
   context: { readonly projectId: string; readonly applicationId: string; readonly now: string }
-): (typeof projectBudgetLines.$inferInsert)[] {
+) {
   return lines.map((line, index) => {
     const total = line.totalCompletedStoredToDate
     return {
@@ -290,6 +290,21 @@ async function replaceWithSageStatements(
     .from(projectBudgetLines)
     .where(and(eq(projectBudgetLines.projectId, projectId), eq(projectBudgetLines.applicationId, application.id)))
   const header = headerValues(snapshot)
+  const rows = lineRows(input.lines, { projectId, applicationId: application.id, now })
+  // A draw in review gets its Sage review snapshot rebuilt from Sage's amounts in the same batch.
+  const revision = await db
+    .select({ id: projectBudgetApplications.budgetRevisionId })
+    .from(projectBudgetApplications)
+    .where(eq(projectBudgetApplications.id, application.id))
+    .get()
+  const review = application.status === "internal_review"
+    ? {
+        sagePayloadJson: payApplicationReviewPayload(
+          { ...header, id: application.id, applicationNumber: application.applicationNumber, budgetRevisionId: revision?.id ?? null },
+          [...rows].sort((left, right) => left.csiDivision.localeCompare(right.csiDivision) || left.sortOrder - right.sortOrder)
+        ),
+      }
+    : {}
   return [
     // Only while the draw is still in the status read (a draft or in review):
     // an approval for billing meanwhile keeps the amounts that were approved.
@@ -300,9 +315,7 @@ async function replaceWithSageStatements(
       and(eq(payApplicationShopTicketImports.applicationId, application.id), eq(payApplicationShopTicketImports.mode, "imported"))
     ),
     deleteBudgetLinesStatement(db, and(eq(projectBudgetLines.projectId, projectId), eq(projectBudgetLines.applicationId, application.id))),
-    ...chunkD1InsertRows(projectBudgetLines, lineRows(input.lines, { projectId, applicationId: application.id, now })).map((rows) =>
-      insertBudgetLinesStatement(db, rows)
-    ),
+    ...chunkD1InsertRows(projectBudgetLines, rows).map((chunk) => insertBudgetLinesStatement(db, chunk)),
     updateBudgetApplicationsStatement(db, eq(projectBudgetApplications.id, application.id), {
       ...header,
       billingSource: "sage",
@@ -310,7 +323,7 @@ async function replaceWithSageStatements(
       lastSyncedAt: now,
       updatedAt: now,
     }),
-    operationUpdateQuery(db, operationFor(projectId, application.id), { amount: header.currentPaymentDue, dueDate: header.periodTo, updatedAt: now }),
+    operationUpdateQuery(db, operationFor(projectId, application.id), { amount: header.currentPaymentDue, dueDate: header.periodTo, ...review, updatedAt: now }),
     insertPayApplicationSageSyncStatement(db, {
       id: crypto.randomUUID(),
       projectId,
@@ -512,7 +525,6 @@ export async function syncPayRequestFromSageSnapshot(
     if (existing.billingSource === "sage" && refreshable && !sameSnapshot) {
       const replaced = await runGuardedBatch(db, await replaceWithSageStatements(db, { projectId, application: existing, snapshot, lines, event: "refreshed", userId, now }))
       // Approved for billing meanwhile: it keeps its amounts.
-      if (replaced) await restagePayApplicationReview(db, { projectId, applicationId: existing.id, now })
       kind = replaced ? "refreshed" : "locked"
     } else if (existing.billingSource !== "sage" && !sameSnapshot) {
       // A pay application built in Compass: link it and leave its amounts alone.
@@ -639,8 +651,6 @@ export async function applySageAmounts(
     await replaceWithSageStatements(db, { projectId, application, snapshot, lines, event: "sage_amounts_applied", userId: input.actor.id, now })
   )
   if (!replaced) throw new Error("This pay application was approved or changed meanwhile. Refresh to see where it stands.")
-  // A draw in review gets a new Sage review snapshot with Sage's amounts.
-  await restagePayApplicationReview(db, { projectId, applicationId, now })
   const ticketsMarked = await markShopTicketsCoveredBySage(db, { projectId, applicationId, periodTo: snapshot.header.periodTo, lines, userId: input.actor.id, now })
   await recordActivityEvent({
     db,

@@ -147,6 +147,11 @@ function billedDrawCondition(): SQL | undefined {
   )
 }
 
+/** SQL condition: no active (unreleased) payment is applied to the draw; for writes that need it at write time. */
+export function drawHasNoActivePayments(applicationId: string): SQL {
+  return sql`NOT EXISTS (SELECT 1 FROM ${payApplicationPaymentAllocations} WHERE ${and(eq(payApplicationPaymentAllocations.applicationId, applicationId), isNull(payApplicationPaymentAllocations.releasedAt))})`
+}
+
 /**
  * Billed pay applications (Compass draws approved for billing and imported
  * Sage/Drive draws) and payable invoices on the project, with billed, paid
@@ -177,7 +182,8 @@ export async function readListedBills(db: Db, scope: ProjectReceivableScope): Pr
   ])
   // A cutover row may name the bill by its source record (a Drive file, a Buildertrend id).
   const sourceIds = new Map([...drawSources, ...invoiceSources].map((row) => [row.id, row.source]))
-  return rows.map(({ bill, label }) => ({ ...bill, ids: [...bill.ids, ...bill.ids.map((id) => (id ? sourceIds.get(id) ?? null : null))], label }))
+  // The list as received payments shows it (each bill once), so the label names a row staff can find.
+  return receivablesOncePerBill(rows).map(({ row: { bill, label } }) => ({ ...bill, ids: [...bill.ids, ...bill.ids.map((id) => (id ? sourceIds.get(id) ?? null : null))], label }))
 }
 
 type ListedReceivableRow = {

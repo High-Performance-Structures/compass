@@ -241,7 +241,7 @@ export async function undoImportedDrawDeposit(db: Db, input: {
 
 /**
  * A fingerprint of a draw's G703 lines: how many, the latest change and the
- * total of their amounts. Any line write changes it (every write stamps
+ * total of their amounts in whole cents. Any line write changes it (every write stamps
  * updated_at), so a batch planned from the lines can require it unchanged
  * with a fixed number of parameters, however many lines the draw has.
  */
@@ -251,7 +251,8 @@ function linesSignatureColumns() {
   return {
     count: sql<number>`count(*)`,
     latest: sql<string>`COALESCE(MAX(${projectBudgetLines.updatedAt}), '')`,
-    total: sql<number>`total(${projectBudgetLines.currentWorkCompleted} + ${projectBudgetLines.storedMaterials} + ${projectBudgetLines.retainageHeld} + ${projectBudgetLines.totalCosts} + ${projectBudgetLines.balanceToFinish})`,
+    // Whole cents per line, so the total compares exactly.
+    total: sql<number>`COALESCE(SUM(CAST(ROUND((${projectBudgetLines.currentWorkCompleted} + ${projectBudgetLines.storedMaterials} + ${projectBudgetLines.retainageHeld} + ${projectBudgetLines.totalCosts} + ${projectBudgetLines.balanceToFinish}) * 100) AS INTEGER)), 0)`,
   }
 }
 

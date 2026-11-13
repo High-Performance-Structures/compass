@@ -1,6 +1,7 @@
 "use server"
 
-import { and, eq, gt, isNull, notInArray } from "drizzle-orm"
+import { and, eq, gt, isNull, notInArray, sql } from "drizzle-orm"
+import { alias } from "drizzle-orm/sqlite-core"
 import { revalidatePath } from "next/cache"
 
 import { getDb } from "@/db"
@@ -8,7 +9,7 @@ import { projectBudgetApplications, projectOperations, projects } from "@/db/sch
 import { activityActorName, recordActivityEvent } from "@/lib/activity-log"
 import { batchGuardStatement, isBatchGuardFailure } from "@/lib/d1-query"
 import { compassDrawStatusIs, movePayApplicationStatus, updateBudgetApplicationsStatement } from "@/lib/domain/budget/store"
-import { payApplicationHasActivePayments } from "@/lib/domain/financials/receivables"
+import { drawHasNoActivePayments, payApplicationHasActivePayments } from "@/lib/domain/financials/receivables"
 import { operationUpdateQuery } from "@/lib/domain/operations/store"
 import { arExportNotPossiblyInSage, arExportPossiblyInSage, cancelSageArInvoiceExportStatement } from "@/lib/domain/sage-bridge/ar-invoice-store"
 import { queueArInvoiceSageExport } from "@/lib/sage/ar-invoice-sync"
@@ -60,6 +61,9 @@ async function compassApplication(db: ReturnType<typeof getDb>, projectId: strin
     .get()
 }
 
+/** Another draw of the same project, for the undo's write-time check. */
+const laterDraw = alias(projectBudgetApplications, "later_draw")
+
 function operationFor(projectId: string, applicationId: string) {
   return and(
     eq(projectOperations.projectId, projectId),
@@ -81,7 +85,9 @@ function revalidateBillingPaths(projectId: string, applicationId: string): void 
 /** Marks a reviewed pay application billed and publishes it to the owner. */
 export async function approveProjectOwnerPayApplicationForBilling(
   projectId: string,
-  applicationId: string
+  applicationId: string,
+  /** The version staff reviewed; a draw changed since (Sage's amounts applied, say) is refused. */
+  expectedUpdatedAt?: string
 ): Promise<BillingActionResult> {
   try {
     const { db, user, organizationId } = await billingAccess(projectId)
@@ -89,13 +95,17 @@ export async function approveProjectOwnerPayApplicationForBilling(
     if (!application || application.status !== "internal_review") {
       throw new Error("Mark the pay application ready for review before approving it for billing.")
     }
+    const changedMessage = "This pay application changed since you opened it. Refresh, check its amounts, and approve again."
+    if (expectedUpdatedAt !== undefined && expectedUpdatedAt !== application.updatedAt) throw new Error(changedMessage)
     const now = new Date().toISOString()
-    // Compare-and-set: a double click or a second person approving at the
-    // same time lands once, and only that one logs Activity and queues Sage.
+    // Compare-and-set on the status and the version read: a double click or a
+    // second person approving lands once (only that one logs Activity and
+    // queues Sage), and a draw whose amounts changed meanwhile isn't billed.
     const moved = await movePayApplicationStatus(db, {
       projectId,
       applicationId,
       event: "approve",
+      also: eq(projectBudgetApplications.updatedAt, application.updatedAt),
       values: { ownerVisible: true, billedAt: now, billedBy: user.id, syncStatus: "awaiting_sage_invoice", updatedAt: now },
       alongWith: [
         operationUpdateQuery(db, operationFor(projectId, applicationId), {
@@ -162,7 +172,19 @@ export async function undoProjectOwnerPayApplicationBilling(
       projectId,
       applicationId,
       event: "undo_billing",
-      also: and(isNull(projectBudgetApplications.sageInvoiceNumber), arExportNotPossiblyInSage({ kind: "pay", organizationId, sourceId: applicationId })),
+      also: and(
+        isNull(projectBudgetApplications.sageInvoiceNumber),
+        arExportNotPossiblyInSage({ kind: "pay", organizationId, sourceId: applicationId }),
+        // The checks above, again at write time: no payment recorded and no later draw started meanwhile.
+        drawHasNoActivePayments(applicationId),
+        // An alias renders as its name only, so the table is named here.
+        sql`NOT EXISTS (SELECT 1 FROM ${projectBudgetApplications} AS later_draw WHERE ${and(
+          eq(laterDraw.projectId, projectId),
+          eq(laterDraw.sourceSystem, "compass_contract_budget"),
+          gt(laterDraw.createdAt, application.createdAt),
+          notInArray(laterDraw.status, ["building", "void"]),
+        )})`,
+      ),
       values: { ownerVisible: false, billedAt: null, billedBy: null, syncStatus: "needs_review", updatedAt: now },
       alongWith: [
         operationUpdateQuery(db, operationFor(projectId, applicationId), {
@@ -174,7 +196,7 @@ export async function undoProjectOwnerPayApplicationBilling(
       ],
     })
     if (!moved) {
-      throw new Error("This billing approval was already taken back, or a Sage invoice number was recorded or Sage started adding the invoice meanwhile. Refresh to see where it stands.")
+      throw new Error("This billing approval was already taken back, or meanwhile a Sage invoice number or a payment was recorded, a later draw was started, or Sage started adding the invoice. Refresh to see where it stands.")
     }
     await recordActivityEvent({
       db, organizationId, projectId, actor: user, category: "financial",

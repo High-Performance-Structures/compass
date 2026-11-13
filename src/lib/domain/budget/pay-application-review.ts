@@ -12,7 +12,7 @@ import { projectBudgetApplications, projectBudgetLines, projectOperations } from
 import { budgetLinesUnchanged, movePayApplicationStatus, readBudgetLinesSignature } from "@/lib/domain/budget/store"
 import { operationUpdateQuery, updateOperations } from "@/lib/domain/operations/store"
 import { ownerPayApplicationTotals } from "@/lib/financials/owner-pay-application-refresh"
-import { g703ByCostCode } from "@/lib/financials/pay-application-shares"
+import { g703ByCostCode, type G703Row } from "@/lib/financials/pay-application-shares"
 import type { Db } from "@/lib/server/action-context"
 
 type DrawRef = { readonly projectId: string; readonly applicationId: string; readonly now: string }
@@ -20,8 +20,16 @@ type DrawRef = { readonly projectId: string; readonly applicationId: string; rea
 type ApplicationRow = typeof projectBudgetApplications.$inferSelect
 type LineRow = typeof projectBudgetLines.$inferSelect
 
+type ReviewApplication = Pick<
+  ApplicationRow,
+  | "id" | "applicationNumber" | "periodTo" | "budgetRevisionId" | "originalContractSum" | "netChanges" | "contractSumToDate"
+  | "totalCompletedStoredToDate" | "retainageHeld" | "totalEarnedLessRetainage" | "previousCertificates" | "depositApplied"
+  | "currentPaymentDue" | "balanceToFinish"
+>
+type ReviewLine = G703Row & { readonly id: string; readonly assemblyKey: string | null; readonly assemblyName: string | null }
+
 /** The G702/G703 snapshot staged on the workflow item for the Sage review. */
-function sageReviewPayload(application: ApplicationRow, lines: readonly LineRow[]): string {
+export function payApplicationReviewPayload(application: ReviewApplication, lines: readonly ReviewLine[]): string {
   const applicationId = application.id
   return JSON.stringify({
     schemaVersion: 1,
@@ -124,31 +132,13 @@ export async function sendPayApplicationForReview(db: Db, { projectId, applicati
         status: "internal_review",
         amount: totals.currentPaymentDue,
         sageWriteStatus: "draft_ready",
-        sagePayloadJson: sageReviewPayload(frozen, lines),
+        sagePayloadJson: payApplicationReviewPayload(frozen, lines),
         syncStatus: "needs_review",
         updatedAt: now,
       }),
     ],
   })
   if (!moved) throw new Error("This pay application changed or was already sent for review. Refresh to see where it stands.")
-}
-
-/**
- * Re-stages the Sage review snapshot of a draw in review after its amounts
- * changed (Sage's amounts were applied). Nothing for a draft.
- */
-export async function restagePayApplicationReview(db: Db, { projectId, applicationId, now }: DrawRef): Promise<void> {
-  const application = await db
-    .select()
-    .from(projectBudgetApplications)
-    .where(and(eq(projectBudgetApplications.id, applicationId), eq(projectBudgetApplications.status, "internal_review")))
-    .get()
-  if (!application) return
-  await updateOperations(db, workflowItem(projectId, applicationId), {
-    amount: application.currentPaymentDue,
-    sagePayloadJson: sageReviewPayload(application, await orderedLines(db, applicationId)),
-    updatedAt: now,
-  })
 }
 
 /** return_to_draft: a draw in review goes back to an editable draft. Throws a message for staff when it can't. */

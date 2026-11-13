@@ -179,6 +179,8 @@ export type ProjectOwnerPayApplicationDraft = {
   readonly status: string
   /** Set once staff approve the draw for billing. */
   readonly billedAt: string | null
+  /** When it last changed; Approve for billing lands only on the version staff saw. */
+  readonly updatedAt: string
   readonly sageInvoiceNumber: string | null
   /** Billed amounts entered in Compass, or synced from Sage (read only). */
   readonly billingSource: "compass" | "sage"
@@ -544,6 +546,7 @@ export async function getProjectOwnerPayApplicationDraft(
     periodTo: application.periodTo,
     status: application.status,
     billedAt: application.billedAt,
+    updatedAt: application.updatedAt,
     sageInvoiceNumber: application.sageInvoiceNumber,
     billingSource: application.billingSource,
     budgetRevisionId: application.budgetRevisionId,
