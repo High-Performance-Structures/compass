@@ -36,8 +36,10 @@ test.describe("personal project views", () => {
     const errors: string[] = []
     page.on("pageerror", (error) => {
       // WebKit reports cancelled local Next RSC prefetches during navigation.
-      // Keep application errors and every other network error visible.
-      if (browserName === "webkit" && /^\/127\.0\.0\.1:\d+\/dashboard(?:\/[^?]*)?\?_rsc=\S+ due to access control checks\.$/.test(error.message)) return
+      // Keep application errors and every other network error visible. Links
+      // such as /dashboard/projects/select?target=messages carry their own
+      // query before _rsc.
+      if (browserName === "webkit" && /^\/127\.0\.0\.1:\d+\/dashboard(?:\/[^?]*)?\?(?:[^&\s]+&)*_rsc=\S+ due to access control checks\.$/.test(error.message)) return
       errors.push(error.message)
     })
     await page.goto("/dashboard/projects")
