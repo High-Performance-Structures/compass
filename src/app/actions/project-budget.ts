@@ -590,9 +590,10 @@ export async function getProjectBudgetSummary(
               and(
                 eq(projectBudgetApplications.projectId, projectId),
                 eq(projectBudgetApplications.ownerVisible, true),
-                // A replaced contract budget revision isn't billing history;
-                // owners saw every old revision listed as another pay application.
-                notInArray(projectBudgetApplications.status, ["building", "budget_superseded"])
+                // A replaced contract budget revision isn't billing history (owners
+                // saw every old revision as another pay application), nor is a
+                // voided or replaced imported draw.
+                notInArray(projectBudgetApplications.status, ["building", "budget_superseded", "void", "superseded"])
               )
             )
             .orderBy(

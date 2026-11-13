@@ -7,14 +7,16 @@ import { payApplicationSageSyncs, sagePayApplicationSnapshots } from "@/db/schem
 import { payApplicationShopTicketImports } from "@/db/schema-shop-tickets"
 import { recordActivityEvent, type ActivityActor } from "@/lib/activity-log"
 import { loadProjectCostCodeCatalog } from "@/lib/cost-codes/catalog-server"
-import { chunkD1InsertRows } from "@/lib/d1-query"
+import { batchGuardStatement, chunkD1InsertRows, isBatchGuardFailure } from "@/lib/d1-query"
 import {
   mapSageLinesToCompass,
   sameApplicationNumber,
   type CompassCostCode,
   type SyncedPayRequestLine,
 } from "@/lib/domain/budget/sage-pay-request-rules"
+import { restagePayApplicationReview } from "@/lib/domain/budget/pay-application-review"
 import {
+  compassDrawStatusIs,
   deleteBudgetLinesStatement,
   deleteShopTicketImportsStatement,
   insertBudgetApplicationStatement,
@@ -289,6 +291,9 @@ async function replaceWithSageStatements(
     .where(and(eq(projectBudgetLines.projectId, projectId), eq(projectBudgetLines.applicationId, application.id)))
   const header = headerValues(snapshot)
   return [
+    // Only while the draw is still in the status read (a draft or in review):
+    // an approval for billing meanwhile keeps the amounts that were approved.
+    batchGuardStatement(db, compassDrawStatusIs(projectId, application.id, [application.status]), "pay application refreshable"),
     // Amounts shop tickets added in Compass go with the lines; Sage's billing replaces them.
     deleteShopTicketImportsStatement(
       db,
@@ -330,6 +335,17 @@ function operationFor(projectId: string, applicationId: string) {
 async function runBatch(db: Db, statements: readonly Statement[]): Promise<void> {
   const [first, ...rest] = statements
   if (first) await db.batch([first, ...rest])
+}
+
+/** runBatch for a batch led by a guard; false (nothing written) when the guard refused it. */
+async function runGuardedBatch(db: Db, statements: readonly Statement[]): Promise<boolean> {
+  try {
+    await runBatch(db, statements)
+    return true
+  } catch (error) {
+    if (isBatchGuardFailure(error)) return false
+    throw error
+  }
 }
 
 export type SageSyncOutcome =
@@ -494,8 +510,10 @@ export async function syncPayRequestFromSageSnapshot(
     const sameSnapshot = latest?.snapshotId === snapshot.id
     const refreshable = SAGE_REFRESHABLE_STATUSES.some((status) => status === existing.status)
     if (existing.billingSource === "sage" && refreshable && !sameSnapshot) {
-      await runBatch(db, await replaceWithSageStatements(db, { projectId, application: existing, snapshot, lines, event: "refreshed", userId, now }))
-      kind = "refreshed"
+      const replaced = await runGuardedBatch(db, await replaceWithSageStatements(db, { projectId, application: existing, snapshot, lines, event: "refreshed", userId, now }))
+      // Approved for billing meanwhile: it keeps its amounts.
+      if (replaced) await restagePayApplicationReview(db, { projectId, applicationId: existing.id, now })
+      kind = replaced ? "refreshed" : "locked"
     } else if (existing.billingSource !== "sage" && !sameSnapshot) {
       // A pay application built in Compass: link it and leave its amounts alone.
       await runBatch(db, [
@@ -525,7 +543,7 @@ export async function syncPayRequestFromSageSnapshot(
       ])
     }
   }
-  const followsSage = application.billingSource === "sage" && SAGE_REFRESHABLE_STATUSES.some((status) => status === application.status)
+  const followsSage = kind !== "locked" && application.billingSource === "sage" && SAGE_REFRESHABLE_STATUSES.some((status) => status === application.status)
   const ticketsMarked = followsSage
     ? await markShopTicketsCoveredBySage(db, { projectId, applicationId: application.id, periodTo: snapshot.header.periodTo, lines, userId, now })
     : []
@@ -616,10 +634,13 @@ export async function applySageAmounts(
   const snapshot = await loadSageSnapshot(db, projectId, latest.snapshotId)
   if (!snapshot) throw new Error("Sage's pay application totals need review before its amounts can be used.")
   const { lines } = await mappedSnapshotLines(db, projectId, snapshot)
-  await runBatch(
+  const replaced = await runGuardedBatch(
     db,
     await replaceWithSageStatements(db, { projectId, application, snapshot, lines, event: "sage_amounts_applied", userId: input.actor.id, now })
   )
+  if (!replaced) throw new Error("This pay application was approved or changed meanwhile. Refresh to see where it stands.")
+  // A draw in review gets a new Sage review snapshot with Sage's amounts.
+  await restagePayApplicationReview(db, { projectId, applicationId, now })
   const ticketsMarked = await markShopTicketsCoveredBySage(db, { projectId, applicationId, periodTo: snapshot.header.periodTo, lines, userId: input.actor.id, now })
   await recordActivityEvent({
     db,

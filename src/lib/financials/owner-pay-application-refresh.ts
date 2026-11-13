@@ -12,7 +12,7 @@ import { payApplicationShopTicketImports } from "@/db/schema-shop-tickets"
 import { chunkD1InsertRows, chunkD1Values, isBatchGuardFailure } from "@/lib/d1-query"
 import { canonicalFeeCostCode, mixesFeeCostCodes } from "@/lib/domain/financials/builder-fee-codes"
 import { SAGE_SNAPSHOT_SOURCE } from "@/lib/domain/financials/rules"
-import { updateOperations } from "@/lib/domain/operations/store"
+import { operationUpdateQuery } from "@/lib/domain/operations/store"
 import { respreadShopTicketContributions } from "@/lib/domain/budget/rules"
 import {
   deleteBudgetLinesStatement,
@@ -20,7 +20,6 @@ import {
   draftPayApplicationGuardStatement,
   insertBudgetLinesStatement,
   insertShopTicketImportsStatements,
-  updateBudgetApplications,
   updateBudgetApplicationsStatement,
   updateBudgetLinesStatement,
 } from "@/lib/domain/budget/store"
@@ -101,18 +100,22 @@ export async function assertBilledAmountsEditable(db: ReturnType<typeof getDb>, 
   }
 }
 
-export async function refreshOwnerPayApplication(
+/** A draw's G702 totals recomputed from its lines and the deposit available to it. */
+export type OwnerPayApplicationTotals = {
+  readonly totalCompletedStoredToDate: number
+  readonly retainageHeld: number
+  readonly totalEarnedLessRetainage: number
+  readonly depositApplied: number
+  readonly currentPaymentDue: number
+  readonly balanceToFinish: number
+}
+
+export async function ownerPayApplicationTotals(
   db: ReturnType<typeof getDb>,
   projectId: string,
-  applicationId: string,
-  now: string
-): Promise<void> {
-  const applicationRows = await db
-    .select()
-    .from(projectBudgetApplications)
-    .where(eq(projectBudgetApplications.id, applicationId))
-    .limit(1)
-  const application = applicationRows[0]
+  applicationId: string
+): Promise<OwnerPayApplicationTotals> {
+  const application = await db.select().from(projectBudgetApplications).where(eq(projectBudgetApplications.id, applicationId)).get()
   if (!application) throw new Error("Pay application not found.")
   const lines = await db
     .select()
@@ -147,22 +150,37 @@ export async function refreshOwnerPayApplication(
     Math.round(
       (application.contractSumToDate - totalEarnedLessRetainage) * 100
     ) / 100
-  await updateBudgetApplications(db, eq(projectBudgetApplications.id, applicationId), {
-    totalCompletedStoredToDate,
-    retainageHeld,
-    totalEarnedLessRetainage,
-    depositApplied,
-    currentPaymentDue,
-    balanceToFinish,
-    updatedAt: now,
-  })
-  await updateOperations(
-    db,
-    and(eq(projectOperations.projectId, projectId), eq(projectOperations.sourceRecordId, applicationId)),
-    { amount: currentPaymentDue, updatedAt: now }
-  )
+  return { totalCompletedStoredToDate, retainageHeld, totalEarnedLessRetainage, depositApplied, currentPaymentDue, balanceToFinish }
 }
 
+/**
+ * Recomputes a draft's G702 totals and its workflow item's amount. Only a
+ * draft is written: a draw frozen for review (or billed) meanwhile keeps the
+ * totals it was frozen with. Returns whether it wrote.
+ */
+export async function refreshOwnerPayApplication(
+  db: ReturnType<typeof getDb>,
+  projectId: string,
+  applicationId: string,
+  now: string
+): Promise<boolean> {
+  const totals = await ownerPayApplicationTotals(db, projectId, applicationId)
+  try {
+    await db.batch([
+      draftPayApplicationGuardStatement(db, projectId, applicationId),
+      updateBudgetApplicationsStatement(db, eq(projectBudgetApplications.id, applicationId), { ...totals, updatedAt: now }),
+      operationUpdateQuery(
+        db,
+        and(eq(projectOperations.projectId, projectId), eq(projectOperations.sourceRecordId, applicationId)),
+        { amount: totals.currentPaymentDue, updatedAt: now }
+      ),
+    ])
+    return true
+  } catch (error) {
+    if (isBatchGuardFailure(error)) return false
+    throw error
+  }
+}
 
 /**
  * Recalculate draft pay applications that apply the deposit automatically,

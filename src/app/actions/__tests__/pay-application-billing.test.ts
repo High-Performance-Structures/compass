@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
 import { projectBudgetApplications, projectContractDeposits, projectOperations, projects } from "@/db/schema"
 import { payApplicationPaymentAllocations } from "@/db/schema-netsuite"
-import { sageArInvoiceExports } from "@/db/schema-sage"
+import { sageArInvoiceExports, sageDepositArExports } from "@/db/schema-sage"
 
 const mocks = vi.hoisted(() => ({
   getDb: vi.fn(),
@@ -27,7 +27,7 @@ import {
   setProjectOwnerPayApplicationSageInvoice,
   undoProjectOwnerPayApplicationBilling,
 } from "@/app/actions/pay-application-billing"
-import { getProjectDepositRequests } from "@/app/actions/project-contract-deposits"
+import { getProjectDepositRequests, saveProjectContractDeposit, voidProjectContractDeposit } from "@/app/actions/project-contract-deposits"
 
 let sqlite: InstanceType<typeof Database>
 // Runs once before the next batch: a write that lands between a read and its batch.
@@ -53,7 +53,7 @@ function application(id: string, status: string, createdAt: string) {
 beforeEach(() => {
   vi.clearAllMocks()
   sqlite = new Database(":memory:")
-  for (const table of [projects, projectBudgetApplications, projectOperations, projectContractDeposits, payApplicationPaymentAllocations, sageArInvoiceExports]) createTable(table)
+  for (const table of [projects, projectBudgetApplications, projectOperations, projectContractDeposits, payApplicationPaymentAllocations, sageArInvoiceExports, sageDepositArExports]) createTable(table)
   const db = drizzle(sqlite)
   db.insert(projects).values({ id: "bishop", name: "Ezell Residence - Bishop Built", projectNumber: "H-430-1900", organizationId: "org", createdAt: "t", updatedAt: "t" }).run()
   db.insert(projectBudgetApplications).values(application("app-1", "internal_review", "2026-10-16")).run()
@@ -215,3 +215,54 @@ describe("deposit requests", () => {
     expect(mocks.assertProjectAccess).toHaveBeenCalled()
   })
 })
+
+describe("voiding and saving a deposit", () => {
+  beforeEach(() => {
+    sqlite.exec(`
+      INSERT INTO project_contract_deposits (id, project_id, status, requested_amount_cents, requested_at, source_system, created_at, updated_at)
+        VALUES ('dep', 'bishop', 'requested', 2500000, '2026-10-19', 'compass', 't', 't0');
+      INSERT INTO sage_deposit_ar_exports (id, organization_id, project_id, deposit_id, status, invoice_number, requested_at, attempt_count, updated_at)
+        VALUES ('dexp', 'org', 'bishop', 'dep', 'queued', 'H-430-1900-DEP1', 't', 0, 't');
+    `)
+  })
+  function deposit(): unknown {
+    return sqlite.prepare("SELECT status FROM project_contract_deposits WHERE id = 'dep'").get()
+  }
+  function depositExport(): unknown {
+    return sqlite.prepare("SELECT status FROM sage_deposit_ar_exports WHERE id = 'dexp'").get()
+  }
+
+  it("withdraws the queued Sage AR invoice only once the void lands", async () => {
+    expect((await voidProjectContractDeposit("bishop", "dep")).success).toBe(true)
+    expect(deposit()).toEqual({ status: "void" })
+    expect(depositExport()).toEqual({ status: "cancelled" })
+  })
+
+  it("a void refused because the deposit changed meanwhile leaves its Sage AR invoice queued", async () => {
+    beforeNextBatch = null
+    // A payment is recorded after the void's checks: simulated on the next write.
+    sqlite.exec(`
+      CREATE TRIGGER pay_first BEFORE UPDATE OF status ON project_contract_deposits
+      WHEN NEW.status = 'void' AND OLD.updated_at = 't0'
+      BEGIN SELECT RAISE(IGNORE); END;
+    `)
+    const result = await voidProjectContractDeposit("bishop", "dep")
+    expect(result).toMatchObject({ success: false, error: expect.stringMatching(/changed/) })
+    expect(deposit()).toEqual({ status: "requested" })
+    expect(depositExport()).toEqual({ status: "queued" })
+  })
+
+  it("a save that started before a void doesn't bring the deposit back", async () => {
+    const input = { status: "received" as const, requestedAmount: 25_000, requestedAt: "2026-10-19", dueDate: null, receivedAmount: 25_000, receivedAt: "2026-10-20", paymentMethod: "check", reference: null, evidenceUrl: null, evidenceLabel: null, notes: null }
+    // Voided between the save's read and its write.
+    sqlite.exec(`
+      CREATE TRIGGER void_first BEFORE UPDATE OF status ON project_contract_deposits
+      WHEN NEW.status = 'received'
+      BEGIN UPDATE project_contract_deposits SET status = 'void', updated_at = 't1' WHERE id = NEW.id; SELECT RAISE(IGNORE); END;
+    `)
+    const result = await saveProjectContractDeposit("bishop", "dep", input)
+    expect(result.success).toBe(false)
+    expect(deposit()).toEqual({ status: "void" })
+  })
+})
+

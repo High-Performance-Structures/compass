@@ -611,68 +611,136 @@ export function paidCentsAfterRelease(paidCents: number, releasedCents: number):
 // Imported bills shown once. A cutover from another system (Buildertrend,
 // Drive, Sage) promoted owner invoices and pay requests into the project's
 // financial workflow list, and the same bill is often also an invoice or a
-// pay application listed with received payments (sometimes recorded under
-// another source system, e.g. a "buildertrend_import" pay request that is a
-// Compass invoice). The workflow copy is left out when the bill itself is
-// listed, matched by its number (or a source record id), whatever system
-// each came from.
+// pay application listed with received payments, sometimes under another
+// source system (a "buildertrend_import" pay request that is a Compass
+// invoice). Two records are the same bill only when their amounts agree to
+// the cent and a source id or their number matches.
 // ---------------------------------------------------------------------------
 
-/** Workflow rows promoted from another system; Compass's own workflow items are never hidden. */
+/** Workflow rows promoted from another system; Compass's own workflow items are never matched. */
 const IMPORTED_WORKFLOW_SOURCES = ["buildertrend", "buildertrend_import", "google_drive_g702_g703", "sage"] as const
-const IMPORTED_BILL_RECORD_TYPES = ["owner_invoice", "owner_pay_application"] as const
 
-/** A bill listed with received payments: its ids (row id, source record id) and numbers. */
-export type ListedBill = {
+type BillKind = "invoice" | "draw"
+
+/** A billed record: its kind, ids (row id, source record id), number and amount in cents. */
+export type BillRef = {
+  readonly kind: BillKind
   readonly ids: readonly (string | null)[]
-  readonly numbers: readonly (string | null)[]
+  readonly number: string | null
+  readonly cents: number
 }
 
-function billNumberKey(value: string): string {
+function invoiceNumberKey(value: string): string {
   return value.trim().toLowerCase()
 }
 
-/** Match keys of the bills listed with received payments. */
-export function listedBillKeys(bills: readonly ListedBill[]): ReadonlySet<string> {
-  const keys = new Set<string>()
-  for (const bill of bills) {
-    for (const id of bill.ids) if (id?.trim()) keys.add(`id:${id.trim()}`)
-    for (const number of bill.numbers) if (number?.trim()) keys.add(`number:${billNumberKey(number)}`)
-  }
-  return keys
+/** A pay application's sequence: its last group of digits ("PA-009" and "9" are 9; "H-329-9607-01" is 1). */
+export function billSequence(value: string): string | null {
+  const digits = /(\d+)\D*$/.exec(value)?.[1]
+  return digits ? String(Number(digits)) : null
 }
 
-/** True for an imported workflow invoice or pay request whose bill is already listed (see listedBillKeys). */
-export function isListedImportedBillCopy(
-  row: {
-    readonly sourceSystem: string
-    readonly sourceRecordType: string
-    readonly sourceRecordId: string | null
-    readonly sourceRecordNumber: string | null
-  },
-  listed: ReadonlySet<string>,
-): boolean {
-  if (!isListValue(IMPORTED_WORKFLOW_SOURCES, row.sourceSystem)) return false
-  if (!isListValue(IMPORTED_BILL_RECORD_TYPES, row.sourceRecordType)) return false
-  if (row.sourceRecordId?.trim() && listed.has(`id:${row.sourceRecordId.trim()}`)) return true
-  return Boolean(row.sourceRecordNumber?.trim() && listed.has(`number:${billNumberKey(row.sourceRecordNumber ?? "")}`))
+/** Whether two billed records are the same bill (same cents, and a shared id or a matching number). */
+function sameBill(left: BillRef, right: BillRef): boolean {
+  if (left.cents !== right.cents) return false
+  const ids = new Set(left.ids.flatMap((id) => (id?.trim() ? [id.trim()] : [])))
+  if (right.ids.some((id) => Boolean(id?.trim()) && ids.has(id?.trim() ?? ""))) return true
+  if (!left.number?.trim() || !right.number?.trim()) return false
+  if (invoiceNumberKey(left.number) === invoiceNumberKey(right.number)) return true
+  // A draw is numbered by sequence; an invoice number ends with it (H-329-9607-01 is draw 1).
+  if (left.kind === "invoice" && right.kind === "invoice") return false
+  const sequence = billSequence(left.number)
+  return sequence !== null && sequence === billSequence(right.number)
+}
+
+type WorkflowRow = {
+  readonly sourceSystem: string
+  readonly sourceRecordType: string
+  readonly sourceRecordId: string | null
+  readonly sourceRecordNumber: string | null
+  readonly amount: number | null
+}
+
+/** Which listed bills an imported workflow row can be: invoices for an invoice, draws for a pay request. */
+function workflowCandidates(row: WorkflowRow): readonly BillKind[] {
+  if (!isListValue(IMPORTED_WORKFLOW_SOURCES, row.sourceSystem)) return []
+  if (row.sourceRecordType === "owner_invoice") return ["invoice"]
+  if (row.sourceRecordType !== "owner_pay_application") return []
+  // Pay requests imported from Buildertrend were billed as Compass invoices on some jobs.
+  return row.sourceSystem === "buildertrend_import" ? ["draw", "invoice"] : ["draw"]
 }
 
 /**
- * The owner's pay applications with each bill once: rows sharing a number
- * (an imported copy of a draw built in Compass or synced from Sage) keep the
- * live record (Compass, then Sage, then the import). Order is kept.
+ * The listed bill an imported workflow invoice or pay request is a copy of,
+ * or null. The workflow list leaves the copy out and says where it is.
  */
-export function ownerPayApplicationsOnce<T extends { readonly sourceSystem: string; readonly applicationNumber: string }>(
+export function listedBillFor<T extends BillRef>(row: WorkflowRow, listed: readonly T[]): T | null {
+  const kinds = workflowCandidates(row)
+  if (kinds.length === 0 || row.amount === null) return null
+  const cents = storedDollarsToCents(row.amount)
+  return (
+    listed.find((bill) =>
+      kinds.includes(bill.kind) &&
+      sameBill(bill, { kind: bill.kind, ids: [row.sourceRecordId], number: row.sourceRecordNumber, cents })
+    ) ?? null
+  )
+}
+
+/**
+ * The owner's pay applications with each bill once: rows that are the same
+ * bill (an imported copy of a draw built in Compass or synced from Sage, same
+ * sequence and amount) keep the live record (Compass, then Sage, then the
+ * import). Order is kept.
+ */
+export function ownerPayApplicationsOnce<T extends { readonly sourceSystem: string; readonly applicationNumber: string; readonly currentPaymentDue: number }>(
   rows: readonly T[],
 ): T[] {
   const rank = (row: T): number => (row.sourceSystem === COMPASS_DRAW_SOURCE ? 0 : row.sourceSystem.startsWith("sage") ? 1 : 2)
-  const kept = new Map<string, T>()
+  const ref = (row: T): BillRef => ({ kind: "draw", ids: [], number: row.applicationNumber, cents: storedDollarsToCents(row.currentPaymentDue) })
+  const kept: T[] = []
   for (const row of rows) {
-    const key = billNumberKey(row.applicationNumber)
-    const current = kept.get(key)
-    if (!current || rank(row) < rank(current)) kept.set(key, row)
+    const same = kept.findIndex((other) => other.sourceSystem !== BUDGET_PROJECTION_SOURCE && row.sourceSystem !== BUDGET_PROJECTION_SOURCE && sameBill(ref(other), ref(row)))
+    if (same < 0) kept.push(row)
+    else if (rank(row) < rank(kept[same] ?? row)) kept[same] = row
   }
-  const keep = new Set(kept.values())
+  const keep = new Set(kept)
   return rows.filter((row) => keep.has(row))
+}
+
+/** Records billed in Compass or Sage; never hidden as a copy of another bill. */
+function isLiveBillSource(sourceSystem: string): boolean {
+  return sourceSystem === COMPASS_DRAW_SOURCE || sourceSystem === "compass" || sourceSystem.startsWith("sage")
+}
+
+type ListedReceivable = {
+  readonly bill: BillRef
+  readonly label: string
+  readonly sourceSystem: string
+  readonly paidCents: number
+  readonly prepaid: unknown
+}
+
+/**
+ * Billed items with an imported copy of the same bill left out (a
+ * Buildertrend invoice and a Drive G702 for one draw, say). The copy kept is
+ * the one with payments, else the live (Compass or Sage) record, else the
+ * draw; an item with payments, or billed in Compass or Sage, is never left
+ * out. `sameBillAs` names the copy left out, for the kept row's note.
+ */
+export function receivablesOncePerBill<T extends ListedReceivable>(rows: readonly T[]): { readonly row: T; readonly sameBillAs: string | null }[] {
+  const keepFirst = (row: T): number =>
+    (row.paidCents > 0 || row.prepaid ? 0 : 4) + (isLiveBillSource(row.sourceSystem) ? 0 : 2) + (row.bill.kind === "draw" ? 0 : 1)
+  const removable = (row: T): boolean => row.paidCents === 0 && !row.prepaid && !isLiveBillSource(row.sourceSystem)
+  const left = new Map<T, string>()
+  const sameBillAs = new Map<T, string>()
+  const ordered = [...rows].sort((a, b) => keepFirst(a) - keepFirst(b))
+  for (const [index, kept] of ordered.entries()) {
+    if (left.has(kept)) continue
+    for (const other of ordered.slice(index + 1)) {
+      if (left.has(other) || !removable(other) || !sameBill(kept.bill, other.bill)) continue
+      left.set(other, kept.label)
+      sameBillAs.set(kept, other.label)
+    }
+  }
+  return rows.filter((row) => !left.has(row)).map((row) => ({ row, sameBillAs: sameBillAs.get(row) ?? null }))
 }

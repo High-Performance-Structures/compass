@@ -489,7 +489,7 @@ export async function saveProjectContractDeposit(
     let id = depositId
     if (id) {
       const existing = await db
-        .select({ id: projectContractDeposits.id, status: projectContractDeposits.status, receivedAmountCents: projectContractDeposits.receivedAmountCents })
+        .select({ id: projectContractDeposits.id, status: projectContractDeposits.status, receivedAmountCents: projectContractDeposits.receivedAmountCents, updatedAt: projectContractDeposits.updatedAt })
         .from(projectContractDeposits)
         .where(and(eq(projectContractDeposits.id, id), eq(projectContractDeposits.projectId, projectId)))
         .get()
@@ -507,15 +507,15 @@ export async function saveProjectContractDeposit(
         }
       }
       await assertStillCoversApplied(db, projectId, (existing.status === "received" ? existing.receivedAmountCents ?? 0 : 0) - (values.receivedAmountCents ?? 0))
-      // Compare-and-set on the status read above (a receive, unreceive or plain save):
-      // a void or another save meanwhile wins, and this one is refused.
+      // Compare-and-set on the deposit as read above (a receive, unreceive or plain
+      // save): a void or another save meanwhile wins, and this one is refused.
       if (existing.status !== values.status && !nextState(contractDepositMachine, existing.status, values.status === "received" ? "receive" : "unreceive").ok) {
         throw new Error("That deposit change isn't allowed.")
       }
       const saved = await db
         .update(projectContractDeposits)
         .set({ ...values, updatedAt: now })
-        .where(and(eq(projectContractDeposits.id, id), eq(projectContractDeposits.status, existing.status)))
+        .where(and(eq(projectContractDeposits.id, id), eq(projectContractDeposits.status, existing.status), eq(projectContractDeposits.updatedAt, existing.updatedAt)))
         .returning({ id: projectContractDeposits.id })
       if (saved.length === 0) throw new Error("This deposit changed while you were editing it (voided or saved by someone else). Refresh and try again.")
     } else {
@@ -591,7 +591,7 @@ export async function voidProjectContractDeposit(projectId: string, depositId: s
     await assertAudiencePreviewWriteAllowed()
     const { db, organizationId } = await depositAccess(projectId, true)
     const existing = await db
-      .select({ status: projectContractDeposits.status, receivedAmountCents: projectContractDeposits.receivedAmountCents })
+      .select({ status: projectContractDeposits.status, receivedAmountCents: projectContractDeposits.receivedAmountCents, updatedAt: projectContractDeposits.updatedAt })
       .from(projectContractDeposits)
       .where(and(eq(projectContractDeposits.id, depositId), eq(projectContractDeposits.projectId, projectId)))
       .get()
@@ -606,6 +606,8 @@ export async function voidProjectContractDeposit(projectId: string, depositId: s
     const voided = await db.update(projectContractDeposits).set({ status: contractDepositMachine.transitions.void.to, updatedAt: now })
       .where(and(
         eq(projectContractDeposits.id, depositId), eq(projectContractDeposits.status, existing.status),
+        // Nothing else changed it meanwhile (a payment recorded with the same status, say).
+        eq(projectContractDeposits.updatedAt, existing.updatedAt),
         // The applied-deposit check again, in the same statement: a pay application submitted meanwhile still counts.
         reductionCents > 0 ? stillCoversAppliedSql(projectId, reductionCents) : undefined,
       ))

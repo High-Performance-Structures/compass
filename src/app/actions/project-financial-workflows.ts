@@ -29,9 +29,9 @@ import { getCloudflareContext } from "@/lib/db"
 import { chunkD1InsertRows, isBatchGuardFailure } from "@/lib/d1-query"
 import { budgetLineProgress, payApplicationLineEntry, retainageAtPercent, retainageAtRate } from "@/lib/domain/budget/rules"
 import { insertOperations, operationDeleteQuery } from "@/lib/domain/operations/store"
-import { readListedBillKeys } from "@/lib/domain/financials/receivables"
+import { readListedBills } from "@/lib/domain/financials/receivables"
 import { returnPayApplicationToDraft, sendPayApplicationForReview } from "@/lib/domain/budget/pay-application-review"
-import { isListedImportedBillCopy } from "@/lib/domain/financials/rules"
+import { listedBillFor } from "@/lib/domain/financials/rules"
 import {
   deleteBudgetApplicationsStatement,
   deleteBudgetLinesStatement,
@@ -104,6 +104,8 @@ export type ProjectFinancialWorkflowItem = {
   readonly sourceLabel: string | null
   /** Imported records show the shared source tag, e.g. [BT]. */
   readonly importedFrom: RecordSource | null
+  /** The received-payments item this imported record is a copy of; the queue lists it there, not here. */
+  readonly shownUnder: string | null
   readonly updatedAt: string
 }
 
@@ -434,7 +436,7 @@ export async function getProjectFinancialWorkflowItems(
       })
       .from(projectBudgetApplications)
       .where(eq(projectBudgetApplications.projectId, projectId)),
-    readListedBillKeys(db, { organizationId, projectId }),
+    readListedBills(db, { organizationId, projectId }),
   ])
   const applicationsBySourceId = new Map(
     applications.flatMap((application) => {
@@ -445,9 +447,7 @@ export async function getProjectFinancialWorkflowItems(
     })
   )
 
-  // An imported bill already listed with received payments shows once, there.
-  const shown = rows.filter((row) => !isListedImportedBillCopy(row, listedBills))
-  return shown.map((row) => {
+  return rows.map((row) => {
     const isReadOnlyImportedFinancial =
       ["buildertrend", "sage"].includes(row.sourceSystem) &&
       ["owner_invoice", "payment", "deposit", "credit_memo"].includes(
@@ -484,6 +484,8 @@ export async function getProjectFinancialWorkflowItems(
       readOnly: isReadOnlyImportedFinancial,
       sourceLabel: row.sourceSystem === "sage" ? "Sage / Square" : null,
       importedFrom: row.sourceSystem.startsWith("buildertrend") ? "buildertrend" : null,
+      // An imported copy of a bill listed with received payments (the queue shows it there).
+      shownUnder: listedBillFor(row, listedBills)?.label ?? null,
       updatedAt: row.updatedAt,
     }
   })

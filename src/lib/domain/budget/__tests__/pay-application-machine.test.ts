@@ -19,7 +19,9 @@ import {
   updateBudgetLinesStatement,
   updateDraftPayApplicationLines,
 } from "@/lib/domain/budget/store"
+import { sendPayApplicationForReview } from "@/lib/domain/budget/pay-application-review"
 import { operationUpdateQuery } from "@/lib/domain/operations/store"
+import { refreshOwnerPayApplication } from "@/lib/financials/owner-pay-application-refresh"
 import { availableEvents, machineProblems } from "@/lib/shared/state-machine"
 
 /*
@@ -149,6 +151,67 @@ describe("Compass draw status writes", () => {
     const patch = { updatedAt: NOW }
     Reflect.set(patch, "status", "billed")
     await expect(updateBudgetApplications(db, eq(projectBudgetApplications.id, "app"), patch)).rejects.toThrow(/status functions/)
+  })
+})
+
+describe("freezing a draw for review", () => {
+  beforeEach(() => {
+    sqlite = migrated()
+    sqlite.exec(`
+      INSERT INTO organizations (id, name, slug, type, is_active, created_at, updated_at) VALUES ('org-1', 'Org', 'org', 'internal', 1, '${NOW}', '${NOW}');
+      INSERT INTO projects (id, name, organization_id, created_at) VALUES ('p1', 'Job', 'org-1', '${NOW}');
+      INSERT INTO project_budget_applications (id, project_id, source_system, application_number, status, contract_sum_to_date, deposit_applied_mode, created_at, updated_at)
+        VALUES ('app', 'p1', 'compass_contract_budget', '3', 'draft', 10000, 'manual', '${NOW}', '${NOW}');
+      INSERT INTO project_budget_lines (id, project_id, application_id, source_system, cost_code, csi_division, csi_division_name, description, adjusted_estimate, current_work_completed, current_costs, total_costs, created_at, updated_at)
+        VALUES ('line', 'p1', 'app', 'compass_contract_budget', '03 30 00', '03', 'Concrete', 'Footings', 10000, 1000, 1000, 1000, '${NOW}', '${NOW}');
+      INSERT INTO project_operations (id, project_id, source_system, source_record_type, source_record_id, source_record_number, title, status, created_at, updated_at)
+        VALUES ('op', 'p1', 'compass', 'owner_pay_application', 'app', '3', 'Owner pay application 3', 'draft', '${NOW}', '${NOW}');
+    `)
+  })
+  afterEach(() => sqlite.close())
+
+  /** The database, with `hook` run once just before the next batch (a write landing mid-request). */
+  function dbWithHook(hook: () => void) {
+    const db = drizzleOverSqlite(sqlite)
+    let pending: (() => void) | null = hook
+    return new Proxy(db, {
+      get(target, property) {
+        if (property !== "batch") return Reflect.get(target, property)
+        return (...args: Parameters<typeof db.batch>) => {
+          pending?.()
+          pending = null
+          return target.batch(...args)
+        }
+      },
+    })
+  }
+
+  it("moves, recomputes totals and stages the Sage review snapshot in one go", async () => {
+    await sendPayApplicationForReview(drizzleOverSqlite(sqlite), { projectId: "p1", applicationId: "app", now: "2026-11-13T00:00:00.000Z" })
+    expect(sqlite.prepare("SELECT status, current_payment_due AS due FROM project_budget_applications").get()).toEqual({ status: "internal_review", due: 1000 })
+    const operation = sqlite.prepare("SELECT status, amount, sage_payload_json AS payload FROM project_operations").get()
+    expect(operation).toMatchObject({ status: "internal_review", amount: 1000 })
+    expect(JSON.parse(String(Reflect.get(Object(operation), "payload"))).g702.currentPaymentDue).toBe(1000)
+  })
+
+  it("is refused, changing nothing, when a line is edited while it runs", async () => {
+    const db = dbWithHook(() => sqlite.exec("UPDATE project_budget_lines SET current_work_completed = 2000, total_costs = 2000, updated_at = 'later'"))
+    await expect(sendPayApplicationForReview(db, { projectId: "p1", applicationId: "app", now: "2026-11-13T00:00:00.000Z" })).rejects.toThrow(/changed/)
+    expect(sqlite.prepare("SELECT status FROM project_budget_applications").get()).toEqual({ status: "draft" })
+    expect(sqlite.prepare("SELECT status, sage_payload_json AS payload FROM project_operations").get()).toEqual({ status: "draft", payload: null })
+  })
+
+  it("checks the amount due on the recomputed totals", async () => {
+    sqlite.exec("UPDATE project_budget_applications SET current_payment_due = 500")
+    sqlite.exec("UPDATE project_budget_lines SET current_work_completed = 0, current_costs = 0, total_costs = 0")
+    await expect(sendPayApplicationForReview(drizzleOverSqlite(sqlite), { projectId: "p1", applicationId: "app", now: NOW })).rejects.toThrow(/Enter current work/)
+  })
+
+  it("a refresh never rewrites the totals of a draw that went to review", async () => {
+    sqlite.exec("UPDATE project_budget_applications SET status = 'internal_review', current_payment_due = 1000")
+    sqlite.exec("UPDATE project_budget_lines SET total_costs = 4000")
+    expect(await refreshOwnerPayApplication(drizzleOverSqlite(sqlite), "p1", "app", NOW)).toBe(false)
+    expect(sqlite.prepare("SELECT current_payment_due AS due FROM project_budget_applications").get()).toEqual({ due: 1000 })
   })
 })
 
