@@ -33,7 +33,11 @@ export const clientProjectWriteMachine = defineMachine({
   name: "Sage client/job write",
   states: SAGE_CLIENT_PROJECT_WRITE_STATUSES,
   initial: "queued",
-  terminal: ["succeeded"],
+  // "cancelled" exists only as a hand-made database fix (one production row):
+  // declared so it reads as a known state, but no event leads to it, so the
+  // store never writes it and nothing moves a cancelled write.
+  entry: ["cancelled"],
+  terminal: ["succeeded", "cancelled"],
   transitions: {
     // A writer poll took it (or took over a claim gone stale).
     claim: { from: ["queued", "running"], to: "running" },

@@ -10,6 +10,7 @@ import { sageJobResultStatement } from "@/lib/domain/project/store"
 import {
   releaseSageResultLease,
   sageClientProjectWriteSucceededStatement,
+  sageResultAlreadyRecorded,
   takeSageResultLease,
   updateSageClientProjectWriteOperations,
 } from "@/lib/domain/sage-bridge/store"
@@ -82,23 +83,23 @@ export async function POST(request: Request): Promise<Response> {
     )
     .limit(1)
     .get()
-  if (!operation) {
-    return Response.json(
-      { error: "Sage write claim is missing, stale, or already completed" },
-      { status: 409 }
-    )
+  // An exact repeat of a result that already landed is answered as recorded:
+  // the writer stops its whole run on any non-2xx answer.
+  const staleOrRepeat = async (): Promise<Response> => {
+    const recorded = await sageResultAlreadyRecorded(db, "sage_client_project_write_operations", {
+      id: result.operationId, organizationId: null, claimToken: result.claimToken, statuses: [result.outcome],
+    })
+    return recorded
+      ? Response.json({ success: true, status: recorded, alreadyRecorded: true })
+      : Response.json({ error: "Sage write claim is missing, stale, or already completed" }, { status: 409 })
   }
+  if (!operation) return staleOrRepeat()
 
   // One handler per claim: a result posted twice (an HTTP retry, two PCs)
   // applies once, and its follow-ups (links, Activity, the add request) once.
-  const leaseToken = crypto.randomUUID()
-  const lease = { id: operation.id, organizationId: operation.organizationId, claimToken: result.claimToken, leaseToken }
-  if (!(await takeSageResultLease(db, "sage_client_project_write_operations", lease))) {
-    return Response.json(
-      { error: "Sage write claim is missing, stale, or already completed" },
-      { status: 409 }
-    )
-  }
+  const lease = { id: operation.id, organizationId: operation.organizationId, claimToken: result.claimToken }
+  const leaseToken = await takeSageResultLease(db, "sage_client_project_write_operations", lease)
+  if (!leaseToken) return staleOrRepeat()
   const leased = and(
     eq(sageClientProjectWriteOperations.id, operation.id),
     eq(sageClientProjectWriteOperations.claimToken, leaseToken)

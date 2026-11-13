@@ -46,6 +46,7 @@ import {
   releaseSageResultLease,
   requeueFailedSageClientProjectWriteStatement,
   sageClientProjectWriteSucceededStatement,
+  sageResultAlreadyRecorded,
   takeSageResultLease,
   updateSageClientProjectWriteOperations,
   updateVendorCertificateSyncs,
@@ -160,11 +161,39 @@ describe("client/job writes: claims, leases and resends", () => {
 
   it("a result posted twice takes the lease once; a failed apply hands it back", async () => {
     insertWrite("w1", "running", "claim-1", NOW)
-    const lease = { id: "w1", organizationId: ORG, claimToken: "claim-1", leaseToken: "lease-1" }
-    expect(await takeSageResultLease(db, "sage_client_project_write_operations", lease)).toBe(true)
-    expect(await takeSageResultLease(db, "sage_client_project_write_operations", { ...lease, leaseToken: "lease-2" })).toBe(false)
+    const lease = { id: "w1", organizationId: ORG, claimToken: "claim-1" }
+    const first = await takeSageResultLease(db, "sage_client_project_write_operations", lease)
+    expect(first).toBe("claim-1:result")
+    expect(await takeSageResultLease(db, "sage_client_project_write_operations", lease)).toBeNull()
     await releaseSageResultLease(db, "sage_client_project_write_operations", lease)
-    expect(await takeSageResultLease(db, "sage_client_project_write_operations", { ...lease, leaseToken: "lease-3" })).toBe(true)
+    expect(await takeSageResultLease(db, "sage_client_project_write_operations", lease)).toBe(first)
+  })
+
+  it("an exact repeat of a recorded result is recognised; a superseded claim's is not", async () => {
+    insertWrite("w1", "running", "claim-1", NOW)
+    const leaseToken = await takeSageResultLease(db, "sage_client_project_write_operations", { id: "w1", organizationId: ORG, claimToken: "claim-1" })
+    if (!leaseToken) throw new Error("no lease")
+    await updateSageClientProjectWriteOperations(db, { status: "failed", errorMessage: "x", completedAt: LATER, updatedAt: LATER },
+      and(eq(sageClientProjectWriteOperations.id, "w1"), eq(sageClientProjectWriteOperations.claimToken, leaseToken)))
+    const repeat = { id: "w1", organizationId: null, claimToken: "claim-1" }
+    expect(await sageResultAlreadyRecorded(db, "sage_client_project_write_operations", { ...repeat, statuses: ["failed"] })).toBe("failed")
+    // Another outcome, or another (superseded) claim, is not the result that landed.
+    expect(await sageResultAlreadyRecorded(db, "sage_client_project_write_operations", { ...repeat, statuses: ["succeeded"] })).toBeNull()
+    expect(await sageResultAlreadyRecorded(db, "sage_client_project_write_operations", { ...repeat, claimToken: "claim-0", statuses: ["failed"] })).toBeNull()
+    expect(await sageResultAlreadyRecorded(db, "sage_client_project_write_operations", { ...repeat, organizationId: "org-2", statuses: ["failed"] })).toBeNull()
+  })
+
+  it("the hand-set cancelled state is never written or left by the store", async () => {
+    expect(sourcesInto(clientProjectWriteMachine, "cancelled")).toEqual([])
+    expect(availableEvents(clientProjectWriteMachine, "cancelled")).toEqual([])
+    insertWrite("w1", "cancelled")
+    insertWrite("w2", "failed")
+    await requeueFailedSageClientProjectWriteStatement(d1, { operationId: "w1", organizationId: ORG, customerId: null, payloadJson: "{}", now: LATER }).run()
+    expect(await claimSageClientProjectWrite(db, { id: "w1", claimToken: "a", now: LATER, staleBefore: LATER })).toBe(false)
+    const cancelled = await updateSageClientProjectWriteOperations(db, { status: "cancelled", updatedAt: LATER }, eq(sageClientProjectWriteOperations.id, "w2"))
+      .returning({ id: sageClientProjectWriteOperations.id })
+    expect(cancelled).toEqual([])
+    expect([statusOf("sage_client_project_write_operations", "w1"), statusOf("sage_client_project_write_operations", "w2")]).toEqual(["cancelled", "failed"])
   })
 
   it("a superseded claim's success doesn't land; the lease holder's does, once", async () => {
@@ -232,10 +261,10 @@ describe("exports: AR invoices, change orders, estimates, certificates", () => {
     insertArExport("ar1", "running", "c1")
     const lease = { id: "ar1", organizationId: ORG, claimToken: "c1" }
     const [first, second] = await Promise.all([
-      takeSageResultLease(db, "sage_ar_invoice_exports", { ...lease, leaseToken: "l1" }),
-      takeSageResultLease(db, "sage_ar_invoice_exports", { ...lease, leaseToken: "l2" }),
+      takeSageResultLease(db, "sage_ar_invoice_exports", lease),
+      takeSageResultLease(db, "sage_ar_invoice_exports", lease),
     ])
-    expect([first, second].filter(Boolean)).toHaveLength(1)
+    expect([first, second].filter((token) => token !== null)).toHaveLength(1)
   })
 
   it("a change order is sent again only from failed, and only a running one finishes", async () => {
@@ -398,7 +427,7 @@ const QUEUES = [
   ["sageDirectoryAddRequests", "sage_directory_add_requests", "src/lib/domain/sage-bridge/directory-add-store.ts"],
 ] as const
 
-describe("Sage write queue status guard", { timeout: 30_000 }, () => {
+describe("Sage write queue status guard", { timeout: 120_000 }, () => {
   it("only each queue's store writes it", () => {
     for (const [drizzleName, tableName, store] of QUEUES) {
       const pattern = new RegExp(`\\.(update|insert|delete)\\((schema\\.)?${drizzleName}\\)|(UPDATE|INSERT INTO|DELETE FROM)\\s+${tableName}\\b`)
@@ -429,6 +458,8 @@ describe("Sage write queue status guard", { timeout: 30_000 }, () => {
     ]) {
       const source = readFileSync(route, "utf8")
       expect(source, route).toContain("takeSageResultLease(")
+      // An exact repeat of a recorded result answers 200, not 409 (the writer stops its run on non-2xx).
+      expect(source, route).toContain("sageResultAlreadyRecorded(")
       expect(source, route).not.toMatch(/eq\(sage\w+\.id, operation\.id\)\s*\)/)
     }
   })

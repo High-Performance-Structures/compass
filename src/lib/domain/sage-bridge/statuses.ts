@@ -4,8 +4,12 @@
  * columns with them.
  */
 
-/** A client, job, vendor or job tax district write queued for the Sage writer. */
-export const SAGE_CLIENT_PROJECT_WRITE_STATUSES = ["queued", "running", "succeeded", "failed"] as const
+/**
+ * A client, job, vendor or job tax district write queued for the Sage writer.
+ * "cancelled" was only ever set by hand in the database (one production row);
+ * no code writes it.
+ */
+export const SAGE_CLIENT_PROJECT_WRITE_STATUSES = ["queued", "running", "succeeded", "failed", "cancelled"] as const
 
 export const SAGE_LABOR_REQUEST_STATUSES = ["queued", "running", "done", "failed"] as const
 export type SageLaborRequestStatus = (typeof SAGE_LABOR_REQUEST_STATUSES)[number]

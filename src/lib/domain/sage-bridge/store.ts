@@ -227,31 +227,62 @@ export type SageResultLeaseTable =
   | "sage_ar_invoice_exports"
 
 /**
- * Before a writer result is applied, swaps the claim token it carries for a
- * fresh `leaseToken`, while the row is still running under that claim. Only
- * one handler can win, so a result the writer posts twice (an HTTP retry, two
- * PCs) applies its side effects once; the loser answers 409 as for a stale
- * claim. The handler's writes then fence on `leaseToken`.
+ * The lease a result for `claimToken` takes. Derived from the claim, not
+ * random, so once the result has landed an exact repeat of it can still be
+ * recognised (sageResultAlreadyRecorded) after the row's token changed.
+ */
+function sageResultLeaseToken(claimToken: string): string {
+  return `${claimToken}:result`
+}
+
+/**
+ * Before a writer result is applied, swaps the claim token it carries for
+ * its lease, while the row is still running under that claim. Only one
+ * handler can win, so a result the writer posts twice (an HTTP retry, two
+ * PCs) applies its side effects once. Returns the lease token the handler's
+ * writes then fence on, or null when the claim no longer holds.
  */
 export async function takeSageResultLease(
   db: Db,
   table: SageResultLeaseTable,
-  input: { readonly id: string; readonly organizationId: string; readonly claimToken: string; readonly leaseToken: string }
-): Promise<boolean> {
-  const result = await db.run(sql`UPDATE ${sql.identifier(table)} SET claim_token = ${input.leaseToken}
+  input: { readonly id: string; readonly organizationId: string; readonly claimToken: string }
+): Promise<string | null> {
+  const leaseToken = sageResultLeaseToken(input.claimToken)
+  const result = await db.run(sql`UPDATE ${sql.identifier(table)} SET claim_token = ${leaseToken}
     WHERE id = ${input.id} AND organization_id = ${input.organizationId}
       AND status = 'running' AND claim_token = ${input.claimToken}`)
-  return result.meta.changes === 1
+  return result.meta.changes === 1 ? leaseToken : null
 }
 
 /** Hands a lease back to the writer's claim when applying the result threw, so the writer's retry can land. */
 export async function releaseSageResultLease(
   db: Db,
   table: SageResultLeaseTable,
-  input: { readonly id: string; readonly claimToken: string; readonly leaseToken: string }
+  input: { readonly id: string; readonly claimToken: string }
 ): Promise<void> {
   await db.run(sql`UPDATE ${sql.identifier(table)} SET claim_token = ${input.claimToken}
-    WHERE id = ${input.id} AND status = 'running' AND claim_token = ${input.leaseToken}`)
+    WHERE id = ${input.id} AND status = 'running' AND claim_token = ${sageResultLeaseToken(input.claimToken)}`)
+}
+
+/**
+ * Whether this claim's result already landed with one of `statuses` (the
+ * ones its outcome can produce). The writer stops its whole run on any
+ * non-2xx answer, so an exact repeat of a recorded result is answered as
+ * recorded rather than 409; a superseded claim still gets 409.
+ */
+export async function sageResultAlreadyRecorded(
+  db: Db,
+  table: SageResultLeaseTable,
+  /** `organizationId` null for a bridge that isn't scoped to one company (the client/job writer). */
+  input: { readonly id: string; readonly organizationId: string | null; readonly claimToken: string; readonly statuses: readonly string[] }
+): Promise<string | null> {
+  if (input.statuses.length === 0) return null
+  const company = input.organizationId === null ? sql`` : sql` AND organization_id = ${input.organizationId}`
+  const rows = await db.all<{ readonly status: string }>(sql`SELECT status FROM ${sql.identifier(table)}
+    WHERE id = ${input.id}${company}
+      AND claim_token = ${sageResultLeaseToken(input.claimToken)}
+      AND status IN (${sql.join(input.statuses.map((status) => sql`${status}`), sql`, `)})`)
+  return rows[0]?.status ?? null
 }
 
 // ---------------------------------------------------------------------------

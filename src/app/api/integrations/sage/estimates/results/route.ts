@@ -5,7 +5,7 @@ import { sageEstimateExports } from "@/db/schema-sage"
 import { recordActivityEvent } from "@/lib/activity-log"
 import { updateEstimatesStatement } from "@/lib/domain/estimates/store"
 import { updateSageEstimateExportsStatement } from "@/lib/domain/sage-bridge/estimate-store"
-import { takeSageResultLease } from "@/lib/domain/sage-bridge/store"
+import { sageResultAlreadyRecorded, takeSageResultLease } from "@/lib/domain/sage-bridge/store"
 import { readBoundedSageBridgeBody } from "@/lib/sage/bridge-auth"
 import { authorizeSageChangeOrderBridge, ESTIMATE_WRITER } from "@/lib/sage/change-order-bridge"
 import { sageExportActor } from "@/lib/sage/estimate-sync"
@@ -47,12 +47,20 @@ export async function POST(request: Request): Promise<Response> {
     .from(sageEstimateExports)
     .where(fence)
     .get()
-  if (!row) return Response.json({ error: "Estimate claim changed" }, { status: 409 })
-  // One handler per claim: a result posted twice applies (and logs, and queues the tax district) once.
-  const leaseToken = crypto.randomUUID()
-  if (!(await takeSageResultLease(db, "sage_estimate_exports", { id: result.id, organizationId, claimToken: result.claimToken, leaseToken }))) {
-    return Response.json({ error: "Estimate claim changed" }, { status: 409 })
+  // An exact repeat of a result that already landed is answered as recorded:
+  // the writer stops its whole run on any non-2xx answer.
+  const staleOrRepeat = async (): Promise<Response> => {
+    const recorded = await sageResultAlreadyRecorded(db, "sage_estimate_exports", {
+      id: result.id, organizationId, claimToken: result.claimToken, statuses: result.outcome === "succeeded" ? ["succeeded"] : ["failed", "needs_attention"],
+    })
+    return recorded
+      ? Response.json({ success: true, status: recorded, alreadyRecorded: true })
+      : Response.json({ error: "Estimate claim changed" }, { status: 409 })
   }
+  if (!row) return staleOrRepeat()
+  // One handler per claim: a result posted twice applies (and logs, and queues the tax district) once.
+  const leaseToken = await takeSageResultLease(db, "sage_estimate_exports", { id: result.id, organizationId, claimToken: result.claimToken })
+  if (!leaseToken) return staleOrRepeat()
   const leased = and(
     eq(sageEstimateExports.id, result.id),
     eq(sageEstimateExports.organizationId, organizationId),

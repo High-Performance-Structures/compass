@@ -7,7 +7,7 @@ import { recordActivityEvent } from "@/lib/activity-log"
 import { updateBudgetApplicationsStatement } from "@/lib/domain/budget/store"
 import { operationUpdateQuery } from "@/lib/domain/operations/store"
 import { updateSageArInvoiceExportsStatement } from "@/lib/domain/sage-bridge/ar-invoice-store"
-import { takeSageResultLease } from "@/lib/domain/sage-bridge/store"
+import { sageResultAlreadyRecorded, takeSageResultLease } from "@/lib/domain/sage-bridge/store"
 import { applyDepositSageResult } from "@/lib/financials/deposit-sage-result"
 import { applySimpleInvoiceSageResult } from "@/lib/financials/simple-invoice-sage-result"
 import { formatCents } from "@/lib/format"
@@ -70,17 +70,26 @@ export async function POST(request: Request): Promise<Response> {
     .from(sageArInvoiceExports)
     .where(fence)
     .get()
+  // An exact repeat of a result that already landed is answered as recorded:
+  // the writer stops its whole run on any non-2xx answer.
+  const staleOrRepeat = async (): Promise<Response> => {
+    const recorded = await sageResultAlreadyRecorded(db, "sage_ar_invoice_exports", {
+      id: result.id, organizationId, claimToken: result.claimToken,
+      statuses: result.outcome === "succeeded" ? ["succeeded", "needs_attention"] : ["failed", "needs_attention"],
+    })
+    return recorded
+      ? Response.json({ success: true, status: recorded, alreadyRecorded: true })
+      : Response.json({ error: "AR invoice claim changed" }, { status: 409 })
+  }
   if (!row) {
     // Not a pay request's export: a simple Compass invoice's, a deposit request's, or a stale claim.
     const invoiceResult = (await applySimpleInvoiceSageResult(db, organizationId, result)) ?? (await applyDepositSageResult(db, organizationId, result))
-    if (!invoiceResult) return Response.json({ error: "AR invoice claim changed" }, { status: 409 })
+    if (!invoiceResult) return staleOrRepeat()
     return Response.json({ success: true, status: invoiceResult.status }, { status: invoiceResult.httpStatus })
   }
   // One handler per claim: a result posted twice records the invoice number and logs once.
-  const leaseToken = crypto.randomUUID()
-  if (!(await takeSageResultLease(db, "sage_ar_invoice_exports", { id: result.id, organizationId, claimToken: result.claimToken, leaseToken }))) {
-    return Response.json({ error: "AR invoice claim changed" }, { status: 409 })
-  }
+  const leaseToken = await takeSageResultLease(db, "sage_ar_invoice_exports", { id: result.id, organizationId, claimToken: result.claimToken })
+  if (!leaseToken) return staleOrRepeat()
   const leased = and(
     eq(sageArInvoiceExports.id, result.id),
     eq(sageArInvoiceExports.organizationId, organizationId),

@@ -4,7 +4,7 @@ import { projectChangeOrders } from "@/db/schema"
 import { sageChangeOrderExports } from "@/db/schema-sage"
 import { insertChangeOrderHistoryStatement, updateChangeOrdersStatement } from "@/lib/domain/estimates/store"
 import { updateSageChangeOrderExportsStatement } from "@/lib/domain/sage-bridge/change-order-store"
-import { takeSageResultLease } from "@/lib/domain/sage-bridge/store"
+import { sageResultAlreadyRecorded, takeSageResultLease } from "@/lib/domain/sage-bridge/store"
 import { readBoundedSageBridgeBody } from "@/lib/sage/bridge-auth"
 import { authorizeSageChangeOrderBridge, CHANGE_ORDER_WRITER } from "@/lib/sage/change-order-bridge"
 import { sageChangeOrderWriteResultSchema } from "@/lib/sage/change-order-write"
@@ -43,12 +43,20 @@ export async function POST(request: Request): Promise<Response> {
     .from(sageChangeOrderExports)
     .where(fence)
     .get()
-  if (!row) return Response.json({ error: "Change order claim changed" }, { status: 409 })
-  // One handler per claim: a result posted twice applies (and logs) once.
-  const leaseToken = crypto.randomUUID()
-  if (!(await takeSageResultLease(db, "sage_change_order_exports", { id: result.id, organizationId, claimToken: result.claimToken, leaseToken }))) {
-    return Response.json({ error: "Change order claim changed" }, { status: 409 })
+  // An exact repeat of a result that already landed is answered as recorded:
+  // the writer stops its whole run on any non-2xx answer.
+  const staleOrRepeat = async (): Promise<Response> => {
+    const recorded = await sageResultAlreadyRecorded(db, "sage_change_order_exports", {
+      id: result.id, organizationId, claimToken: result.claimToken, statuses: [result.outcome],
+    })
+    return recorded
+      ? Response.json({ success: true, status: recorded, alreadyRecorded: true })
+      : Response.json({ error: "Change order claim changed" }, { status: 409 })
   }
+  if (!row) return staleOrRepeat()
+  // One handler per claim: a result posted twice applies (and logs) once.
+  const leaseToken = await takeSageResultLease(db, "sage_change_order_exports", { id: result.id, organizationId, claimToken: result.claimToken })
+  if (!leaseToken) return staleOrRepeat()
   const leased = and(
     eq(sageChangeOrderExports.id, result.id),
     eq(sageChangeOrderExports.organizationId, organizationId),
