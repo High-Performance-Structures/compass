@@ -296,6 +296,14 @@ test.describe("usable Compass areas", () => {
     })
     await multipleMode.click()
     await expect(page).toHaveURL(/selection=multiple/)
+    // Choosing a mode (and checking a project in multiple mode) keeps the
+    // picker open on purpose, but the navigation it starts re-renders the
+    // schedule page, which can remount the picker closed at a moment the test
+    // cannot observe. Toggling the trigger then either opened or closed it
+    // depending on timing; in CI Firefox the rows vanished at lines 306/313.
+    // Reload so each step starts from the settled page the URL describes,
+    // then open the picker once.
+    await page.reload()
     await page.getByRole("combobox", { name: "Choose schedule scope" }).click()
     await expect(
       page.getByText("Check projects to compare their schedules.")
@@ -325,8 +333,10 @@ test.describe("usable Compass areas", () => {
     await expect
       .poll(() => new URL(page.url()).searchParams.get("projects"))
       .toBe("")
-    await expect(page.getByText("No projects selected", { exact: true }).last()).toBeVisible()
+    // Same remount race as the mode change above: settle, then open once.
+    await page.reload()
     await page.getByRole("combobox", { name: "Choose schedule scope" }).click()
+    await expect(page.getByText("No projects selected", { exact: true }).last()).toBeVisible()
     await expect(page.locator('[data-slot="command-item"]').first()).toHaveAttribute(
       "aria-label",
       /Not selected for schedule comparison$/
