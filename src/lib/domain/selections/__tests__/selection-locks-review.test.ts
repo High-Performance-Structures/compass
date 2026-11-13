@@ -60,6 +60,9 @@ import { FEATURE_SETTINGS } from "@/lib/feature-settings/registry"
 import { specificationJson } from "@/lib/selections/decisions"
 import { projectFinishSelections } from "@/db/schema"
 import { and, eq } from "drizzle-orm"
+import { createReplacementTodo } from "@/app/actions/selection-replacements"
+import { insertReplacementSelectionStatement } from "@/lib/domain/selections/store"
+import { findRoundSignatureByEnvelope, handleRoundSignatureEvent } from "@/lib/domain/selections/round-signing"
 
 type Sqlite = InstanceType<typeof Database>
 const NOW = "2026-11-12T12:00:00.000Z"
@@ -651,5 +654,114 @@ describe("review follow-ups", () => {
     expect(parsed.priceChangeNoticeRoles).toEqual(["project_manager"])
     const source = readFileSync("src/lib/domain/selections/finish-schedule-import.ts", "utf8")
     expect(source).toContain("and(stillUnlocked, eq(projectFinishSelections.ownerApproved, false))")
+  })
+
+  it("R9-1: no replacement while the Selection Phase is out for signature (checked in the write); signing skips a replaced selection", async () => {
+    const hex = await choice("tile", "Hex", "4185")
+    const subway = await choice("tile", "Subway", "3200")
+    const brass = await choice("faucet", "Brass", "380")
+    await setSelectionChoiceChosen("p1", hex, true)
+    await setSelectionChoiceChosen("p1", brass, true)
+    expect(await sendRoundForSignature("p1", "rough-in", ["owner@example.com"])).toMatchObject({ success: true })
+    sqlite.exec("UPDATE project_finish_selections SET status = 'approved', owner_approved = 1 WHERE id = 'tile'")
+    expect(await ownerChangedSelectionAfterApproval("p1", "tile", subway, null)).toMatchObject({ success: false, error: "This selection is out for signature." })
+    const detail = await getSelectionDetail("p1", "tile")
+    expect(detail.success && detail.data.canReplaceApproved).toBe(false)
+    // The write refuses it even after a stale read.
+    const db = drizzleOverSqlite(sqlite)
+    const insert = (id: string) =>
+      insertReplacementSelectionStatement(db, { id, projectId: "p1", replacesSelectionId: "tile", expected: "approved", reason: "owner_changed_after_approval", status: "proposed", notes: "", now: NOW })
+    const [stale] = await db.batch([insert("r-stale")])
+    expect(stale.meta.changes).toBe(0)
+    // A replacement made anyway (say, before the guard) isn't approved by the signature.
+    sqlite.exec("UPDATE project_finish_selections SET owner_approved = 0, status = 'owner_review' WHERE id = 'tile'")
+    sqlite.exec(`INSERT INTO project_finish_selections (id, project_id, room_name, name, category, replaces_selection_id, created_at, updated_at) VALUES ('r-raw', 'p1', 'Kitchen', 'Backsplash', 'Tile', 'tile', '${NOW}', '${NOW}')`)
+    const signature = await findRoundSignatureByEnvelope(db, "env-1")
+    if (!signature) throw new Error("no signature")
+    const { env } = await mocks.staff()
+    expect(await handleRoundSignatureEvent({ db, env, signature, event: "folder_executed" })).toBe(true)
+    expect(sqlite.prepare("SELECT id, owner_approved AS a FROM project_finish_selections WHERE id IN ('tile', 'faucet') ORDER BY id").all()).toEqual([
+      { id: "faucet", a: 1 },
+      { id: "tile", a: 0 },
+    ])
+  })
+
+  it("R9-2: a failed to-do still makes the replacement, with a warning; its drawer makes the to-do", async () => {
+    sqlite.exec("CREATE TRIGGER no_todos BEFORE INSERT ON project_operations WHEN NEW.source_record_type = 'staff_task' BEGIN SELECT RAISE(ABORT, 'to-do insert failed'); END")
+    vi.spyOn(console, "error").mockImplementation(() => undefined)
+    const { replacementId, todoId } = await installedTileReplacedBySubway()
+    expect(todoId).toBeNull()
+    expect(sqlite.prepare("SELECT replaces_selection_id AS r FROM project_finish_selections WHERE id = ?").get(replacementId)).toEqual({ r: "tile" })
+    const before = await getSelectionDetail("p1", replacementId)
+    expect(before.success && before.data.needsReplacementTodo).toBe(true)
+    sqlite.exec("DROP TRIGGER no_todos")
+    const made = await createReplacementTodo("p1", replacementId)
+    if (!made.success) throw new Error(made.error)
+    expect(sqlite.prepare("SELECT title, assignee_name AS assignee, json_extract(sage_payload_json, '$.replacedSelectionId') AS replaced FROM project_operations WHERE id = ?").get(made.data.todoId)).toEqual({
+      title: expect.stringMatching(/change order/),
+      assignee: "Pat PM",
+      replaced: "tile",
+    })
+    const after = await getSelectionDetail("p1", replacementId)
+    expect(after.success && after.data.needsReplacementTodo).toBe(false)
+    // Once open, no second one.
+    expect(await createReplacementTodo("p1", replacementId)).toMatchObject({ success: true, data: { todoId: null } })
+  })
+
+  it("R9-2: the warning reaches the caller when the to-do fails", async () => {
+    const hex = await choice("tile", "Hex", "4185")
+    const subway = await choice("tile", "Subway", "3200")
+    await setSelectionChoiceChosen("p1", hex, true)
+    sqlite.exec("UPDATE project_finish_selections SET status = 'installed' WHERE id = 'tile'")
+    sqlite.exec("CREATE TRIGGER no_todos BEFORE INSERT ON project_operations WHEN NEW.source_record_type = 'staff_task' BEGIN SELECT RAISE(ABORT, 'to-do insert failed'); END")
+    vi.spyOn(console, "error").mockImplementation(() => undefined)
+    expect(await replaceInstalledSelection("p1", "tile", subway, null)).toMatchObject({ success: true, data: { todoId: null, todoWarning: expect.stringMatching(/Create change-order to-do/) } })
+  })
+
+  it("R9-3: 'Owner changed after approval' lands only while the row is still approved or its pick signed", async () => {
+    const db = drizzleOverSqlite(sqlite)
+    sqlite.exec("UPDATE project_finish_selections SET status = 'approved', owner_approved = 0 WHERE id = 'tile'")
+    const insert = (id: string) =>
+      insertReplacementSelectionStatement(db, { id, projectId: "p1", replacesSelectionId: "tile", expected: "approved", reason: "owner_changed_after_approval", status: "proposed", notes: "", now: NOW })
+    const [unapproved] = await db.batch([insert("r-1")])
+    expect(unapproved.meta.changes).toBe(0)
+    sqlite.exec("UPDATE project_finish_selections SET owner_approved = 1 WHERE id = 'tile'")
+    const [approved] = await db.batch([insert("r-2")])
+    expect(approved.meta.changes).toBe(1)
+  })
+
+  it("R9-4: with no project manager, APM or project administrator, the to-do goes to the company's first active administrator, never free text", async () => {
+    sqlite.exec(`
+      DELETE FROM project_members WHERE user_id IN ('staff', 'apm', 'admin-pa');
+      UPDATE projects SET project_manager = 'Someone Typed' WHERE id = 'p1';
+      INSERT INTO users (id, email, display_name, role, is_active, created_at, updated_at) VALUES
+        ('boss', 'boss@example.com', 'Bea Boss', 'admin', 1, '${NOW}', '${NOW}'),
+        ('late', 'late@example.com', 'Lee Late', 'admin', 1, '${NOW}', '${NOW}'),
+        ('old', 'old@example.com', 'Ola Old', 'admin', 0, '${NOW}', '${NOW}');
+      INSERT INTO organization_members (id, organization_id, user_id, role, joined_at) VALUES
+        ('om-old', 'org-1', 'old', 'admin', '2020-01-01T00:00:00.000Z'),
+        ('om-boss', 'org-1', 'boss', 'admin', '2021-01-01T00:00:00.000Z'),
+        ('om-late', 'org-1', 'late', 'admin', '2025-01-01T00:00:00.000Z');
+    `)
+    const { todoId } = await installedTileReplacedBySubway()
+    expect(sqlite.prepare("SELECT assignee_name AS assignee FROM project_operations WHERE id = ?").get(todoId)).toEqual({ assignee: "Bea Boss" })
+  })
+
+  it("R9-4: with no manager and no administrator the to-do is unassigned, not the typed project manager", async () => {
+    sqlite.exec("DELETE FROM project_members WHERE user_id IN ('staff', 'apm', 'admin-pa'); UPDATE projects SET project_manager = 'Someone Typed' WHERE id = 'p1'")
+    const { todoId } = await installedTileReplacedBySubway()
+    expect(sqlite.prepare("SELECT assignee_name AS assignee FROM project_operations WHERE id = ?").get(todoId)).toEqual({ assignee: null })
+  })
+
+  it("R9-5: deleting a replacement archives its open change-order to-do", async () => {
+    const { replacementId, todoId } = await installedTileReplacedBySubway()
+    expect(await deleteProjectSelection("p1", replacementId)).toMatchObject({ success: true })
+    expect(sqlite.prepare("SELECT status FROM project_operations WHERE id = ?").get(todoId)).toEqual({ status: "archived" })
+  })
+
+  it("R9-6: no draft change-order start or replacement setting is left", () => {
+    expect(readFileSync("src/lib/domain/selections/selection-change-orders.ts", "utf8")).not.toMatch(/kind: "draft"/)
+    expect(readFileSync("src/components/selections/selection-replace-dialog.tsx", "utf8")).not.toMatch(/company setting/)
+    expect(readFileSync("docs/help/guides/finish-selections.md", "utf8")).not.toMatch(/executed change order/)
   })
 })

@@ -11,7 +11,7 @@ import { and, asc, eq, inArray, or, sql } from "drizzle-orm"
 import { projectOperations, projects } from "@/db/schema"
 import { countProjectOperations } from "@/lib/domain/operations/queries"
 import { projectTaskNumberFor } from "@/lib/domain/operations/rules"
-import { insertOperations, recordTodoEvent } from "@/lib/domain/operations/store"
+import { archiveTodos, insertOperations, recordTodoEvent } from "@/lib/domain/operations/store"
 import { PROJECT_TODO_RECORD_TYPES } from "@/lib/project-todos"
 import { recordStatusColor, recordStatusLabel } from "@/lib/domain/record-statuses/rules"
 import type { RecordStatusColor } from "@/lib/domain/record-statuses/statuses"
@@ -102,10 +102,55 @@ export async function loadSelectionTodos(db: Db, projectId: string, selectionId:
   }))
 }
 
+/** The selection's to-dos for a step (any status). */
+async function stepTodos(db: Db, projectId: string, selectionIds: readonly string[], step: SelectionTodoStep) {
+  if (selectionIds.length === 0) return []
+  return db
+    .select({
+      id: projectOperations.id,
+      projectId: projectOperations.projectId,
+      status: projectOperations.status,
+      onceKey: sql<string | null>`json_extract(${projectOperations.sagePayloadJson}, '$.selectionStepKey')`,
+    })
+    .from(projectOperations)
+    .where(
+      and(
+        eq(projectOperations.projectId, projectId),
+        inArray(projectOperations.sourceRecordId, [...selectionIds]),
+        eq(projectOperations.sourceRecordType, "staff_task"),
+        sql`json_extract(${projectOperations.sagePayloadJson}, '$.selectionStep') = ${step}`,
+      ),
+    )
+}
+
+/**
+ * Whether the selection has a to-do for the step that wasn't archived (open
+ * or done). A replacement without one can have its change-order to-do made
+ * from its drawer.
+ */
+export async function hasSelectionStepTodo(db: Db, projectId: string, selectionId: string, step: SelectionTodoStep): Promise<boolean> {
+  const statuses = await loadRecordStatusListForProject(db, projectId, "todo")
+  const rows = await stepTodos(db, projectId, [selectionId], step)
+  return rows.some((row) => !isArchivedTodoStatus(statuses, row.status))
+}
+
+/**
+ * Archives the open change-order to-dos of replacements being deleted: with
+ * the replacement gone there is no change order to write. Done ones stay.
+ */
+export async function archiveReplacementTodos(db: Db, projectId: string, selectionIds: readonly string[], now: string): Promise<void> {
+  if (selectionIds.length === 0) return
+  const statuses = await loadRecordStatusListForProject(db, projectId, "todo")
+  const open = (await stepTodos(db, projectId, selectionIds, "replacement_change_order"))
+    .filter((row) => !isCompletedTodoStatus(statuses, row.status) && !isArchivedTodoStatus(statuses, row.status))
+  await archiveTodos(db, projectId, open, now)
+}
+
 /**
  * Creates the step's to-do for the selection unless one is still open.
- * Assigned to the project manager named on the job. Returns the new to-do's
- * id, or null when an open one already exists.
+ * Assigned to `assigneeName` when given (null leaves it unassigned), else to
+ * the project manager named on the job. Returns the new to-do's id, or null
+ * when an open one already exists.
  *
  * `onceKey` makes it once only: no new to-do while any to-do for the step
  * (open or finished) carries the same key. Scheduled checks use it so a
@@ -124,28 +169,14 @@ export async function ensureSelectionTodo(
     readonly dueDate?: string | null
     /** Replaces the step's standard description. */
     readonly description?: string
-    /** Who it is assigned to (a name); the project manager named on the job when left out. */
+    /** Who it is assigned to (a name; null for no one); the project manager named on the job when left out. */
     readonly assigneeName?: string | null
     /** The selection a replacement replaces: the to-do shows on both. */
     readonly replacedSelectionId?: string
   },
 ): Promise<string | null> {
   const statuses = await loadRecordStatusListForProject(db, input.projectId, "todo")
-  const open = await db
-    .select({
-      id: projectOperations.id,
-      status: projectOperations.status,
-      onceKey: sql<string | null>`json_extract(${projectOperations.sagePayloadJson}, '$.selectionStepKey')`,
-    })
-    .from(projectOperations)
-    .where(
-      and(
-        eq(projectOperations.projectId, input.projectId),
-        eq(projectOperations.sourceRecordId, input.selectionId),
-        eq(projectOperations.sourceRecordType, "staff_task"),
-        sql`json_extract(${projectOperations.sagePayloadJson}, '$.selectionStep') = ${input.step}`,
-      ),
-    )
+  const open = await stepTodos(db, input.projectId, [input.selectionId], input.step)
   if (open.some((row) => !isCompletedTodoStatus(statuses, row.status) && !isArchivedTodoStatus(statuses, row.status))) return null
   if (input.onceKey !== undefined && open.some((row) => row.onceKey === input.onceKey)) return null
 
@@ -179,7 +210,7 @@ export async function ensureSelectionTodo(
     status: "open",
     priority: text.priority,
     assigneeType: "internal",
-    assigneeName: input.assigneeName ?? project.projectManager,
+    assigneeName: input.assigneeName !== undefined ? input.assigneeName : project.projectManager,
     dueDate: input.dueDate ?? null,
     sageJobId: project.sageJobId,
     sageJobNumber: project.sageJobNumber,

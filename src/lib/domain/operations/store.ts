@@ -52,6 +52,25 @@ type RfqQuoteLinkUpdate = Partial<RfqQuoteLinkInsert>
 
 export type OperationVersion = { readonly id: string; readonly updatedAt: string }
 
+/**
+ * Archives to-dos whose work went away (their record was deleted), each
+ * only while it still has the status the caller read.
+ */
+export async function archiveTodos(
+  db: Db,
+  projectId: string,
+  rows: readonly { readonly id: string; readonly status: string }[],
+  updatedAt: string,
+): Promise<void> {
+  const queries = rows.map((row) =>
+    db.update(projectOperations)
+      .set({ status: "archived", updatedAt })
+      .where(and(eq(projectOperations.projectId, projectId), eq(projectOperations.id, row.id), eq(projectOperations.status, row.status))),
+  )
+  const [first, ...rest] = queries
+  if (first) await db.batch([first, ...rest])
+}
+
 // ---------------------------------------------------------------------------
 // project_operations
 // ---------------------------------------------------------------------------

@@ -118,15 +118,18 @@ export function staffEditBlocker(input: {
  * after approval" an approved (or signed) one not yet ordered or installed;
  * "Owner changed selection after purchase" an ordered one; "Supplier
  * couldn't fill" an Unavailable one that was marked so from Ordered
- * (`releasedFromOrder`). A selection is replaced once.
+ * (`releasedFromOrder`). A selection is replaced once, and never while its
+ * Selection Phase is out for signature.
  */
 export function replacementBlocker(
   status: string,
   replaced: boolean,
   reason: SelectionReplacementReason,
-  options: { readonly releasedFromOrder?: boolean; readonly approved?: boolean } = {},
+  options: { readonly releasedFromOrder?: boolean; readonly approved?: boolean; readonly outForSignature?: boolean } = {},
 ): string | null {
   if (replaced) return "This selection was already replaced. Make changes on the replacement."
+  // The Selection Phase out for signature would still bill the old product.
+  if (options.outForSignature) return OUT_FOR_SIGNATURE_MESSAGE
   if (reason === "installed_replaced" && status !== "installed") return "Only an installed selection can be replaced this way."
   if (reason === "owner_changed_after_approval" && (!options.approved || status === "ordered" || status === "installed")) {
     return "Only an approved selection that isn't ordered or installed yet can be changed this way."

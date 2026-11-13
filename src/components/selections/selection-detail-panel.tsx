@@ -29,6 +29,7 @@ import { AttachPhotosDialog, FollowUpsDialog, PasteLinkDialog, PickForOwnerDialo
 import { SelectionLinkCard } from "@/components/selections/selection-link-card"
 import { SelectionPriceRequest } from "@/components/selections/selection-price-request"
 import { SelectionReplaceDialog, type SelectionReplaceKind } from "@/components/selections/selection-replace-dialog"
+import { createReplacementTodo } from "@/app/actions/selection-replacements"
 import { SelectionRoundTemplateControls } from "@/components/selections/selection-round-template-controls"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -213,6 +214,11 @@ export function SelectionDetailPanel({
               {detail.replaces.reason ? ` (${REPLACEMENT_REASON_LABELS[detail.replaces.reason].toLocaleLowerCase()})` : ""}.
             </span>
             <span>Its change order is written on the change-order screens (see its to-do).</span>
+            {detail.needsReplacementTodo && (
+              <Button type="button" variant="outline" size="sm" disabled={pending} onClick={() => run(() => createReplacementTodo(projectId, row.id))}>
+                Create change-order to-do
+              </Button>
+            )}
           </div>
         )}
         {detail?.canReplaceApproved && (

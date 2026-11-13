@@ -1,12 +1,13 @@
 "use client"
 
 /*
- * "Replace installed item" and "Owner changed selection after purchase" for
- * a locked (installed or ordered) selection. Staff pick the different
+ * Replacing a selection that doesn't change in place: "Replace installed
+ * item", "Owner changed selection after approval", "Owner changed selection
+ * after purchase" and "Supplier couldn't fill". Staff pick the different
  * product from the selection's other choices (required to replace an
  * installed item) and say why. The selection stays on record as it is; a new
- * selection replaces it, with a draft change order for the owner to sign
- * (company setting, on by default).
+ * selection replaces it, and the job's project manager gets a to-do to write
+ * its change order on the change-order screens.
  */
 import * as React from "react"
 import Link from "next/link"
@@ -71,7 +72,7 @@ export function SelectionReplaceDialog({
   const [choiceId, setChoiceId] = React.useState<string | null>(null)
   const [note, setNote] = React.useState("")
   const [error, setError] = React.useState<string | null>(null)
-  const [done, setDone] = React.useState<{ readonly todoId: string | null } | null>(null)
+  const [done, setDone] = React.useState<{ readonly todoId: string | null; readonly todoWarning: string | null } | null>(null)
   const [pending, startTransition] = React.useTransition()
   const formId = React.useId()
   const others = choices.filter((choice) => !choice.chosen)
@@ -130,6 +131,7 @@ export function SelectionReplaceDialog({
                 Open the to-do to write its change order
               </Link>
             ) : null}
+            {done.todoWarning ? <p className="text-destructive">{done.todoWarning}</p> : null}
           </div>
         ) : (
           <form id={formId} onSubmit={submit} className="flex flex-col gap-3">

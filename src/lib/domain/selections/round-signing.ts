@@ -297,7 +297,6 @@ export async function prepareRoundSignature(input: {
     // Signature pending: the owner signs it inside the round document.
     const created = await createSelectionChangeOrder(db, {
       projectId,
-      start: { kind: "in_signature" },
       sourceType: "selection_round",
       sourceRecordId: signatureId,
       title: `${view.roundName} Selection Phase`,
@@ -511,7 +510,14 @@ export async function handleRoundSignatureEvent(input: {
     ...chunkD1Values(items.map((item) => item.selectionId)).map((ids) =>
       updateFinishSelectionsWithEventStatement(
         db,
-        and(eq(projectFinishSelections.projectId, signature.projectId), inArray(projectFinishSelections.id, ids), signedNow, pickStillSigned),
+        and(
+          eq(projectFinishSelections.projectId, signature.projectId),
+          inArray(projectFinishSelections.id, ids),
+          signedNow,
+          pickStillSigned,
+          // A selection replaced meanwhile isn't approved by it (its replacement is billed by its own change order).
+          sql`NOT EXISTS (SELECT 1 FROM project_finish_selections AS replacement WHERE replacement.replaces_selection_id = project_finish_selections.id)`,
+        ),
         // Signing never rewinds ordering or installation.
         "owner_sign",
         {

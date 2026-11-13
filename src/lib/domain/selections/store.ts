@@ -9,6 +9,7 @@ import { assertListFields } from "@/lib/shared/statuses"
 
 import { insertCopyStatement } from "./copy-rows"
 import { LOCKED_SELECTION_STATUSES, staffStatusChangeBlocker } from "./locks"
+import { archiveReplacementTodos } from "./selection-todos"
 import { automaticSelectionStatus, selectionStatusSources, selectionStatusTarget, type SelectionStatusEvent } from "./status-machine"
 import { PROJECT_SELECTION_STATUSES, SELECTION_REPLACEMENT_REASONS, type ProjectSelectionStatus, type SelectionReplacementReason } from "./statuses"
 
@@ -242,7 +243,7 @@ export async function updateFinishSelectionsWithEvent(
  * `input.expected` and nothing replaces it yet. The old product fields are
  * left off: the new pick is a different product, carried by its choice. It
  * starts hidden from the owner, unapproved and outside any Selection Phase
- * (its change order is its owner signature). The unique index on
+ * (staff write its change order from a to-do). The unique index on
  * replaces_selection_id allows one replacement per selection.
  */
 export function insertReplacementSelectionStatement(
@@ -296,6 +297,12 @@ export function insertReplacementSelectionStatement(
       eq(projectFinishSelections.projectId, input.projectId),
       sql`${projectFinishSelections.status} = ${input.expected}`,
       notReplaced,
+      // Never while its Selection Phase is out for signature (the phase would bill the old product).
+      sql`NOT EXISTS (SELECT 1 FROM project_selection_round_signature_items AS out_item INNER JOIN project_selection_round_signatures AS out_round ON out_round.id = out_item.signature_id WHERE out_item.selection_id = project_finish_selections.id AND out_round.status IN ('preparing', 'sent'))`,
+      // "Owner changed after approval": only while it is still approved (or its pick signed).
+      input.reason === "owner_changed_after_approval"
+        ? sql`(project_finish_selections.owner_approved = 1 OR EXISTS (SELECT 1 FROM project_selection_round_signature_items AS signed_item INNER JOIN project_selection_round_signatures AS signed_round ON signed_round.id = signed_item.signature_id WHERE signed_round.status = 'signed' AND signed_item.selection_id = project_finish_selections.id AND signed_item.choice_id = (SELECT pick.id FROM project_selection_choices AS pick WHERE pick.selection_id = project_finish_selections.id AND pick.chosen = 1)))`
+        : undefined,
     ),
   )
 }
@@ -334,8 +341,22 @@ export async function updateLockedSelection(
 export async function deleteFinishSelectionsReturningIds(
   db: Db,
   where: SQL | undefined,
-): Promise<readonly { readonly id: string }[]> {
-  return db.delete(projectFinishSelections).where(where).returning({ id: projectFinishSelections.id })
+): Promise<readonly { readonly id: string; readonly projectId: string }[]> {
+  const deleted = await db
+    .delete(projectFinishSelections)
+    .where(where)
+    .returning({ id: projectFinishSelections.id, projectId: projectFinishSelections.projectId })
+  await archiveDeletedReplacementTodos(db, deleted)
+  return deleted
+}
+
+/** A deleted replacement leaves no change order to write: its open to-do is archived. */
+async function archiveDeletedReplacementTodos(db: Db, deleted: readonly { readonly id: string; readonly projectId: string }[]): Promise<void> {
+  const now = new Date().toISOString()
+  const byProject = Map.groupBy(deleted, (row) => row.projectId)
+  for (const [projectId, rows] of byProject) {
+    await archiveReplacementTodos(db, projectId, rows.map((row) => row.id), now)
+  }
 }
 
 // ---- named operations
@@ -352,12 +373,14 @@ export async function deleteRemovableSelections(
     db
       .delete(projectFinishSelections)
       .where(and(eq(projectFinishSelections.id, selectionId), selectionDeletionAllowed(selectionId)))
-      .returning({ id: projectFinishSelections.id }),
+      .returning({ id: projectFinishSelections.id, projectId: projectFinishSelections.projectId }),
   )
   const [first, ...rest] = statements
   if (!first) return new Set()
   const results = await db.batch([first, ...rest])
-  return new Set(results.flatMap((rows) => rows.map((row) => row.id)))
+  const deleted = results.flat()
+  await archiveDeletedReplacementTodos(db, deleted)
+  return new Set(deleted.map((row) => row.id))
 }
 
 /** A template-applied room row; an existing room with the same id is kept. */

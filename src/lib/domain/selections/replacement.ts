@@ -15,30 +15,35 @@
  * choices (with their links and photos), and the new pick when there is
  * one. It starts hidden from the owner and outside any Selection Phase.
  * Compass writes no change order: the job's project manager (or the next
- * selection manager) gets a to-do, linked to both selections, to write it
- * on the change-order screens; the owner signs that change order.
+ * selection manager, else an administrator) gets a to-do, linked to both
+ * selections, to write it on the change-order screens; the owner signs that
+ * change order. Never while the selection is out for signature in a
+ * Selection Phase.
  */
 import { and, eq } from "drizzle-orm"
 
 import { projectFinishSelections } from "@/db/schema"
 import { projectSelectionChoices, projectSelectionLinks, projectSelectionPhotos } from "@/db/schema-selection-choices"
 import { recordActivityEvents, type ActivityActor } from "@/lib/activity-log"
+import { firstActiveAdmin } from "@/lib/domain/identity/reads"
 import type { Db } from "@/lib/server/action-context"
 
 import { copyChoicesToReplacementStatements } from "./choices-store"
-import { selectionIsReplaced, signedSelectionIds } from "./lock-read"
+import { selectionIsReplaced, selectionOutForSignature, signedSelectionIds } from "./lock-read"
 import { REPLACEMENT_REASON_LABELS, replacementBlocker, replacementStartStatus } from "./locks"
 import { selectionManagers } from "./selection-managers"
 import { ensureSelectionTodo } from "./selection-todos"
-import type { SelectionReplacementReason } from "./statuses"
+import { SELECTION_REPLACEMENT_REASONS, type SelectionReplacementReason } from "./statuses"
 import { insertReplacementSelectionStatement } from "./store"
 
 export type ReplaceSelectionResult =
   | {
       readonly ok: true
       readonly selectionId: string
-      /** The to-do to write its change order, or null when one is already open. */
+      /** The to-do to write its change order, or null when one is already open or it failed. */
       readonly todoId: string | null
+      /** Set when the to-do couldn't be made (the replacement was). */
+      readonly todoWarning: string | null
     }
   | { readonly ok: false; readonly error: string }
 
@@ -81,6 +86,7 @@ export async function replaceLockedSelection(
   const blocker = replacementBlocker(old.status, await selectionIsReplaced(db, old.id), input.reason, {
     releasedFromOrder: old.procurementReleasedAt !== null,
     approved,
+    outForSignature: await selectionOutForSignature(db, old.id),
   })
   if (blocker) return failed(blocker)
 
@@ -146,24 +152,17 @@ export async function replaceLockedSelection(
     throw error
   }
 
-  // Staff write the change order on the change-order screens; the job's
-  // first selection manager (project manager, else the next role) gets a to-do.
-  const managers = await selectionManagers(db, input.projectId)
-  const todoId = await ensureSelectionTodo(db, {
-    projectId: input.projectId,
-    selectionId: newId,
-    selectionName: old.name,
-    step: "replacement_change_order",
-    actorId: input.actor.id,
-    now,
-    assigneeName: managers[0]?.name ?? null,
-    replacedSelectionId: old.id,
-    description:
-      `${label}: ${old.roomName} · ${old.name} is replaced by a new selection` +
-      (pick ? ` with ${pick.title}` : "") +
-      ". Write the change order for it on the change-order screens (both selections are linked to this to-do)" +
-      (note ? `. ${note}` : "."),
-  })
+  // Staff write the change order on the change-order screens; a to-do asks
+  // for it. The replacement is already saved: a failed to-do is reported, and
+  // staff make it again from the replacement's drawer.
+  let todoId: string | null = null
+  let todoWarning: string | null = null
+  try {
+    todoId = await ensureReplacementTodo(db, { projectId: input.projectId, organizationId: input.organizationId, replacementId: newId, actorId: input.actor.id, now })
+  } catch (error) {
+    console.error("Replacement change-order to-do failed", error)
+    todoWarning = "The replacement was made, but its change-order to-do wasn't. Use Create change-order to-do in its drawer."
+  }
 
   await recordActivityEvents(db, [
     {
@@ -174,10 +173,73 @@ export async function replaceLockedSelection(
       action: "selection_replaced",
       entityType: "project_finish_selection",
       entityId: old.id,
-      summary: `${old.name} (${old.status}) was replaced by a new selection: ${label.toLocaleLowerCase()}${pick ? `, ${pick.title} chosen` : ""}. A to-do to write its change order was made.`,
+      summary: `${old.name} (${old.status}) was replaced by a new selection: ${label.toLocaleLowerCase()}${pick ? `, ${pick.title} chosen` : ""}.${todoId ? " A to-do to write its change order was made." : ""}`,
       metadata: { replacementSelectionId: newId, reason: input.reason, choiceId: pick?.id ?? null, todoId },
       createdAt: now,
     },
   ])
-  return { ok: true, selectionId: newId, todoId }
+  return { ok: true, selectionId: newId, todoId, todoWarning }
+}
+
+/**
+ * The replacement's to-do to write its change order, for the job's first
+ * selection manager (project manager, else the next role in Settings), else
+ * the company's first active administrator. Null when one is already open
+ * or this selection replaces nothing.
+ */
+export async function ensureReplacementTodo(
+  db: Db,
+  input: {
+    readonly projectId: string
+    readonly organizationId: string
+    readonly replacementId: string
+    readonly actorId: string
+    readonly now: string
+  },
+): Promise<string | null> {
+  const replacement = await db
+    .select({
+      name: projectFinishSelections.name,
+      replacesSelectionId: projectFinishSelections.replacesSelectionId,
+      reason: projectFinishSelections.replacementReason,
+      notes: projectFinishSelections.notes,
+    })
+    .from(projectFinishSelections)
+    .where(and(eq(projectFinishSelections.id, input.replacementId), eq(projectFinishSelections.projectId, input.projectId)))
+    .get()
+  if (!replacement?.replacesSelectionId) return null
+  const [old, pick] = await Promise.all([
+    db
+      .select({ name: projectFinishSelections.name, roomName: projectFinishSelections.roomName })
+      .from(projectFinishSelections)
+      .where(and(eq(projectFinishSelections.id, replacement.replacesSelectionId), eq(projectFinishSelections.projectId, input.projectId)))
+      .get(),
+    db
+      .select({ title: projectSelectionChoices.title })
+      .from(projectSelectionChoices)
+      .where(and(eq(projectSelectionChoices.selectionId, input.replacementId), eq(projectSelectionChoices.chosen, true)))
+      .get(),
+  ])
+  const managers = await selectionManagers(db, input.projectId)
+  const assignee = managers[0]?.name ?? (await firstActiveAdmin(db, input.organizationId))?.name ?? null
+  const reason = SELECTION_REPLACEMENT_REASONS.find((known) => known === replacement.reason)
+  const label = reason ? REPLACEMENT_REASON_LABELS[reason] : "Replaced"
+  const what = old ? `${old.roomName} · ${old.name}` : replacement.name
+  // The replacement's notes start "<reason>: <staff note>".
+  const note = replacement.notes?.startsWith(`${label}: `) ? replacement.notes.slice(label.length + 2) : null
+  return ensureSelectionTodo(db, {
+    projectId: input.projectId,
+    selectionId: input.replacementId,
+    selectionName: replacement.name,
+    step: "replacement_change_order",
+    actorId: input.actorId,
+    now: input.now,
+    assigneeName: assignee,
+    replacedSelectionId: replacement.replacesSelectionId,
+    description:
+      `${label}: ${what} is replaced by a new selection` +
+      (pick ? ` with ${pick.title}` : "") +
+      ". Write the change order for it on the change-order screens (both selections are linked to this to-do)" +
+      (note ? `. ${note}` : "."),
+  })
 }

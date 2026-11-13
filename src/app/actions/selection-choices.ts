@@ -49,7 +49,7 @@ import {
   type SelectionRfqView,
   type SupplierOption,
 } from "@/lib/domain/selections/selection-sheet-read"
-import { ensureSelectionTodo, loadSelectionTodos, type SelectionTodoView } from "@/lib/domain/selections/selection-todos"
+import { ensureSelectionTodo, hasSelectionStepTodo, loadSelectionTodos, type SelectionTodoView } from "@/lib/domain/selections/selection-todos"
 import {
   deleteSelectionChoice as deleteChoiceRow,
   deleteSelectionComment as deleteCommentRow,
@@ -159,6 +159,8 @@ export type SelectionDetail = {
   readonly canReplaceApproved: boolean
   /** Marked Unavailable after it was ordered and not replaced yet: "Supplier couldn't fill" can replace it. */
   readonly canReplaceUnfilled: boolean
+  /** A replacement with no change-order to-do (it failed, or was archived): its drawer offers to make one. */
+  readonly needsReplacementTodo: boolean
 }
 
 /** Everything the staff detail panel shows for one selection. */
@@ -168,7 +170,7 @@ export async function getSelectionDetail(projectId: string, selectionId: string)
     const { db } = context
     if (!(await selectionInProject(db, projectId, selectionId))) throw new Error("Selection not found")
     const userId = context.user.id
-    const [panel, todos, rfqs, draftRfqs, lock, replacement, approved] = await Promise.all([
+    const [panel, todos, rfqs, draftRfqs, lock, replacement, approved, outForSignature, hasReplacementTodo] = await Promise.all([
       loadSelectionChoicesPanel(db, projectId, selectionId, "staff", userId),
       loadSelectionTodos(db, projectId, selectionId),
       loadSelectionRfqs(db, projectId, selectionId),
@@ -176,6 +178,8 @@ export async function getSelectionDetail(projectId: string, selectionId: string)
       loadSelectionLock(db, projectId, selectionId),
       loadSelectionReplacement(db, projectId, selectionId),
       pickChangeBlocker(db, projectId, selectionId),
+      selectionOutForSignature(db, selectionId),
+      hasSelectionStepTodo(db, projectId, selectionId, "replacement_change_order"),
     ])
     return {
       success: true,
@@ -187,8 +191,9 @@ export async function getSelectionDetail(projectId: string, selectionId: string)
         lock: lock?.lock ?? null,
         ...replacement,
         // "Approved" is the one blocker it can be replaced past (locked rows have their own Replace paths).
-        canReplaceApproved: lock !== null && lock.lock === null && approved === APPROVED_PICK_MESSAGE,
-        canReplaceUnfilled: lock !== null && lock.status === "unavailable" && lock.releasedFromOrder && replacement.replacedBy === null,
+        canReplaceApproved: lock !== null && lock.lock === null && approved === APPROVED_PICK_MESSAGE && !outForSignature,
+        canReplaceUnfilled: lock !== null && lock.status === "unavailable" && lock.releasedFromOrder && replacement.replacedBy === null && !outForSignature,
+        needsReplacementTodo: replacement.replaces !== null && !hasReplacementTodo,
       },
     }
   } catch (error) {

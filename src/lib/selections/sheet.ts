@@ -23,11 +23,11 @@ export type SelectionSheetInput = {
     readonly dueDate: string | null
     readonly published: boolean
     readonly roundKey: string | null
-    /** A signature covers it (a signed Selection Phase, or its executed replacement change order). */
+    /** A signed Selection Phase covers its current pick. */
     readonly signed?: boolean
     /** Another selection replaces it (it stays on record, locked). */
     readonly replaced?: boolean
-    /** It replaces an ordered or installed selection. */
+    /** It replaces another selection. */
     readonly replacement?: boolean
     /** The owner's approval is recorded on the selection (a signature, or an older approval). */
     readonly ownerApproved?: boolean
@@ -72,7 +72,7 @@ export type SelectionSheetRow = {
   readonly signed: boolean
   /** Another selection replaces it. */
   readonly replaced: boolean
-  /** It replaces an ordered or installed selection (outside Selection Phases; its change order is its signature). */
+  /** It replaces another selection (outside Selection Phases; staff write its change order). */
   readonly replacement: boolean
   /** The owner's approval is recorded on the selection. */
   readonly ownerApproved: boolean

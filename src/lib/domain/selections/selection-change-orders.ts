@@ -29,20 +29,10 @@ async function selectionInsuranceLines(db: Db, projectId: string, lines: readonl
   return changeOrderInsuranceLines({ db, projectId, lines })
 }
 
-/**
- * How the change order starts: inside a signature already going out
- * (signature pending, sent with the round document), or as a draft staff
- * complete and send for the owner's signature the usual way.
- */
-type Start =
-  | { readonly kind: "in_signature" }
-  | { readonly kind: "draft" }
-
 export async function createSelectionChangeOrder(
   db: Db,
   input: {
     readonly projectId: string
-    readonly start: Start
     readonly sourceType: string
     readonly sourceRecordId: string
     readonly title: string
@@ -62,7 +52,8 @@ export async function createSelectionChangeOrder(
     ...insurance.map((line) => ({ costCode: line.costCode, description: line.description, amountCents: line.amountCents, derivedFrom: line.derivedFrom })),
   ]
   const amountCents = allLines.reduce((total, line) => total + line.amountCents, 0)
-  const status = input.start.kind === "in_signature" ? "signature_pending" : "draft"
+  // Signature pending: the owner signs it inside the Selection Phase document.
+  const status = "signature_pending"
   const lineRows = allLines.map((line, index) => ({
     id: crypto.randomUUID(),
     projectId: input.projectId,
@@ -85,7 +76,7 @@ export async function createSelectionChangeOrder(
       await insertChangeOrderRows(db, { ...input, id, number, status, amountCents, lineRows })
       return { id, number }
     } catch (error) {
-      // Only a taken number is retried; any other conflict (one live replacement change order) is final.
+      // Only a taken change-order number is retried; any other error is final.
       if (attempt >= NUMBER_ATTEMPTS || !(error instanceof Error && /UNIQUE constraint failed.*change_order_number/i.test(error.message))) throw error
     }
   }
@@ -98,7 +89,7 @@ async function insertChangeOrderRows(
   input: Parameters<typeof createSelectionChangeOrder>[1] & {
     readonly id: string
     readonly number: string
-    readonly status: "signature_pending" | "draft"
+    readonly status: "signature_pending"
     readonly amountCents: number
     readonly lineRows: readonly (typeof projectChangeOrderLines.$inferInsert)[]
   },
@@ -123,10 +114,10 @@ async function insertChangeOrderRows(
       sourceRecordId: input.sourceRecordId,
       budgetTreatment: "additive",
       changeOrderKind: "description",
-      foxitStatus: input.start.kind === "in_signature" ? "sent" : "not_started",
+      foxitStatus: "sent",
       sageStatus: "not_ready",
       createdBy: input.actor.id,
-      submittedAt: input.start.kind === "in_signature" ? input.now : null,
+      submittedAt: input.now,
       createdAt: input.now,
       updatedAt: input.now,
     }),

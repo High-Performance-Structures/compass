@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache"
 
 import { actionFailure, errorMessage, type ActionResult } from "@/lib/action-result"
-import { replaceLockedSelection } from "@/lib/domain/selections/replacement"
+import { ensureReplacementTodo, replaceLockedSelection } from "@/lib/domain/selections/replacement"
 import { projectContext } from "@/lib/server/action-context"
 import type { SelectionReplacementReason } from "@/lib/domain/selections/statuses"
 
@@ -19,6 +19,8 @@ export type SelectionReplacementDone = {
   readonly selectionId: string
   /** The to-do to write its change order (null when one is already open). */
   readonly todoId: string | null
+  /** Set when the replacement was made but its to-do wasn't. */
+  readonly todoWarning: string | null
 }
 
 /** Staff selections access for a write; refused for the read-only demo account and company. */
@@ -51,7 +53,7 @@ async function replace(
     if (!result.ok) return actionFailure(result.error)
     revalidatePath(`/dashboard/projects/${projectId}/selections`)
     revalidatePath(`/dashboard/projects/${projectId}/todos`)
-    return { success: true, data: { selectionId: result.selectionId, todoId: result.todoId } }
+    return { success: true, data: { selectionId: result.selectionId, todoId: result.todoId, todoWarning: result.todoWarning } }
   } catch (error) {
     return actionFailure(errorMessage(error, "Unable to replace the selection."))
   }
@@ -95,4 +97,26 @@ export async function supplierCouldntFillSelection(
   note: string | null,
 ): Promise<ActionResult<SelectionReplacementDone>> {
   return replace(projectId, selectionId, "supplier_couldnt_fill", choiceId, note)
+}
+
+/** Makes a replacement's change-order to-do when it has none (it failed when the replacement was made, or was archived). */
+export async function createReplacementTodo(
+  projectId: string,
+  selectionId: string,
+): Promise<ActionResult<{ readonly todoId: string | null }>> {
+  try {
+    const { db, user, organizationId } = await writeContext(projectId)
+    const todoId = await ensureReplacementTodo(db, {
+      projectId,
+      organizationId,
+      replacementId: selectionId,
+      actorId: user.id,
+      now: new Date().toISOString(),
+    })
+    revalidatePath(`/dashboard/projects/${projectId}/selections`)
+    revalidatePath(`/dashboard/projects/${projectId}/todos`)
+    return { success: true, data: { todoId } }
+  } catch (error) {
+    return actionFailure(errorMessage(error, "Unable to create the to-do."))
+  }
 }
