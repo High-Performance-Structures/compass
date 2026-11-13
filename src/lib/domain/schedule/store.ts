@@ -165,6 +165,45 @@ export async function rejectConfirmationProposal(db: Db, taskId: string, now: st
   return result.meta.changes > 0
 }
 
+/**
+ * Staff accept the proposal they reviewed (submitted at `seenSubmittedAt`):
+ * it lands only while that proposal still waits, so an answer the assignee
+ * gave meanwhile stands. `event` is accept_proposal (asked again on the new
+ * dates) or stop (no answer needed any more). The item's other edits and the
+ * new dates are written after this lands. False when the assignee answered.
+ */
+export async function acceptConfirmationProposal(
+  db: Db,
+  taskId: string,
+  seenSubmittedAt: string,
+  event: "accept_proposal" | "stop",
+  now: string
+): Promise<boolean> {
+  const rule = confirmationMachine.transitions.accept_proposal
+  const result = await db
+    .update(scheduleTasks)
+    .set({
+      confirmationStatus: confirmationStatusAfter(event),
+      confirmationRequestedAt: event === "stop" ? null : now,
+      confirmationRespondedAt: null,
+      reminderSentAt: null,
+      proposedStartDate: null,
+      proposedWorkdays: null,
+      proposalNote: null,
+      proposalSubmittedAt: null,
+      updatedAt: now,
+    })
+    .where(
+      and(
+        eq(scheduleTasks.id, taskId),
+        inArray(scheduleTasks.confirmationStatus, [...rule.from]),
+        eq(scheduleTasks.proposalSubmittedAt, seenSubmittedAt)
+      )
+    )
+    .run()
+  return result.meta.changes > 0
+}
+
 function sameText(column: SQLiteColumn, value: string | null): SQL | undefined {
   return value === null ? isNull(column) : eq(column, value)
 }
@@ -303,9 +342,43 @@ export async function runWithDateUpdates(
 }
 
 /**
+ * A moved item's single-assignee confirmation (confirmation-machine.ts
+ * dates_moved): asked again on the new dates when the assigned account was
+ * already asked or had answered; items that ask for nothing, or still wait
+ * for an account, stay as they are. A pending proposal is for the old dates
+ * and is cleared.
+ */
+function datesMovedConfirmationStatement(
+  database: D1Database,
+  projectId: string,
+  taskId: string,
+  now: string
+): D1PreparedStatement {
+  const rule = confirmationMachine.transitions.dates_moved
+  return database
+    .prepare(
+      `UPDATE schedule_tasks
+       SET confirmation_status = ?,
+           confirmation_requested_at = ?,
+           confirmation_responded_at = NULL,
+           reminder_sent_at = NULL,
+           proposed_start_date = NULL,
+           proposed_workdays = NULL,
+           proposal_note = NULL,
+           proposal_submitted_at = NULL,
+           updated_at = ?
+       WHERE id = ? AND project_id = ?
+         AND confirmation_required = 1
+         AND assigned_user_id IS NOT NULL
+         AND confirmation_status IN (${rule.from.map(() => "?").join(", ")})`
+    )
+    .bind(rule.to, now, now, taskId, projectId, ...rule.from)
+}
+
+/**
  * Persists propagated dates. Each moved task also shifts its linked to-dos
  * and resets its assignees' responses, which were given against the old
- * dates.
+ * dates; a single assignee who was asked or answered is asked again.
  */
 export async function persistScheduleDateUpdates(
   database: D1Database,
@@ -345,6 +418,7 @@ export async function persistScheduleDateUpdates(
           updatedAt,
           taskId
         ),
+      datesMovedConfirmationStatement(database, projectId, taskId, updatedAt),
     ])
     await runD1Batch(database, statements, "Schedule date update batch failed")
   }

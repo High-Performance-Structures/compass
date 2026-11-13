@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { getTableConfig, type SQLiteTable } from "drizzle-orm/sqlite-core"
 import { projectOperations, projectTodoEvents } from "@/db/schema"
-import { changeProjectTodos, completeProjectTodo, deleteProjectTodo } from "@/app/actions/project-todos"
+import { archiveProjectTodo, changeProjectTodos, completeProjectTodo, deleteProjectTodo } from "@/app/actions/project-todos"
 import {
   context,
   openCorrespondenceTestDatabase,
@@ -79,7 +79,11 @@ describe("guarded bulk to-do actions", () => {
       }),
     ).toMatchObject({ success: true })
     expect(status(row.id)).toEqual({ status: "open" })
-    expect(testDb.sqlite.prepare("SELECT todo_id,from_status,to_status,actor_id FROM project_todo_events").all()).toEqual([{ todo_id: row.id, from_status: "archived", to_status: "open", actor_id: "staff-a" }])
+    expect(testDb.sqlite.prepare("SELECT todo_id,kind,from_status,to_status,actor_id FROM project_todo_events ORDER BY rowid").all()).toEqual([
+      { todo_id: "one", kind: "status", from_status: "open", to_status: "archived", actor_id: "staff-a" },
+      { todo_id: "two", kind: "status", from_status: "open", to_status: "archived", actor_id: "staff-a" },
+      { todo_id: row.id, kind: "status", from_status: "archived", to_status: "open", actor_id: "staff-a" },
+    ])
   })
   it("records restore history only for guarded successes and rolls it back with a failed status change", async () => {
     seed("one", "archived"); seed("two", "archived")
@@ -145,6 +149,10 @@ describe("guarded bulk to-do actions", () => {
     })
     expect(result).toEqual({ success: true, data: { changedIds: ["one"], skippedCount: 1 } })
     expect(status("two")).toEqual({ status: "blocked" })
+    // The "Archived" history line lands only with the archive.
+    expect(testDb.sqlite.prepare("SELECT todo_id,kind,from_status,to_status FROM project_todo_events").all()).toEqual([
+      { todo_id: "one", kind: "status", from_status: "open", to_status: "archived" },
+    ])
   })
   it("rolls back a failing batch and supports D1-sized read chunks", async () => {
     for (let i = 0; i < 110; i++) seed(`item-${i}`)
@@ -163,6 +171,20 @@ describe("guarded bulk to-do actions", () => {
       success: true,
       data: { skippedCount: 0 },
     })
+  })
+  it("archives one to-do with an Archived history line, and writes neither over a change made while saving", async () => {
+    seed("one")
+    seed("two")
+    expect(await archiveProjectTodo("project-a", "one", now)).toMatchObject({ success: true })
+    expect(status("one")).toEqual({ status: "archived" })
+    testDb.failures.setBeforeBatchHook((sqlite) => {
+      sqlite.exec("UPDATE project_operations SET status='blocked' WHERE id='two'")
+    })
+    expect(await archiveProjectTodo("project-a", "two", now)).toMatchObject({ success: false })
+    expect(status("two")).toEqual({ status: "blocked" })
+    expect(testDb.sqlite.prepare("SELECT todo_id,kind,from_status,to_status,actor_id FROM project_todo_events").all()).toEqual([
+      { todo_id: "one", kind: "status", from_status: "open", to_status: "archived", actor_id: "staff-a" },
+    ])
   })
   it("marks a to-do done with its history, but not over a change made while saving", async () => {
     seed("one")

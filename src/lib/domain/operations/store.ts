@@ -553,9 +553,9 @@ export function purchaseOrderLinesUpdateQuery(
 // To-do statuses and history (project_todo_events)
 // ---------------------------------------------------------------------------
 // Staff set any company status; a daily log's moves follow todo-machines.ts.
-// All are compare-and-set, with the change's history rows inserted first in
-// the same batch under the same condition: a to-do changed meanwhile gets
-// neither the new status nor history for it.
+// All are compare-and-set, with the change's history rows (archive and
+// restore included) inserted first in the same batch under the same
+// condition: a to-do changed meanwhile gets neither the new status nor history.
 
 /** Batch guarded writes: concurrent edits are left untouched and reported. */
 export async function changeTodosReturning(
@@ -566,6 +566,7 @@ export async function changeTodosReturning(
   updatedAt: string,
   actor: { readonly organizationId: string; readonly userId: string },
 ): Promise<string[]> {
+  const toStatus = mode === "archive" ? "archived" : "open"
   const queries = rows.flatMap((row) => {
     const where = and(
       eq(projectOperations.projectId, projectId),
@@ -576,13 +577,11 @@ export async function changeTodosReturning(
     )
     const change = mode === "delete"
       ? db.delete(projectOperations).where(where).returning({ id: projectOperations.id })
-      : db.update(projectOperations)
-          .set({ status: mode === "archive" ? "archived" : "open", updatedAt })
-          .where(where).returning({ id: projectOperations.id })
-    if (mode !== "restore") return [change]
+      : db.update(projectOperations).set({ status: toStatus, updatedAt }).where(where).returning({ id: projectOperations.id })
+    if (mode === "delete") return [change]
     const history = guardedTodoEventInsert(db, {
       organizationId: actor.organizationId, projectId, todoId: row.id, kind: "status", dailyLogId: null,
-      fromStatus: row.status, toStatus: "open", note: null, actorId: actor.userId, createdAt: updatedAt,
+      fromStatus: row.status, toStatus, note: null, actorId: actor.userId, createdAt: updatedAt,
     }, where).returning({ id: projectTodoEvents.todoId })
     return [history, change]
   })

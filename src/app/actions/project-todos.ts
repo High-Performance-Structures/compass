@@ -273,16 +273,27 @@ export async function archiveProjectTodo(
   expectedUpdatedAt: string,
 ): Promise<ProjectTodoActionResult> {
   try {
-    const { db, operation } = await findEditableProjectTodo(projectId, todoId, expectedUpdatedAt)
+    const { db, user, organizationId, operation } = await findEditableProjectTodo(projectId, todoId, expectedUpdatedAt)
     const updatedAt = new Date().toISOString()
-    // Archiving writes no history, as the To-dos page's bulk archive.
+    // The "Archived" history line lands only with the archive, as the To-dos page's bulk archive.
     const updated = await setTodoStatusByStaff(db, {
       projectId,
       todoId,
       expectedUpdatedAt,
       expectedStatus: operation.status,
       status: "archived",
-      history: null,
+      history: {
+        organizationId,
+        projectId,
+        todoId,
+        kind: "status",
+        dailyLogId: null,
+        fromStatus: operation.status,
+        toStatus: "archived",
+        note: null,
+        actorId: user.id,
+        createdAt: updatedAt,
+      },
       updatedAt,
     })
     if (!updated) {

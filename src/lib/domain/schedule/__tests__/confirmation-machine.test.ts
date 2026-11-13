@@ -6,7 +6,13 @@ import { afterEach, describe, expect, it } from "vitest"
 import { sqliteDb } from "@/lib/domain/__tests__/sqlite-d1"
 import { confirmationMachine, staffConfirmationEvent } from "@/lib/domain/schedule/confirmation-machine"
 import { SCHEDULE_CONFIRMATION_STATUSES } from "@/lib/domain/schedule/statuses"
-import { recordConfirmationAnswer, rejectConfirmationProposal } from "@/lib/domain/schedule/store"
+import { d1, migratedSqlite } from "@/lib/daily-logs/__tests__/sqlite-d1"
+import {
+  acceptConfirmationProposal,
+  persistScheduleDateUpdates,
+  recordConfirmationAnswer,
+  rejectConfirmationProposal,
+} from "@/lib/domain/schedule/store"
 import { newScheduleConfirmationState } from "@/lib/schedule/confirmation"
 import { availableEvents, machineProblems, nextState } from "@/lib/shared/state-machine"
 
@@ -24,6 +30,14 @@ describe("schedule confirmation machine", () => {
     expect(availableEvents(confirmationMachine, "not_requested")).toEqual(["request", "await_account", "stop"])
     expect(nextState(confirmationMachine, "confirmed", "decline").ok).toBe(true)
     expect(nextState(confirmationMachine, "confirmed", "reject_proposal").ok).toBe(false)
+    expect(nextState(confirmationMachine, "confirmed", "accept_proposal").ok).toBe(false)
+    expect(nextState(confirmationMachine, "proposed", "accept_proposal")).toEqual({ ok: true, from: "proposed", to: "pending" })
+  })
+
+  it("re-asks on moved dates only once the assigned account was asked", () => {
+    const reasked = SCHEDULE_CONFIRMATION_STATUSES.filter((from) => nextState(confirmationMachine, from, "dates_moved").ok)
+    expect(reasked).toEqual(["pending", "confirmed", "declined", "proposed"])
+    expect(confirmationMachine.transitions.dates_moved.to).toBe("pending")
   })
 
   it("starts what staff's settings ask for, as before", () => {
@@ -55,8 +69,8 @@ function seed(status = "pending"): ReturnType<typeof sqliteDb> {
   current = sqliteDb(`CREATE TABLE schedule_tasks (id text PRIMARY KEY, assigned_user_id text, start_date text NOT NULL,
     workdays integer NOT NULL, confirmation_required integer NOT NULL, confirmation_status text NOT NULL,
     confirmation_requested_at text, confirmation_responded_at text, proposed_start_date text, proposed_workdays integer,
-    proposal_note text, proposal_submitted_at text, updated_at text NOT NULL)`)
-  current.sqlite.prepare(`INSERT INTO schedule_tasks VALUES ('t1', 'u1', '2026-09-14', 3, 1, ?, 'r0', NULL, NULL, NULL, NULL, NULL, 't0')`).run(status)
+    proposal_note text, proposal_submitted_at text, reminder_sent_at text, updated_at text NOT NULL)`)
+  current.sqlite.prepare(`INSERT INTO schedule_tasks VALUES ('t1', 'u1', '2026-09-14', 3, 1, ?, 'r0', NULL, NULL, NULL, NULL, NULL, NULL, 't0')`).run(status)
   return current
 }
 
@@ -106,6 +120,91 @@ describe("rejectConfirmationProposal", () => {
     // The assignee confirmed after staff opened the proposal: their answer stays.
     sqlite.exec("UPDATE schedule_tasks SET confirmation_status = 'confirmed'")
     expect(await rejectConfirmationProposal(db, "t1", "t3")).toBe(false)
+  })
+})
+
+describe("acceptConfirmationProposal", () => {
+  function proposed(): ReturnType<typeof sqliteDb> {
+    const seeded = seed("proposed")
+    seeded.sqlite.exec(`UPDATE schedule_tasks SET confirmation_responded_at = 's1', proposal_submitted_at = 's1',
+      proposed_start_date = '2026-09-21', proposed_workdays = 4`)
+    return seeded
+  }
+  const state = (sqlite: ReturnType<typeof sqliteDb>["sqlite"]): unknown =>
+    sqlite.prepare("SELECT confirmation_status, confirmation_requested_at, proposal_submitted_at, proposed_start_date FROM schedule_tasks").get()
+
+  it("takes the proposal staff reviewed and asks the assignee to confirm it", async () => {
+    const { sqlite, db } = proposed()
+    expect(await acceptConfirmationProposal(db, "t1", "s1", "accept_proposal", "t2")).toBe(true)
+    expect(state(sqlite)).toEqual({ confirmation_status: "pending", confirmation_requested_at: "t2", proposal_submitted_at: null, proposed_start_date: null })
+  })
+
+  it("stops when the assignee answered after staff opened the proposal", async () => {
+    for (const answer of [
+      "confirmation_status = 'confirmed', proposal_submitted_at = NULL, confirmation_responded_at = 's2'",
+      "proposal_submitted_at = 's2', confirmation_responded_at = 's2'",
+    ]) {
+      const { sqlite, db } = proposed()
+      sqlite.exec(`UPDATE schedule_tasks SET ${answer}`)
+      const before = state(sqlite)
+      expect(await acceptConfirmationProposal(db, "t1", "s1", "accept_proposal", "t2")).toBe(false)
+      expect(state(sqlite)).toEqual(before)
+      sqlite.close()
+      current = null
+    }
+  })
+
+  it("stops asking when staff turned the answer off in the same save", async () => {
+    const { sqlite, db } = proposed()
+    expect(await acceptConfirmationProposal(db, "t1", "s1", "stop", "t2")).toBe(true)
+    expect(state(sqlite)).toMatchObject({ confirmation_status: "not_requested", confirmation_requested_at: null })
+  })
+})
+
+describe("persistScheduleDateUpdates", () => {
+  const NOW = "2026-11-12T20:00:00.000Z"
+
+  it("asks a single assignee again once dates move, unless nothing was asked of an account", async () => {
+    const sqlite = migratedSqlite()
+    sqlite.exec(`
+      INSERT INTO organizations (id, name, slug, type, is_active, created_at, updated_at) VALUES ('org-1', 'Example Co', 'example', 'internal', 1, '${NOW}', '${NOW}');
+      INSERT INTO users (id, email, display_name, role, is_active, created_at, updated_at) VALUES ('u1', 'sub@example.com', 'Sub', 'subcontractor', 1, '${NOW}', '${NOW}');
+      INSERT INTO projects (id, name, organization_id, status, created_at) VALUES ('p1', 'Bishop Residence', 'org-1', 'active', '${NOW}');
+    `)
+    const rows: readonly [string, string, number, string | null][] = [
+      ["confirmed", "confirmed", 1, "u1"],
+      ["declined", "declined", 1, "u1"],
+      ["proposed", "proposed", 1, "u1"],
+      ["pending", "pending", 1, "u1"],
+      ["unavailable", "unavailable", 1, null],
+      ["not_requested", "not_requested", 0, "u1"],
+      ["not_required", "confirmed", 0, "u1"],
+      ["unmoved", "confirmed", 1, "u1"],
+    ]
+    for (const [id, status, required, user] of rows) {
+      sqlite.prepare(`INSERT INTO schedule_tasks (id, project_id, title, start_date, workdays, end_date_calculated, phase,
+          assigned_user_id, confirmation_required, confirmation_status, confirmation_requested_at, confirmation_responded_at,
+          proposed_start_date, proposed_workdays, proposal_submitted_at, created_at, updated_at)
+        VALUES (?, 'p1', ?, '2026-09-14', 3, '2026-09-16', 'framing', ?, ?, ?, 'r0', 's0', '2026-09-21', 4, 's0', '${NOW}', '${NOW}')`)
+        .run(id, id, user, required, status)
+    }
+    const moved = new Map(rows.filter(([id]) => id !== "unmoved").map(([id]) => [id, { startDate: "2026-09-21", endDateCalculated: "2026-09-23" }]))
+    await persistScheduleDateUpdates(d1(sqlite), "p1", moved, "t2")
+
+    const after = sqlite.prepare(`SELECT id, start_date, confirmation_status, confirmation_requested_at, confirmation_responded_at,
+      proposal_submitted_at FROM schedule_tasks ORDER BY rowid`).all()
+    const reasked = (id: string) => ({ id, start_date: "2026-09-21", confirmation_status: "pending", confirmation_requested_at: "t2", confirmation_responded_at: null, proposal_submitted_at: null })
+    const kept = (id: string, status: string, start = "2026-09-21") => ({ id, start_date: start, confirmation_status: status, confirmation_requested_at: "r0", confirmation_responded_at: "s0", proposal_submitted_at: "s0" })
+    expect(after).toEqual([
+      reasked("confirmed"),
+      reasked("declined"),
+      reasked("proposed"),
+      reasked("pending"),
+      kept("unavailable", "unavailable"),
+      kept("not_requested", "not_requested"),
+      kept("not_required", "confirmed"),
+      kept("unmoved", "confirmed", "2026-09-14"),
+    ])
   })
 })
 

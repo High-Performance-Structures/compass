@@ -39,6 +39,7 @@ import {
   type TaskDates,
 } from "@/lib/domain/schedule/rules"
 import {
+  acceptConfirmationProposal,
   clearTaskAssigneesQuery,
   deleteTask as deleteTaskRow,
   insertTask,
@@ -67,6 +68,8 @@ import { resolveScheduleShiftReason, summarizeScheduleShift } from "@/lib/schedu
 import type { ScheduleData, ScopedScheduleData, TaskStatus } from "@/lib/schedule/types"
 import { selectTemplateTodos } from "@/lib/templates/template-todo-selection"
 import { isInternalStaffRole } from "@/lib/user-roles"
+
+const SUB_ANSWERED = "The sub just answered. Review their answer and try again."
 
 function emptyScopedSchedule(): ScopedScheduleData {
   return { projects: [], tasks: [], dependencies: [], exceptions: [] }
@@ -464,6 +467,8 @@ export async function updateTask(
     /** Department code or "outside" doing the work; null clears it. */
     doneBy?: string | null
     acceptChangeProposal?: boolean
+    /** When accepting: the submittedAt of the proposal staff reviewed. */
+    expectedProposalSubmittedAt?: string
     shiftReason?: string
     notes?: string | null
   }
@@ -518,10 +523,18 @@ export async function updateTask(
         data.confirmationRequired !== task.confirmationRequired)
     const scheduleDatesChanged =
       startDate !== task.startDate || workdays !== task.workdays
-    const acceptChangeProposal =
-      data.acceptChangeProposal === true &&
-      task.proposedStartDate !== null &&
-      task.proposedWorkdays !== null
+    // Accepting lands only on the proposal staff reviewed, still waiting:
+    // an answer the assignee gave meanwhile stands and nothing is saved.
+    const acceptChangeProposal = data.acceptChangeProposal === true
+    if (
+      acceptChangeProposal &&
+      (!data.expectedProposalSubmittedAt ||
+        task.proposalSubmittedAt !== data.expectedProposalSubmittedAt ||
+        task.proposedStartDate === null ||
+        task.proposedWorkdays === null)
+    ) {
+      return { success: false, error: SUB_ANSWERED }
+    }
     const now = new Date().toISOString()
     const confirmation = newScheduleConfirmationState({
       required: confirmationRequired,
@@ -570,6 +583,20 @@ export async function updateTask(
     )
     if (timesChanged && !times.success) {
       return { success: false, error: times.error }
+    }
+
+    if (
+      acceptChangeProposal &&
+      data.expectedProposalSubmittedAt &&
+      !(await acceptConfirmationProposal(
+        db,
+        taskId,
+        data.expectedProposalSubmittedAt,
+        confirmationRequired ? "accept_proposal" : "stop",
+        now
+      ))
+    ) {
+      return { success: false, error: SUB_ANSWERED }
     }
 
     // Leave dates untouched until the paired D1 batch below. Linked to-dos

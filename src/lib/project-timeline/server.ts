@@ -306,7 +306,9 @@ export async function loadProjectTimeline(
               ? `Opened: ${event.title}`
               : event.toStatus === "complete"
                 ? `Finished: ${event.title}`
-                : `${event.title}: ${projectTodoStatusLabel(event.fromStatus ?? "open")} → ${projectTodoStatusLabel(event.toStatus ?? "open")}`
+                : event.toStatus === "archived"
+                  ? `Archived: ${event.title}`
+                  : `${event.title}: ${projectTodoStatusLabel(event.fromStatus ?? "open")} → ${projectTodoStatusLabel(event.toStatus ?? "open")}`
     const statusChange = event.kind === "worked" && event.fromStatus !== event.toStatus && event.toStatus
       ? `${projectTodoStatusLabel(event.fromStatus ?? "open")} → ${projectTodoStatusLabel(event.toStatus)}`
       : null

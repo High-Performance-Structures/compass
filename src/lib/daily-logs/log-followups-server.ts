@@ -402,7 +402,15 @@ export async function applyDailyLogFollowUps(
       status = next
     }
     const completedFrom = status
-    const completed = update.completed === true && rules.todosCanComplete ? step("complete") : null
+    const signedOff = update.completed === true && rules.todosCanComplete
+    // A Completed sign-off on a blocked to-do also clears the block (most
+    // likely forgotten): history says so before it says completed.
+    const clearedBySignOff = signedOff ? step("unblock") : null
+    if (clearedBySignOff !== null) {
+      history.push({ organizationId, projectId, todoId: todo.id, kind: "unblocked", dailyLogId, fromStatus: status, toStatus: clearedBySignOff, note: "Cleared by the Completed sign-off", actorId: userId, createdAt: stamp() })
+      status = clearedBySignOff
+    }
+    const completed = signedOff ? step("complete") : null
     if (completed !== null) {
       history.push({ organizationId, projectId, todoId: todo.id, kind: "completed", dailyLogId, fromStatus: status, toStatus: completed, note: null, actorId: userId, createdAt: stamp() })
       status = completed

@@ -185,6 +185,10 @@ export function ScheduleItemFormDialog({
       const result = await updateTask(editingTask.id, {
         ...taskValues,
         acceptChangeProposal: proposalState.acceptProposalOnSave,
+        // The proposal reviewed: accepting stops if the sub answered since.
+        expectedProposalSubmittedAt: proposalState.acceptProposalOnSave
+          ? proposalState.changeProposal?.submittedAt
+          : undefined,
         shiftReason: shiftReasonResult?.success
           ? shiftReasonResult.reason
           : undefined

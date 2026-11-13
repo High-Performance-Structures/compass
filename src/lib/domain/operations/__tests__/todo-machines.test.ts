@@ -182,6 +182,32 @@ describe("to-do status writes", () => {
       ["completed", "in_progress", "complete"],
     ])
   })
+
+  it("a Completed sign-off on a blocked to-do completes it and records the block cleared first", async () => {
+    await apply(await checkedLog([{ todoId: "t2", worked: true, completed: true, blocked: null }]))
+
+    expect(statusOf("t2")).toEqual({ status: "complete" })
+    const history = await loadProjectTodoHistory(db, "p1", "t2")
+    expect(history.map((event) => [event.kind, event.fromStatus, event.toStatus])).toEqual([
+      ["worked", "blocked", "blocked"],
+      ["unblocked", "blocked", "in_progress"],
+      ["completed", "in_progress", "complete"],
+    ])
+    // Activity still says where the to-do was when it was signed off.
+    expect(sqlite.prepare("SELECT summary FROM activity_events WHERE action = 'todo_completed'").get()).toMatchObject({
+      summary: expect.stringMatching(/^Framing inspection moved from Blocked to /),
+    })
+  })
+
+  it("a sign-off on a blocked to-do staff changed meanwhile writes neither the clear nor the completion", async () => {
+    const checked = await checkedLog([{ todoId: "t2", worked: false, completed: true, blocked: null }])
+    sqlite.exec("UPDATE project_operations SET status = 'archived' WHERE id = 't2'")
+    await apply(checked)
+
+    expect(statusOf("t2")).toEqual({ status: "archived" })
+    // A sign-off counts as work, which is still recorded against the current status.
+    expect(events("t2")).toEqual([{ kind: "worked", from_status: "archived", to_status: "archived" }])
+  })
 })
 
 // ---------------------------------------------------------------------------
