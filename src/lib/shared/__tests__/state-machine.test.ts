@@ -53,7 +53,7 @@ describe("state machine", () => {
     })
     expect(machineProblems(broken)).toEqual([
       'terminal state "b" has outgoing events: back',
-      'state "orphan" cannot be reached from "a" or an entry state',
+      'state "orphan" cannot be reached from "a"',
       'state "orphan" is a dead end but not marked terminal',
       'state "stuck" is a dead end but not marked terminal',
     ])
@@ -70,7 +70,7 @@ describe("state machine", () => {
     })
     expect(machineProblems(imported)).toEqual([])
     expect(machineProblems({ ...imported, entry: [] })).toEqual([
-      'state "found" cannot be reached from "new" or an entry state',
+      'state "found" cannot be reached from "new"',
     ])
   })
 
