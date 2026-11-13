@@ -8,7 +8,7 @@ import { sageDirectoryAddRequests } from "@/db/schema-sage"
 import { actionFailure } from "@/lib/action-result"
 import type { AuthUser } from "@/lib/auth"
 import { updateCustomerById, updateCustomerPerson, updateVendor, updateVendorPersonStatement } from "@/lib/domain/contacts/store"
-import { insertSageDirectoryAddRequest, updateSageDirectoryAddRequest } from "@/lib/domain/sage-bridge/directory-add-store"
+import { insertSageDirectoryAddRequest, moveSageDirectoryAddRequest } from "@/lib/domain/sage-bridge/directory-add-store"
 import type { SageDirectoryAddKind, SageDirectoryAddStatus } from "@/lib/domain/sage-bridge/statuses"
 import { loadDirectoryCandidates, loadSageAddTarget, type SageAddTarget } from "@/lib/sage/directory-add-candidates"
 import { findDirectoryDuplicates, type DuplicateCheck, type DuplicateMatch } from "@/lib/sage/directory-add-duplicates"
@@ -137,7 +137,7 @@ export async function requestSageAdd(raw: unknown): Promise<SageAddRequestOutcom
         vendorType: input.kind === "vendor_company" ? input.vendorType : null,
         form1099: input.kind === "vendor_company" ? input.form1099 : null,
         duplicatesJson: JSON.stringify(duplicates.close),
-        status: "pending", requestedByUserId: user.id, requestedAt: now, updatedAt: now,
+        requestedByUserId: user.id, requestedAt: now, updatedAt: now,
       }).run()
     } catch {
       return { success: false, error: "Someone just asked for this record. Refresh to see the request." }
@@ -279,9 +279,9 @@ export async function decideSageAddRequest(
     const now = new Date().toISOString()
     const reviewNote = note.trim().slice(0, 1000) || null
     const status: "approved" | "rejected" = decision === "approve" ? "approved" : "rejected"
-    const changed = await updateSageDirectoryAddRequest(db, {
-      id: request.id, organizationId, fromStatuses: ["pending"],
-      values: { status, reviewedByUserId: user.id, reviewedAt: now, reviewNote, completedAt: decision === "reject" ? now : null, updatedAt: now },
+    const changed = await moveSageDirectoryAddRequest(db, {
+      id: request.id, organizationId, event: decision,
+      values: { reviewedByUserId: user.id, reviewedAt: now, reviewNote, completedAt: decision === "reject" ? now : null, updatedAt: now },
     })
     if (changed === 0) return { success: false, error: "This request was already decided." }
     const name = requestName(request)
@@ -320,9 +320,9 @@ export async function withdrawSageAddRequest(requestId: string): Promise<Result<
     const approvers = await sageAddApprovers(db, organizationId)
     if (request.requestedByUserId !== user.id && !approvers.decides(user)) return actionFailure("Only the requester or the approver can withdraw this request.")
     const now = new Date().toISOString()
-    const changed = await updateSageDirectoryAddRequest(db, {
-      id: request.id, organizationId, fromStatuses: ["pending", "approved"],
-      values: { status: "cancelled", completedAt: now, updatedAt: now },
+    const changed = await moveSageDirectoryAddRequest(db, {
+      id: request.id, organizationId, event: "withdraw",
+      values: { completedAt: now, updatedAt: now },
     })
     if (changed === 0) return { success: false, error: "This request already went to Sage." }
     await recordSageAddActivity(db, request, user, "withdrawn", `Withdrew the request to add ${requestName(request)} to Sage.`, now)

@@ -265,3 +265,6 @@ export function sageProposalWriterLines(lines: readonly PlannedLine[]): readonly
     memo: lines[index]?.memo ?? "",
   }))
 }
+
+/** The note on an export whose estimate was edited while the writer was sending it. */
+export const EDITED_WHILE_SENDING = "Edited while it was being sent to Sage; check Sage."

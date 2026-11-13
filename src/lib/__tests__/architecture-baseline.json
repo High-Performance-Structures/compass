@@ -1506,7 +1506,7 @@
     "src/db/schema-project-families.ts": 1,
     "src/db/schema-projects.ts": 10,
     "src/db/schema-rfqs.ts": 1,
-    "src/db/schema-sage.ts": 18,
+    "src/db/schema-sage.ts": 17,
     "src/db/schema-selection-decisions.ts": 1,
     "src/db/schema-selections.ts": 1,
     "src/db/schema-settings.ts": 1,

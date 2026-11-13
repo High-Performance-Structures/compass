@@ -217,13 +217,15 @@ export function sageJobResultStatement(
     readonly sageJobTypeNumber: SageJobResultValue
     readonly now: string
   },
+  /** An extra WHERE condition with its binds (the Sage result's lease still holding). */
+  guard: { readonly sql: string; readonly binds: readonly unknown[] } | null = null,
 ): D1PreparedStatement {
   return d1
     .prepare(
       `UPDATE projects
          SET sage_job_id = ?, sage_job_number = ?,
              sage_job_status_number = ?, sage_job_type_number = ?, updated_at = ?
-         WHERE id = ?`
+         WHERE id = ?${guard ? ` AND ${guard.sql}` : ""}`
     )
     .bind(
       input.sageJobId,
@@ -231,7 +233,8 @@ export function sageJobResultStatement(
       input.sageJobStatusNumber,
       input.sageJobTypeNumber,
       input.now,
-      input.projectId
+      input.projectId,
+      ...(guard?.binds ?? [])
     )
 }
 

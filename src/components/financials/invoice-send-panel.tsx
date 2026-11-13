@@ -6,7 +6,7 @@ import { IconAlertTriangle, IconArrowBackUp, IconBan, IconMail, IconRefresh, Ico
 import { toast } from "sonner"
 
 import { emailProjectInvoice } from "@/app/actions/project-invoice-email"
-import { reopenProjectInvoice, sendProjectInvoiceToSage, voidProjectInvoice } from "@/app/actions/project-invoices"
+import { confirmProjectInvoiceNotInSage, reopenProjectInvoice, sendProjectInvoiceToSage, voidProjectInvoice } from "@/app/actions/project-invoices"
 import type { ProjectInvoiceEditor } from "@/app/actions/project-invoice-views"
 import { EmailRecipientPicker } from "@/components/email/email-recipient-picker"
 import { Badge } from "@/components/ui/badge"
@@ -87,6 +87,19 @@ export function InvoiceSendPanel({ editor }: { readonly editor: ProjectInvoiceEd
     })
   }
 
+  function confirmNotInSage(): void {
+    if (!window.confirm("You checked Sage and this invoice isn't there? Compass then lets you reopen or void it as if it never reached Sage.")) return
+    startTransition(async () => {
+      const result = await confirmProjectInvoiceNotInSage(project.id, invoice.id)
+      if (!result.success) {
+        toast.error(result.error)
+        return
+      }
+      toast.success("Noted: the invoice isn't in Sage.")
+      router.refresh()
+    })
+  }
+
   function voidInvoice(): void {
     startTransition(async () => {
       const result = await voidProjectInvoice(project.id, invoice.id, voidReason)
@@ -122,6 +135,14 @@ export function InvoiceSendPanel({ editor }: { readonly editor: ProjectInvoiceEd
           ) : null}
         </div>
         {attention && sage.export?.errorMessage ? <p className="text-sm text-destructive">{sage.export.errorMessage}</p> : null}
+        {attention && sage.export?.possiblyInSage && !sage.export.sageRecordId ? (
+          <div className="flex flex-wrap items-center gap-2 text-sm">
+            <span className="text-muted-foreground">Sage may have this invoice. Check Sage before reopening it.</span>
+            <Button type="button" size="sm" variant="outline" disabled={pending} onClick={confirmNotInSage}>
+              I checked Sage: it isn't there
+            </Button>
+          </div>
+        ) : null}
         {sage.blockers.length > 0 && sageStatus !== "succeeded" && !isVoid ? (
           <ul className="list-disc space-y-1 pl-5 text-sm text-destructive">
             {sage.blockers.map((blocker) => (

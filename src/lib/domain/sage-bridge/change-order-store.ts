@@ -6,11 +6,12 @@
  * token in the WHERE clause, like the rest of the Sage bridge. No auth here:
  * callers resolve access or verify the bridge signature first.
  */
-import { and, eq, lt, or, sql, type SQL } from "drizzle-orm"
+import { and, eq, inArray, lt, or, sql, type SQL } from "drizzle-orm"
 import type { BatchItem } from "drizzle-orm/batch"
 
 import { sageChangeOrderExports, sagePrimeChangeOrderReads, sagePrimeChangeOrders } from "@/db/schema-sage"
 import { chunkD1Rows } from "@/lib/d1-query"
+import { changeOrderExportMachine, sourcesInto } from "@/lib/domain/sage-bridge/machines"
 import { SAGE_CHANGE_ORDER_EXPORT_STATUSES, type SageChangeOrderExportStatus } from "@/lib/domain/sage-bridge/statuses"
 import { assertListFields } from "@/lib/shared/statuses"
 import type { Db } from "@/lib/server/action-context"
@@ -66,8 +67,9 @@ export async function queueSageChangeOrderExports(db: Db, rows: readonly QueueSa
           completedAt: null,
           updatedAt: row.now,
         },
+        // resend: only a failed row goes round again.
         setWhere: and(
-          eq(sageChangeOrderExports.status, "failed"),
+          inArray(sageChangeOrderExports.status, [...changeOrderExportMachine.transitions.resend.from]),
           eq(sageChangeOrderExports.organizationId, row.organizationId)
         ),
       })
@@ -85,7 +87,7 @@ export async function claimSageChangeOrderExport(
   const claimed = await db
     .update(sageChangeOrderExports)
     .set({
-      status: "running",
+      status: changeOrderExportMachine.transitions.claim.to,
       claimToken: input.claimToken,
       claimedAt: input.now,
       attemptCount: sql`${sageChangeOrderExports.attemptCount} + 1`,
@@ -115,10 +117,15 @@ export type SageChangeOrderExportPatch = {
 
 function exportUpdate(db: Db, where: SQL | undefined, patch: SageChangeOrderExportPatch) {
   assertListFields("sage_change_order_exports", patch, LISTS)
-  return db.update(sageChangeOrderExports).set(patch).where(where)
+  // Also fenced on the machine: only from a state that may move into patch.status.
+  return db.update(sageChangeOrderExports).set(patch)
+    .where(and(where, inArray(sageChangeOrderExports.status, [...sourcesInto(changeOrderExportMachine, patch.status)])))
 }
 
-/** Unexecuted update fenced by the caller's `where` (id plus claim token), for a batch. */
+/**
+ * Unexecuted update fenced by the caller's `where` (id plus claim token) and
+ * the machine's source states for `patch.status`, for a batch.
+ */
 export function updateSageChangeOrderExportsStatement(
   db: Db,
   where: SQL | undefined,
