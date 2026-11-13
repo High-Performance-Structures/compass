@@ -14,7 +14,7 @@ let root: Root
 beforeEach(() => {
   window.localStorage.clear()
   host = document.createElement("div")
-  document.body.append(host)
+  document.body.appendChild(host)
   root = createRoot(host)
 })
 
