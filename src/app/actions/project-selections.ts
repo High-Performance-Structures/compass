@@ -7,6 +7,7 @@ import { projectFinishSelections, projectOperations, projects } from "@/db/schem
 import { staffSelectionContext } from "@/lib/domain/selections/access"
 import { applyFinishScheduleImport, finishScheduleImportAccess, loadFinishSchedule } from "@/lib/domain/selections/finish-schedule-import"
 import { insertOperations } from "@/lib/domain/operations/store"
+import { approvalClearOutcome, clearApprovalPatch, noSettledPriceMessage } from "@/lib/domain/selections/approval-clear"
 import { selectionIsReplaced } from "@/lib/domain/selections/lock-read"
 import { selectionLock, staffEditBlocker, staffStatusChangeBlocker } from "@/lib/domain/selections/locks"
 import {
@@ -355,8 +356,9 @@ export async function updateProjectSelection(
     const replaced = await selectionIsReplaced(db, selectionId)
     const locked = staffEditBlocker({ status: existing.status, replaced, changedFields: changes.map((change) => change.field), statusMove: statusChanged ? { from: seenStatus, to: status } : null })
     if (locked) return { success: false, error: locked }
-    // A locked row never loses its approval; an unlocked one does on a material edit.
+    // A locked row never loses its approval; an unlocked one does on a material edit (approval-clear.ts).
     const clearsApproval = specificationChanged && selectionLock(existing.status, replaced) === null
+    if (clearsApproval && (await approvalClearOutcome(db, { projectId, selectionId, pickChange: false })) === "refuse") return { success: false, error: noSettledPriceMessage(false) }
 
     await insertSelectionRoomIfAbsent(db, {
       id: compassSelectionRoomId(projectId, roomName),
@@ -385,7 +387,7 @@ export async function updateProjectSelection(
       phaseCode,
       // Staff workflow status is not an owner signature. Material edits clear it;
       // otherwise the approval columns aren't written (never from this stale read).
-      ...(clearsApproval ? { ownerApproved: false, approvedBy: null, approvedAt: null } : {}),
+      ...(clearsApproval ? clearApprovalPatch({ pickChange: false }) : {}),
       notes,
       syncStatus:
         existing.status === "approved" && changes.length > 0

@@ -141,9 +141,9 @@ export async function replacementChangeOrderFor(
   db: Db,
   projectId: string,
   selectionId: string,
-): Promise<{ readonly id: string; readonly number: string; readonly status: string } | null> {
+): Promise<{ readonly id: string; readonly number: string; readonly status: string; readonly kind: string | null } | null> {
   const row = await db
-    .select({ id: projectChangeOrders.id, number: projectChangeOrders.changeOrderNumber, status: projectChangeOrders.status })
+    .select({ id: projectChangeOrders.id, number: projectChangeOrders.changeOrderNumber, status: projectChangeOrders.status, kind: projectChangeOrders.changeOrderKind })
     .from(projectChangeOrders)
     .where(
       and(

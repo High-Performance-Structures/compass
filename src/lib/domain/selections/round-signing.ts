@@ -199,9 +199,10 @@ export async function loadRoundSigningView(db: Db, projectId: string, organizati
       linkUrl: link?.url ?? null,
       linkSite: link ? (link.siteName ?? hostName(link.url)) : null,
       ownerPriceCents: choice?.ownerPriceCents ?? null,
+      allowanceCents: selection.allowanceCents,
       // A changed approved pick is billed against the price already in the
       // contract (the previous pick's), not the allowance again.
-      allowanceCents: selection.settledOwnerPriceCents ?? selection.allowanceCents,
+      settledOwnerPriceCents: selection.settledOwnerPriceCents,
       costCode: selection.costCode,
       pickedBy: choice ? pickedByLabel(choice) : null,
       signedEarlier: choice !== null && signed.get(selection.id) === choice.id,

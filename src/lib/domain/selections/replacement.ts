@@ -200,6 +200,7 @@ async function replacementChangeOrder(
   try {
     // One line always prices the pick ($0 until there is one); re-pricing updates it in place.
     const lineId = crypto.randomUUID()
+    const amount = replacementLineAmount(input.reason, pick?.ownerPriceCents ?? null, old.settledOwnerPriceCents)
     const changeOrder = await createSelectionChangeOrder(db, {
       projectId: input.projectId,
       start: { kind: "draft" },
@@ -215,8 +216,9 @@ async function replacementChangeOrder(
         {
           id: lineId,
           costCode: old.costCode?.trim() || null,
-          description: replacementLineDescription(old.name, pick?.title ?? null, label),
-          amountCents: replacementLineAmount(input.reason, pick?.ownerPriceCents ?? null, old.settledOwnerPriceCents),
+          description: replacementLineDescription(old.name, pick?.title ?? null, label, amount === null),
+          // Staff enter it when the unfilled order's price was never recorded; sending waits for it.
+          amountCents: amount ?? 0,
         },
       ],
       history: {

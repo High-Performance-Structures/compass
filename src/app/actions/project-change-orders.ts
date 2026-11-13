@@ -915,7 +915,7 @@ export async function updateProjectChangeOrder(
     const reason = contentAllowed
       ? cleanLimitedText(input.reason, "Reason", 4_000)
       : existing.reason
-    // The amount follows how it's built: an estimate sets it on acceptance.
+    // The amount follows how it's built (an estimate sets it on acceptance); written only when that changes.
     const amountCents = rebaselineSelection
       ? rebaselineSelection.replacement.estimateTotalCents -
         rebaselineSelection.baseline.estimateTotalCents
@@ -971,7 +971,7 @@ export async function updateProjectChangeOrder(
         title,
         scope,
         reason,
-        amountCents,
+        ...(rebaselineSelection || requestedKind !== null ? { amountCents } : {}),
         scheduleImpactDays,
         audience: contentAllowed ? audience : existing.audience,
         internalNotes: context.internal

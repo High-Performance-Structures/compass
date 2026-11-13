@@ -18,19 +18,15 @@
  */
 import { and, eq } from "drizzle-orm"
 
-import { projectFinishSelections } from "@/db/schema"
 import { projectSelectionChoices } from "@/db/schema-selection-choices"
 import type { ActivityActor } from "@/lib/activity-log"
 import type { Db } from "@/lib/server/action-context"
 
-import { setSelectionChoiceChosen } from "./choices-store"
+import { approvalClearOutcome, noSettledPriceMessage } from "./approval-clear"
+import { selectionPickStatements } from "./choices-store"
 import { loadSelectionLock } from "./lock-read"
 import { repriceReplacementChangeOrder } from "./replacement-pricing"
-import { signedChoices } from "./round-signing"
-import { updateFinishSelectionsWithEvent } from "./store"
-
-const NO_SETTLED_PRICE_MESSAGE =
-  "This selection was approved in Buildertrend without a recorded price. Use Replace or a change order."
+import { reopenForPickChangeStatement } from "./store"
 
 export type PickChangeResult = { readonly ok: true } | { readonly ok: false; readonly error: string }
 
@@ -46,46 +42,30 @@ export async function changePickByStaff(
     readonly canUpdateChangeOrders: boolean
   },
 ): Promise<PickChangeResult> {
-  const lock = (await loadSelectionLock(db, input.projectId, input.selectionId))?.lock ?? null
-  if (lock) return { ok: false, error: lock.message }
-  const [selection, before, signed] = await Promise.all([
-    db
-      .select({ ownerApproved: projectFinishSelections.ownerApproved })
-      .from(projectFinishSelections)
-      .where(and(eq(projectFinishSelections.id, input.selectionId), eq(projectFinishSelections.projectId, input.projectId)))
-      .get(),
-    db
-      .select({ id: projectSelectionChoices.id, ownerPriceCents: projectSelectionChoices.ownerPriceCents })
-      .from(projectSelectionChoices)
-      .where(and(eq(projectSelectionChoices.selectionId, input.selectionId), eq(projectSelectionChoices.chosen, true)))
-      .get(),
-    signedChoices(db, [input.selectionId]),
-  ])
-  if (!selection) return { ok: false, error: "Selection not found" }
+  const state = await loadSelectionLock(db, input.projectId, input.selectionId)
+  if (!state) return { ok: false, error: "Selection not found" }
+  if (state.lock) return { ok: false, error: state.lock.message }
+  const before = await db
+    .select({ id: projectSelectionChoices.id })
+    .from(projectSelectionChoices)
+    .where(and(eq(projectSelectionChoices.selectionId, input.selectionId), eq(projectSelectionChoices.chosen, true)))
+    .get()
   const changes = !input.chosen || before?.id !== input.choiceId
-  const wasApproved = selection.ownerApproved || (before !== undefined && signed.get(input.selectionId) === before.id)
-  const settled = before?.ownerPriceCents ?? null
-  if (wasApproved && changes && settled === null) return { ok: false, error: NO_SETTLED_PRICE_MESSAGE }
+  const outcome = changes ? await approvalClearOutcome(db, { projectId: input.projectId, selectionId: input.selectionId, pickChange: true }) : "none"
+  if (outcome === "refuse") return { ok: false, error: noSettledPriceMessage(state.releasedFromOrder) }
 
   const now = new Date().toISOString()
-  // The write re-checks the lock (a selection ordered meanwhile keeps its pick).
-  const picked = await setSelectionChoiceChosen(db, input.selectionId, input.choiceId, input.chosen, now, {
+  // One batch: the reopen reads the previous pick (its price stays as settled), then the pick lands.
+  // Both re-check the lock at write time (a selection ordered meanwhile keeps its pick).
+  const pick = selectionPickStatements(db, input.selectionId, input.choiceId, input.chosen, now, {
     userId: input.actor.id,
     audience: "staff",
     note: input.note?.trim().slice(0, 500) || null,
   })
-  if (!picked) {
+  const results = await db.batch(outcome === "clear" ? [reopenForPickChangeStatement(db, { projectId: input.projectId, selectionId: input.selectionId, now }), ...pick] : pick)
+  if ((results.at(-1)?.meta.changes ?? 0) === 0) {
     const lockedNow = (await loadSelectionLock(db, input.projectId, input.selectionId))?.lock ?? null
     return { ok: false, error: lockedNow?.message ?? "The pick can't change now: its replacement change order is out for signature or executed." }
-  }
-  if (wasApproved && changes) {
-    // Back to the owner for signing; the next Selection Phase bills the difference from the settled price.
-    await updateFinishSelectionsWithEvent(
-      db,
-      and(eq(projectFinishSelections.id, input.selectionId), eq(projectFinishSelections.projectId, input.projectId)),
-      "reopen",
-      { ownerApproved: false, approvedBy: null, approvedAt: null, settledOwnerPriceCents: settled, updatedAt: now },
-    )
   }
   await repriceReplacementChangeOrder(db, {
     projectId: input.projectId,

@@ -77,7 +77,9 @@ export async function advanceSelectionStatus(
   ).flat()
   // updated_at is the edit token staff forms send back; an automatic status move leaves it.
   const statements = before.flatMap((row) => {
-    const statement = automaticSelectionStatusStatement(db, { projectId: input.projectId, selectionId: row.id, event, stored: row.status })
+    // Ordered again: a new order holds it (an earlier release no longer applies; the settled price stays).
+    const values = event === "order" ? { procurementReleasedAt: null } : undefined
+    const statement = automaticSelectionStatusStatement(db, { projectId: input.projectId, selectionId: row.id, event, stored: row.status, values })
     return statement ? [statement] : []
   })
   const [first, ...rest] = statements

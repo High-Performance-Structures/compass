@@ -144,15 +144,39 @@ export function replacementStartStatus(hasPick: boolean): ProjectSelectionStatus
  * price (the earlier item stays installed or bought; owner decision
  * 2026-11-12 — staff add any credit), or for a supplier that couldn't fill
  * the order, the difference from the price already in the contract. $0
- * until the pick has an owner price.
+ * until the pick has an owner price. Null when staff must enter it: a
+ * supplier couldn't fill an order whose price was never recorded.
  */
-export function replacementLineAmount(reason: SelectionReplacementReason, pickOwnerPriceCents: number | null, settledOwnerPriceCents: number | null): number {
+export function replacementLineAmount(reason: SelectionReplacementReason, pickOwnerPriceCents: number | null, settledOwnerPriceCents: number | null): number | null {
+  if (reason === "supplier_couldnt_fill" && settledOwnerPriceCents === null) return null
   if (pickOwnerPriceCents === null) return 0
   return reason === "supplier_couldnt_fill" ? pickOwnerPriceCents - (settledOwnerPriceCents ?? 0) : pickOwnerPriceCents
 }
 
-export function replacementLineDescription(selectionName: string, pickTitle: string | null, label: string): string {
-  return `${selectionName}: ${pickTitle ?? "new selection to be made"} (${label.toLocaleLowerCase()})`.slice(0, 500)
+export function replacementLineDescription(selectionName: string, pickTitle: string | null, label: string, amountNeeded = false): string {
+  const needed = amountNeeded ? " — amount needed: no price was recorded for the order that couldn't be filled" : ""
+  return `${selectionName}: ${pickTitle ?? "new selection to be made"} (${label.toLocaleLowerCase()})${needed}`.slice(0, 500)
+}
+
+/** The replacement change order's pick line as stored, and as it should be now. */
+export type ReplacementPricingState = {
+  readonly status: string
+  readonly pickId: string | null
+  readonly pricedId: string | null
+  readonly line: { readonly amountCents: number | null; readonly description: string; readonly costCode: string | null } | null
+  /** Null amount: staff enter it (replacementLineAmount). */
+  readonly expected: { readonly amountCents: number | null; readonly description: string; readonly costCode: string | null }
+}
+
+/**
+ * Whether the pick line no longer prices the current pick: another pick,
+ * or its amount, description or cost code differs from what it should be
+ * (a staff-entered amount is theirs). Shown to staff and blocks sending.
+ */
+export function replacementPricingStaleState(state: ReplacementPricingState): boolean {
+  if (state.pickId !== state.pricedId || !state.line) return true
+  if (state.expected.amountCents !== null && state.line.amountCents !== state.expected.amountCents) return true
+  return state.line.description !== state.expected.description || (state.line.costCode ?? null) !== state.expected.costCode
 }
 
 /** How each replacement reason reads to staff and on the change order. */

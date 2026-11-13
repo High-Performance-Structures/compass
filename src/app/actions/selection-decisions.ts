@@ -15,6 +15,7 @@ import {
 } from "@/db/schema-selection-decisions"
 import { recordActivityEvent } from "@/lib/activity-log"
 import { selectionAccess } from "@/lib/domain/selections/access"
+import { approvalClearOutcome, clearApprovalPatch, noSettledPriceMessage } from "@/lib/domain/selections/approval-clear"
 import { selectionIsReplaced } from "@/lib/domain/selections/lock-read"
 import { selectionLock } from "@/lib/domain/selections/locks"
 import { readProjectSelectionSettings } from "@/lib/domain/selections/project-settings"
@@ -77,6 +78,7 @@ export async function publishSelectionDecision(
     // replaced selection keeps its record as it is.
     const lock = selectionLock(row.status, await selectionIsReplaced(db, row.id))
     if (lock) throw new Error(lock.message)
+    if ((await approvalClearOutcome(db, { projectId, selectionId: row.id, pickChange: false })) === "refuse") throw new Error(noSettledPriceMessage(false))
     if (
       input.decisionDueDate &&
       (!/^\d{4}-\d{2}-\d{2}$/.test(input.decisionDueDate) ||
@@ -216,9 +218,8 @@ export async function publishSelectionDecision(
         ),
         {
           ownerVisible: input.published,
-          ownerApproved: false,
-          approvedBy: null,
-          approvedAt: null,
+          // A new revision needs the owner again; an imported approval stays (approval-clear.ts).
+          ...clearApprovalPatch({ pickChange: false }),
         }
       ),
     ])

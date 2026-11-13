@@ -24,7 +24,7 @@ import {
 import type { Db } from "@/lib/server/action-context"
 
 import { replacementChangeOrderFor } from "./lock-read"
-import { REPLACEMENT_REASON_LABELS, replacementLineAmount, replacementLineDescription } from "./locks"
+import { REPLACEMENT_REASON_LABELS, replacementLineAmount, replacementLineDescription, replacementPricingStaleState, type ReplacementPricingState } from "./locks"
 import { selectionInsuranceLines } from "./selection-change-orders"
 import { repriceReplacementStatement } from "./store"
 
@@ -38,24 +38,8 @@ type Repricer = { readonly kind: "staff"; readonly actor: ActivityActor; readonl
 
 const SYSTEM_ACTOR: ActivityActor = { id: null, email: "rfq", displayName: "Supplier price", firstName: null, lastName: null, role: "system" }
 
-/** Whether the replacement's draft change order no longer prices its current pick (staff should update it). */
-export async function replacementPricingStale(db: Db, projectId: string, selectionId: string): Promise<boolean> {
-  const order = await replacementChangeOrderFor(db, projectId, selectionId)
-  if (order?.status !== "draft") return false
-  const row = await db
-    .select({ pricedId: projectFinishSelections.replacementPricedChoiceId, pickId: projectSelectionChoices.id })
-    .from(projectFinishSelections)
-    .leftJoin(projectSelectionChoices, and(eq(projectSelectionChoices.selectionId, projectFinishSelections.id), eq(projectSelectionChoices.chosen, true)))
-    .where(and(eq(projectFinishSelections.id, selectionId), eq(projectFinishSelections.projectId, projectId)))
-    .get()
-  return (row?.pickId ?? null) !== (row?.pricedId ?? null)
-}
-
-export async function repriceReplacementChangeOrder(
-  db: Db,
-  input: { readonly projectId: string; readonly selectionId: string; readonly by: Repricer },
-): Promise<RepriceResult> {
-  if (input.by.kind === "staff" && !input.by.canUpdateChangeOrders) return { kind: "skipped", reason: "You don't have permission to change change orders." }
+/** Everything re-pricing reads, and the pick line as it is and as it should be. */
+async function loadPricing(db: Db, projectId: string, selectionId: string) {
   const selection = await db
     .select({
       name: projectFinishSelections.name,
@@ -66,18 +50,17 @@ export async function repriceReplacementChangeOrder(
       pricedLineId: projectFinishSelections.replacementPricedLineId,
     })
     .from(projectFinishSelections)
-    .where(and(eq(projectFinishSelections.id, input.selectionId), eq(projectFinishSelections.projectId, input.projectId)))
+    .where(and(eq(projectFinishSelections.id, selectionId), eq(projectFinishSelections.projectId, projectId)))
     .get()
-  if (!selection?.replacesSelectionId || !selection.reason) return { kind: "skipped", reason: "Not a replacement." }
-  const order = await replacementChangeOrderFor(db, input.projectId, input.selectionId)
-  if (!order) return { kind: "skipped", reason: "No change order yet." }
-  if (order.status !== "draft") return { kind: "skipped", reason: "The change order has left draft; its pick is fixed." }
+  if (!selection?.replacesSelectionId || !selection.reason) return null
+  const order = await replacementChangeOrderFor(db, projectId, selectionId)
+  if (!order) return null
   const [replaced, pick, lines] = await Promise.all([
     db.select({ settled: projectFinishSelections.settledOwnerPriceCents }).from(projectFinishSelections).where(eq(projectFinishSelections.id, selection.replacesSelectionId)).get(),
     db
       .select({ id: projectSelectionChoices.id, title: projectSelectionChoices.title, ownerPriceCents: projectSelectionChoices.ownerPriceCents })
       .from(projectSelectionChoices)
-      .where(and(eq(projectSelectionChoices.selectionId, input.selectionId), eq(projectSelectionChoices.chosen, true)))
+      .where(and(eq(projectSelectionChoices.selectionId, selectionId), eq(projectSelectionChoices.chosen, true)))
       .get(),
     db
       .select({
@@ -91,14 +74,61 @@ export async function repriceReplacementChangeOrder(
       .from(projectChangeOrderLines)
       .where(eq(projectChangeOrderLines.changeOrderId, order.id)),
   ])
-  const label = REPLACEMENT_REASON_LABELS[selection.reason]
   const amountCents = replacementLineAmount(selection.reason, pick?.ownerPriceCents ?? null, replaced?.settled ?? null)
-  const description = replacementLineDescription(selection.name, pick?.title ?? null, label)
-  const costCode = selection.costCode?.trim() || null
-  const existing = lines.find((line) => line.id === selection.pricedLineId)
-  if (existing && (pick?.id ?? null) === selection.pricedChoiceId && existing.amountCents === amountCents && existing.description === description) {
-    return { kind: "unchanged" }
+  const existing = lines.find((line) => line.id === selection.pricedLineId) ?? null
+  const state: ReplacementPricingState = {
+    status: order.status,
+    pickId: pick?.id ?? null,
+    pricedId: selection.pricedChoiceId,
+    line: existing,
+    expected: {
+      amountCents,
+      description: replacementLineDescription(selection.name, pick?.title ?? null, REPLACEMENT_REASON_LABELS[selection.reason], amountCents === null),
+      costCode: selection.costCode?.trim() || null,
+    },
   }
+  return { selection, order, pick: pick ?? null, lines, existing, state }
+}
+
+/** Whether the replacement's draft change order no longer prices its current pick (staff should update it). */
+export async function replacementPricingStale(db: Db, projectId: string, selectionId: string): Promise<boolean> {
+  const pricing = await loadPricing(db, projectId, selectionId)
+  return pricing !== null && pricing.state.status === "draft" && replacementPricingStaleState(pricing.state)
+}
+
+/**
+ * Why a replacement's change order can't go to the owner yet, or null: no
+ * pick, the pick line doesn't price the current pick, or an amount staff
+ * must enter is still $0.
+ */
+export async function replacementPricingBlocker(db: Db, projectId: string, selectionId: string): Promise<string | null> {
+  const pricing = await loadPricing(db, projectId, selectionId)
+  if (!pricing) return null
+  if (!pricing.state.pickId) return "Pick the replacement product on the selection first: this change order prices it."
+  if (replacementPricingStaleState(pricing.state)) {
+    return "The replacement's pick or price changed after this change order was priced. Use Update change order on the selection."
+  }
+  if (pricing.state.expected.amountCents === null && (pricing.existing?.amountCents ?? 0) === 0) {
+    return "Enter the amount on this change order: no price was recorded for the order the supplier couldn't fill."
+  }
+  return null
+}
+
+export async function repriceReplacementChangeOrder(
+  db: Db,
+  input: { readonly projectId: string; readonly selectionId: string; readonly by: Repricer },
+): Promise<RepriceResult> {
+  if (input.by.kind === "staff" && !input.by.canUpdateChangeOrders) return { kind: "skipped", reason: "You don't have permission to change change orders." }
+  const pricing = await loadPricing(db, input.projectId, input.selectionId)
+  if (!pricing) return { kind: "skipped", reason: "Not a replacement with a change order." }
+  const { selection, order, pick, lines, existing, state } = pricing
+  if (order.status !== "draft") return { kind: "skipped", reason: "The change order has left draft; its pick is fixed." }
+  // Only a change order Compass builds from a description is re-priced here.
+  if (order.kind !== "description") return { kind: "skipped", reason: "This change order is priced from an estimate; update it there." }
+  if (!replacementPricingStaleState(state)) return { kind: "unchanged" }
+  const { description, costCode } = state.expected
+  // A staff-entered amount (no recorded price to work from) stays theirs.
+  const amountCents = state.expected.amountCents ?? existing?.amountCents ?? 0
 
   const lineId = existing?.id ?? crypto.randomUUID()
   const token = new Date().toISOString()
@@ -111,7 +141,7 @@ export async function repriceReplacementChangeOrder(
   const nextNumber = Math.max(0, ...lines.map((line) => line.lineNumber)) + 1
   const actor = input.by.kind === "staff" ? input.by.actor : SYSTEM_ACTOR
   const [selectionWrite] = await db.batch([
-    repriceReplacementStatement(db, { projectId: input.projectId, selectionId: input.selectionId, expectedChoiceId: selection.pricedChoiceId, choiceId: pick?.id ?? null, lineId, token }),
+    repriceReplacementStatement(db, { projectId: input.projectId, selectionId: input.selectionId, changeOrderId: order.id, expectedChoiceId: selection.pricedChoiceId, choiceId: pick?.id ?? null, lineId, token }),
     existing
       ? updateChangeOrderLinesStatement(db, and(eq(projectChangeOrderLines.id, lineId), repriced), {
           description,

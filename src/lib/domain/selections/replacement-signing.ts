@@ -12,6 +12,7 @@ import { projectSelectionChoices } from "@/db/schema-selection-choices"
 import type { Db } from "@/lib/server/action-context"
 
 import { EXECUTED_CHANGE_ORDER_STATUSES } from "./lock-read"
+import { replacementPricingBlocker } from "./replacement-pricing"
 import { ensureSelectionTodo } from "./selection-todos"
 import { updateFinishSelectionsWithEventStatement } from "./store"
 
@@ -86,8 +87,9 @@ const NOT_SENT: ReadonlySet<string> = new Set(["draft", "void", "declined"])
 /**
  * Why a selection replacement's change order may not move to `to`, or null:
  * it can't leave draft (go to the owner, be accepted or executed) until its
- * selection has a pick and the change order is priced for that pick. Other
- * change orders are never blocked.
+ * selection has a pick and the change order's pick line prices it (same
+ * test as the drawer's "update the change order" flag), with any amount
+ * staff must enter filled in. Other change orders are never blocked.
  */
 export async function replacementChangeOrderMoveBlocker(
   db: Db,
@@ -100,8 +102,5 @@ export async function replacementChangeOrderMoveBlocker(
     .where(and(eq(projectChangeOrders.id, input.changeOrderId), eq(projectChangeOrders.projectId, input.projectId), eq(projectChangeOrders.sourceType, "selection_replacement")))
     .get()
   if (!order?.selectionId) return null
-  const pick = await replacementPick(db, input.projectId, order.selectionId)
-  if (!pick?.pickId) return "Pick the replacement product on the selection first: this change order prices it."
-  if (pick.pickId !== pick.pricedId) return "The replacement's pick changed after this change order was priced. Pick it again on the selection to re-price the change order."
-  return null
+  return replacementPricingBlocker(db, input.projectId, order.selectionId)
 }

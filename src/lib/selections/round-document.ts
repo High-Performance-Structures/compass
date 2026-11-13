@@ -20,6 +20,12 @@ export type RoundDocumentLineInput = {
   readonly linkSite: string | null
   readonly ownerPriceCents: number | null
   readonly allowanceCents: number | null
+  /**
+   * The owner price already in the contract for this selection (an approved
+   * pick that changed): the line is billed against it instead of the
+   * allowance, which is still shown and used for the threshold.
+   */
+  readonly settledOwnerPriceCents?: number | null
   readonly costCode: string | null
   /** "Picked by … for the owner" or "Picked by the owner", for the record. */
   readonly pickedBy: string | null
@@ -28,7 +34,7 @@ export type RoundDocumentLineInput = {
 }
 
 type RoundDocumentLine = RoundDocumentLineInput & {
-  /** Owner price minus allowance (no allowance counts as $0); null until the owner price is set. */
+  /** Owner price minus the price already in the contract (settled, else the allowance; none counts as $0); null until the owner price is set. */
   readonly deltaCents: number | null
 }
 
@@ -70,7 +76,7 @@ export function buildRoundDocument(
 ): RoundDocument {
   const lines = inputs.map((line) => ({
     ...line,
-    deltaCents: line.ownerPriceCents === null ? null : line.ownerPriceCents - (line.allowanceCents ?? 0),
+    deltaCents: line.ownerPriceCents === null ? null : line.ownerPriceCents - (line.settledOwnerPriceCents ?? line.allowanceCents ?? 0),
   }))
   const toSign = lines.filter((line) => line.choiceId !== null && !line.signedEarlier)
   const allowanceCents = toSign.reduce((total, line) => total + (line.allowanceCents ?? 0), 0)
