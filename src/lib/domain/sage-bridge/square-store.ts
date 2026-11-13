@@ -110,6 +110,31 @@ export async function finishSageSquareFeeOperation(db: Db, input: {
   return finished.length === 1
 }
 
+/**
+ * The writer's result arrived just after Square flagged the payment (the row
+ * left "running" for "attention" while the claim was out). The status stays
+ * attention for a person; what Sage did (its record, when it posted) is kept
+ * so they can see it. True when the row was in that state for this claim.
+ */
+export async function recordResultOnFlaggedSageSquareOperation(db: Db, input: {
+  readonly operationId: string
+  readonly claimToken: string
+  readonly sageRecordId: string | null
+  readonly sageRecordNumber: string | null
+  readonly now: string
+}): Promise<boolean> {
+  const updated = await operationUpdate(db, {
+    sageRecordId: sql`COALESCE(${input.sageRecordId}, ${sageSquarePaymentOperations.sageRecordId})`,
+    sageRecordNumber: sql`COALESCE(${input.sageRecordNumber}, ${sageSquarePaymentOperations.sageRecordNumber})`,
+    updatedAt: input.now,
+  }, and(
+    eq(sageSquarePaymentOperations.id, input.operationId),
+    eq(sageSquarePaymentOperations.claimToken, input.claimToken),
+    eq(sageSquarePaymentOperations.status, squarePaymentOperationMachine.transitions.flag.to),
+  )).returning({ id: sageSquarePaymentOperations.id })
+  return updated.length === 1
+}
+
 /** hand_to_staff: an older queued (or stale running) receipt becomes a manual Sage entry. */
 export async function handSageSquareReceiptToStaff(db: Db, input: {
   readonly operationId: string

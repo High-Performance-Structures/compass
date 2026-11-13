@@ -1,7 +1,7 @@
 import Database from "better-sqlite3"
 import { readdirSync, readFileSync, statSync } from "node:fs"
 import { join } from "node:path"
-import { afterEach, beforeEach, describe, expect, it } from "vitest"
+import { afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest"
 
 import { eq } from "drizzle-orm"
 
@@ -14,6 +14,7 @@ import {
   SQUARE_LINK_LEASE_MS,
   squareLinkMachine,
 } from "@/lib/domain/financials/invoice-machines"
+import { readProjectReceivedPayments } from "@/lib/domain/financials/receivables"
 import { invoicePaidValues, invoiceUnpaidStatus } from "@/lib/domain/financials/rules"
 import {
   applyReceivedPayment,
@@ -22,6 +23,7 @@ import {
   finalizeSimpleInvoice,
   publishSquareInvoiceLink,
   refreshInvoicePaidStatusStatement,
+  releaseAllocationFromClosedInvoice,
   reopenSimpleInvoice,
   simpleInvoiceUpdateStatement,
   startSquareInvoiceLink,
@@ -175,6 +177,42 @@ describe("simple invoice status writes", () => {
     expect(row("open-1")).toMatchObject({ status: "void", amount_paid: 100, amount_due: 0 })
   })
 
+  it("a Square payment left on a void invoice can be taken off and applied to another item", async () => {
+    sqlite.exec(`
+      INSERT INTO invoices (id, organization_id, customer_id, project_id, source_system, status, issue_date, total, amount_due, invoice_kind, created_at, updated_at)
+        VALUES ('open-2', 'org-1', 'c1', 'p1', 'compass', 'open', '2026-11-12', 100, 100, 'other', '${NOW}', '${NOW}');
+      UPDATE invoices SET status = 'void', amount_paid = 100, amount_due = 0 WHERE id = 'open-1';
+      INSERT INTO payments (id, organization_id, customer_id, project_id, source_system, payment_type, amount, payment_date, created_at, updated_at)
+        VALUES ('sq-pay', 'org-1', 'c1', 'p1', 'sage', 'received', 100, '2026-11-12', '${NOW}', '${NOW}');
+      INSERT INTO invoice_payment_allocations (id, organization_id, project_id, invoice_id, payment_id, allocation_cents, created_at)
+        VALUES ('sq-alloc', 'org-1', 'p1', 'open-1', 'sq-pay', 10000, '${NOW}');
+    `)
+    const scope = { organizationId: "org-1", projectId: "p1", paymentId: "sq-pay", actorId: "u1", now: NOW }
+    const [listed] = await readProjectReceivedPayments(db, { organizationId: "org-1", projectId: "p1" })
+    expect(listed?.allocations.map((allocation) => allocation.onClosedInvoice)).toEqual([true])
+    // Not on an open invoice, and only once.
+    expect(await releaseAllocationFromClosedInvoice(d1, { ...scope, allocationId: "missing" })).toBe("stale")
+    expect(await releaseAllocationFromClosedInvoice(d1, { ...scope, allocationId: "sq-alloc" })).toBe("saved")
+    expect(await releaseAllocationFromClosedInvoice(d1, { ...scope, allocationId: "sq-alloc" })).toBe("stale")
+    expect(row("open-1")).toMatchObject({ status: "void", amount_paid: 0, amount_due: 0 })
+    const applied = await applyReceivedPayment(d1, {
+      ...scope, newPayment: null, expectedAppliedCents: 0,
+      allocations: [{ kind: "invoice", allocationId: "alloc-2", invoiceId: "open-2", cents: 10000, expectedPaidCents: 0, invoice: { amountPaid: 100, amountDue: 0, status: "paid" } }],
+    })
+    expect(applied).toBe("saved")
+    expect(row("open-2")).toMatchObject({ status: "paid", amount_paid: 100 })
+  })
+
+  it("an allocation on an open invoice is not released by the void-invoice action", async () => {
+    sqlite.exec(`
+      INSERT INTO payments (id, organization_id, customer_id, project_id, source_system, payment_type, amount, payment_date, created_at, updated_at)
+        VALUES ('pay-3', 'org-1', 'c1', 'p1', 'compass', 'received', 40, '2026-11-12', '${NOW}', '${NOW}');
+      INSERT INTO invoice_payment_allocations (id, organization_id, project_id, invoice_id, payment_id, allocation_cents, created_at)
+        VALUES ('alloc-3', 'org-1', 'p1', 'open-1', 'pay-3', 4000, '${NOW}');
+    `)
+    expect(await releaseAllocationFromClosedInvoice(d1, { organizationId: "org-1", projectId: "p1", paymentId: "pay-3", actorId: "u1", now: NOW, allocationId: "alloc-3" })).toBe("stale")
+  })
+
   it("a double click on Email with Square starts one Square invoice", async () => {
     sqlite.exec(`UPDATE invoices SET square_requested = 1 WHERE id = 'open-1'`)
     expect(await startSquareInvoiceLink(db, { ...key("open-1"), now: NOW })).toBe(true)
@@ -235,7 +273,12 @@ function sourceTree(): ReadonlyMap<string, string> {
   return sources
 }
 
-describe("invoice status write guard", { timeout: 30_000 }, () => {
+describe("invoice status write guard", () => {
+  // Read the tree once, outside the tests' own timeouts (slow under full-suite load).
+  beforeAll(() => {
+    sourceTree()
+  }, 120_000)
+
   it("only the financials store writes invoices and payments", () => {
     const writers = [...sourceTree()].filter(([, source]) =>
       /\.(update|insert|delete)\((schema\.)?(invoices|payments)\)|(UPDATE|INSERT INTO|DELETE FROM)\s+(invoices|payments)\b/.test(source),

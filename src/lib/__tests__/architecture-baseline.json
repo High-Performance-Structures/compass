@@ -1024,7 +1024,7 @@
     "src/lib/feature-settings/registry.ts": 938,
     "src/lib/notifications/create-event.ts": 830,
     "src/lib/notifications/events.ts": 951,
-    "src/lib/sage/square-payment.ts": 1310,
+    "src/lib/sage/square-payment.ts": 1309,
     "src/lib/sync/engine.ts": 864
   },
   "localHelpers": {

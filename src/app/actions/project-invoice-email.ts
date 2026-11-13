@@ -209,10 +209,14 @@ export async function emailProjectInvoice(projectId: string, invoiceId: string, 
         squareUrl = created.publicUrl
         const now = new Date().toISOString()
         if (!(await publishSquareInvoiceLink(db, { ...key, publicUrl: created.publicUrl, now }))) {
-          // Voided while Square was creating it: take the payment link back down.
+          revalidatePath(`/dashboard/projects/${projectId}/financials/invoices/${invoiceId}`)
+          // Only a void takes the payment link back down; any other change (another
+          // request took over the same Square invoice, say) leaves Square alone.
+          if ((await loadSimpleInvoice(db, organizationId, projectId, invoiceId))?.status !== "void") {
+            return actionFailure("The invoice changed while Square was creating it. Refresh and send again; the same Square invoice is reused.")
+          }
           const cancelled = await cancelSquareInvoice(token, created.squareInvoiceId).then(() => true, () => false)
           if (cancelled) await cancelSquareInvoiceLink(db, { ...key, now })
-          revalidatePath(`/dashboard/projects/${projectId}/financials/invoices/${invoiceId}`)
           return actionFailure(`This invoice was voided while Square was creating it. ${cancelled ? "The Square invoice was cancelled." : "Cancel the Square invoice in Square."} The email was not sent.`)
         }
         await recordActivityEvent({
@@ -235,10 +239,10 @@ export async function emailProjectInvoice(projectId: string, invoiceId: string, 
       }
     }
 
-    // Voided while the link was made: don't email a void invoice.
-    if ((await loadSimpleInvoice(db, organizationId, projectId, invoiceId))?.status === "void") return actionFailure("This invoice is void.")
     const pdf = await invoicePdf(projectId, invoiceId)
     if (!pdf.ok) return actionFailure(`${pdf.error}${squareUrl ? " The Square invoice is created; send the email again." : ""}`)
+    // Read again right before sending: never email an invoice voided while the link or PDF was made.
+    if ((await loadSimpleInvoice(db, organizationId, projectId, invoiceId))?.status === "void") return actionFailure("This invoice was voided. The email was not sent.")
     const from = sender.sender
     const delivery = await sendTrackedEmail({
       env,

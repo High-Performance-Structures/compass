@@ -27,7 +27,9 @@ import {
   type ReceivableItem,
   type ReceivableStaffStatus,
 } from "@/lib/domain/financials/rules"
+import { INVOICE_CLOSED_TO_PAYMENTS } from "@/lib/domain/financials/invoice-machines"
 import type { ReceivableItemKind, ReceivablePaidState } from "@/lib/domain/financials/statuses"
+import { isListValue } from "@/lib/shared/statuses"
 import type { Db } from "@/lib/server/action-context"
 
 const people = peopleView()
@@ -256,6 +258,8 @@ type PaymentAllocationView = {
   readonly itemLabel: string
   readonly cents: number
   readonly released: boolean
+  /** Still applied to a void or draft invoice (a late Square payment): staff may take it off to apply elsewhere. */
+  readonly onClosedInvoice: boolean
 }
 
 export type ReceivedPaymentView = {
@@ -349,6 +353,7 @@ async function readAllocations(
         number: invoices.invoiceNumber,
         cents: invoicePaymentAllocations.allocationCents,
         releasedAt: invoicePaymentAllocations.releasedAt,
+        invoiceStatus: invoices.status,
       })
       .from(invoicePaymentAllocations)
       .innerJoin(invoices, eq(invoices.id, invoicePaymentAllocations.invoiceId))
@@ -367,6 +372,7 @@ async function readAllocations(
       itemLabel: `Pay application ${allocation.number}`,
       cents: allocation.cents,
       released: allocation.releasedAt !== null,
+      onClosedInvoice: false,
     })),
     ...invoiceRows.map((allocation) => ({
       id: allocation.id,
@@ -376,6 +382,7 @@ async function readAllocations(
       itemLabel: `Invoice ${allocation.number?.trim() || allocation.itemId.slice(0, 8)}`,
       cents: allocation.cents,
       released: allocation.releasedAt !== null,
+      onClosedInvoice: allocation.releasedAt === null && isListValue(INVOICE_CLOSED_TO_PAYMENTS, allocation.invoiceStatus),
     })),
   ].filter((allocation) => wanted.has(allocation.paymentId))
 }

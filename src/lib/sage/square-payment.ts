@@ -4,7 +4,9 @@ import { z } from "zod/v4"
 import { getDb } from "@/db"
 import { projects } from "@/db/schema"
 import { sageSquarePaymentOperations } from "@/db/schema-sage"
+import { INVOICE_CLOSED_TO_PAYMENTS } from "@/lib/domain/financials/invoice-machines"
 import { formatCents } from "@/lib/format"
+import { isListValue } from "@/lib/shared/statuses"
 import {
   beginSquareWebhookEventLease,
   finishSquareWebhookEvent,
@@ -842,15 +844,12 @@ async function processBridgeInvoicePayment(
           processingFeeCents,
           now
         )
-        if (receivable.invoiceStatus === "void") {
-          // The money is real (recorded, receipt and fee queued as usual), but
-          // the invoice stays void: staff decide what the payment is for.
-          await notifySageSquareException(
-            env,
-            { ...scope, receiptOperationId: receipt.operationId },
-            `void-invoice-payment:${payment.id}`,
-            `Square payment received on void invoice ${invoice.invoiceNumber}`,
-            `Square received ${formatCents(payment.amount_money.amount)} for Sage invoice ${invoice.invoiceNumber}, which is void in Compass. The payment is recorded; refund it or apply it elsewhere, and check Sage.`
+        if (isListValue(INVOICE_CLOSED_TO_PAYMENTS, receivable.invoiceStatus)) {
+          // Recorded as usual (receipt, fee); the invoice keeps its status and staff decide.
+          await notifySageSquareException(env, { ...scope, receiptOperationId: receipt.operationId },
+            `closed-invoice-payment:${payment.id}`,
+            `Square payment received on ${receivable.invoiceStatus} invoice ${invoice.invoiceNumber}`,
+            `Square received ${formatCents(payment.amount_money.amount)} for Sage invoice ${invoice.invoiceNumber}, which is ${receivable.invoiceStatus} in Compass. Compass recorded the payment against it. To move it: open the project's Financials › Payments received, choose "take off to apply elsewhere" on this payment, then Apply it to the right item. To give it back: refund it in Square. Either way, enter or fix the receipt in Sage.`
           )
         }
       } catch (error) {

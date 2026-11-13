@@ -138,11 +138,7 @@ export async function reopenSimpleInvoice(db: Db, key: SimpleInvoiceKey & { read
   return moveSimpleInvoice(db, key, "reopen", { updatedAt: key.now }, eq(invoices.amountPaid, 0))
 }
 
-/**
- * void: keeps a final, unpaid invoice for the record. False when it changed
- * first (voided by someone else, or a payment was applied). The caller
- * cancels its Sage export and Square invoice only after this lands.
- */
+/** void: keeps a final, unpaid invoice for the record. The caller cancels its Sage export and Square invoice only after this lands. */
 export async function voidSimpleInvoice(db: Db, key: SimpleInvoiceKey & { readonly reason: string; readonly actorId: string; readonly now: string }): Promise<boolean> {
   const values = { amountDue: 0, voidedAt: key.now, voidedByUserId: key.actorId, voidReason: key.reason, updatedAt: key.now }
   return moveSimpleInvoice(db, key, "void", values, eq(invoices.amountPaid, 0))
@@ -151,11 +147,7 @@ export async function voidSimpleInvoice(db: Db, key: SimpleInvoiceKey & { readon
 /** The invoice is final and not void (it may carry a Square payment link). */
 const INVOICE_OPEN_FOR_SQUARE = notInArray(invoices.status, [...INVOICE_CLOSED_TO_PAYMENTS])
 
-/**
- * start: claims creating the invoice's Square invoice, so a double click or
- * two staff never create two Square invoices (two payment links). A link left
- * "pending" by a request that died is claimable again after the lease.
- */
+/** start: one request creates the Square invoice (never two payment links); a "pending" left by a dead request is claimable after the lease. */
 export async function startSquareInvoiceLink(db: Db, key: SimpleInvoiceKey & { readonly now: string }): Promise<boolean> {
   const leaseExpired = new Date(Date.parse(key.now) - SQUARE_LINK_LEASE_MS).toISOString()
   return moveSquareLink(db, key, "start", { squareError: null, updatedAt: key.now },
@@ -221,11 +213,7 @@ export async function updatePaymentRow(db: Db, id: string, values: Partial<NewPa
   await db.update(payments).set(values).where(eq(payments.id, id))
 }
 
-/**
- * Updates a payment's amount, customer, project or type only while nothing
- * applies it (released history counts), so an edit can't change a payment
- * that was applied after the action read it. False when it is applied.
- */
+/** Updates a payment only while nothing applies it (released history counts); false when it was applied first. */
 export async function updateUnappliedPaymentRow(db: Db, id: string, values: Partial<NewPayment>): Promise<boolean> {
   const updated = await db.update(payments).set(values).where(and(
     eq(payments.id, id),
@@ -363,11 +351,7 @@ export function upsertInvoicePaymentAllocationStatement(database: D1Database, in
   ).bind(input.id, input.organizationId, input.projectId, input.invoiceId, input.paymentId, input.allocationCents, input.now)
 }
 
-/**
- * Recomputes an invoice's amount paid, amount due and paid status from its
- * stored allocations. A draft or void invoice keeps its status (and a void
- * one owes nothing); the caller reads the status back to flag that case.
- */
+/** Recomputes amount paid, amount due and paid status from the allocations; a draft or void invoice keeps its status (a void one owes 0). */
 export function refreshInvoicePaidStatusStatement(database: D1Database, input: {
   readonly invoiceId: string; readonly organizationId: string; readonly projectId: string; readonly now: string
 }): D1PreparedStatement {
@@ -702,6 +686,25 @@ export async function voidReceivedPayment(database: D1Database, input: PaymentSc
       .bind(paymentId),
   )
   return runGuardedBatch(database, statements)
+}
+
+/** Takes a payment off a void or draft invoice (a late Square payment) so it can be applied elsewhere; the invoice keeps its status. */
+export async function releaseAllocationFromClosedInvoice(database: D1Database, input: PaymentScope & {
+  readonly allocationId: string
+}): Promise<PaymentWriteResult> {
+  const { organizationId, projectId, paymentId, actorId, now } = input
+  const allocation = await database.prepare(`SELECT invoice_id FROM invoice_payment_allocations
+    WHERE id = ? AND payment_id = ? AND organization_id = ? AND project_id = ?`).bind(input.allocationId, paymentId, organizationId, projectId).first<{ invoice_id: string }>()
+  if (!allocation) return "stale"
+  const [released] = await database.batch([
+    database
+      .prepare(`UPDATE invoice_payment_allocations SET released_at = ?, released_by = ?
+        WHERE id = ? AND payment_id = ? AND released_at IS NULL
+          AND (SELECT status FROM invoices WHERE id = ?) IN (${CLOSED_TO_PAYMENTS_SQL})`)
+      .bind(now, actorId, input.allocationId, paymentId, allocation.invoice_id),
+    refreshInvoicePaidStatusStatement(database, { invoiceId: allocation.invoice_id, organizationId, projectId, now }),
+  ])
+  return Number(released?.meta.changes) === 1 ? "saved" : "stale"
 }
 
 type PrepaidScope = {

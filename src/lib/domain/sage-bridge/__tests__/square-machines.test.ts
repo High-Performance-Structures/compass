@@ -1,7 +1,7 @@
 import Database from "better-sqlite3"
 import { readdirSync, readFileSync, statSync } from "node:fs"
 import { join } from "node:path"
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest"
 
 import { getDb } from "@/db"
 import { d1Over } from "@/lib/domain/__tests__/sqlite-d1"
@@ -14,6 +14,7 @@ import {
   flagSageSquareOperationsForAttentionStatement,
   handSageSquareReceiptToStaff,
   insertSageSquareFeeOperation,
+  recordResultOnFlaggedSageSquareOperation,
   reopenSquareWebhookEventLease,
 } from "@/lib/domain/sage-bridge/square-store"
 import type { Db } from "@/lib/server/action-context"
@@ -168,6 +169,18 @@ describe("Sage fee writer claims and results", () => {
     expect(statusOf("fee-a")).toEqual({ status: "attention" })
   })
 
+  it("a result that lost its claim only to Square's flag keeps Sage's record on the flagged row", async () => {
+    await claimSageSquareFeeOperation(db, { operationId: "fee-a", claimToken: "t1", staleClaimIso: NOW, now: NOW })
+    const record = { operationId: "fee-a", sageRecordId: "25018", sageRecordNumber: "SQ-1", now: NOW }
+    // Still running: nothing to record here (the normal path finishes it).
+    expect(await recordResultOnFlaggedSageSquareOperation(db, { ...record, claimToken: "t1" })).toBe(false)
+    await flagSageSquareOperationsForAttentionStatement(d1, { match: "square_payment_id", squareId: "sq-pay-1", errorMessage: "refunded", now: NOW }).run()
+    expect(await recordResultOnFlaggedSageSquareOperation(db, { ...record, claimToken: "other" })).toBe(false)
+    expect(await recordResultOnFlaggedSageSquareOperation(db, { ...record, claimToken: "t1" })).toBe(true)
+    expect(sqlite.prepare("SELECT status, sage_record_id, sage_record_number FROM sage_square_payment_operations WHERE id = 'fee-a'").get())
+      .toEqual({ status: "attention", sage_record_id: "25018", sage_record_number: "SQ-1" })
+  })
+
   it("only older queued receipts are handed to staff", async () => {
     sqlite.exec(`UPDATE sage_square_payment_operations SET operation_type = 'post_square_receipt' WHERE id = 'fee-a'`)
     expect(await handSageSquareReceiptToStaff(db, { operationId: "fee-a", staleClaimIso: NOW, now: NOW })).toBe(true)
@@ -216,19 +229,25 @@ function sourceFiles(dir: string): string[] {
   })
 }
 
-describe("Square status write guard", { timeout: 30_000 }, () => {
+describe("Square status write guard", () => {
+  // Read the tree once, outside the tests' own timeouts (slow under full-suite load).
+  let tree: ReadonlyMap<string, string> = new Map()
+  beforeAll(() => {
+    tree = new Map(sourceFiles("src").map((file) => [file, readFileSync(file, "utf8")]))
+  }, 120_000)
+
   it("only the Square store writes the Square tables", () => {
-    const writers = sourceFiles("src").filter((file) =>
-      /\.(update|insert)\(sageSquare(PaymentOperations|WebhookEvents)\)|(UPDATE|INSERT INTO)\s+sage_square_(payment_operations|webhook_events)/.test(readFileSync(file, "utf8")),
-    )
+    const writers = [...tree].filter(([, source]) =>
+      /\.(update|insert)\(sageSquare(PaymentOperations|WebhookEvents)\)|(UPDATE|INSERT INTO)\s+sage_square_(payment_operations|webhook_events)/.test(source),
+    ).map(([file]) => file)
     expect(writers).toEqual(["src/lib/domain/sage-bridge/square-store.ts"])
   })
 
   it("no caller passes a status to the plain operation update", () => {
-    const offenders = sourceFiles("src").filter((file) =>
+    const offenders = [...tree].filter(([file, source]) =>
       file !== "src/lib/domain/sage-bridge/square-store.ts"
-      && /updateSageSquarePaymentOperations\([^)]*\bstatus:/s.test(readFileSync(file, "utf8")),
-    )
+      && /updateSageSquarePaymentOperations\([^)]*\bstatus:/s.test(source),
+    ).map(([file]) => file)
     expect(offenders).toEqual([])
   })
 

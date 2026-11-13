@@ -34,6 +34,7 @@ import {
 import { RECEIVABLE_ITEM_KINDS, RECEIVED_PAYMENT_METHODS, type ReceivableItemKind } from "@/lib/domain/financials/statuses"
 import {
   applyReceivedPayment,
+  releaseAllocationFromClosedInvoice,
   markDrawPaidBeforeCompass,
   undoDrawPaidBeforeCompass,
   voidReceivedPayment,
@@ -375,6 +376,35 @@ export async function applyReceivedPaymentToItems(
     return { success: true }
   } catch (error) {
     return actionFailure(errorMessage(error, "Unable to apply the payment."))
+  }
+}
+
+/**
+ * Takes a payment (usually a Square payment that arrived after the invoice
+ * was voided) off a void or draft invoice. The amount becomes unapplied on
+ * the payment and can be applied to another open item; the invoice keeps its status.
+ */
+export async function releasePaymentFromClosedInvoice(projectId: string, paymentId: string, allocationId: string): Promise<ActionDone> {
+  try {
+    const context = await staffContext(projectId, "update")
+    if (!context.success) return context
+    const { db, organizationId, user } = context.data
+    const payment = await readReceivedPayment(db, organizationId, paymentId)
+    if (!payment || payment.projectId !== projectId) return actionFailure(NOT_FOUND)
+    if (payment.voidedAt) return actionFailure("This payment is void.")
+    const result = await releaseAllocationFromClosedInvoice(context.data.env.DB, {
+      organizationId, projectId, paymentId, allocationId, actorId: user.id, now: new Date().toISOString(),
+    })
+    if (result === "stale") return actionFailure("That amount is no longer applied to a void or draft invoice. Refresh and try again.")
+    await recordActivityEvent({
+      db, organizationId, projectId, actor: user, category: "financial",
+      action: "payment_released_from_closed_invoice", entityType: "payment", entityId: paymentId,
+      summary: `Took a ${formatCents(payment.amountCents)} payment off a void or draft invoice; it can now be applied elsewhere.`,
+    })
+    revalidatePayments(projectId, [])
+    return { success: true }
+  } catch (error) {
+    return actionFailure(errorMessage(error, "Unable to release the payment."))
   }
 }
 

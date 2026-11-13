@@ -3,7 +3,7 @@ import { and, eq } from "drizzle-orm"
 import { getDb } from "@/db"
 import { sageSquarePaymentOperations } from "@/db/schema-sage"
 import { getCloudflareContext } from "@/lib/db"
-import { finishSageSquareFeeOperation } from "@/lib/domain/sage-bridge/square-store"
+import { finishSageSquareFeeOperation, recordResultOnFlaggedSageSquareOperation } from "@/lib/domain/sage-bridge/square-store"
 import {
   getSageBridgeSecret,
   readBoundedSageBridgeBody,
@@ -82,25 +82,28 @@ export async function POST(request: Request): Promise<Response> {
     )
     .limit(1)
     .then((rows) => rows[0] ?? null)
-  if (!operation) {
-    return Response.json(
-      { error: "Sage payment claim is missing, stale, or already completed" },
-      { status: 409 }
-    )
-  }
+  const now = new Date().toISOString()
+  const claim = { operationId: result.operationId, claimToken: result.claimToken, now }
+  const sageRecord = result.outcome === "failed"
+    ? { sageRecordId: null, sageRecordNumber: null }
+    : { sageRecordId: result.sageRecordId, sageRecordNumber: result.sageRecordNumber }
+  // The claim is gone. If only because Square flagged the payment while the
+  // writer held it, keep Sage's record on the flagged row and answer 2xx so
+  // the writer carries on with its run; otherwise 409 as before.
+  const stale = async (): Promise<Response> =>
+    (await recordResultOnFlaggedSageSquareOperation(db, { ...claim, ...sageRecord }))
+      ? Response.json({ success: true, status: "attention" }, { status: 202 })
+      : Response.json(
+          { error: "Sage payment claim is missing, stale, or already completed" },
+          { status: 409 }
+        )
+  if (!operation) return stale()
   if (!isSageSquareWriterOperation(operation.operationType)) {
     return Response.json(
       { error: "Only Square processing-fee operations may use this writer" },
       { status: 409 }
     )
   }
-  const now = new Date().toISOString()
-  const claim = { operationId: operation.id, claimToken: result.claimToken, now }
-  const stale = (): Response =>
-    Response.json(
-      { error: "Sage payment claim is missing, stale, or already completed" },
-      { status: 409 }
-    )
   if (result.outcome === "failed") {
     // Compare-and-set on the claim: a repeated or stale result changes nothing and alerts no one.
     const recorded = await finishSageSquareFeeOperation(db, {
