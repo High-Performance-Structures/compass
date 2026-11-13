@@ -15,15 +15,14 @@ import { inboundMessageMentionsSomeone } from "./project-message-mentions"
 const HELD_MESSAGE_REASONS = ["messaging_off", "mention_unmatched", "no_recipients", "attachment_failed"] as const
 export type HeldMessageReason = (typeof HELD_MESSAGE_REASONS)[number]
 
-const HELD_EMAIL_REASONS = [
-  ...HELD_MESSAGE_REASONS,
-  "sender_unrecognized",
-  "no_destination",
-  "no_job",
-  "message_not_posted",
-  "other",
-] as const
-type HeldEmailReason = (typeof HELD_EMAIL_REASONS)[number]
+/** Every reason a held email can show: the message reasons plus the earlier checks. */
+type HeldEmailReason =
+  | HeldMessageReason
+  | "sender_unrecognized"
+  | "no_destination"
+  | "no_job"
+  | "message_not_posted"
+  | "other"
 
 const HELD_EMAIL_REASON_LABEL: Readonly<Record<HeldEmailReason, string>> = {
   messaging_off: "Job messages aren't turned on for this job",
