@@ -138,6 +138,15 @@ export async function reopenSimpleInvoice(db: Db, key: SimpleInvoiceKey & { read
   return moveSimpleInvoice(db, key, "reopen", { updatedAt: key.now }, eq(invoices.amountPaid, 0))
 }
 
+/** reopen as an unexecuted statement (with `.returning`) for the caller's batch, also fenced on `also`. */
+export function reopenSimpleInvoiceStatement(db: Db, key: SimpleInvoiceKey & { readonly now: string; readonly also?: SQL }) {
+  const { from, to } = simpleInvoiceMachine.transitions.reopen
+  return db.update(invoices)
+    .set({ updatedAt: key.now, status: to })
+    .where(and(simpleInvoiceKey(key), inArray(invoices.status, [...from]), eq(invoices.amountPaid, 0), key.also))
+    .returning({ id: invoices.id })
+}
+
 /** void: keeps a final, unpaid invoice for the record. The caller cancels its Sage export and Square invoice only after this lands. */
 export async function voidSimpleInvoice(db: Db, key: SimpleInvoiceKey & { readonly reason: string; readonly actorId: string; readonly now: string }): Promise<boolean> {
   const values = { amountDue: 0, voidedAt: key.now, voidedByUserId: key.actorId, voidReason: key.reason, updatedAt: key.now }

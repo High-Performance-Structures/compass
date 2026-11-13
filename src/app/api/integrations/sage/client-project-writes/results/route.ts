@@ -98,107 +98,118 @@ export async function POST(request: Request): Promise<Response> {
   // One handler per claim: a result posted twice (an HTTP retry, two PCs)
   // applies once, and its follow-ups (links, Activity, the add request) once.
   const lease = { id: operation.id, organizationId: operation.organizationId, claimToken: result.claimToken }
-  const leaseToken = await takeSageResultLease(db, "sage_client_project_write_operations", lease)
+  const leaseToken = await takeSageResultLease(db, "sage_client_project_write_operations", { ...lease, now: new Date().toISOString() })
   if (!leaseToken) return staleOrRepeat()
-  const leased = and(
-    eq(sageClientProjectWriteOperations.id, operation.id),
-    eq(sageClientProjectWriteOperations.claimToken, leaseToken)
-  )
-  const now = new Date().toISOString()
-  if (result.outcome === "failed") {
-    const failed = await updateSageClientProjectWriteOperations(
-      db,
-      {
-        status: "failed",
-        errorMessage: result.error,
-        completedAt: now,
-        updatedAt: now,
-      },
-      leased
-    ).returning({ id: sageClientProjectWriteOperations.id })
-    if (failed.length !== 1) {
+  // A throw while applying hands the lease back, so the claim is neither stuck nor half-applied.
+  try {
+    const leased = and(
+      eq(sageClientProjectWriteOperations.id, operation.id),
+      eq(sageClientProjectWriteOperations.claimToken, leaseToken)
+    )
+    const now = new Date().toISOString()
+    if (result.outcome === "failed") {
+      const failed = await updateSageClientProjectWriteOperations(
+        db,
+        {
+          status: "failed",
+          errorMessage: result.error,
+          completedAt: now,
+          updatedAt: now,
+        },
+        leased
+      ).returning({ id: sageClientProjectWriteOperations.id })
+      if (failed.length !== 1) {
+        return Response.json({ error: "Sage write claim is missing, stale, or already completed" }, { status: 409 })
+      }
+      await recordTaxDistrictResult(db, operation, result.error, now)
+      await recordSageAddOutcome(db, {
+        operationId: operation.id, organizationId: operation.organizationId, outcome: "failed",
+        sageRecordId: null, sageRecordNumber: null, error: result.error, now,
+      })
+      return Response.json({ success: true, status: "failed" }, { status: 202 })
+    }
+
+    if ("vendor" in result) {
+      if (operation.operationType !== "ensure_vendor") {
+        await releaseSageResultLease(db, "sage_client_project_write_operations", lease)
+        return Response.json({ error: "A vendor result answered a non-vendor write" }, { status: 400 })
+      }
+      return recordVendorAdded(db, operation, leased, result.vendor, now)
+    }
+    if (operation.operationType === "ensure_vendor") {
+      await releaseSageResultLease(db, "sage_client_project_write_operations", lease)
+      return Response.json({ error: "The vendor write returned no vendor" }, { status: 400 })
+    }
+
+    const statements = [
+      sageClientProjectWriteSucceededStatement(env.DB, {
+        operationId: operation.id,
+        leaseToken,
+        clientId: result.client.id,
+        clientNumber: result.client.number,
+        clientStatusNumber: result.client.statusNumber,
+        jobId: result.job?.id ?? null,
+        jobNumber: result.job?.number ?? null,
+        jobStatusNumber: result.job?.statusNumber ?? null,
+        jobTypeNumber: result.job?.typeNumber || null,
+        now,
+      }),
+    ]
+    // The client and job links land only with the success above (same lease, same batch).
+    const succeededUnderLease = {
+      sql: "EXISTS (SELECT 1 FROM sage_client_project_write_operations WHERE id = ? AND claim_token = ? AND status = 'succeeded' AND completed_at = ?)",
+      binds: [operation.id, leaseToken, now],
+    }
+    const customerStatementIndex = operation.customerId ? statements.length : null
+    if (operation.customerId) {
+      statements.push(
+        sageClientWriteResultCustomerStatement(env.DB, {
+          customerId: operation.customerId,
+          sageClientId: result.client.id,
+          sageClientNumber: result.client.number,
+          sageClientStatusId: result.client.statusNumber,
+          now,
+        }, succeededUnderLease)
+      )
+    }
+    if (operation.projectId && result.job) {
+      statements.push(
+        sageJobResultStatement(env.DB, {
+          projectId: operation.projectId,
+          sageJobId: result.job.id,
+          sageJobNumber: result.job.number,
+          sageJobStatusNumber: result.job.statusNumber,
+          sageJobTypeNumber: result.job.typeNumber || null,
+          now,
+        }, succeededUnderLease)
+      )
+    }
+    let results: D1Result[]
+    try {
+      results = await env.DB.batch(statements)
+    } catch (error) {
+      // Nothing landed (the batch is atomic): the writer's retry may apply it.
+      await releaseSageResultLease(db, "sage_client_project_write_operations", lease)
+      throw error
+    }
+    if (results[0]?.meta.changes !== 1) {
+      // Only reachable if the row changed under the lease; nothing else in this batch should stand alone.
+      console.error("Sage client/job result lost its lease", { operationId: operation.id })
       return Response.json({ error: "Sage write claim is missing, stale, or already completed" }, { status: 409 })
     }
-    await recordTaxDistrictResult(db, operation, result.error, now)
-    await recordSageAddOutcome(db, {
-      operationId: operation.id, organizationId: operation.organizationId, outcome: "failed",
-      sageRecordId: null, sageRecordNumber: null, error: result.error, now,
-    })
-    return Response.json({ success: true, status: "failed" }, { status: 202 })
-  }
-
-  if ("vendor" in result) {
-    if (operation.operationType !== "ensure_vendor") {
-      await releaseSageResultLease(db, "sage_client_project_write_operations", lease)
-      return Response.json({ error: "A vendor result answered a non-vendor write" }, { status: 400 })
+    if (customerStatementIndex !== null && results[customerStatementIndex]?.meta.changes === 0) {
+      await recordClientOnDuplicateCustomer(db, operation, result.client, now)
     }
-    return recordVendorAdded(db, operation, leased, result.vendor, now)
-  }
-  if (operation.operationType === "ensure_vendor") {
-    await releaseSageResultLease(db, "sage_client_project_write_operations", lease)
-    return Response.json({ error: "The vendor write returned no vendor" }, { status: 400 })
-  }
-
-  const statements = [
-    sageClientProjectWriteSucceededStatement(env.DB, {
-      operationId: operation.id,
-      leaseToken,
-      clientId: result.client.id,
-      clientNumber: result.client.number,
-      clientStatusNumber: result.client.statusNumber,
-      jobId: result.job?.id ?? null,
-      jobNumber: result.job?.number ?? null,
-      jobStatusNumber: result.job?.statusNumber ?? null,
-      jobTypeNumber: result.job?.typeNumber || null,
-      now,
-    }),
-  ]
-  const customerStatementIndex = operation.customerId ? statements.length : null
-  if (operation.customerId) {
-    statements.push(
-      sageClientWriteResultCustomerStatement(env.DB, {
-        customerId: operation.customerId,
-        sageClientId: result.client.id,
-        sageClientNumber: result.client.number,
-        sageClientStatusId: result.client.statusNumber,
-        now,
-      })
-    )
-  }
-  if (operation.projectId && result.job) {
-    statements.push(
-      sageJobResultStatement(env.DB, {
-        projectId: operation.projectId,
-        sageJobId: result.job.id,
-        sageJobNumber: result.job.number,
-        sageJobStatusNumber: result.job.statusNumber,
-        sageJobTypeNumber: result.job.typeNumber || null,
-        now,
-      })
-    )
-  }
-  let results: D1Result[]
-  try {
-    results = await env.DB.batch(statements)
+    await recordTaxDistrictResult(db, operation, null, now)
+    await recordSageAddOutcome(db, {
+      operationId: operation.id, organizationId: operation.organizationId, outcome: "succeeded",
+      sageRecordId: result.client.id, sageRecordNumber: result.client.number, error: null, now,
+    })
+    return Response.json({ success: true, status: "succeeded" })
   } catch (error) {
-    // Nothing landed (the batch is atomic): the writer's retry may apply it.
-    await releaseSageResultLease(db, "sage_client_project_write_operations", lease)
+    await releaseSageResultLease(db, "sage_client_project_write_operations", { id: operation.id, claimToken: result.claimToken })
     throw error
   }
-  if (results[0]?.meta.changes !== 1) {
-    // Only reachable if the row changed under the lease; nothing else in this batch should stand alone.
-    console.error("Sage client/job result lost its lease", { operationId: operation.id })
-    return Response.json({ error: "Sage write claim is missing, stale, or already completed" }, { status: 409 })
-  }
-  if (customerStatementIndex !== null && results[customerStatementIndex]?.meta.changes === 0) {
-    await recordClientOnDuplicateCustomer(db, operation, result.client, now)
-  }
-  await recordTaxDistrictResult(db, operation, null, now)
-  await recordSageAddOutcome(db, {
-    operationId: operation.id, organizationId: operation.organizationId, outcome: "succeeded",
-    sageRecordId: result.client.id, sageRecordNumber: result.client.number, error: null, now,
-  })
-  return Response.json({ success: true, status: "succeeded" })
 }
 
 /**

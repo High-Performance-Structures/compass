@@ -1,7 +1,7 @@
 import { readdirSync, readFileSync, statSync } from "node:fs"
 import { join } from "node:path"
 import { drizzle } from "drizzle-orm/d1"
-import { and, eq } from "drizzle-orm"
+import { and, eq, sql } from "drizzle-orm"
 import { beforeEach, describe, expect, it } from "vitest"
 
 import {
@@ -14,12 +14,15 @@ import {
 } from "@/db/schema-sage"
 import { d1Over } from "@/lib/domain/__tests__/sqlite-d1"
 import { migratedDatabase } from "@/lib/domain/contacts/__tests__/directory-seed"
-import { sageSnapshotDirectoryUpdateStatement, sageVendorUpdateStatement } from "@/lib/domain/contacts/store"
+import { sageClientWriteResultCustomerStatement, sageSnapshotDirectoryUpdateStatement, sageVendorUpdateStatement } from "@/lib/domain/contacts/store"
 import {
   cancelSageArInvoiceExport,
+  cancelSageInvoiceArExportStatement,
   claimSageArInvoiceExport,
+  claimSageInvoiceArExport,
   updateSageArInvoiceExportsStatement,
   upsertSageArInvoiceExport,
+  upsertSageInvoiceArExport,
 } from "@/lib/domain/sage-bridge/ar-invoice-store"
 import { queueSageChangeOrderExports, updateSageChangeOrderExportsStatement } from "@/lib/domain/sage-bridge/change-order-store"
 import { moveSageDirectoryAddRequest } from "@/lib/domain/sage-bridge/directory-add-store"
@@ -43,6 +46,7 @@ import {
 } from "@/lib/domain/sage-bridge/statuses"
 import {
   claimSageClientProjectWrite,
+  finishVendorCertificateSync,
   releaseSageResultLease,
   requeueFailedSageClientProjectWriteStatement,
   sageClientProjectWriteSucceededStatement,
@@ -162,16 +166,16 @@ describe("client/job writes: claims, leases and resends", () => {
   it("a result posted twice takes the lease once; a failed apply hands it back", async () => {
     insertWrite("w1", "running", "claim-1", NOW)
     const lease = { id: "w1", organizationId: ORG, claimToken: "claim-1" }
-    const first = await takeSageResultLease(db, "sage_client_project_write_operations", lease)
+    const first = await takeSageResultLease(db, "sage_client_project_write_operations", { ...lease, now: NOW })
     expect(first).toBe("claim-1:result")
-    expect(await takeSageResultLease(db, "sage_client_project_write_operations", lease)).toBeNull()
+    expect(await takeSageResultLease(db, "sage_client_project_write_operations", { ...lease, now: NOW })).toBeNull()
     await releaseSageResultLease(db, "sage_client_project_write_operations", lease)
-    expect(await takeSageResultLease(db, "sage_client_project_write_operations", lease)).toBe(first)
+    expect(await takeSageResultLease(db, "sage_client_project_write_operations", { ...lease, now: NOW })).toBe(first)
   })
 
   it("an exact repeat of a recorded result is recognised; a superseded claim's is not", async () => {
     insertWrite("w1", "running", "claim-1", NOW)
-    const leaseToken = await takeSageResultLease(db, "sage_client_project_write_operations", { id: "w1", organizationId: ORG, claimToken: "claim-1" })
+    const leaseToken = await takeSageResultLease(db, "sage_client_project_write_operations", { id: "w1", organizationId: ORG, claimToken: "claim-1", now: NOW })
     if (!leaseToken) throw new Error("no lease")
     await updateSageClientProjectWriteOperations(db, { status: "failed", errorMessage: "x", completedAt: LATER, updatedAt: LATER },
       and(eq(sageClientProjectWriteOperations.id, "w1"), eq(sageClientProjectWriteOperations.claimToken, leaseToken)))
@@ -261,8 +265,8 @@ describe("exports: AR invoices, change orders, estimates, certificates", () => {
     insertArExport("ar1", "running", "c1")
     const lease = { id: "ar1", organizationId: ORG, claimToken: "c1" }
     const [first, second] = await Promise.all([
-      takeSageResultLease(db, "sage_ar_invoice_exports", lease),
-      takeSageResultLease(db, "sage_ar_invoice_exports", lease),
+      takeSageResultLease(db, "sage_ar_invoice_exports", { ...lease, now: NOW }),
+      takeSageResultLease(db, "sage_ar_invoice_exports", { ...lease, now: NOW }),
     ])
     expect([first, second].filter((token) => token !== null)).toHaveLength(1)
   })
@@ -302,6 +306,84 @@ describe("exports: AR invoices, change orders, estimates, certificates", () => {
   })
 })
 
+describe("review fixes: certificates, leases, links, void records", () => {
+  it("a certificate result lands in one write, requeued when docs changed meanwhile", async () => {
+    insert("sage_vendor_certificate_syncs", {
+      id: "s1", organization_id: ORG, vendor_id: "v1", status: "running", claim_token: "c1", claimed_at: NOW, requested_at: NOW, updated_at: NOW,
+    })
+    insert("sage_vendor_certificate_syncs", {
+      id: "s2", organization_id: ORG, vendor_id: "v2", status: "running", claim_token: "c2", claimed_at: NOW, requested_at: LATER, updated_at: NOW,
+    })
+    const patch = { errorMessage: null, completedAt: LATER, updatedAt: LATER }
+    expect(await finishVendorCertificateSync(db, { id: "s1", claimToken: "c1", outcome: "succeeded", patch })).toBe(1)
+    expect(await finishVendorCertificateSync(db, { id: "s2", claimToken: "c2", outcome: "succeeded", patch })).toBe(1)
+    expect([statusOf("sage_vendor_certificate_syncs", "s1"), statusOf("sage_vendor_certificate_syncs", "s2")]).toEqual(["succeeded", "queued"])
+    // A stale claim's result lands nowhere.
+    expect(await finishVendorCertificateSync(db, { id: "s1", claimToken: "old", outcome: "failed", patch })).toBe(0)
+  })
+
+  it("taking a result's lease refreshes the claim, so a poll can't take it over as stale meanwhile", async () => {
+    insertWrite("w1", "running", "c1", "2026-11-12T09:00:00.000Z")
+    expect(await takeSageResultLease(db, "sage_client_project_write_operations", { id: "w1", organizationId: ORG, claimToken: "c1", now: LATER })).toBe("c1:result")
+    expect(await claimSageClientProjectWrite(db, { id: "w1", claimToken: "poll", now: LATER, staleBefore: "2026-11-12T10:20:00.000Z" })).toBe(false)
+  })
+
+  it("the client and job links land only with the success under the lease", async () => {
+    insertWrite("w1", "running", "c1:result", NOW)
+    insert("customers", { id: "cust", organization_id: ORG, name: "Acme", created_at: NOW, updated_at: NOW })
+    const guard = {
+      sql: "EXISTS (SELECT 1 FROM sage_client_project_write_operations WHERE id = ? AND claim_token = ? AND status = 'succeeded' AND completed_at = ?)",
+      binds: ["w1", "c1:result", LATER],
+    }
+    const customer = { customerId: "cust", sageClientId: "SC", sageClientNumber: "7", sageClientStatusId: 1, now: LATER }
+    // The success didn't land (still running): the link doesn't either.
+    expect((await sageClientWriteResultCustomerStatement(d1, customer, guard).run()).meta.changes).toBe(0)
+    await sageClientProjectWriteSucceededStatement(d1, {
+      operationId: "w1", leaseToken: "c1:result", clientId: "SC", clientNumber: "7", clientStatusNumber: 1,
+      jobId: null, jobNumber: null, jobStatusNumber: null, jobTypeNumber: null, now: LATER,
+    }).run()
+    expect((await sageClientWriteResultCustomerStatement(d1, customer, guard).run()).meta.changes).toBe(1)
+  })
+
+  function insertInvoiceExport(id: string, status: string, invoiceStatus: string): void {
+    insert("invoices", { id: `inv-${id}`, organization_id: ORG, customer_id: "c", status: invoiceStatus, issue_date: NOW, created_at: NOW, updated_at: NOW })
+    insert("sage_invoice_ar_exports", {
+      id, organization_id: ORG, project_id: "p1", invoice_id: `inv-${id}`, status, invoice_number: "J-INV01", requested_at: NOW, updated_at: NOW,
+    })
+  }
+
+  it("a void invoice is never claimed for the writer: its queued export is cancelled", async () => {
+    insertInvoiceExport("x1", "queued", "void")
+    insertInvoiceExport("x2", "queued", "open")
+    expect(await claimSageInvoiceArExport(db, { id: "x1", organizationId: ORG, claimToken: "c", now: LATER, staleBefore: STALE_BEFORE })).toBe(false)
+    expect(await claimSageInvoiceArExport(db, { id: "x2", organizationId: ORG, claimToken: "c", now: LATER, staleBefore: STALE_BEFORE })).toBe(true)
+    expect([statusOf("sage_invoice_ar_exports", "x1"), statusOf("sage_invoice_ar_exports", "x2")]).toEqual(["cancelled", "running"])
+  })
+
+  it("queuing a voided invoice's export again changes nothing", async () => {
+    insertInvoiceExport("x1", "failed", "void")
+    const written = await upsertSageInvoiceArExport(db, {
+      organizationId: ORG, projectId: "p1", invoiceId: "inv-x1", status: "queued", invoiceNumber: "J-INV01", requestedByUserId: null, errorMessage: null, now: LATER,
+    })
+    expect(written).toBe(false)
+    expect(statusOf("sage_invoice_ar_exports", "x1")).toBe("failed")
+  })
+
+  it("reopening cancels the export only when the reopen itself landed", async () => {
+    insertInvoiceExport("x1", "queued", "open")
+    const cancel = (now: string) => cancelSageInvoiceArExportStatement(db, {
+      organizationId: ORG, invoiceId: "inv-x1", now,
+      when: sql`EXISTS (SELECT 1 FROM invoices WHERE id = ${"inv-x1"} AND status = 'draft' AND updated_at = ${now})`,
+    })
+    // The invoice is still open (the reopen lost): the export stays queued.
+    await cancel(LATER)
+    expect(statusOf("sage_invoice_ar_exports", "x1")).toBe("queued")
+    sqlite.prepare("UPDATE invoices SET status = 'draft', updated_at = ? WHERE id = 'inv-x1'").run(LATER)
+    await cancel(LATER)
+    expect(statusOf("sage_invoice_ar_exports", "x1")).toBe("cancelled")
+  })
+})
+
 describe("Request add to Sage", () => {
   function insertRequest(id: string, status: string): void {
     insert("sage_directory_add_requests", {
@@ -338,7 +420,18 @@ describe("Request add to Sage", () => {
       .toEqual({ status: "sent", linked: 1 })
   })
 
-  it("a writer request that can't be queued puts the request back to approved", async () => {
+  it("a writer request already waiting for this add request is linked, not queued twice", async () => {
+    insertRequest("r1", "approved")
+    insertWrite("existing", "queued")
+    sqlite.exec("UPDATE sage_client_project_write_operations SET idempotency_key = 'sage-add:r1' WHERE id = 'existing'")
+    const result = await queueApprovedSageAdd(db, await requestRow("r1"), "approver", LATER)
+    expect(result.status).toBe("sent")
+    expect(sqlite.prepare("SELECT status, write_operation_id FROM sage_directory_add_requests WHERE id = 'r1'").get())
+      .toEqual({ status: "sent", write_operation_id: "existing" })
+    expect(countOf("SELECT count(*) AS n FROM sage_client_project_write_operations")).toBe(1)
+  })
+
+  it("a finished writer request for it puts the request back to approved for staff", async () => {
     insertRequest("r1", "approved")
     insertWrite("existing", "failed")
     sqlite.exec("UPDATE sage_client_project_write_operations SET idempotency_key = 'sage-add:r1' WHERE id = 'existing'")

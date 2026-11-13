@@ -1,8 +1,8 @@
-import { and, eq, sql } from "drizzle-orm"
+import { and, eq, ne } from "drizzle-orm"
 import { z } from "zod/v4"
 
 import { sageVendorCertificateSyncs } from "@/db/schema-sage"
-import { updateVendorCertificateSyncs } from "@/lib/domain/sage-bridge/store"
+import { finishVendorCertificateSync } from "@/lib/domain/sage-bridge/store"
 import { readBoundedSageBridgeBody } from "@/lib/sage/bridge-auth"
 import { authorizeVendorCertificateBridge } from "@/lib/sage/vendor-certificate-bridge"
 
@@ -54,27 +54,37 @@ export async function POST(request: Request): Promise<Response> {
       )
     )
     .get()
-  if (!sync) return Response.json({ error: "Certificate claim changed" }, { status: 409 })
-  const now = new Date().toISOString()
-  const fence = and(eq(sageVendorCertificateSyncs.id, sync.id), eq(sageVendorCertificateSyncs.claimToken, result.claimToken))
-  const finished = result.outcome === "succeeded"
-    ? {
-        resultJson: JSON.stringify({ lines: result.lines, supersededLineIds: result.supersededLineIds }),
-        errorMessage: null,
-        completedAt: now,
-        updatedAt: now,
-      }
-    : { errorMessage: result.error, completedAt: now, updatedAt: now }
-  // Docs changed while the writer was working: send the vendor round again.
-  // Decided in the write itself, so a change landing meanwhile isn't lost.
-  const changedSince = sql`${sageVendorCertificateSyncs.requestedAt} > coalesce(${sageVendorCertificateSyncs.claimedAt}, ${sageVendorCertificateSyncs.requestedAt})`
-  let updated = await updateVendorCertificateSyncs(db, and(fence, changedSince), { status: "queued", ...finished })
-  if (updated === 0) {
-    updated = await updateVendorCertificateSyncs(db, and(fence, sql`NOT (${changedSince})`), {
-      status: result.outcome === "succeeded" ? "succeeded" : "failed",
-      ...finished,
-    })
+  if (!sync) {
+    // An exact repeat of a result that already landed (same claim, now finished) is answered as recorded:
+    // the writer stops its whole run on any non-2xx answer.
+    const recorded = await db
+      .select({ status: sageVendorCertificateSyncs.status })
+      .from(sageVendorCertificateSyncs)
+      .where(and(
+        eq(sageVendorCertificateSyncs.id, result.id),
+        eq(sageVendorCertificateSyncs.organizationId, organizationId),
+        eq(sageVendorCertificateSyncs.claimToken, result.claimToken),
+        ne(sageVendorCertificateSyncs.status, "running")
+      ))
+      .get()
+    if (recorded) return Response.json({ success: true, alreadyRecorded: true }, { status: 202 })
+    return Response.json({ error: "Certificate claim changed" }, { status: 409 })
   }
+  const now = new Date().toISOString()
+  // Docs changed while the writer was working: the sync goes round again (decided in the same write).
+  const updated = await finishVendorCertificateSync(db, {
+    id: sync.id,
+    claimToken: result.claimToken,
+    outcome: result.outcome === "succeeded" ? "succeeded" : "failed",
+    patch: result.outcome === "succeeded"
+      ? {
+          resultJson: JSON.stringify({ lines: result.lines, supersededLineIds: result.supersededLineIds }),
+          errorMessage: null,
+          completedAt: now,
+          updatedAt: now,
+        }
+      : { errorMessage: result.error, completedAt: now, updatedAt: now },
+  })
   if (updated !== 1) return Response.json({ error: "Certificate claim changed" }, { status: 409 })
   return Response.json({ success: true }, { status: 202 })
 }

@@ -556,11 +556,11 @@ export function setInternalContactActiveFromSageStatement(db: Db, input: { reado
 /** The Sage client the Windows writer returned for a customer; skipped while another client holds it (a duplicate to merge), since the unique index would fail the whole result batch. */
 export function sageClientWriteResultCustomerStatement(database: D1Database, input: {
   readonly customerId: string; readonly sageClientId: string; readonly sageClientNumber: string; readonly sageClientStatusId: number; readonly now: string
-}): D1PreparedStatement {
+}, guard: { readonly sql: string; readonly binds: readonly unknown[] } | null = null): D1PreparedStatement {
   return database.prepare(`UPDATE customers SET sage_client_id = ?, sage_client_number = ?, sage_client_status_id = ?, updated_at = ?
     WHERE id = ? AND NOT EXISTS (SELECT 1 FROM customers other WHERE other.id <> customers.id AND other.organization_id IS customers.organization_id
-      AND (upper(other.sage_client_id) = upper(?) OR other.sage_client_number = ?))`)
-    .bind(input.sageClientId, input.sageClientNumber, input.sageClientStatusId, input.now, input.customerId, input.sageClientId, input.sageClientNumber)
+      AND (upper(other.sage_client_id) = upper(?) OR other.sage_client_number = ?))${guard ? ` AND ${guard.sql}` : ""}`)
+    .bind(input.sageClientId, input.sageClientNumber, input.sageClientStatusId, input.now, input.customerId, input.sageClientId, input.sageClientNumber, ...(guard?.binds ?? []))
 }
 
 /** Fills a still number-only client's Sage id from Sage's client directory unless another client holds that id or number. */

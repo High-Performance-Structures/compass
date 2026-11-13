@@ -5,7 +5,7 @@ import { sageEstimateExports } from "@/db/schema-sage"
 import { recordActivityEvent } from "@/lib/activity-log"
 import { updateEstimatesStatement } from "@/lib/domain/estimates/store"
 import { updateSageEstimateExportsStatement } from "@/lib/domain/sage-bridge/estimate-store"
-import { sageResultAlreadyRecorded, takeSageResultLease } from "@/lib/domain/sage-bridge/store"
+import { releaseSageResultLease, sageResultAlreadyRecorded, takeSageResultLease } from "@/lib/domain/sage-bridge/store"
 import { readBoundedSageBridgeBody } from "@/lib/sage/bridge-auth"
 import { authorizeSageChangeOrderBridge, ESTIMATE_WRITER } from "@/lib/sage/change-order-bridge"
 import { sageExportActor } from "@/lib/sage/estimate-sync"
@@ -59,63 +59,69 @@ export async function POST(request: Request): Promise<Response> {
   }
   if (!row) return staleOrRepeat()
   // One handler per claim: a result posted twice applies (and logs, and queues the tax district) once.
-  const leaseToken = await takeSageResultLease(db, "sage_estimate_exports", { id: result.id, organizationId, claimToken: result.claimToken })
+  const leaseToken = await takeSageResultLease(db, "sage_estimate_exports", { id: result.id, organizationId, claimToken: result.claimToken, now: new Date().toISOString() })
   if (!leaseToken) return staleOrRepeat()
-  const leased = and(
-    eq(sageEstimateExports.id, result.id),
-    eq(sageEstimateExports.organizationId, organizationId),
-    eq(sageEstimateExports.claimToken, leaseToken)
-  )
-  const now = new Date().toISOString()
-  const status = result.outcome === "succeeded" ? "succeeded" : result.needsAttention ? "needs_attention" : "failed"
-  const estimateWhere = and(eq(projectEstimates.id, row.estimateId), eq(projectEstimates.projectId, row.projectId))
-  const [updated] = await db.batch([
-    updateSageEstimateExportsStatement(db, leased, {
-      status,
-      errorMessage: result.outcome === "failed" ? result.error : null,
-      completedAt: now,
-      updatedAt: now,
-    }).returning({ id: sageEstimateExports.id }),
-    // Only when the export update above landed under this lease.
-    updateEstimatesStatement(db, and(estimateWhere, sql`EXISTS (SELECT 1 FROM sage_estimate_exports
-      WHERE id = ${result.id} AND claim_token = ${leaseToken} AND status = ${status} AND completed_at = ${now})`), {
-      sageStatus: status === "succeeded" ? "sent" : status,
-      ...(status === "succeeded" ? { lastSageSyncAt: now } : {}),
-      updatedAt: now,
-    }),
-  ])
-  if (updated.length !== 1) return Response.json({ error: "Estimate claim changed" }, { status: 409 })
-
-  if (result.outcome === "succeeded") {
-    // The job now carries the accepted estimate, so give it the estimate's tax
-    // district for Progress Billing. Best effort: the proposal result stands.
-    try {
-      await queueSageJobTaxDistrict(db, {
-        organizationId, projectId: row.projectId, estimateId: row.estimateId,
-        requestedByUserId: row.requestedByUserId, now,
-      })
-    } catch (error) {
-      console.error("Sage job tax district could not be queued", error)
-    }
-    const [actor, estimate] = await Promise.all([
-      sageExportActor(db, row.requestedByUserId),
-      db.select({ estimateNumber: projectEstimates.estimateNumber }).from(projectEstimates).where(estimateWhere).get(),
+  // A throw while applying hands the lease back, so the claim is neither stuck nor half-applied.
+  try {
+    const leased = and(
+      eq(sageEstimateExports.id, result.id),
+      eq(sageEstimateExports.organizationId, organizationId),
+      eq(sageEstimateExports.claimToken, leaseToken)
+    )
+    const now = new Date().toISOString()
+    const status = result.outcome === "succeeded" ? "succeeded" : result.needsAttention ? "needs_attention" : "failed"
+    const estimateWhere = and(eq(projectEstimates.id, row.estimateId), eq(projectEstimates.projectId, row.projectId))
+    const [updated] = await db.batch([
+      updateSageEstimateExportsStatement(db, leased, {
+        status,
+        errorMessage: result.outcome === "failed" ? result.error : null,
+        completedAt: now,
+        updatedAt: now,
+      }).returning({ id: sageEstimateExports.id }),
+      // Only when the export update above landed under this lease.
+      updateEstimatesStatement(db, and(estimateWhere, sql`EXISTS (SELECT 1 FROM sage_estimate_exports
+        WHERE id = ${result.id} AND claim_token = ${leaseToken} AND status = ${status} AND completed_at = ${now})`), {
+        sageStatus: status === "succeeded" ? "sent" : status,
+        ...(status === "succeeded" ? { lastSageSyncAt: now } : {}),
+        updatedAt: now,
+      }),
     ])
-    if (actor) {
-      await recordActivityEvent({
-        db,
-        organizationId,
-        projectId: row.projectId,
-        actor,
-        category: "financial",
-        action: "estimate_synced_to_sage",
-        entityType: "project_estimate",
-        entityId: row.estimateId,
-        summary: `${estimate?.estimateNumber ?? "Estimate"}: ${row.automatic ? "synced to Sage automatically" : "sent to Sage"} (proposal ${result.proposalLineCount} lines, $${result.proposalTotal}${result.budgetLineCount === null ? "" : `; budget ${result.budgetLineCount} lines`}).`,
-        metadata: { proposalLineCount: result.proposalLineCount, proposalTotal: result.proposalTotal, budgetLineCount: result.budgetLineCount },
-        createdAt: now,
-      })
+    if (updated.length !== 1) return Response.json({ error: "Estimate claim changed" }, { status: 409 })
+
+    if (result.outcome === "succeeded") {
+      // The job now carries the accepted estimate, so give it the estimate's tax
+      // district for Progress Billing. Best effort: the proposal result stands.
+      try {
+        await queueSageJobTaxDistrict(db, {
+          organizationId, projectId: row.projectId, estimateId: row.estimateId,
+          requestedByUserId: row.requestedByUserId, now,
+        })
+      } catch (error) {
+        console.error("Sage job tax district could not be queued", error)
+      }
+      const [actor, estimate] = await Promise.all([
+        sageExportActor(db, row.requestedByUserId),
+        db.select({ estimateNumber: projectEstimates.estimateNumber }).from(projectEstimates).where(estimateWhere).get(),
+      ])
+      if (actor) {
+        await recordActivityEvent({
+          db,
+          organizationId,
+          projectId: row.projectId,
+          actor,
+          category: "financial",
+          action: "estimate_synced_to_sage",
+          entityType: "project_estimate",
+          entityId: row.estimateId,
+          summary: `${estimate?.estimateNumber ?? "Estimate"}: ${row.automatic ? "synced to Sage automatically" : "sent to Sage"} (proposal ${result.proposalLineCount} lines, $${result.proposalTotal}${result.budgetLineCount === null ? "" : `; budget ${result.budgetLineCount} lines`}).`,
+          metadata: { proposalLineCount: result.proposalLineCount, proposalTotal: result.proposalTotal, budgetLineCount: result.budgetLineCount },
+          createdAt: now,
+        })
+      }
     }
+    return Response.json({ success: true, status }, { status: result.outcome === "succeeded" ? 200 : 202 })
+  } catch (error) {
+    await releaseSageResultLease(db, "sage_estimate_exports", { id: result.id, claimToken: result.claimToken })
+    throw error
   }
-  return Response.json({ success: true, status }, { status: result.outcome === "succeeded" ? 200 : 202 })
 }

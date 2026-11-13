@@ -245,10 +245,11 @@ function sageResultLeaseToken(claimToken: string): string {
 export async function takeSageResultLease(
   db: Db,
   table: SageResultLeaseTable,
-  input: { readonly id: string; readonly organizationId: string; readonly claimToken: string }
+  input: { readonly id: string; readonly organizationId: string; readonly claimToken: string; readonly now: string }
 ): Promise<string | null> {
   const leaseToken = sageResultLeaseToken(input.claimToken)
-  const result = await db.run(sql`UPDATE ${sql.identifier(table)} SET claim_token = ${leaseToken}
+  // claimed_at moves to now, so a poll can't take the claim over as stale while this result is applied.
+  const result = await db.run(sql`UPDATE ${sql.identifier(table)} SET claim_token = ${leaseToken}, claimed_at = ${input.now}
     WHERE id = ${input.id} AND organization_id = ${input.organizationId}
       AND status = 'running' AND claim_token = ${input.claimToken}`)
   return result.meta.changes === 1 ? leaseToken : null
@@ -538,6 +539,36 @@ export async function updateVendorCertificateSyncs(db: Db, where: SQL | undefine
   assertListFields("sage_vendor_certificate_syncs", patch, LISTS)
   const rows = await db.update(sageVendorCertificateSyncs).set(patch)
     .where(and(where, inArray(sageVendorCertificateSyncs.status, [...sourcesInto(vendorCertificateSyncMachine, patch.status)])))
+    .returning({ id: sageVendorCertificateSyncs.id })
+  return rows.length
+}
+
+/**
+ * succeed / fail, or requeue_changed: finishes a running sync the writer
+ * reported under `claimToken`, in one write. Trade docs that changed while
+ * the writer worked (requested after the claim) send it round again, decided
+ * in the same statement so a change landing meanwhile is never lost and the
+ * result always lands. Returns the rows written (0: the claim no longer holds).
+ */
+export async function finishVendorCertificateSync(
+  db: Db,
+  input: {
+    readonly id: string
+    readonly claimToken: string
+    readonly outcome: "succeeded" | "failed"
+    readonly patch: Omit<VendorCertificateSyncPatch, "status">
+  }
+): Promise<number> {
+  const { requeue_changed: requeue, succeed, fail } = vendorCertificateSyncMachine.transitions
+  const finished = input.outcome === "succeeded" ? succeed : fail
+  const changedSince = sql`${sageVendorCertificateSyncs.requestedAt} > coalesce(${sageVendorCertificateSyncs.claimedAt}, ${sageVendorCertificateSyncs.requestedAt})`
+  const rows = await db.update(sageVendorCertificateSyncs)
+    .set({ ...input.patch, status: sql`CASE WHEN ${changedSince} THEN ${requeue.to} ELSE ${finished.to} END` })
+    .where(and(
+      eq(sageVendorCertificateSyncs.id, input.id),
+      eq(sageVendorCertificateSyncs.claimToken, input.claimToken),
+      inArray(sageVendorCertificateSyncs.status, [...new Set([...requeue.from, ...finished.from])])
+    ))
     .returning({ id: sageVendorCertificateSyncs.id })
   return rows.length
 }

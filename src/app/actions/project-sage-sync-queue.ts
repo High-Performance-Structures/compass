@@ -31,6 +31,16 @@ function linesOfQueued(now: string): SQL {
     AND op.sync_status = 'queued_sage' AND op.updated_at = ${now})`
 }
 
+/** How many of the project's operations this queue write (stamped `now`) actually moved. */
+async function queuedCount(db: Parameters<typeof loadSageSyncQueue>[0], projectId: string, now: string): Promise<number> {
+  const rows = await db.select({ id: projectOperations.id }).from(projectOperations).where(and(
+    eq(projectOperations.projectId, projectId),
+    eq(projectOperations.syncStatus, "queued_sage"),
+    eq(projectOperations.updatedAt, now),
+  ))
+  return rows.length
+}
+
 /*
  * The project's Sage queue: staff of the project's organization with the
  * "sage-sync" permission (operations access, "organization" scope). Queuing
@@ -72,6 +82,10 @@ export async function queueProjectOperationForSageSync(
     revalidatePath(`/dashboard/projects/${projectId}/daily-logs`)
     revalidatePath(`/dashboard/projects/${projectId}/schedule`)
     revalidatePath("/dashboard")
+    // The item changed (the bridge synced it, say) since it was read: nothing was queued.
+    if ((await queuedCount(db, projectId, now)) === 0) {
+      return { success: false, error: "This item changed while you were queuing it. Refresh and try again." }
+    }
     return { success: true, updatedCount: 1 }
   } catch (error) {
     return { success: false, error: errorMessage(error, "Failed to queue Sage sync") }
@@ -114,7 +128,10 @@ export async function queueProjectOperationsForSageSync(projectId: string): Prom
     revalidatePath(`/dashboard/projects/${projectId}`)
     revalidatePath(`/dashboard/projects/${projectId}/purchase-orders`)
     revalidatePath("/dashboard")
-    return { success: true, updatedCount: readyIds.length }
+    // Items synced or changed since they were read are left as they are and not counted.
+    const updatedCount = await queuedCount(db, projectId, now)
+    if (updatedCount === 0) return { success: false, error: "No Sage-ready items to queue." }
+    return { success: true, updatedCount }
   } catch (error) {
     return { success: false, error: errorMessage(error, "Failed to queue Sage sync") }
   }

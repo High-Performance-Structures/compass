@@ -7,7 +7,7 @@ import { recordActivityEvent } from "@/lib/activity-log"
 import { updateBudgetApplicationsStatement } from "@/lib/domain/budget/store"
 import { operationUpdateQuery } from "@/lib/domain/operations/store"
 import { updateSageArInvoiceExportsStatement } from "@/lib/domain/sage-bridge/ar-invoice-store"
-import { sageResultAlreadyRecorded, takeSageResultLease } from "@/lib/domain/sage-bridge/store"
+import { releaseSageResultLease, sageResultAlreadyRecorded, takeSageResultLease } from "@/lib/domain/sage-bridge/store"
 import { applyDepositSageResult } from "@/lib/financials/deposit-sage-result"
 import { applySimpleInvoiceSageResult } from "@/lib/financials/simple-invoice-sage-result"
 import { formatCents } from "@/lib/format"
@@ -88,77 +88,83 @@ export async function POST(request: Request): Promise<Response> {
     return Response.json({ success: true, status: invoiceResult.status }, { status: invoiceResult.httpStatus })
   }
   // One handler per claim: a result posted twice records the invoice number and logs once.
-  const leaseToken = await takeSageResultLease(db, "sage_ar_invoice_exports", { id: result.id, organizationId, claimToken: result.claimToken })
+  const leaseToken = await takeSageResultLease(db, "sage_ar_invoice_exports", { id: result.id, organizationId, claimToken: result.claimToken, now: new Date().toISOString() })
   if (!leaseToken) return staleOrRepeat()
-  const leased = and(
-    eq(sageArInvoiceExports.id, result.id),
-    eq(sageArInvoiceExports.organizationId, organizationId),
-    eq(sageArInvoiceExports.claimToken, leaseToken)
-  )
-  const now = new Date().toISOString()
+  // A throw while applying hands the lease back, so the claim is neither stuck nor half-applied.
+  try {
+    const leased = and(
+      eq(sageArInvoiceExports.id, result.id),
+      eq(sageArInvoiceExports.organizationId, organizationId),
+      eq(sageArInvoiceExports.claimToken, leaseToken)
+    )
+    const now = new Date().toISOString()
 
-  if (result.outcome === "failed") {
-    const status = result.needsAttention ? "needs_attention" : "failed"
+    if (result.outcome === "failed") {
+      const status = result.needsAttention ? "needs_attention" : "failed"
+      const [updated] = await db.batch([
+        updateSageArInvoiceExportsStatement(db, leased, { status, errorMessage: result.error, completedAt: now, updatedAt: now }).returning({ id: sageArInvoiceExports.id }),
+      ])
+      if (updated.length !== 1) return Response.json({ error: "AR invoice claim changed" }, { status: 409 })
+      return Response.json({ success: true, status }, { status: 202 })
+    }
+
+    // Sage computes the sales tax itself; a total that reads back differently
+    // keeps the invoice (it is in Sage) but flags it for the office.
+    const sageTotalCents = sageAmountCents(result.sageInvoiceTotal)
+    const expected = expectedTotalCents(row.payloadJson)
+    const differs = expected !== null && expected !== sageTotalCents
+    const status = differs ? "needs_attention" : "succeeded"
+    const applicationWhere = and(eq(projectBudgetApplications.id, row.applicationId), eq(projectBudgetApplications.projectId, row.projectId))
+    // The pay request and its operation take the invoice number only when the export update landed under this lease.
+    const exportLanded = sql`EXISTS (SELECT 1 FROM sage_ar_invoice_exports
+      WHERE id = ${result.id} AND claim_token = ${leaseToken} AND status = ${status} AND completed_at = ${now})`
     const [updated] = await db.batch([
-      updateSageArInvoiceExportsStatement(db, leased, { status, errorMessage: result.error, completedAt: now, updatedAt: now }).returning({ id: sageArInvoiceExports.id }),
+      updateSageArInvoiceExportsStatement(db, leased, {
+        status,
+        sageRecordId: result.sageRecordId,
+        sageTotalCents,
+        errorMessage: differs && expected !== null
+          ? `Sage has invoice ${row.invoiceNumber}, but its total reads back as ${formatCents(sageTotalCents)} (sales tax ${formatCents(sageAmountCents(result.sageSalesTax))}); Compass expected ${formatCents(expected)}. Check it in Sage before posting.`
+          : null,
+        completedAt: now,
+        updatedAt: now,
+      }).returning({ id: sageArInvoiceExports.id }),
+      updateBudgetApplicationsStatement(db, and(applicationWhere, exportLanded), { sageInvoiceNumber: row.invoiceNumber, syncStatus: "synced", updatedAt: now }),
+      operationUpdateQuery(
+        db,
+        and(
+          eq(projectOperations.projectId, row.projectId),
+          eq(projectOperations.sourceRecordType, "owner_pay_application"),
+          eq(projectOperations.sourceRecordId, row.applicationId),
+          exportLanded
+        ),
+        { syncStatus: "synced", updatedAt: now }
+      ),
     ])
     if (updated.length !== 1) return Response.json({ error: "AR invoice claim changed" }, { status: 409 })
-    return Response.json({ success: true, status }, { status: 202 })
-  }
 
-  // Sage computes the sales tax itself; a total that reads back differently
-  // keeps the invoice (it is in Sage) but flags it for the office.
-  const sageTotalCents = sageAmountCents(result.sageInvoiceTotal)
-  const expected = expectedTotalCents(row.payloadJson)
-  const differs = expected !== null && expected !== sageTotalCents
-  const status = differs ? "needs_attention" : "succeeded"
-  const applicationWhere = and(eq(projectBudgetApplications.id, row.applicationId), eq(projectBudgetApplications.projectId, row.projectId))
-  // The pay request and its operation take the invoice number only when the export update landed under this lease.
-  const exportLanded = sql`EXISTS (SELECT 1 FROM sage_ar_invoice_exports
-    WHERE id = ${result.id} AND claim_token = ${leaseToken} AND status = ${status} AND completed_at = ${now})`
-  const [updated] = await db.batch([
-    updateSageArInvoiceExportsStatement(db, leased, {
-      status,
-      sageRecordId: result.sageRecordId,
-      sageTotalCents,
-      errorMessage: differs && expected !== null
-        ? `Sage has invoice ${row.invoiceNumber}, but its total reads back as ${formatCents(sageTotalCents)} (sales tax ${formatCents(sageAmountCents(result.sageSalesTax))}); Compass expected ${formatCents(expected)}. Check it in Sage before posting.`
-        : null,
-      completedAt: now,
-      updatedAt: now,
-    }).returning({ id: sageArInvoiceExports.id }),
-    updateBudgetApplicationsStatement(db, and(applicationWhere, exportLanded), { sageInvoiceNumber: row.invoiceNumber, syncStatus: "synced", updatedAt: now }),
-    operationUpdateQuery(
-      db,
-      and(
-        eq(projectOperations.projectId, row.projectId),
-        eq(projectOperations.sourceRecordType, "owner_pay_application"),
-        eq(projectOperations.sourceRecordId, row.applicationId),
-        exportLanded
-      ),
-      { syncStatus: "synced", updatedAt: now }
-    ),
-  ])
-  if (updated.length !== 1) return Response.json({ error: "AR invoice claim changed" }, { status: 409 })
-
-  const [actor, application] = await Promise.all([
-    sageExportActor(db, row.requestedByUserId),
-    db.select({ applicationNumber: projectBudgetApplications.applicationNumber }).from(projectBudgetApplications).where(applicationWhere).get(),
-  ])
-  if (actor) {
-    await recordActivityEvent({
-      db,
-      organizationId,
-      projectId: row.projectId,
-      actor,
-      category: "financial",
-      action: "pay_application_sage_invoice_added",
-      entityType: "project_budget_application",
-      entityId: row.applicationId,
-      summary: `Pay application ${application?.applicationNumber ?? ""}: ${result.alreadyInSage ? "already in Sage" : "added to Sage"} as AR invoice ${row.invoiceNumber} (${formatCents(sageTotalCents)}).${differs ? " Sage's total differs; check it before posting." : ""}`,
-      metadata: { invoiceNumber: row.invoiceNumber, sageRecordId: result.sageRecordId, sageTotalCents, alreadyInSage: result.alreadyInSage, automatic: row.automatic },
-      createdAt: now,
-    })
+    const [actor, application] = await Promise.all([
+      sageExportActor(db, row.requestedByUserId),
+      db.select({ applicationNumber: projectBudgetApplications.applicationNumber }).from(projectBudgetApplications).where(applicationWhere).get(),
+    ])
+    if (actor) {
+      await recordActivityEvent({
+        db,
+        organizationId,
+        projectId: row.projectId,
+        actor,
+        category: "financial",
+        action: "pay_application_sage_invoice_added",
+        entityType: "project_budget_application",
+        entityId: row.applicationId,
+        summary: `Pay application ${application?.applicationNumber ?? ""}: ${result.alreadyInSage ? "already in Sage" : "added to Sage"} as AR invoice ${row.invoiceNumber} (${formatCents(sageTotalCents)}).${differs ? " Sage's total differs; check it before posting." : ""}`,
+        metadata: { invoiceNumber: row.invoiceNumber, sageRecordId: result.sageRecordId, sageTotalCents, alreadyInSage: result.alreadyInSage, automatic: row.automatic },
+        createdAt: now,
+      })
+    }
+    return Response.json({ success: true, status })
+  } catch (error) {
+    await releaseSageResultLease(db, "sage_ar_invoice_exports", { id: result.id, claimToken: result.claimToken })
+    throw error
   }
-  return Response.json({ success: true, status })
 }

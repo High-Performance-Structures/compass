@@ -4,10 +4,10 @@ import { and, desc, eq, gte, inArray, or } from "drizzle-orm"
 
 import { customerContacts, customers, vendorContacts, vendors } from "@/db/schema"
 import { membershipsView, peopleView } from "@/lib/domain/identity/views"
-import { sageDirectoryAddRequests } from "@/db/schema-sage"
+import { sageClientProjectWriteOperations, sageDirectoryAddRequests } from "@/db/schema-sage"
 import { recordActivityEvent, type ActivityActor } from "@/lib/activity-log"
 import { insertSageContactCreateEvent, insertSageContactCreateProposal } from "@/lib/domain/sage-bridge/contact-store"
-import { moveSageDirectoryAddRequest } from "@/lib/domain/sage-bridge/directory-add-store"
+import { moveSageDirectoryAddRequest, relinkSageDirectoryAddOperation } from "@/lib/domain/sage-bridge/directory-add-store"
 import type { SageDirectoryAddKind } from "@/lib/domain/sage-bridge/statuses"
 import { insertSageClientProjectWriteOperation } from "@/lib/domain/sage-bridge/store"
 import { readFeatureSettings } from "@/lib/feature-settings/server"
@@ -183,7 +183,23 @@ export async function queueApprovedSageAdd(db: Db, request: AddRequestRow, appro
     return { status: "sent", error: null }
   }
 
-  const queued = await queueWriterRequest(db, request, { operationId, approverUserId, now, companyFields, personFields, parent })
+  let queued = await queueWriterRequest(db, request, { operationId, approverUserId, now, companyFields, personFields, parent })
+  if (queued !== null && isCompany) {
+    // The writer request's key is per add request: one already waiting for it
+    // (an earlier send that went half way) is this request's, so link it.
+    const existing = await db.select({ id: sageClientProjectWriteOperations.id, status: sageClientProjectWriteOperations.status })
+      .from(sageClientProjectWriteOperations).where(and(
+        eq(sageClientProjectWriteOperations.organizationId, request.organizationId),
+        eq(sageClientProjectWriteOperations.idempotencyKey, `sage-add:${request.id}`),
+      )).get()
+    if (existing && (existing.status === "queued" || existing.status === "running")) {
+      const linked = await relinkSageDirectoryAddOperation(db, {
+        id: request.id, organizationId: request.organizationId, fromOperationId: operationId, toOperationId: existing.id, now,
+      })
+      if (linked) return { status: "sent", error: null }
+    }
+    if (existing) queued = `Sage already has a ${existing.status} write for this request. Check the Sage queue.`
+  }
   if (queued !== null) {
     await moveSageDirectoryAddRequest(db, {
       id: request.id, organizationId: request.organizationId, event: "unsend",

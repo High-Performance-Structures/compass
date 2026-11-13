@@ -49,3 +49,20 @@ export async function moveSageDirectoryAddRequest(
   const result = await db.update(sageDirectoryAddRequests).set({ ...input.values, status: rule.to }).where(fence).run()
   return result.meta.changes
 }
+
+/** Points a sent request at the writer request already queued for it (no status change). True when it did. */
+export async function relinkSageDirectoryAddOperation(
+  db: Db,
+  input: { readonly id: string; readonly organizationId: string; readonly fromOperationId: string; readonly toOperationId: string; readonly now: string }
+): Promise<boolean> {
+  const result = await db.update(sageDirectoryAddRequests)
+    .set({ writeOperationId: input.toOperationId, errorMessage: null, updatedAt: input.now })
+    .where(and(
+      eq(sageDirectoryAddRequests.id, input.id),
+      eq(sageDirectoryAddRequests.organizationId, input.organizationId),
+      eq(sageDirectoryAddRequests.status, directoryAddMachine.transitions.send.to),
+      eq(sageDirectoryAddRequests.writeOperationId, input.fromOperationId)
+    ))
+    .run()
+  return result.meta.changes === 1
+}
