@@ -38,3 +38,19 @@ export type WorkdayExceptionType = (typeof WORKDAY_EXCEPTION_TYPES)[number]
  * link list hides them (isScheduleLinkType), exactly as before.
  */
 export const STORED_SCHEDULE_LINK_TYPES = [...SCHEDULE_LINK_TYPES, "buildertrend", "buildertrend_schedule"] as const
+
+/**
+ * A schedule assignee's answer to the dates they were asked to commit to
+ * (schedule_task_assignees.response_status). "pending" until they answer,
+ * and again whenever staff change the dates. assignee-response-machine.ts
+ * moves it.
+ */
+export const SCHEDULE_ASSIGNEE_RESPONSES = ["pending", "confirmed", "declined", "proposed"] as const
+export type ScheduleAssigneeResponseStatus = (typeof SCHEDULE_ASSIGNEE_RESPONSES)[number]
+
+/**
+ * The same answer for the start date and for the duration on their own
+ * (date_response_status, duration_response_status). A proposal that only
+ * moves the date leaves the duration "pending".
+ */
+export const SCHEDULE_ASSIGNEE_PART_RESPONSES = SCHEDULE_ASSIGNEE_RESPONSES

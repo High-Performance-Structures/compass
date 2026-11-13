@@ -10,7 +10,7 @@
  * statement so a caller can put it in one atomic batch with another
  * module's write (for example a linked to-do or the project row).
  */
-import { and, eq, inArray } from "drizzle-orm"
+import { and, eq, exists, inArray, isNull } from "drizzle-orm"
 import type { BatchItem } from "drizzle-orm/batch"
 
 import {
@@ -32,10 +32,15 @@ import type {
 } from "@/lib/schedule/types"
 import { namedAssignee } from "@/lib/schedule/assignees"
 
+import { assigneeResponseMachine, assigneeResponseParts, type AssigneeAnswerEvent } from "./assignee-response-machine"
 import { loadProjectScheduleRows } from "./queries"
 import { criticalPathChanges, dependencyData, taskWithStatus, type DateUpdates } from "./rules"
+import type { ScheduleAssigneeResponseStatus } from "./statuses"
 
 type TaskInsert = typeof scheduleTasks.$inferInsert
+
+/** Assignee answers once staff move an item or re-ask (the machine's reset). */
+const RESET = assigneeResponseParts("reset")
 type TaskUpdate = Partial<TaskInsert>
 
 /*
@@ -246,9 +251,9 @@ export async function persistScheduleDateUpdates(
           `UPDATE schedule_task_assignees
            SET source_start_date = ?,
                source_end_date = ?,
-               response_status = 'pending',
-               date_response_status = 'pending',
-               duration_response_status = 'pending',
+               response_status = ?,
+               date_response_status = ?,
+               duration_response_status = ?,
                proposed_start_date = NULL,
                proposed_workdays = NULL,
                proposed_end_date = NULL,
@@ -260,7 +265,16 @@ export async function persistScheduleDateUpdates(
                updated_at = ?
            WHERE schedule_task_id = ?`
         )
-        .bind(dates.startDate, dates.endDateCalculated, updatedAt, updatedAt, taskId),
+        .bind(
+          dates.startDate,
+          dates.endDateCalculated,
+          RESET.responseStatus,
+          RESET.dateResponseStatus,
+          RESET.durationResponseStatus,
+          updatedAt,
+          updatedAt,
+          taskId
+        ),
     ])
     await runD1Batch(database, statements, "Schedule date update batch failed")
   }
@@ -397,9 +411,7 @@ export function resetTaskAssigneesQuery(
       sourceStartDate: source.startDate,
       sourceWorkdays: source.workdays,
       sourceEndDate: source.endDate,
-      responseStatus: "pending",
-      dateResponseStatus: "pending",
-      durationResponseStatus: "pending",
+      ...RESET,
       proposedStartDate: null,
       proposedWorkdays: null,
       proposedEndDate: null,
@@ -413,12 +425,90 @@ export function resetTaskAssigneesQuery(
     .where(eq(scheduleTaskAssignees.scheduleTaskId, taskId))
 }
 
+/**
+ * The assignment as the assignee answered it, read before they answered:
+ * the row's assigned_at (set again by every reset), its last responded_at,
+ * and the item's dates.
+ */
+export type AssigneeResponseVersion = {
+  readonly id: string
+  readonly assignedAt: string
+  readonly respondedAt: string | null
+  readonly startDate: string
+  readonly workdays: number
+}
+
+/**
+ * Records an assignee's answer (assignee-response-machine.ts). It lands only
+ * while the row and its item are still at `seen`. Otherwise it reports
+ * "already_recorded" when the same person's same answer landed first (a
+ * double submit), and "schedule_changed" when staff moved, re-asked or
+ * reassigned in the meantime, or another answer landed.
+ */
 export async function recordAssigneeResponse(
   db: Db,
-  assignmentId: string,
-  values: Partial<typeof scheduleTaskAssignees.$inferInsert>
-): Promise<void> {
-  await db.update(scheduleTaskAssignees).set(values).where(eq(scheduleTaskAssignees.id, assignmentId))
+  seen: AssigneeResponseVersion,
+  answer: {
+    readonly event: AssigneeAnswerEvent
+    readonly dateResponseStatus: ScheduleAssigneeResponseStatus
+    readonly durationResponseStatus: ScheduleAssigneeResponseStatus
+    readonly proposedStartDate: string | null
+    readonly proposedWorkdays: number | null
+    readonly responseMessage: string | null
+  },
+  by: { readonly respondedAt: string; readonly respondedByUserId: string; readonly responseSource: string }
+): Promise<"recorded" | "already_recorded" | "schedule_changed"> {
+  const rule = assigneeResponseMachine.transitions[answer.event]
+  const result = await db
+    .update(scheduleTaskAssignees)
+    .set({
+      responseStatus: rule.to,
+      dateResponseStatus: answer.dateResponseStatus,
+      durationResponseStatus: answer.durationResponseStatus,
+      proposedStartDate: answer.proposedStartDate,
+      proposedWorkdays: answer.proposedWorkdays,
+      responseMessage: answer.responseMessage,
+      ...by,
+      updatedAt: by.respondedAt,
+    })
+    .where(
+      and(
+        eq(scheduleTaskAssignees.id, seen.id),
+        inArray(scheduleTaskAssignees.responseStatus, [...rule.from]),
+        eq(scheduleTaskAssignees.assignedAt, seen.assignedAt),
+        seen.respondedAt === null
+          ? isNull(scheduleTaskAssignees.respondedAt)
+          : eq(scheduleTaskAssignees.respondedAt, seen.respondedAt),
+        exists(
+          db
+            .select({ id: scheduleTasks.id })
+            .from(scheduleTasks)
+            .where(
+              and(
+                eq(scheduleTasks.id, scheduleTaskAssignees.scheduleTaskId),
+                eq(scheduleTasks.startDate, seen.startDate),
+                eq(scheduleTasks.workdays, seen.workdays)
+              )
+            )
+        )
+      )
+    )
+    .run()
+  if (result.meta.changes > 0) return "recorded"
+  const latest = await db
+    .select({
+      assignedAt: scheduleTaskAssignees.assignedAt,
+      responseStatus: scheduleTaskAssignees.responseStatus,
+      respondedByUserId: scheduleTaskAssignees.respondedByUserId,
+    })
+    .from(scheduleTaskAssignees)
+    .where(eq(scheduleTaskAssignees.id, seen.id))
+    .get()
+  const sameAnswer =
+    latest?.assignedAt === seen.assignedAt &&
+    latest.respondedByUserId === by.respondedByUserId &&
+    latest.responseStatus === rule.to
+  return sameAnswer ? "already_recorded" : "schedule_changed"
 }
 
 // ---------------------------------------------------------------------------

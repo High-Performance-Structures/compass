@@ -6,6 +6,7 @@ const mocks = vi.hoisted(() => ({
   requirePermission: vi.fn(), assertProjectAccess: vi.fn(),
   recordActivityEvent: vi.fn(), createNotificationEvent: vi.fn(),
   revalidatePath: vi.fn(), isInternalStaffRole: vi.fn(), updateSet: vi.fn(),
+  changes: { value: 1 },
 }))
 vi.mock("@/lib/auth", () => ({ requireAuth: mocks.requireAuth, getCurrentUser: mocks.requireAuth }))
 vi.mock("@/lib/db", () => ({ getCloudflareContext: mocks.getCloudflareContext }))
@@ -34,13 +35,13 @@ function query(value: Value): Record<string, unknown> {
   return builder
 }
 
-function setupDb(capabilitiesJson: string, role = "staff", ownerVisible = true): void {
+function setupDb(capabilitiesJson: string, role = "staff", ownerVisible = true, latest: Value = null): void {
   const values: readonly Value[] = [
     {
       id: "assignment-1", taskId: "task-1", projectId: "project-1", title: "Concrete",
       startDate: "2026-09-14", workdays: 3, confirmationRequired: true,
       participantId: "participant-1", assignedUserId: "user-1", projectContactId: null,
-      assignedAt: "2026-09-01T00:00:00.000Z",
+      assignedAt: "2026-09-01T00:00:00.000Z", respondedAt: null,
     },
     [{
       snapshotData: JSON.stringify({
@@ -65,19 +66,26 @@ function setupDb(capabilitiesJson: string, role = "staff", ownerVisible = true):
       membershipStatus: "active", active: true, capabilitiesJson,
     },
     { id: "user-1", role },
-    [],
+    [], // the task-dates subquery inside the compare-and-set
+    latest, // the row read back when the answer did not land
   ]
   let index = 0
   mocks.getDb.mockReturnValue({
     select: () => query(values[index++] ?? null),
-    update: () => ({ set: (value: unknown) => { mocks.updateSet(value); return { where: async () => undefined } } }),
+    update: () => ({ set: (value: unknown) => {
+      mocks.updateSet(value)
+      return { where: () => ({ run: async () => ({ meta: { changes: mocks.changes.value } }) }) }
+    } }),
   })
   mocks.getCloudflareContext.mockResolvedValue({ env: { DB: {} } })
   mocks.assertProjectAccess.mockResolvedValue({ id: "project-1", organizationId: "org-1", projectNumber: null })
   mocks.isInternalStaffRole.mockReturnValue(true)
 }
 
-afterEach(() => vi.clearAllMocks())
+afterEach(() => {
+  vi.clearAllMocks()
+  mocks.changes.value = 1
+})
 
 describe("multi-assignee schedule action gates", () => {
   it("rejects participants without schedule.respond", async () => {
@@ -112,5 +120,41 @@ describe("owner individual commitments", () => {
     mocks.requireAuth.mockResolvedValue({ id: "user-1", role: "guest" })
     expect((await respondToScheduleTaskAssignee("assignment-1", "confirmed")).success).toBe(false)
     expect(mocks.updateSet).not.toHaveBeenCalled()
+  })
+})
+
+describe("answers against a schedule that moved", () => {
+  const changed = { success: false, error: "The schedule changed while you were answering. Please review it and respond again." }
+
+  it("refuses an answer given against dates the item no longer has", async () => {
+    setupDb(JSON.stringify(["schedule.respond"]), "owner")
+    mocks.requireAuth.mockResolvedValue({ id: "user-1", role: "guest" })
+    await expect(respondToScheduleTaskAssignee("assignment-1", {
+      response: "confirmed", seen: { startDate: "2026-09-07", workdays: 3 },
+    })).resolves.toEqual(changed)
+    expect(mocks.updateSet).not.toHaveBeenCalled()
+  })
+
+  it("records and announces nothing when staff rescheduled before the answer landed", async () => {
+    mocks.changes.value = 0
+    setupDb(JSON.stringify(["schedule.respond"]), "owner", true, {
+      assignedAt: "2026-09-03T00:00:00.000Z", responseStatus: "pending", respondedByUserId: null,
+    })
+    mocks.requireAuth.mockResolvedValue({ id: "user-1", role: "guest" })
+    await expect(respondToScheduleTaskAssignee("assignment-1", {
+      response: "confirmed", seen: { startDate: "2026-09-14", workdays: 3 },
+    })).resolves.toEqual(changed)
+    expect(mocks.recordActivityEvent).not.toHaveBeenCalled()
+    expect(mocks.createNotificationEvent).not.toHaveBeenCalled()
+  })
+
+  it("treats a second submit of the same answer as done, without announcing it twice", async () => {
+    mocks.changes.value = 0
+    setupDb(JSON.stringify(["schedule.respond"]), "owner", true, {
+      assignedAt: "2026-09-01T00:00:00.000Z", responseStatus: "confirmed", respondedByUserId: "user-1",
+    })
+    mocks.requireAuth.mockResolvedValue({ id: "user-1", role: "guest" })
+    await expect(respondToScheduleTaskAssignee("assignment-1", "confirmed")).resolves.toEqual({ success: true })
+    expect(mocks.recordActivityEvent).not.toHaveBeenCalled()
   })
 })

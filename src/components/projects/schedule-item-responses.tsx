@@ -76,6 +76,7 @@ function ScheduleResponse({
             ? await respondToScheduleTaskAssignee(target.id, {
                 response,
                 message: note,
+                seen: { startDate: item.startDate, workdays: item.workdays },
                 ...(response === "proposed"
                   ? { proposedStartDate: startDate, proposedWorkdays: workdays }
                   : {})

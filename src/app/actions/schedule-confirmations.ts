@@ -1144,6 +1144,8 @@ export async function getScheduleTaskAssignees(
   )
 }
 
+const SCHEDULE_CHANGED = "The schedule changed while you were answering. Please review it and respond again."
+
 export async function respondToScheduleTaskAssignee(
   assignmentId: string,
   input: ScheduleAssigneeProposalInput | ScheduleAssigneeResponse,
@@ -1152,11 +1154,7 @@ export async function respondToScheduleTaskAssignee(
     await assertAudiencePreviewWriteAllowed()
     const responseInput: ScheduleAssigneeProposalInput =
       typeof input === "string" ? { response: input } : input
-    if (
-      responseInput.response !== "confirmed" &&
-      responseInput.response !== "declined" &&
-      responseInput.response !== "proposed"
-    ) {
+    if (!["confirmed", "declined", "proposed"].includes(responseInput.response)) {
       return { success: false, error: "Unsupported assignee response." }
     }
     const state = scheduleAssigneeResponseState(responseInput)
@@ -1176,12 +1174,18 @@ export async function respondToScheduleTaskAssignee(
         assignedUserId: scheduleTaskAssignees.assignedUserId,
         projectContactId: scheduleTaskAssignees.projectContactId,
         assignedAt: scheduleTaskAssignees.assignedAt,
+        respondedAt: scheduleTaskAssignees.respondedAt,
       })
       .from(scheduleTaskAssignees)
       .innerJoin(scheduleTasks, eq(scheduleTasks.id, scheduleTaskAssignees.scheduleTaskId))
       .where(eq(scheduleTaskAssignees.id, assignmentId))
       .get()
     if (!assignment) return { success: false, error: "Assignment not found." }
+    // Answered against dates staff have since moved: look again first.
+    const seen = responseInput.seen
+    if (seen && (seen.startDate !== assignment.startDate || seen.workdays !== assignment.workdays)) {
+      return { success: false, error: SCHEDULE_CHANGED }
+    }
     const project = await assertProjectAccess(db, user, assignment.projectId)
     if (!project.organizationId || !assignment.confirmationRequired) {
       return { success: false, error: "A response is not required for this assignment." }
@@ -1271,18 +1275,11 @@ export async function respondToScheduleTaskAssignee(
       }
     }
     const now = new Date().toISOString()
-    await recordAssigneeResponse(db, assignment.id, {
-      responseStatus: state.responseStatus,
-      dateResponseStatus: state.dateResponseStatus,
-      durationResponseStatus: state.durationResponseStatus,
-      proposedStartDate: responseInput.response === "proposed" ? responseInput.proposedStartDate?.trim() || null : null,
-      proposedWorkdays: responseInput.response === "proposed" ? responseInput.proposedWorkdays ?? null : null,
-      responseMessage: responseInput.message?.trim() || null,
-      respondedAt: now,
-      respondedByUserId: user.id,
-      responseSource: "compass",
-      updatedAt: now,
-    })
+    // Lands only against the row read above; a double submit is announced once.
+    const by = { respondedAt: now, respondedByUserId: user.id, responseSource: "compass" }
+    const outcome = await recordAssigneeResponse(db, assignment, state, by)
+    if (outcome === "already_recorded") return { success: true }
+    if (outcome === "schedule_changed") return { success: false, error: SCHEDULE_CHANGED }
     await recordActivityEvent({
       db,
       organizationId: project.organizationId,

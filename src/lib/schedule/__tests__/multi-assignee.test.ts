@@ -15,9 +15,13 @@ describe("multi-assignee schedule responses", () => {
         message: "Crew conflict",
       }),
     ).toEqual({
+      event: "propose",
       responseStatus: "proposed",
       dateResponseStatus: "proposed",
       durationResponseStatus: "pending",
+      proposedStartDate: "2026-09-14",
+      proposedWorkdays: null,
+      responseMessage: "Crew conflict",
     })
   })
 
