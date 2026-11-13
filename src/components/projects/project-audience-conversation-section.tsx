@@ -11,6 +11,7 @@ import type {
 import { ProjectCorrespondenceWorkspace } from "@/components/correspondence/project-correspondence-workspace"
 import { ProjectConversationsTab, type ProjectConversationsQuery } from "@/components/conversations/project-conversations-tab"
 import { ProjectMessagesTabs } from "@/components/conversations/project-messages-tabs"
+import { ProjectAudienceConversationPane } from "@/components/projects/project-audience-conversation"
 import { ProjectAudienceCorrespondencePreview } from "@/components/projects/project-audience-correspondence-preview"
 import { Badge } from "@/components/ui/badge"
 import { isCorrespondenceEnabled } from "@/lib/correspondence/access"
@@ -77,14 +78,17 @@ export async function AudienceConversationSection({
     return <section id="messages" className="flex min-w-0 flex-col">
       <ProjectMessagesTabs active={conversationsQuery ? "conversations" : "emails"} emailsHref={basePath} conversationsHref={`${basePath}?view=conversations`} />
       {conversationsQuery
-        ? <ProjectConversationsTab
+        ? <div className="flex h-[calc(100dvh-11rem)] min-h-[32rem] border">
+          {/* A fixed-height frame so the list and the open conversation scroll on their own, as on the staff page. */}
+          <ProjectConversationsTab
             projectId={data.project.id}
             basePath={basePath}
             baseParams={{ view: "conversations" }}
             query={conversationsQuery}
             currentUser={null}
-            channelHref={(channelId) => projectAudienceConversationHref(data.project.id, route, channelId)}
+            renderChannel={(channelId) => <ProjectAudienceConversationPane projectId={data.project.id} channelId={channelId} audience={data.audience} />}
           />
+          </div>
         : inbox.success ? data.viewerIsInternal ? <ProjectAudienceCorrespondencePreview key={inbox.data.viewerId} projectId={data.project.id} inbox={inbox.data} /> : <ProjectCorrespondenceWorkspace projectId={data.project.id} initialInbox={inbox.data} initialNewMessage={initialNewMessage} /> : <p className="p-4 text-sm">Messages are unavailable. {inbox.error}</p>}
     </section>
   }

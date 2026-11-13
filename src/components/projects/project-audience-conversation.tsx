@@ -70,6 +70,96 @@ async function loadConversation(
   }
 }
 
+type LoadedConversation = Awaited<ReturnType<typeof loadConversation>>
+
+/**
+ * One conversation's messages and composer for an owner or vendor (a read-only
+ * transcript when staff preview the workspace). The full conversation page and
+ * the Messages > Conversations tab both render it after loadConversation.
+ */
+function ConversationBody({
+  data,
+  channelId,
+  audience,
+  initialMention,
+}: {
+  readonly data: LoadedConversation
+  readonly channelId: string
+  readonly audience: ProjectAudience
+  readonly initialMention?: { readonly userId: string; readonly label: string }
+}): React.ReactElement {
+  const { preview, channel, messages } = data
+  const homeHref = projectAudiencePreviewHref(preview.project.id, routeAudience(audience))
+  const project = {
+    id: preview.project.id,
+    name: preview.project.name,
+    projectNumber: preview.project.projectNumber,
+    clientName: preview.project.clientName,
+  }
+  if (preview.viewerIsInternal) {
+    return <section className="h-full overflow-y-auto p-5">
+      <h1 className="text-lg font-medium">{channel.name}</h1>
+      <p className="my-3 text-sm text-muted-foreground">Read-only conversation preview.</p>
+      {messages.map((message) => <article key={message.id} className="border-b py-4">
+        <p className="text-sm font-medium">{message.user?.displayName ?? message.user?.email ?? "Project participant"}</p>
+        <p className="mt-2 whitespace-pre-wrap break-words text-sm">{message.content}</p>
+        {message.attachments.map((attachment) => <a className="mt-2 block text-sm underline" key={attachment.id} href={attachment.storageUrl}>{attachment.fileName}</a>)}
+      </article>)}
+    </section>
+  }
+  return <ConversationsProvider>
+    <div className="flex h-full w-full min-w-0 overflow-hidden">
+      <div
+        className="grid min-w-0 flex-1 grid-cols-1 overflow-hidden"
+        style={{ gridTemplateRows: "auto 1fr auto" }}
+      >
+        <ChannelHeader
+          channelId={channelId}
+          name={channel.name}
+          description={channel.description ?? undefined}
+          project={project}
+          memberCount={channel.memberCount}
+          projectHref={homeHref}
+          conversationBaseHref={`${homeHref}/conversations`}
+        />
+        <MessageList
+          channelId={channelId}
+          initialMessages={messages}
+          currentUserId={preview.viewer.id}
+        />
+        <MessageComposer
+          channelId={channelId}
+          channelName={channel.name}
+          organizationId={channel.organizationId}
+          isProjectChannel={false}
+          initialMention={initialMention}
+        />
+      </div>
+      <ThreadPanel currentUserId={preview.viewer.id} />
+    </div>
+  </ConversationsProvider>
+}
+
+/** The conversation beside the list on an owner's or vendor's Messages page. */
+export async function ProjectAudienceConversationPane({
+  projectId,
+  channelId,
+  audience,
+}: {
+  readonly projectId: string
+  readonly channelId: string
+  readonly audience: ProjectAudience
+}): Promise<React.ReactElement> {
+  let data: LoadedConversation
+  try {
+    data = await loadConversation(projectId, channelId, audience)
+  } catch {
+    // A link to a conversation this person can't open shows a note, not a missing page.
+    return <p className="p-6 text-sm text-muted-foreground">This conversation isn't available.</p>
+  }
+  return <ConversationBody data={data} channelId={channelId} audience={audience} />
+}
+
 export async function ProjectAudienceConversation({
   projectId,
   channelId,
@@ -84,20 +174,8 @@ export async function ProjectAudienceConversation({
     readonly label: string
   }
 }): Promise<React.ReactElement> {
-  const { preview, channel, messages } = await loadConversation(
-    projectId,
-    channelId,
-    audience
-  )
-  const audienceRoute = routeAudience(audience)
-  const homeHref = projectAudiencePreviewHref(projectId, audienceRoute)
-  const conversationBaseHref = `${homeHref}/conversations`
-  const project = {
-    id: preview.project.id,
-    name: preview.project.name,
-    projectNumber: preview.project.projectNumber,
-    clientName: preview.project.clientName,
-  }
+  const data = await loadConversation(projectId, channelId, audience)
+  const { preview } = data
   const messageShortcut = projectAudienceMessageShortcut({
     projectId: preview.project.id,
     audience,
@@ -121,45 +199,7 @@ export async function ProjectAudienceConversation({
       warrantyEnabled={preview.project.warrantyEnabled}
     >
       <main className="min-h-0 flex-1 overflow-hidden bg-background">
-        {preview.viewerIsInternal ? <section className="h-full overflow-y-auto p-5">
-          <h1 className="text-lg font-medium">{channel.name}</h1>
-          <p className="my-3 text-sm text-muted-foreground">Read-only conversation preview.</p>
-          {messages.map((message) => <article key={message.id} className="border-b py-4">
-            <p className="text-sm font-medium">{message.user?.displayName ?? message.user?.email ?? "Project participant"}</p>
-            <p className="mt-2 whitespace-pre-wrap break-words text-sm">{message.content}</p>
-            {message.attachments.map((attachment) => <a className="mt-2 block text-sm underline" key={attachment.id} href={attachment.storageUrl}>{attachment.fileName}</a>)}
-          </article>)}
-        </section> : <ConversationsProvider>
-          <div className="flex h-full w-full min-w-0 overflow-hidden">
-            <div
-              className="grid min-w-0 flex-1 grid-cols-1 overflow-hidden"
-              style={{ gridTemplateRows: "auto 1fr auto" }}
-            >
-              <ChannelHeader
-                channelId={channelId}
-                name={channel.name}
-                description={channel.description ?? undefined}
-                project={project}
-                memberCount={channel.memberCount}
-                projectHref={homeHref}
-                conversationBaseHref={conversationBaseHref}
-              />
-              <MessageList
-                channelId={channelId}
-                initialMessages={messages}
-                currentUserId={preview.viewer.id}
-              />
-              <MessageComposer
-                channelId={channelId}
-                channelName={channel.name}
-                organizationId={channel.organizationId}
-                isProjectChannel={false}
-                initialMention={initialMention}
-              />
-            </div>
-            <ThreadPanel currentUserId={preview.viewer.id} />
-          </div>
-        </ConversationsProvider>}
+        <ConversationBody data={data} channelId={channelId} audience={audience} initialMention={initialMention} />
       </main>
     </ProjectAudiencePreviewShell>
   )
