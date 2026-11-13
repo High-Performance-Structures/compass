@@ -168,6 +168,8 @@ export function DailyLogTodoChecklist({
       <ul className="grid divide-y border-y empty:hidden">
         {shown.map((todo) => {
           const isCompleted = done.includes(todo.id)
+          // A company can keep a blocked to-do blocked until the block is cleared (Settings).
+          const keepsBlock = todo.status === "blocked" && rules.completeClearsBlock === false
           const checked = worked.includes(todo.id) || isCompleted
           const id = `${idPrefix}-todo-${todo.id}`
           const code = rules.todoCostCodes ? costCodeLabel(todo.costCode, costCodes) : null
@@ -192,7 +194,10 @@ export function DailyLogTodoChecklist({
                   <Checkbox id={id} checked={checked} onCheckedChange={() => onToggle(todo)} aria-label={`Worked on: ${todo.title}`} />
                   <Label htmlFor={id} className="text-xs font-normal">Worked on</Label>
                 </span>
-                {canComplete && (
+                {canComplete && keepsBlock && !isCompleted && (
+                  <span className="text-xs text-muted-foreground">Clear the block to complete</span>
+                )}
+                {canComplete && (!keepsBlock || isCompleted) && (
                   <span className="flex items-center gap-1.5">
                     <Checkbox
                       id={`${id}-completed`}

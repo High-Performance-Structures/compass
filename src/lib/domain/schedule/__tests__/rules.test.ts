@@ -275,6 +275,18 @@ describe("taskEditValues", () => {
     })
   })
 
+  it("lets a reassignment in the same save decide the confirmation over an accepted proposal", () => {
+    expect(
+      taskEditValues({
+        ...base,
+        data: { assignedTo: "New Sub" },
+        confirmationRequired: true,
+        acceptChangeProposal: true,
+        restartConfirmation: { status: "unavailable", requestedAt: base.now },
+      })
+    ).toMatchObject({ confirmationStatus: "unavailable", proposalSubmittedAt: null })
+  })
+
   it("turns an accepted proposal into a draft awaiting confirmation", () => {
     expect(
       taskEditValues({ ...base, data: {}, confirmationRequired: true, acceptChangeProposal: true })

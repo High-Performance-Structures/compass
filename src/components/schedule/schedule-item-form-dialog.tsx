@@ -195,6 +195,7 @@ export function ScheduleItemFormDialog({
       })
       if (!result.success) {
         toast.error(result.error)
+        if (result.subAnswered) proposalState.subAnswered()
         return
       }
       savedTaskId = editingTask.id

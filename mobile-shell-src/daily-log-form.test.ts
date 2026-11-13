@@ -153,6 +153,20 @@ describe("Field Mode daily log to-dos and client contact", () => {
     expect(draft.blocked).toEqual({})
   })
 
+  it("hides Completed on a blocked to-do when the company keeps blocked to-dos blocked", () => {
+    const carried = { ...setup, rules: { ...setup.rules, carryBlocked: false } }
+    const html = (completeClearsBlock: boolean): string => logFieldsHtml({
+      draft: emptyLogDraft("2026-10-14"),
+      form: { ...form, followUps: { ...carried, rules: { ...carried.rules, completeClearsBlock } } },
+      errors: new Map(),
+      escape,
+    })
+    expect(html(true)).toContain('data-fu="completed" data-fu-key="t2"')
+    expect(html(false)).not.toContain('data-fu="completed" data-fu-key="t2"')
+    expect(html(false)).toContain('data-fu="completed" data-fu-key="t1"')
+    expect(html(false)).toContain("Clear the block to complete")
+  })
+
   it("offers Worked on and Completed per to-do, named with the company's done status", () => {
     let followUps = followUpAction(emptyFollowUpDraft(), setup.rules, { control: "completed", key: "t1", value: "true" }, () => "k")
     expect(followUps.completed).toEqual(["t1"])

@@ -29,6 +29,7 @@ import {
   hasScheduleDraftChanges,
   parsePublishedScheduleSnapshot,
   publishedScheduleSnapshotSchema,
+  reaskedSincePublication,
 } from "@/lib/schedule/publications"
 import { sameScheduleAssigneeSet } from "@/lib/schedule/multi-assignee"
 import { addedAssigneeUserIds, scheduleItemAssigneeUserIds } from "@/lib/schedule/assignees"
@@ -191,6 +192,8 @@ export async function publishSchedule(
       .select({
         scheduleTaskId: scheduleTaskAssignees.scheduleTaskId,
         participantId: scheduleTaskAssignees.participantId,
+        assignedAt: scheduleTaskAssignees.assignedAt,
+        respondedAt: scheduleTaskAssignees.respondedAt,
       })
       .from(scheduleTaskAssignees)
       .innerJoin(
@@ -199,6 +202,9 @@ export async function publishSchedule(
       )
       .where(eq(scheduleTasks.projectId, projectId))
     const assigneeIdsByTask = new Map<string, string[]>()
+    // Items whose assignees were asked again (a date move resets them) since
+    // the last publication and haven't answered: told when this one goes out.
+    const reaskedTaskIds = reaskedSincePublication(assigneeRows, previousPublication?.publishedAt ?? null)
     for (const row of assigneeRows) {
       const ids = assigneeIdsByTask.get(row.scheduleTaskId) ?? []
       ids.push(row.participantId)
@@ -277,7 +283,8 @@ export async function publishSchedule(
           ) ||
           previousTask.startDate !== task.startDate ||
           previousTask.workdays !== task.workdays ||
-          previousTask.confirmationRequired !== task.confirmationRequired
+          previousTask.confirmationRequired !== task.confirmationRequired ||
+          reaskedTaskIds.has(task.id)
         if (
           normalizedAssignmentChanged &&
           (!previousPublication || previousSnapshot)

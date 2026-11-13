@@ -16,6 +16,12 @@ const inputSchema = z.object({
   selection: z.array(z.object({ id: z.string().min(1), updatedAt: z.string().min(1) })).min(1),
 })
 
+/**
+ * Most to-dos one bulk action changes: archive and restore write two
+ * statements each in one batch, kept well under D1's per-request query cap.
+ */
+const MAX_BULK_TODOS = 250
+
 export type BulkTodoInput = z.infer<typeof inputSchema>
 export type BulkTodoResult = ActionResult<{
   readonly changedIds: readonly string[]
@@ -32,6 +38,8 @@ export async function changeProjectTodosCommand(
     if (!parsed.success) return { success: false, error: "Select valid to-dos and an action." }
     const { db, user, organizationId } = await operationsContext(projectId, "tasks", true)
     const { mode, selection } = parsed.data
+    if (selection.length > MAX_BULK_TODOS)
+      return { success: false, error: `Select up to ${MAX_BULK_TODOS} to-dos at a time.` }
     if (mode === "delete" && !(await canFeature(user, "tasks", "delete")))
       return { success: false, error: "You do not have permission to delete to-dos." }
     if (new Set(selection.map((item) => item.id)).size !== selection.length)

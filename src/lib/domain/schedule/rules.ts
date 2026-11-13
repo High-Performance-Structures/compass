@@ -386,17 +386,19 @@ export function taskEditValues(input: {
     ...(data.subVendorVisible !== undefined && { subVendorVisible: data.subVendorVisible }),
     ...(data.doneBy !== undefined && { doneBy: doneByValue(data.doneBy) }),
     ...(data.confirmationRequired !== undefined && { confirmationRequired: input.confirmationRequired }),
-    ...(input.restartConfirmation
-      ? {
-          confirmationStatus: input.restartConfirmation.status,
-          confirmationRequestedAt: input.restartConfirmation.requestedAt,
-          ...CLEARED_PROPOSAL,
-        }
-      : {}),
     ...(input.acceptChangeProposal
       ? {
           confirmationStatus: confirmationStatusAfter(input.confirmationRequired ? "request" : "stop"),
           confirmationRequestedAt: input.confirmationRequired ? input.now : null,
+          ...CLEARED_PROPOSAL,
+        }
+      : {}),
+    // A reassignment or changed rule in the same save wins over an accepted
+    // proposal: a new assignee without an account waits for one.
+    ...(input.restartConfirmation
+      ? {
+          confirmationStatus: input.restartConfirmation.status,
+          confirmationRequestedAt: input.restartConfirmation.requestedAt,
           ...CLEARED_PROPOSAL,
         }
       : {}),

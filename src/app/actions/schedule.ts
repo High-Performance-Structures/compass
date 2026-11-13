@@ -40,10 +40,10 @@ import {
 import {
   acceptConfirmationProposal,
   clearTaskAssigneesQuery,
-  type DateMove,
+  persistScheduleDateUpdates,
+  restoreConfirmationProposal,
   deleteTask as deleteTaskRow,
   insertTask,
-  persistScheduleDateUpdates,
   recalcCriticalPath,
   replaceTaskPeopleQueries,
   resetTaskAssigneesQuery,
@@ -51,6 +51,7 @@ import {
   taskUpdateQuery,
 } from "@/lib/domain/schedule/store"
 import { scheduleDateMoveRules } from "@/lib/domain/schedule/date-move-rules"
+import { dateMovesLimitError, type DateMoves } from "@/lib/domain/schedule/date-moves"
 import { updateProjects } from "@/lib/domain/project/store"
 import { loadScheduleTemplateItemImport } from "@/lib/domain/schedule/template-items"
 import { operationInsertQuery } from "@/lib/domain/operations/store"
@@ -473,7 +474,7 @@ export async function updateTask(
     shiftReason?: string
     notes?: string | null
   }
-): Promise<{ success: boolean; error?: string }> {
+): Promise<{ success: boolean; error?: string; subAnswered?: true }> {
   try {
     const context = await scheduleWriteContext()
     if (!context.success) return context
@@ -534,7 +535,7 @@ export async function updateTask(
         task.proposedStartDate === null ||
         task.proposedWorkdays === null)
     ) {
-      return { success: false, error: SUB_ANSWERED }
+      return { success: false, error: SUB_ANSWERED, subAnswered: true }
     }
     const now = new Date().toISOString()
     const confirmation = newScheduleConfirmationState({
@@ -556,18 +557,17 @@ export async function updateTask(
       endDateCalculated: endDate
     }
     const allTasks = schedule.tasks.map((t) => (t.id === taskId ? updatedTask : t))
-    const dateUpdates = new Map<string, DateMove>()
-    if (scheduleDatesChanged) {
-      for (const [updatedTaskId, dates] of propagateFrom(
-        taskId,
-        allTasks,
-        schedule.dependencies,
-        exceptions
-      )) {
-        dateUpdates.set(updatedTaskId, dates)
-      }
-      dateUpdates.set(taskId, { startDate, endDateCalculated: endDate, workdays })
-    }
+    // The edited item moves first, on its own, then the items that follow it.
+    const ownMove: DateMoves = scheduleDatesChanged
+      ? new Map([[taskId, { startDate, endDateCalculated: endDate, workdays }]])
+      : new Map()
+    const successorMoves: DateMoves = scheduleDatesChanged
+      ? propagateFrom(taskId, allTasks, schedule.dependencies, exceptions)
+      : new Map()
+    const dateUpdates: DateMoves = new Map([...ownMove, ...successorMoves])
+    const tooMany = dateMovesLimitError(dateUpdates)
+    if (tooMany) return { success: false, error: tooMany }
+    const dateRules = await scheduleDateMoveRules(db, orgId)
     const shiftSummary = summarizeScheduleShift(schedule.tasks, dateUpdates)
     const shiftReasonResult = resolveScheduleShiftReason(
       shiftSummary.affectedItemCount > 0 &&
@@ -597,7 +597,7 @@ export async function updateTask(
         now
       ))
     ) {
-      return { success: false, error: SUB_ANSWERED }
+      return { success: false, error: SUB_ANSWERED, subAnswered: true }
     }
 
     // Leave dates untouched until the paired D1 batch below. Linked to-dos
@@ -617,21 +617,28 @@ export async function updateTask(
         now
       })
     )
-    if (assignmentChanged) {
-      // Legacy scalar assignment changes invalidate normalized assignees. The
-      // child rows carry independent response authority and cannot be left
-      // attached to a newly assigned scalar task.
-      await db.batch([taskUpdate, clearTaskAssigneesQuery(db, taskId), ...peopleQueries])
-    } else if (scheduleDatesChanged || resetConfirmation) {
-      await db.batch([
-        taskUpdate,
-        resetTaskAssigneesQuery(db, taskId, { startDate, workdays, endDate }, now),
-        ...peopleQueries,
-      ])
-    } else {
-      await db.batch([taskUpdate, ...peopleQueries])
+    try {
+      if (assignmentChanged) {
+        // Legacy scalar assignment changes invalidate normalized assignees. The
+        // child rows carry independent response authority and cannot be left
+        // attached to a newly assigned scalar task.
+        await db.batch([taskUpdate, clearTaskAssigneesQuery(db, taskId), ...peopleQueries])
+      } else if (resetConfirmation || (scheduleDatesChanged && dateRules.reaskOnDateMove)) {
+        await db.batch([
+          taskUpdate,
+          resetTaskAssigneesQuery(db, taskId, { startDate, workdays, endDate }, now),
+          ...peopleQueries,
+        ])
+      } else {
+        await db.batch([taskUpdate, ...peopleQueries])
+      }
+      await persistScheduleDateUpdates(env.DB, task.projectId, ownMove, now, dateRules)
+    } catch (error) {
+      // The accepted proposal goes back when the item's new dates didn't land.
+      if (acceptChangeProposal) await restoreConfirmationProposal(db, task, now)
+      throw error
     }
-    await persistScheduleDateUpdates(env.DB, task.projectId, dateUpdates, now, await scheduleDateMoveRules(db, orgId))
+    await persistScheduleDateUpdates(env.DB, task.projectId, successorMoves, now, dateRules)
     if (shiftReasonResult?.success) {
       await recordScheduleShift({
         db,

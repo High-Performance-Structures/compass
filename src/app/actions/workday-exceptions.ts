@@ -18,6 +18,7 @@ import {
   exceptionUpdateStatement,
   runWithDateUpdates,
 } from "@/lib/domain/schedule/store"
+import { dateMovesLimitError } from "@/lib/domain/schedule/date-moves"
 import { scheduleDateMoveRules } from "@/lib/domain/schedule/date-move-rules"
 import type { Db } from "@/lib/server/action-context"
 import { isScheduleShiftReasonRequired } from "@/lib/schedule/publication-history"
@@ -130,6 +131,8 @@ export async function createWorkdayException(
       ...existingExceptions,
       newException,
     ])
+    const tooMany = dateMovesLimitError(updatedTasks)
+    if (tooMany) return { success: false, error: tooMany }
     const shiftSummary = summarizeScheduleShift(tasksBefore, updatedTasks)
     await runWithDateUpdates(
       env.DB,
@@ -229,6 +232,8 @@ export async function updateWorkdayException(
         exception.id === exceptionId ? updatedException : exception
       )
     )
+    const tooMany = dateMovesLimitError(updatedTasks)
+    if (tooMany) return { success: false, error: tooMany }
     const shiftSummary = summarizeScheduleShift(tasksBefore, updatedTasks)
     await runWithDateUpdates(
       env.DB,
@@ -309,6 +314,8 @@ export async function deleteWorkdayException(
       existing.projectId,
       remainingExceptions
     )
+    const tooMany = dateMovesLimitError(updatedTasks)
+    if (tooMany) return { success: false, error: tooMany }
     const shiftSummary = summarizeScheduleShift(tasksBefore, updatedTasks)
     await runWithDateUpdates(
       env.DB,

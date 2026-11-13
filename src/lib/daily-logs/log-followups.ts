@@ -36,7 +36,7 @@ export type DailyLogFollowUpRules = {
   readonly workedMovesToInProgress: boolean
   /** The crew can mark a to-do Completed on a log (it moves to the company's done status). */
   readonly todosCanComplete: boolean
-  /** A Completed sign-off finishes a Blocked to-do too (server-side; unset counts as on). */
+  /** A Completed sign-off finishes a Blocked to-do too; unset counts as on. */
   readonly completeClearsBlock?: boolean
   /** Blocked to-dos ask "still blocked?" on the next log. */
   readonly carryBlocked: boolean

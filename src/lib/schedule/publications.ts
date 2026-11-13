@@ -170,3 +170,16 @@ export function getPublicationChangeReasonError(
   }
   return null
 }
+
+/**
+ * Items whose multi-assignee rows were asked again (a date move or re-ask
+ * resets them) after the last publication and still wait for an answer:
+ * publishing tells those assignees.
+ */
+export function reaskedSincePublication(
+  rows: readonly { readonly scheduleTaskId: string; readonly assignedAt: string; readonly respondedAt: string | null }[],
+  lastPublishedAt: string | null
+): ReadonlySet<string> {
+  if (lastPublishedAt === null) return new Set()
+  return new Set(rows.filter((row) => row.assignedAt > lastPublishedAt && row.respondedAt === null).map((row) => row.scheduleTaskId))
+}

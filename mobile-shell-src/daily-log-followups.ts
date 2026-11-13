@@ -225,6 +225,8 @@ export function todoChecklistHtml(
   const canComplete = rules.todosCanComplete
   const rows = todos.map((todo) => {
     const completed = canComplete && (draft.completed ?? []).includes(todo.id)
+    // A company can keep a blocked to-do blocked until the block is cleared.
+    const keepsBlock = todo.status === "blocked" && rules.completeClearsBlock === false
     const checked = completed || draft.worked.includes(todo.id)
     const status = completed
       ? `${statusLabel(todo.status)} → ${setup.doneStatusLabel}`
@@ -235,7 +237,8 @@ export function todoChecklistHtml(
       <p class="field-hint">${escape(whoFor(todo))} · ${escape(status)}${code ? ` · ${escape(code)}` : ""}</p>
       <div class="followup-actions">
         <label class="followup-check"><input type="checkbox" ${checked ? "checked" : ""} ${data("worked", todo.id, escape)} /><span>Worked on</span></label>
-        ${canComplete ? `<label class="followup-check"><input type="checkbox" ${completed ? "checked" : ""} ${data("completed", todo.id, escape)} /><span>Completed</span></label>` : ""}
+        ${canComplete && (!keepsBlock || completed) ? `<label class="followup-check"><input type="checkbox" ${completed ? "checked" : ""} ${data("completed", todo.id, escape)} /><span>Completed</span></label>` : ""}
+        ${canComplete && keepsBlock && !completed ? `<span class="field-hint">Clear the block to complete</span>` : ""}
       </div>
     </div>`
   })

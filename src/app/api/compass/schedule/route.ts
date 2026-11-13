@@ -31,8 +31,8 @@ import {
   setTaskAssignedTo,
   persistScheduleDateUpdates,
   updateTask,
-  type DateMove,
 } from "@/lib/domain/schedule/store"
+import { dateMovesLimitError, type DateMove } from "@/lib/domain/schedule/date-moves"
 import { scheduleDateMoveRules } from "@/lib/domain/schedule/date-move-rules"
 import { calculateEndDate } from "@/lib/schedule/business-days"
 import { normalizeScheduleProgress } from "@/lib/schedule/progress"
@@ -173,6 +173,21 @@ async function updateTaskAction(db: Db, database: D1Database, orgId: string, bod
     const startDate = (fields.startDate as string) ?? task.startDate
     const workdays = (fields.workdays as number) ?? task.workdays
     const endDate = calculateEndDate(startDate, workdays, exceptions)
+    // The moves, decided first so a change too large to apply is refused
+    // whole. The item itself moves only when its dates really change.
+    const { tasks, dependencies } = await loadProjectScheduleRows(db, task.projectId)
+    const updatedTask = { ...task, status: progress.status, percentComplete: progress.percentComplete, startDate, workdays, endDateCalculated: endDate }
+    const datesChanged = startDate !== task.startDate || workdays !== task.workdays || endDate !== task.endDateCalculated
+    const updates = new Map<string, DateMove>(datesChanged ? [[taskId, { startDate, endDateCalculated: endDate, workdays }]] : [])
+    const successors = propagateFrom(
+      taskId,
+      tasks.map((row) => (row.id === taskId ? updatedTask : taskWithStatus(row))),
+      dependencies.map(dependencyData),
+      exceptions
+    )
+    for (const [id, dates] of successors) updates.set(id, dates)
+    const tooMany = dateMovesLimitError(updates)
+    if (tooMany) return json({ error: tooMany }, 400)
 
     await updateTask(db, taskId, {
       ...(fields.title ? { title: fields.title as string } : {}),
@@ -188,23 +203,6 @@ async function updateTaskAction(db: Db, database: D1Database, orgId: string, bod
       await setTaskAssignedTo(db, taskId, assignedTo || null, new Date().toISOString())
     }
 
-    // propagate date changes
-    const { tasks, dependencies } = await loadProjectScheduleRows(db, task.projectId)
-    const updatedTask = {
-      ...task,
-      status: progress.status,
-      percentComplete: progress.percentComplete,
-      startDate,
-      workdays,
-      endDateCalculated: endDate,
-    }
-    const updates = new Map<string, DateMove>(propagateFrom(
-      taskId,
-      tasks.map((row) => (row.id === taskId ? updatedTask : taskWithStatus(row))),
-      dependencies.map(dependencyData),
-      exceptions
-    ))
-    updates.set(taskId, { startDate, endDateCalculated: endDate, workdays })
     await persistScheduleDateUpdates(database, task.projectId, updates, new Date().toISOString(), await scheduleDateMoveRules(db, orgId), "leave")
   }
 
@@ -261,11 +259,11 @@ async function createDependency(db: Db, database: D1Database, orgId: string, bod
   if (invalid) return json({ error: invalid }, 400)
 
   const dependency = { id: crypto.randomUUID(), predecessorId, successorId, type, lagDays }
-  await insertDependency(db, dependency)
-
   const exceptions = await loadProjectExceptions(db, projectId)
-  const { tasks } = await projectSchedule(db, projectId)
-  const updates = propagateFrom(predecessorId, tasks, [...existingDeps, dependency], exceptions)
+  const updates = propagateFrom(predecessorId, projectTasks, [...existingDeps, dependency], exceptions)
+  const tooMany = dateMovesLimitError(updates)
+  if (tooMany) return json({ error: tooMany }, 400)
+  await insertDependency(db, dependency)
   await persistScheduleDateUpdates(database, projectId, updates, new Date().toISOString(), await scheduleDateMoveRules(db, orgId), "leave")
 
   await recalcCriticalPath(db, projectId)

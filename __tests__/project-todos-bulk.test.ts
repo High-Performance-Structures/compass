@@ -154,6 +154,15 @@ describe("guarded bulk to-do actions", () => {
       { todo_id: "one", kind: "status", from_status: "open", to_status: "archived" },
     ])
   })
+  it("caps one bulk action at 250 to-dos, changing nothing beyond it", async () => {
+    for (let i = 0; i < 251; i++) seed(`many-${i}`)
+    const result = await changeProjectTodos("project-a", {
+      mode: "archive",
+      selection: Array.from({ length: 251 }, (_, i) => selection(`many-${i}`)),
+    })
+    expect(result).toEqual({ success: false, error: "Select up to 250 to-dos at a time." })
+    expect(status("many-0")).toEqual({ status: "open" })
+  })
   it("rolls back a failing batch and supports D1-sized read chunks", async () => {
     for (let i = 0; i < 110; i++) seed(`item-${i}`)
     testDb.failures.setBindLimit(100)
