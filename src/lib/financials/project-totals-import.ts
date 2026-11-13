@@ -293,6 +293,7 @@ export function parseProjectTotalsRows(
 
 export function spreadsheetIdFromUrl(value: string | null): string | null {
   if (!value) return null
-  const match = /\/spreadsheets\/d\/([^/]+)/.exec(value)
+  // The id stops at "/", "?" or "#", so share links like ".../d/<id>?usp=sharing" work too.
+  const match = /\/spreadsheets\/d\/([A-Za-z0-9_-]+)/.exec(value)
   return match?.[1] ?? null
 }
