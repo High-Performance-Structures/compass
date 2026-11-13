@@ -36,11 +36,9 @@ import {
 import { openFeedbackDialog } from "@/components/feedback-widget"
 import { useVoiceState } from "@/hooks/use-voice-state"
 import { useAlertCount } from "@/hooks/use-alert-count"
+import { useProjectMessagesUnread, withMessagesUnread } from "@/hooks/use-project-messages-unread"
 import type { SidebarUser } from "@/lib/auth"
-import {
-  getProjectTargetSection,
-  getSidebarContextMode,
-} from "@/lib/sidebar-navigation"
+import { getProjectTargetSection, getSidebarContextMode } from "@/lib/sidebar-navigation"
 import { getProjectConversationsHref } from "@/lib/conversation-navigation"
 import {
   Sidebar,
@@ -666,6 +664,7 @@ function SidebarNav({
     canPrepareGreetingCards,
     canViewProjectArchive,
   })
+  const unreadMessageCount = useProjectMessagesUnread(activeProjectId, projectConversationReturnHref)
   const staleMessageCount = useAlertCount("/api/staff-message-desk/stale-count", canViewActivity, pathname)
   const overdueFollowUpCount = useAlertCount("/api/client-follow-up/overdue-count", canViewActivity, pathname)
   const staffMessageDeskNav: ReadonlyArray<NavLinkItem> = canViewActivity
@@ -720,7 +719,7 @@ function SidebarNav({
       )}
       {mode === "main" && (
         <NavMain
-          items={navMain}
+          items={withMessagesUnread(navMain, activeProjectId, unreadMessageCount)}
           groupHeaders={{
             Projects: (
               <div className="px-2 py-1">
