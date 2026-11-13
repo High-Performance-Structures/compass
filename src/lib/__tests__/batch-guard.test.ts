@@ -39,4 +39,14 @@ describe("batchGuardStatement", () => {
     expect(isBatchGuardFailure(error)).toBe(true)
     expect(sqlite.prepare("SELECT count(*) AS n FROM log").get()).toEqual({ n: 0 })
   })
+
+  it("names itself in the error, so other failures are not taken for it", async () => {
+    const { db } = setup()
+    const guard = await db
+      .batch([batchGuardStatement(db, sql`0`, "still open"), db.insert(log).values({ id: "x" })])
+      .catch((caught: unknown) => caught)
+    expect(String(guard)).toContain("Compass batch guard: still open")
+    const other = await db.batch([db.insert(t).values({ id: "a", status: "dup" })]).catch((caught: unknown) => caught)
+    expect(isBatchGuardFailure(other)).toBe(false)
+  })
 })

@@ -237,6 +237,36 @@ export async function undoImportedDrawDeposit(db: Db, input: {
   return (result.meta.changes ?? 0) === 1
 }
 
+// ---- what a draw's lines were when read
+
+/**
+ * A fingerprint of a draw's G703 lines: how many, the latest change and the
+ * total of their amounts. Any line write changes it (every write stamps
+ * updated_at), so a batch planned from the lines can require it unchanged
+ * with a fixed number of parameters, however many lines the draw has.
+ */
+export type BudgetLinesSignature = { readonly count: number; readonly latest: string; readonly total: number }
+
+function linesSignatureColumns() {
+  return {
+    count: sql<number>`count(*)`,
+    latest: sql<string>`COALESCE(MAX(${projectBudgetLines.updatedAt}), '')`,
+    total: sql<number>`total(${projectBudgetLines.currentWorkCompleted} + ${projectBudgetLines.storedMaterials} + ${projectBudgetLines.retainageHeld} + ${projectBudgetLines.totalCosts} + ${projectBudgetLines.balanceToFinish})`,
+  }
+}
+
+export async function readBudgetLinesSignature(db: Db, applicationId: string): Promise<BudgetLinesSignature> {
+  const row = await db.select(linesSignatureColumns()).from(projectBudgetLines).where(eq(projectBudgetLines.applicationId, applicationId)).get()
+  return { count: Number(row?.count ?? 0), latest: row?.latest ?? "", total: Number(row?.total ?? 0) }
+}
+
+/** SQL condition: the draw's lines still have `signature`. */
+export function budgetLinesUnchanged(applicationId: string, signature: BudgetLinesSignature): SQL {
+  const columns = linesSignatureColumns()
+  return sql`(SELECT ${columns.count}, ${columns.latest}, ${columns.total} FROM ${projectBudgetLines} WHERE ${eq(projectBudgetLines.applicationId, applicationId)})
+    = (${signature.count}, ${signature.latest}, ${signature.total})`
+}
+
 // ---- projectBudgetLines
 
 export function insertBudgetLinesStatement(db: Db, values: LineInsert | readonly LineInsert[]): Statement {

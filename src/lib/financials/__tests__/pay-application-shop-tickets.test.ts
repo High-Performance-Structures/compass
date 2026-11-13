@@ -136,6 +136,12 @@ beforeEach(() => {
       const hook = beforeNextBatch
       beforeNextBatch = null
       hook?.()
+      // D1 refuses a statement with more than 100 bound parameters.
+      for (const query of queries) {
+        const toSQL: unknown = Reflect.get(query, "toSQL")
+        const params: number = typeof toSQL === "function" ? Reflect.apply(toSQL, query, []).params.length : 0
+        if (params > 100) throw new Error(`too many SQL variables (${params})`)
+      }
       return sqlite.transaction(() => queries.map((query) => query.run()))()
     },
   }
@@ -275,6 +281,24 @@ describe("shop ticket imports racing other changes", () => {
     // Importing again adds the tickets on top of what was typed.
     await importShopTickets(db, { projectId: "job", applicationId: "app-3", userId: "staff", now: NOW })
     expect((await line("concrete"))?.currentWorkCompleted).toBe(1_175)
+  })
+
+  it("an import never overwrites stored materials or retainage changed meanwhile", async () => {
+    await linkShopTicketsByNumber(db, "job", "app-3")
+    beforeNextBatch = () => sqlite.prepare("UPDATE project_budget_lines SET stored_materials = 250 WHERE id = 'concrete'").run()
+    await expect(importShopTickets(db, { projectId: "job", applicationId: "app-3", userId: "staff", now: NOW })).rejects.toThrow("changed while")
+    expect((await line("concrete"))?.currentWorkCompleted).toBe(500)
+  })
+
+  it("imports onto a draw with many lines within D1's parameter limit", async () => {
+    const codes = Array.from({ length: 64 }, (_, index) => `09 ${String(10 + index).padStart(2, "0")} 00`)
+    drizzle(sqlite).insert(projectBudgetLines).values(codes.map((code, index) => budgetLine(`big-${index}`, code, 10_000))).run()
+    drizzle(sqlite).insert(shopTickets).values(ticket("big", 9, 3)).run()
+    drizzle(sqlite).insert(shopTicketLines).values(codes.map((code, index) => ({ ...ticketLine(`bl-${index}`, "big", code, 10_000), lineNumber: index + 1 }))).run()
+    await linkShopTicketsByNumber(db, "job", "app-3")
+    const result = await importShopTickets(db, { projectId: "job", applicationId: "app-3", userId: "staff", now: NOW })
+    expect((await line("big-63"))?.currentWorkCompleted).toBe(100)
+    expect(result.addedCents).toBe(64 * 10_000 + 67_500)
   })
 
   it("an import racing Ready for review changes nothing", async () => {

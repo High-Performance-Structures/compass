@@ -54,7 +54,8 @@ export function chunkD1InsertRows<T extends object>(table: Table, rows: readonly
  * transactions, so a check made before the batch can be stale by the time it
  * runs. A guard statement re-checks a condition inside the batch and fails
  * it (rolling every statement back) when the condition no longer holds:
- * json() of a non-JSON text raises "malformed JSON". Put it first, so the
+ * json_extract() with a path that isn't a JSON path raises an error that
+ * quotes the path, here "Compass batch guard: <label>". Put it first, so the
  * statements after it run only on the state the caller read.
  */
 const BATCH_GUARD_PREFIX = "Compass batch guard:"
@@ -62,12 +63,12 @@ const BATCH_GUARD_PREFIX = "Compass batch guard:"
 /** A batch statement that fails the whole batch unless `condition` holds. */
 export function batchGuardStatement(db: ReturnType<typeof getDb>, condition: SQL, label: string) {
   return db
-    .select({ guard: sql<string>`json(CASE WHEN ${condition} THEN '1' ELSE ${`${BATCH_GUARD_PREFIX} ${label}`} END)` })
+    .select({ guard: sql<string>`json_extract('{}', CASE WHEN ${condition} THEN '$' ELSE ${`${BATCH_GUARD_PREFIX} ${label}`} END)` })
     .from(sql`(SELECT 1) AS batch_guard`)
 }
 
-/** True when a batch failed because one of its guard statements did. */
+/** True when a batch failed because one of its guard statements did; any other error is not. */
 export function isBatchGuardFailure(error: unknown): boolean {
   const text = error instanceof Error ? `${error.message} ${String(error.cause ?? "")}` : String(error)
-  return /malformed JSON/i.test(text)
+  return text.includes(BATCH_GUARD_PREFIX)
 }

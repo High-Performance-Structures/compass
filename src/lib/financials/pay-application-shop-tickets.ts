@@ -13,8 +13,11 @@ import {
   type ShopTicketContributionPlan,
 } from "@/lib/domain/budget/rules"
 import {
+  budgetLinesUnchanged,
   deleteShopTicketImportsStatement,
   draftPayApplicationGuardStatement,
+  readBudgetLinesSignature,
+  type BudgetLinesSignature,
   insertShopTicketImportsStatements,
   updateBudgetLinesStatement,
   type Statement,
@@ -219,21 +222,19 @@ function planStatements(
   return statements
 }
 
-/** What a change was planned from: the draft's lines it rewrites and its ticket rows, as read. */
+/** What a change was planned from: the draft's lines and its ticket rows, as read. */
 type ReadState = {
   readonly projectId: string
   readonly applicationId: string
-  readonly lines: readonly { readonly id: string; readonly currentWorkCompleted: number }[]
+  /** Null when the change doesn't touch the lines (an "already included" mark). */
+  readonly lines: BudgetLinesSignature | null
   readonly importRows: readonly ImportRow[]
 }
 
-/** SQL condition: the lines and ticket rows are still as read. */
+/** SQL condition: the lines (every amount, not just current work) and ticket rows are still as read. Fixed size. */
 function unchangedSince(read: ReadState): SQL {
-  const lines = read.lines.map(
-    (line) => sql`EXISTS (SELECT 1 FROM ${projectBudgetLines} WHERE ${and(eq(projectBudgetLines.id, line.id), eq(projectBudgetLines.currentWorkCompleted, line.currentWorkCompleted))})`
-  )
   const rows = sql`(SELECT count(*) FROM ${payApplicationShopTicketImports} WHERE ${eq(payApplicationShopTicketImports.applicationId, read.applicationId)}) = ${read.importRows.length}`
-  return sql.join([...lines, rows], sql` AND `)
+  return read.lines ? sql`(${budgetLinesUnchanged(read.applicationId, read.lines)} AND ${rows})` : rows
 }
 
 /**
@@ -250,12 +251,6 @@ async function runPlannedBatch(db: Db, read: ReadState, statements: readonly Sta
     }
     throw error
   }
-}
-
-/** The lines a plan rewrites, as read. */
-function changedLines(lines: readonly (typeof projectBudgetLines.$inferSelect)[], plan: ShopTicketContributionPlan) {
-  const changed = new Set(plan.lineChanges.map((change) => change.lineId))
-  return lines.filter((line) => changed.has(line.id))
 }
 
 function lineInputs(lines: readonly (typeof projectBudgetLines.$inferSelect)[]) {
@@ -290,6 +285,8 @@ export async function importShopTickets(
   await requireDraft(db, projectId, applicationId)
   await assertBilledAmountsEditable(db, applicationId)
   await linkShopTicketsByNumber(db, projectId, applicationId)
+  // Read first: an edit landing while the lines are read then fails the guard.
+  const signature = await readBudgetLinesSignature(db, applicationId)
   const [tickets, existingRows, lines] = await Promise.all([
     linkedTickets(db, projectId, applicationId),
     importRows(db, applicationId),
@@ -316,7 +313,7 @@ export async function importShopTickets(
   ]
   await runPlannedBatch(
     db,
-    { projectId, applicationId, lines: changedLines(lines, plan), importRows: existingRows },
+    { projectId, applicationId, lines: signature, importRows: existingRows },
     planStatements(db, { applicationId, ticketId: null, lines, existingRows: existingRows.filter((row) => row.mode === "imported"), plan, userId: input.userId, now })
   )
   await refreshOwnerPayApplication(db, projectId, applicationId, now)
@@ -333,6 +330,7 @@ export async function detachShopTicket(
 ): Promise<void> {
   const { projectId, applicationId, ticketId, now } = input
   await requireDraft(db, projectId, applicationId)
+  const signature = await readBudgetLinesSignature(db, applicationId)
   const [tickets, existingRows, lines] = await Promise.all([
     linkedTickets(db, projectId, applicationId),
     importRows(db, applicationId),
@@ -347,7 +345,7 @@ export async function detachShopTicket(
       `${ticket.ticketNumber} can't be taken off ${plan.blocked.map((row) => row.costCode).join(", ")}: ${plan.blocked[0]?.error ?? ""} Adjust the line first.`
     )
   }
-  await runPlannedBatch(db, { projectId, applicationId, lines: changedLines(lines, plan), importRows: existingRows }, [
+  await runPlannedBatch(db, { projectId, applicationId, lines: signature, importRows: existingRows }, [
     ...planStatements(db, {
       applicationId,
       ticketId,
@@ -398,7 +396,7 @@ export async function setShopTicketAlreadyIncluded(
     eq(payApplicationShopTicketImports.mode, "already_included")
   )
   if (!input.included) {
-    await runPlannedBatch(db, { projectId, applicationId, lines: [], importRows: existingRows }, [deleteShopTicketImportsStatement(db, markWhere)])
+    await runPlannedBatch(db, { projectId, applicationId, lines: null, importRows: existingRows }, [deleteShopTicketImportsStatement(db, markWhere)])
     return
   }
   if (ticket.status !== "issued") throw new Error("Only an issued ticket can be marked as already included.")
@@ -408,7 +406,7 @@ export async function setShopTicketAlreadyIncluded(
   if (ticketRows.some((row) => row.mode === "already_included")) return
   await runPlannedBatch(
     db,
-    { projectId, applicationId, lines: [], importRows: existingRows },
+    { projectId, applicationId, lines: null, importRows: existingRows },
     insertShopTicketImportsStatements(db, [
       {
         id: crypto.randomUUID(),
