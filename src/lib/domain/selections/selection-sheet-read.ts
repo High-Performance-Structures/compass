@@ -14,6 +14,7 @@ import type { Db } from "@/lib/server/action-context"
 import { selectionSheetRows, type SelectionSheetInput, type SelectionSheetRow } from "@/lib/selections/sheet"
 
 import { signedSelectionIds } from "./lock-read"
+import { roomOrderBy } from "@/lib/domain/selections/room-order"
 
 export async function loadSelectionSheet(db: Db, projectId: string): Promise<readonly SelectionSheetRow[]> {
   const [selections, choices, dependents] = await Promise.all([
@@ -38,7 +39,7 @@ export async function loadSelectionSheet(db: Db, projectId: string): Promise<rea
       .from(projectFinishSelections)
       .leftJoin(projectSelectionDecisions, eq(projectSelectionDecisions.selectionId, projectFinishSelections.id))
       .where(eq(projectFinishSelections.projectId, projectId))
-      .orderBy(asc(projectFinishSelections.roomName), asc(projectFinishSelections.sortOrder), asc(projectFinishSelections.name)),
+      .orderBy(...roomOrderBy(), asc(projectFinishSelections.roomName), asc(projectFinishSelections.sortOrder), asc(projectFinishSelections.name)),
     db
       .select({
         selectionId: projectSelectionChoices.selectionId,

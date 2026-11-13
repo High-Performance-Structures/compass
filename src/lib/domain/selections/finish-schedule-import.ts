@@ -128,14 +128,20 @@ export type FinishScheduleImportCounts = {
   readonly removedCount: number
   readonly conflictCount: number
   readonly staleCount: number
+  /** Workbook rows left out because staff deleted their room in Compass. */
+  readonly skippedCount: number
 }
+
+/** Each workbook sheet's room as Compass shows it: staff renames win; deleted rooms are left out. */
+type ImportedRooms = ReadonlyMap<string, { readonly roomName: string; readonly roomType: string | null } | "deleted">
 
 async function reconcileRooms(
   db: Db,
   projectId: string,
   loaded: LoadedFinishSchedule,
-  now: string
-): Promise<void> {
+  now: string,
+  restoreDeletedRooms: boolean
+): Promise<ImportedRooms> {
   const existingRooms = await db
     .select()
     .from(projectFinishSelectionRooms)
@@ -153,9 +159,29 @@ async function reconcileRooms(
   )
   const importedSheetIds = new Set(loaded.parsed.rooms.map((room) => String(room.sheetId)))
   const statements: Statement[] = []
+  const imported = new Map<string, { readonly roomName: string; readonly roomType: string | null } | "deleted">()
   for (const room of loaded.parsed.rooms) {
     const sourceSheetId = String(room.sheetId)
     const existing = roomsBySheetId.get(sourceSheetId)
+    // Staff deleted this room in Compass: leave it (and its rows) out unless they asked to bring it back.
+    if (existing?.deletedAt && !restoreDeletedRooms) {
+      imported.set(sourceSheetId, "deleted")
+      continue
+    }
+    // Staff renamed, retyped or reordered it in Compass: keep theirs.
+    if (existing?.staffEditedAt) {
+      imported.set(sourceSheetId, { roomName: existing.roomName, roomType: existing.roomType })
+      statements.push(
+        updateSelectionRoomsStatement(db, eq(projectFinishSelectionRooms.id, existing.id), {
+          sourceSheetName: room.sheetName,
+          active: true,
+          deletedAt: null,
+          updatedAt: now
+        })
+      )
+      continue
+    }
+    imported.set(sourceSheetId, { roomName: room.roomName, roomType: room.roomType })
     if (existing) {
       statements.push(
         updateSelectionRoomsStatement(db, eq(projectFinishSelectionRooms.id, existing.id), {
@@ -164,6 +190,7 @@ async function reconcileRooms(
           roomType: room.roomType,
           sortOrder: room.sortOrder,
           active: true,
+          deletedAt: null,
           updatedAt: now
         })
       )
@@ -198,6 +225,7 @@ async function reconcileRooms(
     )
   }
   await runBatch(db, statements)
+  return imported
 }
 
 /**
@@ -208,10 +236,11 @@ async function reconcileRooms(
 export async function applyFinishScheduleImport(
   db: Db,
   projectId: string,
-  loaded: LoadedFinishSchedule
+  loaded: LoadedFinishSchedule,
+  options: { readonly restoreDeletedRooms?: boolean } = {}
 ): Promise<FinishScheduleImportCounts> {
   const now = new Date().toISOString()
-  await reconcileRooms(db, projectId, loaded, now)
+  const rooms = await reconcileRooms(db, projectId, loaded, now, options.restoreDeletedRooms ?? false)
 
   const existingSelections = await db
     .select()
@@ -250,7 +279,13 @@ export async function applyFinishScheduleImport(
   let updatedCount = 0
   let conflictCount = 0
 
+  let skippedCount = 0
   for (const selection of loaded.parsed.selections) {
+    const room = rooms.get(String(selection.sheetId))
+    if (room === "deleted") {
+      skippedCount += 1
+      continue
+    }
     const sourceRecordId = `${loaded.workbookId}:${selection.sheetId}:${selection.sourceRowNumber}`
     const identity = importedSelectionIdentity({
       sourceSheetName: selection.sheetName,
@@ -266,8 +301,8 @@ export async function applyFinishScheduleImport(
     })
     const sourceValues: ImportedSelectionSourceValues = {
       sourceSheetName: selection.sheetName,
-      roomName: selection.roomName,
-      roomType: selection.roomType,
+      roomName: room?.roomName ?? selection.roomName,
+      roomType: room ? room.roomType : selection.roomType,
       category: selection.category,
       name: selection.name,
       description: selection.description,
@@ -362,6 +397,7 @@ export async function applyFinishScheduleImport(
     updatedCount,
     removedCount,
     conflictCount,
-    staleCount: staleSelections.length - removedCount
+    staleCount: staleSelections.length - removedCount,
+    skippedCount
   }
 }

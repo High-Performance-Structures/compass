@@ -5,6 +5,7 @@
  */
 import type { projectFinishSelectionRooms, projectFinishSelections } from "@/db/schema"
 import { PROJECT_SELECTION_STATUSES } from "@/lib/domain/selections/statuses"
+import { ROOMLESS_ORDER } from "@/lib/domain/selections/room-order"
 import { cleanText } from "@/lib/shared/guards"
 import { isListValue } from "@/lib/shared/statuses"
 import type { ParsedFinishSchedule } from "@/lib/selections/google-finish-schedule-import"
@@ -238,6 +239,8 @@ export function summarizeSelections(
   >()
 
   for (const room of roomRows) {
+    // A room can have more than one row with its name; the first (lowest order) wins.
+    if (roomMap.has(room.roomName)) continue
     roomMap.set(room.roomName, {
       id: room.id,
       projectId: room.projectId,
@@ -269,7 +272,8 @@ export function summarizeSelections(
       sourceSheetName: selection.sourceSheetName,
       roomName: selection.roomName,
       roomType: selection.roomType,
-      sortOrder: roomMap.size + 1_000,
+      // Rooms with no row of their own go last (as in room-order.ts).
+      sortOrder: ROOMLESS_ORDER,
       selectionCount: 0,
       selections: [selection]
     })
@@ -284,7 +288,9 @@ export function summarizeSelections(
       if (left.sortOrder !== right.sortOrder) {
         return left.sortOrder - right.sortOrder
       }
-      return left.roomName.localeCompare(right.roomName)
+      // Same tie-break as room-order.ts: the name, ignoring case.
+      const byName = left.roomName.toLowerCase().localeCompare(right.roomName.toLowerCase())
+      return byName !== 0 ? byName : left.roomName.localeCompare(right.roomName)
     })
 
   return {

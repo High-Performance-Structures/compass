@@ -31,16 +31,16 @@ export function specificationJson(row: SelectionSpecification): string {
 }
 /**
  * Whether a published decision's specification still describes the
- * selection. For an ordered or installed selection (locked: its product is
- * fixed) a room move alone keeps it current.
+ * selection. The room is where the product goes, not what it is: a room
+ * move or a renamed room alone keeps it current, locked or not (owner
+ * decision 2026-11-13). `locked` (ordered or installed) is kept for callers.
  */
 export function specificationCurrent(
   published: string,
   row: SelectionSpecification,
-  locked: boolean,
+  _locked: boolean,
 ): boolean {
   if (published === specificationJson(row)) return true
-  if (!locked) return false
   const before = parseSpecification(published)
   return before !== null && published === specificationJson({ ...row, roomName: before.roomName })
 }

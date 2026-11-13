@@ -105,6 +105,10 @@ export const projectFinishSelectionRooms = sqliteTable("project_finish_selection
   roomType: text("room_type"),
   sortOrder: integer("sort_order").notNull().default(0),
   active: integer("active", { mode: "boolean" }).notNull().default(true),
+  // Staff renamed, retyped or reordered it; a workbook re-import keeps those (0323).
+  staffEditedAt: text("staff_edited_at"),
+  // Staff deleted this workbook room; a re-import leaves it out (0323).
+  deletedAt: text("deleted_at"),
   createdAt: text("created_at").notNull(),
   updatedAt: text("updated_at").notNull(),
 },

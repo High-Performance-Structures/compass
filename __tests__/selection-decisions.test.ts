@@ -10,6 +10,7 @@ import {
   type CorrespondenceTestDatabase,
 } from "./helpers/correspondence-core"
 import {
+  projectFinishSelectionRooms,
   projectFinishSelections,
   projectOperations,
   projectChangeOrders,
@@ -123,6 +124,8 @@ beforeEach(async () => {
     projectSelectionRoundSignatures,
     projectSelectionRoundSignatureItems,
     projectSelectionChoices,
+    // Selection lists are ordered by the job's room order (room-order.ts).
+    projectFinishSelectionRooms,
   ])
     createTable(table)
   testDb.sqlite.exec(
