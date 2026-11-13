@@ -6,6 +6,7 @@ import { getDb } from "@/db"
 import { organizationFeatureSettings } from "@/db/schema"
 import { getCurrentUser } from "@/lib/auth"
 import { getCloudflareContext } from "@/lib/db"
+import { shareClientConversations } from "@/lib/conversations/shared-client-conversations"
 import { isDemoOrg, isDemoUser } from "@/lib/demo"
 import { deleteOrganizationFeatureSetting, saveOrganizationFeatureSetting } from "@/lib/domain/settings/store"
 import {
@@ -106,6 +107,10 @@ export async function saveFeatureSettings(key: string, value: unknown): Promise<
     })
     // Required documents, names or the warn-only switch can change every vendor's Sage certificates.
     if (key === "trade-docs") await requeueSageCertificates(ctx.db, ctx.organizationId)
+    // Turning client sharing on (or saving it) catches every job up at once.
+    if (key === "client-conversations") {
+      await shareClientConversations({ db: ctx.db, organizationId: ctx.organizationId, projectId: null, now })
+    }
     revalidatePath("/dashboard/settings")
     revalidatePath("/dashboard/office-maintenance/message-desk")
     return { success: true, data: null }
@@ -130,6 +135,10 @@ export async function resetFeatureSettings(key: string): Promise<Result<null>> {
     }
     await deleteOrganizationFeatureSetting(ctx.db, ctx.organizationId, key)
     if (key === "trade-docs") await requeueSageCertificates(ctx.db, ctx.organizationId)
+    // The default shares client conversations, so a reset catches every job up.
+    if (key === "client-conversations") {
+      await shareClientConversations({ db: ctx.db, organizationId: ctx.organizationId, projectId: null, now: new Date().toISOString() })
+    }
     revalidatePath("/dashboard/settings")
     revalidatePath("/dashboard/office-maintenance/message-desk")
     return { success: true, data: null }

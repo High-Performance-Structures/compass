@@ -17,7 +17,7 @@ import {
   messageReactions,
   messages,
 } from "@/db/schema-conversations"
-import { chunkD1InsertRows } from "@/lib/d1-query"
+import { chunkD1InsertRows, chunkD1Values } from "@/lib/d1-query"
 import type { Db } from "@/lib/server/action-context"
 
 type ChannelInsert = typeof channels.$inferInsert
@@ -129,6 +129,15 @@ export async function removeReadStates(db: Db, channelId: string, userIds: reado
     .delete(channelReadState)
     .where(and(eq(channelReadState.channelId, channelId), inArray(channelReadState.userId, [...userIds])))
     .run()
+}
+
+/** Removes one person's memberships and read states in these channels (chunked for D1). */
+export async function removeUserFromChannels(db: Db, userId: string, channelIds: readonly string[]): Promise<void> {
+  for (const chunk of chunkD1Values(channelIds)) {
+    // Read state first so an interrupted removal never leaves a membership without its pair checked.
+    await db.delete(channelReadState).where(and(eq(channelReadState.userId, userId), inArray(channelReadState.channelId, chunk))).run()
+    await db.delete(channelMembers).where(and(eq(channelMembers.userId, userId), inArray(channelMembers.channelId, chunk))).run()
+  }
 }
 
 /** A new message is unread for everyone in the channel except its sender. */

@@ -18,6 +18,7 @@ import {
 } from "@/lib/project-audience-access"
 import { getProjectAudienceStaff } from "@/lib/project-audience-staff"
 import { adoptImportedConversationsForContact } from "@/lib/conversations/imported-conversation-adoption"
+import { shareClientConversationsQuietly } from "@/lib/conversations/shared-client-conversations"
 import {
   insertChannel,
   insertChannelMembers,
@@ -357,6 +358,15 @@ export async function ensureProjectAudienceConversation(input: {
     } catch (error) {
       console.error("[project-access] imported conversations not joined", input.projectId, input.importedContactId, errorWithCauses(error))
     }
+  }
+  // Clients on the same job see each other's client conversations (company setting).
+  if (input.audience === "owner") {
+    await shareClientConversationsQuietly({
+      db: input.db,
+      organizationId: input.organizationId,
+      projectId: input.projectId,
+      now: input.now,
+    })
   }
 
   return channelId
