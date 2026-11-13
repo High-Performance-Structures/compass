@@ -73,7 +73,7 @@ const AUDIENCE_LABEL: Readonly<Record<string, string>> = {
   organization: "Company",
 }
 
-export function projectConversationsHref(
+function projectConversationsHref(
   basePath: string,
   query: ProjectConversationsQuery,
   extra: Readonly<Record<string, string>> = {},
@@ -252,7 +252,7 @@ function ConversationRow({
         <p className={cn("min-w-0 truncate text-sm", unread && "font-semibold")}>
           {unread && <span className="sr-only">Unread. </span>}
           {row.name}
-          {isStaff && row.imported && <span className="ml-1.5 border px-1 text-[10px] text-muted-foreground">BT</span>}
+          {isStaff && row.imported && <span className="ml-1.5 border px-1 text-xs text-muted-foreground">BT</span>}
         </p>
         <span className="shrink-0 text-xs text-muted-foreground">{formatRelativeDate(row.lastActivityAt)}</span>
       </div>
@@ -261,8 +261,8 @@ function ConversationRow({
           {row.lastText ? `${row.lastSender ? `${row.lastSender}: ` : ""}${row.lastText}` : "No messages yet"}
         </p>
         <span className="flex shrink-0 items-center gap-1.5">
-          {unread && <Badge className="h-5 px-1.5 text-[10px]">{row.unreadCount}</Badge>}
-          {isStaff && <Badge variant="outline" className="text-[10px]">{AUDIENCE_LABEL[row.audience] ?? row.audience}</Badge>}
+          {unread && <Badge className="h-5 px-1.5 text-xs">{row.unreadCount}</Badge>}
+          {isStaff && <Badge variant="outline" className="text-xs">{AUDIENCE_LABEL[row.audience] ?? row.audience}</Badge>}
         </span>
       </div>
     </Link>

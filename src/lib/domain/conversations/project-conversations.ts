@@ -17,13 +17,13 @@ import { isInternalStaffRole } from "@/lib/user-roles"
  * conversation list in readVisibleChannels.
  */
 
-export const PROJECT_CONVERSATION_FILTERS = ["all", "unread", "staff", "owners", "vendors", "imported"] as const
+const PROJECT_CONVERSATION_FILTERS = ["all", "unread", "staff", "owners", "vendors", "imported"] as const
 export type ProjectConversationFilter = (typeof PROJECT_CONVERSATION_FILTERS)[number]
 
 /** "mine": conversations the viewer is in; "global": every conversation on the job staff may open, like email's Global history. */
 export type ProjectConversationScope = "mine" | "global"
 
-export const PROJECT_CONVERSATION_PAGE_SIZE = 25
+const PROJECT_CONVERSATION_PAGE_SIZE = 25
 
 export type ProjectConversationRow = {
   readonly id: string
