@@ -168,6 +168,7 @@ export function ChoiceField({
   value,
   onChange,
   placeholder,
+  disabledReason,
 }: {
   readonly label: string
   readonly choices: readonly string[]
@@ -175,10 +176,12 @@ export function ChoiceField({
   readonly value: string
   readonly onChange: (value: string) => void
   readonly placeholder?: string
+  /** Read-only, with this short reason under it (e.g. the value comes from recorded payments). */
+  readonly disabledReason?: string
 }): React.ReactElement {
   return (
     <DialogField label={label}>
-      <Select value={value} onValueChange={onChange}>
+      <Select value={value} onValueChange={onChange} disabled={Boolean(disabledReason)}>
         <SelectTrigger className="h-9">
           <SelectValue placeholder={placeholder} />
         </SelectTrigger>
@@ -190,6 +193,7 @@ export function ChoiceField({
           ))}
         </SelectContent>
       </Select>
+      {disabledReason ? <p className="text-xs text-muted-foreground">{disabledReason}</p> : null}
     </DialogField>
   )
 }

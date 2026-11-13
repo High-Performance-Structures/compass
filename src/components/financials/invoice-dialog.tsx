@@ -18,6 +18,7 @@ import {
   TextField,
 } from "./financial-dialog-fields"
 import {
+  INVOICE_SET_BY_PAYMENTS_REASON,
   billTotals,
   lineItemsSubtotal,
   parseLineItems,
@@ -40,13 +41,15 @@ interface InvoiceDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
   initialData?: Invoice | null
+  /** Recorded payments are applied: amount paid and status come from them and aren't sent. */
+  paidByPayments?: boolean
   customers: Customer[]
   projects: readonly Pick<Project, "id" | "name">[]
   onSubmit: (data: {
     customerId: string
     projectId: string | null
     invoiceNumber: string
-    status: string
+    status?: string
     issueDate: string
     dueDate: string
     memo: string
@@ -55,7 +58,7 @@ interface InvoiceDialogProps {
     subtotal: number
     tax: number
     total: number
-    amountPaid: number
+    amountPaid?: number
     amountDue: number
   }) => void
 }
@@ -64,10 +67,12 @@ export function InvoiceDialog({
   open,
   onOpenChange,
   initialData,
+  paidByPayments = false,
   customers,
   projects,
   onSubmit,
 }: InvoiceDialogProps) {
+  const paidLocked = Boolean(initialData) && paidByPayments
   const [customerId, setCustomerId] = React.useState("")
   const [projectId, setProjectId] = React.useState("")
   const [invoiceNumber, setInvoiceNumber] = React.useState("")
@@ -121,7 +126,8 @@ export function InvoiceDialog({
       customerId,
       projectId: projectId || null,
       invoiceNumber,
-      status,
+      // Locked: amount paid and status come from the recorded payments, so they aren't sent.
+      ...(paidLocked ? {} : { status, amountPaid: initialData?.amountPaid ?? 0 }),
       issueDate,
       dueDate,
       memo,
@@ -130,7 +136,6 @@ export function InvoiceDialog({
       subtotal,
       tax,
       total,
-      amountPaid: initialData?.amountPaid ?? 0,
       amountDue,
     })
   }
@@ -140,7 +145,13 @@ export function InvoiceDialog({
       <CustomerField label="Customer *" customers={customers} value={customerId} onChange={setCustomerId} />
       <ProjectField projects={projects} value={projectId} onChange={setProjectId} />
       <TextField label="Invoice #" value={invoiceNumber} onChange={setInvoiceNumber} />
-      <ChoiceField label="Status" choices={INVOICE_STATUSES} value={status} onChange={setStatus} />
+      <ChoiceField
+        label="Status"
+        choices={paidLocked && !INVOICE_STATUSES.some((choice) => choice === status) ? [...INVOICE_STATUSES, status] : INVOICE_STATUSES}
+        value={status}
+        onChange={setStatus}
+        disabledReason={paidLocked ? INVOICE_SET_BY_PAYMENTS_REASON : undefined}
+      />
     </>
   )
 

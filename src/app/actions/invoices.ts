@@ -13,11 +13,25 @@ import {
   isOrganizationProject,
   PROJECT_NOT_FOUND,
 } from "@/lib/domain/financials/access"
-import { deriveBillTotals } from "@/lib/domain/financials/rules"
-import { deleteInvoiceRow, insertInvoice, updateInvoiceRow } from "@/lib/domain/financials/store"
+import {
+  INVOICE_PAID_BY_PAYMENTS_ERROR,
+  INVOICE_PAYMENT_HISTORY_ERROR,
+  INVOICE_TOTAL_BELOW_PAID_ERROR,
+  deriveBillTotals,
+  legacyInvoiceEdit,
+} from "@/lib/domain/financials/rules"
+import { readInvoiceIdsSetByPayments } from "@/lib/domain/financials/receivables"
+import { deleteLegacyInvoiceRow, updateLegacyInvoiceRow } from "@/lib/domain/financials/invoice-guards"
+import { insertInvoice } from "@/lib/domain/financials/store"
 
 const BILLING_SCOPE_ERROR = "Choose construction or preconstruction billing."
 const NOT_FOUND = "Invoice not found or access denied"
+const UPDATE_REFUSED = {
+  not_found: NOT_FOUND,
+  paid_by_payments: INVOICE_PAID_BY_PAYMENTS_ERROR,
+  total_below_paid: INVOICE_TOTAL_BELOW_PAID_ERROR,
+  has_payment_history: INVOICE_PAYMENT_HISTORY_ERROR,
+} as const
 const SIMPLE_INVOICE_PAGE = "Open this invoice from the project's Financials page to change, void or delete it."
 
 export async function getInvoices(projectId?: string): Promise<Invoice[]> {
@@ -37,6 +51,12 @@ export async function getInvoices(projectId?: string): Promise<Invoice[]> {
     .innerJoin(projects, eq(invoices.projectId, projects.id))
     .where(eq(projects.organizationId, organizationId))
   return rows.map((row) => row.invoice)
+}
+
+/** Older invoices (Financials editor) whose amount paid and status come from recorded payments. */
+export async function getInvoiceIdsSetByPayments(): Promise<string[]> {
+  const { db, organizationId } = await financeReadContext()
+  return readInvoiceIdsSetByPayments(db, organizationId)
 }
 
 export async function createInvoice(
@@ -111,7 +131,8 @@ export async function updateInvoice(
     }
     if (existing.invoiceKind) return { success: false, error: SIMPLE_INVOICE_PAGE }
 
-    const safeData = omitOwnerArSourceFields(data)
+    // Only the editor's own fields; never ids, kind, sync, email or Square state from the browser.
+    const safeData = legacyInvoiceEdit(data)
     if (safeData.billingScope !== undefined && !isBillingScope(safeData.billingScope)) {
       return { success: false, error: BILLING_SCOPE_ERROR }
     }
@@ -125,7 +146,9 @@ export async function updateInvoice(
     }
     const totals = deriveBillTotals(safeData, existing)
     if (!totals.ok) return { success: false, error: totals.error }
-    await updateInvoiceRow(db, id, { ...safeData, ...totals.values, updatedAt: new Date().toISOString() })
+    // Amount paid, status, total and job are fenced inside the write once recorded payments apply.
+    const written = await updateLegacyInvoiceRow(db, { id, organizationId }, { ...safeData, ...totals.values, updatedAt: new Date().toISOString() })
+    if (written !== "updated") return { success: false, error: UPDATE_REFUSED[written] }
 
     revalidatePath("/dashboard/financials")
     return { success: true }
@@ -156,7 +179,9 @@ export async function deleteInvoice(id: string): Promise<ActionDone> {
     }
     if (existing.invoiceKind) return { success: false, error: SIMPLE_INVOICE_PAGE }
 
-    await deleteInvoiceRow(db, id)
+    const deleted = await deleteLegacyInvoiceRow(db, { id, organizationId })
+    if (deleted === "not_found") return { success: false, error: NOT_FOUND }
+    if (deleted === "has_payment_history") return { success: false, error: INVOICE_PAYMENT_HISTORY_ERROR }
 
     revalidatePath("/dashboard/financials")
     return { success: true }

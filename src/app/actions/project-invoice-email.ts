@@ -9,6 +9,17 @@ import { googleAuth } from "@/db/schema-google"
 import { actionFailure, errorMessage, type ActionResult } from "@/lib/action-result"
 import { activityActorName, recordActivityEvent } from "@/lib/activity-log"
 import { simpleInvoiceContext } from "@/lib/domain/financials/access"
+import {
+  claimSimpleInvoiceEmail,
+  clearSimpleInvoiceEmailUnconfirmed,
+  completeSimpleInvoiceEmail,
+  emailDefinitelyNotSent,
+  markSimpleInvoiceEmailUnconfirmed,
+  releaseSimpleInvoiceEmail,
+  renewSimpleInvoiceEmail,
+  type InvoiceEmailRefusal,
+} from "@/lib/domain/financials/invoice-guards"
+import { invoiceEmailBlockMessage } from "@/lib/domain/financials/invoice-email-fence"
 import { squareEligibility } from "@/lib/domain/financials/simple-invoice-rules"
 import {
   cancelSquareInvoiceLink,
@@ -44,6 +55,14 @@ import { isInternalStaffRole } from "@/lib/user-roles"
  */
 
 const MAX_CC = 5
+const EMAIL_UNCONFIRMED_PREFIX = "Compass couldn't confirm the email went out"
+/** Why the send claim was refused, in staff words. */
+function claimRefusedMessage(reason: InvoiceEmailRefusal): string {
+  if (reason.kind === "draft") return "Finalize the invoice before emailing it."
+  if (reason.kind === "void") return "This invoice is void."
+  if (reason.kind === "missing") return "Invoice not found."
+  return invoiceEmailBlockMessage(reason)
+}
 
 type InvoiceSender = { readonly address: string; readonly name: string | null }
 
@@ -154,127 +173,172 @@ export async function emailProjectInvoice(projectId: string, invoiceId: string, 
     const sender = await invoiceSender(db, env, organizationId)
     if (!sender.success) return sender
 
-    // Square first: the email waits for Square's payment link.
-    let squareUrl = invoice.squarePublicUrl
-    const fence = and(eq(invoices.id, invoiceId), eq(invoices.organizationId, organizationId))
-    if (invoice.squareRequested && !squareUrl) {
+    /** The read-only checks before creating a Square invoice. */
+    async function squareReadiness(): Promise<{ readonly ok: true; readonly token: string; readonly exported: { readonly sageRecordId: string }; readonly projectNumber: string; readonly customerName: string; readonly firstTo: string } | { readonly ok: false; readonly error: string }> {
+      if (!invoice || !project) return { ok: false, error: "Invoice not found." }
       const eligibility = squareEligibility({ isDeposit: invoice.isDeposit, department: project.department, blockedDepositDepartments: settings.squareBlockedDepositDepartments })
-      if (!eligibility.allowed) return actionFailure(eligibility.reason)
+      if (!eligibility.allowed) return { ok: false, error: eligibility.reason }
       const token = squareInvoiceAccessToken(env)
-      if (!token) return actionFailure("Square not connected for invoices: Compass has no Square access token. Uncheck Create Square invoice, or connect Square.")
+      if (!token) return { ok: false, error: "Square not connected for invoices: Compass has no Square access token. Uncheck Create Square invoice, or connect Square." }
       const exported = await loadSimpleInvoiceExport(db, organizationId, invoiceId)
       if (!exported || exported.status !== "succeeded" || !exported.sageRecordId) {
-        return actionFailure("Send the invoice to Sage first and wait until it shows In Sage: the Square invoice is tied to Sage's invoice so its card fee posts to Sage.")
+        return { ok: false, error: "Send the invoice to Sage first and wait until it shows In Sage: the Square invoice is tied to Sage's invoice so its card fee posts to Sage." }
       }
-      if (!project.projectNumber) return actionFailure("The project has no number for Square.")
-      if (!invoice.customerName) return actionFailure("Choose who the invoice is billed to.")
+      if (!project.projectNumber) return { ok: false, error: "The project has no number for Square." }
+      if (!invoice.customerName) return { ok: false, error: "Choose who the invoice is billed to." }
       const firstTo = to[0]
-      if (!firstTo) return actionFailure("Choose who the invoice goes to.")
-      // Only one request creates the Square invoice: a double click or a second
-      // person sending at the same moment would otherwise make two payment links.
-      const key = { invoiceId, organizationId, projectId }
-      if (!(await startSquareInvoiceLink(db, { ...key, now: new Date().toISOString() }))) {
-        return actionFailure("The Square invoice is already being created (or the invoice changed). Wait a moment, refresh and send again.")
-      }
-      try {
-        const created = await createAndPublishSquareInvoice({
-          token,
-          invoiceId,
-          invoiceNumber: invoice.invoiceNumber,
-          sageJobShortName: project.projectNumber,
-          sageRecordId: exported.sageRecordId,
-          invoiceDate: invoice.issueDate.slice(0, 10),
-          dueDate: (invoice.dueDate ?? invoice.issueDate).slice(0, 10),
-          today: new Date().toISOString().slice(0, 10),
-          customer: { email: firstTo, name: invoice.customerName, compassCustomerId: invoice.customerId },
-          lines: invoice.lines.map((line) => ({
-            name: line.description,
-            amountCents: line.amountCents,
-            note: line.quantity !== 1 ? `${line.quantity} ${line.unit} @ ${formatCents(line.unitPriceCents)}` : null,
-          })),
-          subtotalCents: invoice.subtotalCents,
-          taxCents: invoice.taxCents,
-          totalCents: invoice.totalCents,
-          acceptBankTransfer: settings.squareAcceptBankTransfer,
-          existing: { orderId: invoice.squareOrderId, squareInvoiceId: invoice.squareInvoiceId },
-          saveProgress: async (progress) => {
-            await simpleInvoiceUpdateStatement(db, fence, {
-              ...(progress.orderId ? { squareOrderId: progress.orderId } : {}),
-              ...(progress.squareInvoiceId ? { squareInvoiceId: progress.squareInvoiceId } : {}),
-              ...(progress.customerId ? { squareCustomerId: progress.customerId } : {}),
-              updatedAt: new Date().toISOString(),
-            })
-          },
-        })
-        squareUrl = created.publicUrl
-        const now = new Date().toISOString()
-        if (!(await publishSquareInvoiceLink(db, { ...key, publicUrl: created.publicUrl, now }))) {
-          revalidatePath(`/dashboard/projects/${projectId}/financials/invoices/${invoiceId}`)
-          // Only a void takes the payment link back down; any other change (another
-          // request took over the same Square invoice, say) leaves Square alone.
-          if ((await loadSimpleInvoice(db, organizationId, projectId, invoiceId))?.status !== "void") {
-            return actionFailure("The invoice changed while Square was creating it. Refresh and send again; the same Square invoice is reused.")
-          }
-          const cancelled = await cancelSquareInvoice(token, created.squareInvoiceId).then(() => true, () => false)
-          if (cancelled) await cancelSquareInvoiceLink(db, { ...key, now })
-          return actionFailure(`This invoice was voided while Square was creating it. ${cancelled ? "The Square invoice was cancelled." : "Cancel the Square invoice in Square."} The email was not sent.`)
-        }
-        await recordActivityEvent({
-          db,
-          organizationId,
-          projectId,
-          actor: user,
-          category: "financial",
-          action: "invoice_square_published",
-          entityType: "invoice",
-          entityId: invoiceId,
-          summary: `Invoice ${invoice.invoiceNumber}: Square invoice created and published (${formatCents(invoice.totalCents)}); Square sends nothing, Compass emails the link.`,
-          createdAt: now,
-        })
-      } catch (error) {
-        const message = errorMessage(error, "Square didn't create the invoice.")
-        await failSquareInvoiceLink(db, { ...key, error: message.slice(0, 1000), now: new Date().toISOString() })
-        revalidatePath(`/dashboard/projects/${projectId}/financials/invoices/${invoiceId}`)
-        return actionFailure(`Square: ${message} The email was not sent.`)
-      }
+      if (!firstTo) return { ok: false, error: "Choose who the invoice goes to." }
+      return { ok: true, token, exported: { sageRecordId: exported.sageRecordId }, projectNumber: project.projectNumber, customerName: invoice.customerName, firstTo }
     }
 
-    const pdf = await invoicePdf(projectId, invoiceId)
-    if (!pdf.ok) return actionFailure(`${pdf.error}${squareUrl ? " The Square invoice is created; send the email again." : ""}`)
-    // Read again right before sending: never email an invoice voided while the link or PDF was made.
-    if ((await loadSimpleInvoice(db, organizationId, projectId, invoiceId))?.status === "void") return actionFailure("This invoice was voided. The email was not sent.")
+    // Read-only Square checks first, so a refusal never takes the send claim.
+    let squareUrl = invoice.squarePublicUrl
+    const squareJob = invoice.squareRequested && !squareUrl ? await squareReadiness() : null
+    if (squareJob && !squareJob.ok) return actionFailure(squareJob.error)
+
+    // Claim the send before anything is made or sent: of a double click or two
+    // staff sending at once, exactly one request goes on. The claim is released
+    // only when the email definitely did not go out (finally below); an unknown
+    // outcome keeps it and marks the invoice "may have gone out".
+    const claimKey = { invoiceId, organizationId, projectId }
+    const claimed = await claimSimpleInvoiceEmail(db, { ...claimKey, actorId: user.id, now: new Date().toISOString(), windowMs: settings.emailResendWindowMinutes * 60_000 })
+    if (!claimed.ok) return actionFailure(claimRefusedMessage(claimed.reason))
+    let claim = claimed.claim
+    // not_started / not_sent release the claim; unknown keeps it and marks the invoice unconfirmed.
+    let outcome: "not_started" | "not_sent" | "unknown" | "sent" = "not_started"
+    const fence = and(eq(invoices.id, invoiceId), eq(invoices.organizationId, organizationId))
     const from = sender.sender
-    const delivery = await sendTrackedEmail({
-      env,
-      db,
-      organizationId,
-      projectId,
-      kind: "invoice",
-      recordId: invoiceId,
-      recordLabel: invoice.invoiceNumber,
-      createdBy: user.id,
-      to,
-      cc,
-      subject,
-      text: invoiceText({
-        message: input.message,
-        invoiceNumber: invoice.invoiceNumber,
-        projectName: project.name,
-        totalCents: invoice.totalCents,
-        dueDate: invoice.dueDate,
-        squareUrl,
-        creditMemo: invoice.invoiceKind === "credit_memo",
-      }),
-      attachments: [{ filename: `${invoice.invoiceKind === "credit_memo" ? "Credit memo" : "Invoice"} ${invoice.invoiceNumber}.pdf`.replace(/[^\w .-]/g, "-"), contentType: "application/pdf", content: pdf.bytes }],
-      sender: from ?? undefined,
-      replyName: `${from?.name ?? activityActorName(user)} - Invoice ${invoice.invoiceNumber}`,
-      alsoReplyTo: [from?.address ?? user.email],
-    })
-    if (delivery.status !== "sent") {
-      return actionFailure(`The email was not sent${from ? ` from ${from.address}` : ""}: ${delivery.error ?? delivery.status}.${squareUrl ? " The Square invoice is created; send the email again." : ""}`)
+    try {
+      // Square first: the email waits for Square's payment link.
+      if (squareJob?.ok) {
+        const { token, exported, projectNumber, customerName, firstTo } = squareJob
+        // Only one request creates the Square invoice: a double click or a second
+        // person sending at the same moment would otherwise make two payment links.
+        const key = { invoiceId, organizationId, projectId }
+        if (!(await startSquareInvoiceLink(db, { ...key, now: new Date().toISOString() }))) {
+          return actionFailure("The Square invoice is already being created (or the invoice changed). Wait a moment, refresh and send again.")
+        }
+        try {
+          const created = await createAndPublishSquareInvoice({
+            token,
+            invoiceId,
+            invoiceNumber: invoice.invoiceNumber,
+            sageJobShortName: projectNumber,
+            sageRecordId: exported.sageRecordId,
+            invoiceDate: invoice.issueDate.slice(0, 10),
+            dueDate: (invoice.dueDate ?? invoice.issueDate).slice(0, 10),
+            today: new Date().toISOString().slice(0, 10),
+            customer: { email: firstTo, name: customerName, compassCustomerId: invoice.customerId },
+            lines: invoice.lines.map((line) => ({
+              name: line.description,
+              amountCents: line.amountCents,
+              note: line.quantity !== 1 ? `${line.quantity} ${line.unit} @ ${formatCents(line.unitPriceCents)}` : null,
+            })),
+            subtotalCents: invoice.subtotalCents,
+            taxCents: invoice.taxCents,
+            totalCents: invoice.totalCents,
+            acceptBankTransfer: settings.squareAcceptBankTransfer,
+            existing: { orderId: invoice.squareOrderId, squareInvoiceId: invoice.squareInvoiceId },
+            saveProgress: async (progress) => {
+              await simpleInvoiceUpdateStatement(db, fence, {
+                ...(progress.orderId ? { squareOrderId: progress.orderId } : {}),
+                ...(progress.squareInvoiceId ? { squareInvoiceId: progress.squareInvoiceId } : {}),
+                ...(progress.customerId ? { squareCustomerId: progress.customerId } : {}),
+                updatedAt: new Date().toISOString(),
+              })
+            },
+          })
+          squareUrl = created.publicUrl
+          const now = new Date().toISOString()
+          if (!(await publishSquareInvoiceLink(db, { ...key, publicUrl: created.publicUrl, now }))) {
+            revalidatePath(`/dashboard/projects/${projectId}/financials/invoices/${invoiceId}`)
+            // Only a void takes the payment link back down; any other change (another
+            // request took over the same Square invoice, say) leaves Square alone.
+            if ((await loadSimpleInvoice(db, organizationId, projectId, invoiceId))?.status !== "void") {
+              return actionFailure("The invoice changed while Square was creating it. Refresh and send again; the same Square invoice is reused.")
+            }
+            const cancelled = await cancelSquareInvoice(token, created.squareInvoiceId).then(() => true, () => false)
+            if (cancelled) await cancelSquareInvoiceLink(db, { ...key, now })
+            return actionFailure(`This invoice was voided while Square was creating it. ${cancelled ? "The Square invoice was cancelled." : "Cancel the Square invoice in Square."} The email was not sent.`)
+          }
+          await recordActivityEvent({
+            db,
+            organizationId,
+            projectId,
+            actor: user,
+            category: "financial",
+            action: "invoice_square_published",
+            entityType: "invoice",
+            entityId: invoiceId,
+            summary: `Invoice ${invoice.invoiceNumber}: Square invoice created and published (${formatCents(invoice.totalCents)}); Square sends nothing, Compass emails the link.`,
+            createdAt: now,
+          })
+        } catch (error) {
+          const message = errorMessage(error, "Square didn't create the invoice.")
+          await failSquareInvoiceLink(db, { ...key, error: message.slice(0, 1000), now: new Date().toISOString() })
+          revalidatePath(`/dashboard/projects/${projectId}/financials/invoices/${invoiceId}`)
+          return actionFailure(`Square: ${message} The email was not sent.`)
+        }
+      }
+
+      const pdf = await invoicePdf(projectId, invoiceId)
+      if (!pdf.ok) return actionFailure(`${pdf.error}${squareUrl ? " The Square invoice is created; send the email again." : ""}`)
+      // Read again right before sending: never email an invoice voided (or reopened) while the link or PDF was made.
+      const latestStatus = (await loadSimpleInvoice(db, organizationId, projectId, invoiceId))?.status
+      if (latestStatus === "void") return actionFailure("This invoice was voided. The email was not sent.")
+      if (!latestStatus || latestStatus === "draft") return actionFailure("This invoice was reopened as a draft. The email was not sent.")
+      // Still this request's send? (A claim past its lease may have been taken over.) Renewing it also restarts the lease.
+      const renewed = await renewSimpleInvoiceEmail(db, { ...claimKey, claim, now: new Date().toISOString() })
+      if (!renewed) return actionFailure("Another send of this invoice started while this one was being prepared. This email was not sent; check the invoice before sending again.")
+      claim = renewed
+      // From here the provider may have the message: keep the claim unless the result says it was not sent.
+      outcome = "unknown"
+      const delivery = await sendTrackedEmail({
+        env,
+        db,
+        organizationId,
+        projectId,
+        kind: "invoice",
+        recordId: invoiceId,
+        recordLabel: invoice.invoiceNumber,
+        createdBy: user.id,
+        to,
+        cc,
+        subject,
+        text: invoiceText({
+          message: input.message,
+          invoiceNumber: invoice.invoiceNumber,
+          projectName: project.name,
+          totalCents: invoice.totalCents,
+          dueDate: invoice.dueDate,
+          squareUrl,
+          creditMemo: invoice.invoiceKind === "credit_memo",
+        }),
+        attachments: [{ filename: `${invoice.invoiceKind === "credit_memo" ? "Credit memo" : "Invoice"} ${invoice.invoiceNumber}.pdf`.replace(/[^\w .-]/g, "-"), contentType: "application/pdf", content: pdf.bytes }],
+        sender: from ?? undefined,
+        replyName: `${from?.name ?? activityActorName(user)} - Invoice ${invoice.invoiceNumber}`,
+        alsoReplyTo: [from?.address ?? user.email],
+      })
+      if (delivery.status === "sent") {
+        outcome = "sent"
+      } else if (emailDefinitelyNotSent(delivery.status)) {
+        outcome = "not_sent"
+        return actionFailure(`The email was not sent${from ? ` from ${from.address}` : ""}: ${delivery.error ?? delivery.status}.${squareUrl ? " The Square invoice is created; send the email again." : ""}`)
+      } else {
+        // Maybe delivered (timeout, provider 5xx, accepted without an id): never invite an immediate second send.
+        return actionFailure(`${EMAIL_UNCONFIRMED_PREFIX}${from ? ` from ${from.address}` : ""} (${delivery.error ?? delivery.status}). Check that mailbox's sent mail. If it didn't go out, choose "It didn't go out" on this invoice, then send again.`)
+      }
+    } finally {
+      const after = { ...claimKey, claim, now: new Date().toISOString() }
+      if (outcome === "not_started" || outcome === "not_sent") await releaseSimpleInvoiceEmail(db, after).catch((error: unknown) => console.error("Invoice email claim release failed", error))
+      if (outcome === "unknown") await markSimpleInvoiceEmailUnconfirmed(db, after).catch((error: unknown) => console.error("Invoice email unconfirmed mark failed", error))
     }
+    // The email went out: record it (one retry). If that fails, the claim stays so nobody sends it again soon.
     const now = new Date().toISOString()
-    await simpleInvoiceUpdateStatement(db, fence, { emailedAt: now, emailedByUserId: user.id, updatedAt: now })
+    const complete = (): Promise<boolean> => completeSimpleInvoiceEmail(db, { ...claimKey, claim, now }).then(() => true, () => false)
+    if (!(await complete()) && !(await complete())) {
+      return actionFailure("The email was sent, but Compass couldn't record it. Don't send it again.")
+    }
     const recipientList = [...to, ...cc].join(", ")
     await recordActivityEvent({
       db,
@@ -317,5 +381,37 @@ export async function emailProjectInvoice(projectId: string, invoiceId: string, 
     return { success: true, data: { squareUrl } }
   } catch (error) {
     return actionFailure(errorMessage(error, "Unable to email the invoice."))
+  }
+}
+
+/**
+ * Staff checked the sent mail after an email whose outcome Compass couldn't
+ * confirm, and it didn't go out: clears the mark (and the claim), so the
+ * invoice can be sent again, reopened or deleted. Logged to Activity.
+ */
+export async function confirmInvoiceEmailNotSent(projectId: string, invoiceId: string): Promise<ActionResult<null>> {
+  try {
+    const context = await simpleInvoiceContext(projectId, "update")
+    if (!context.success) return context
+    const { db, user, organizationId } = context.data
+    const invoice = await loadSimpleInvoice(db, organizationId, projectId, invoiceId)
+    if (!invoice) return actionFailure("Invoice not found.")
+    if (!(await clearSimpleInvoiceEmailUnconfirmed(db, { invoiceId, organizationId, projectId }))) return actionFailure("No unconfirmed email on this invoice.")
+    await recordActivityEvent({
+      db,
+      organizationId,
+      projectId,
+      actor: user,
+      category: "email",
+      action: "invoice_email_confirmed_not_sent",
+      entityType: "invoice",
+      entityId: invoiceId,
+      summary: `Invoice ${invoice.invoiceNumber ?? ""}: ${activityActorName(user)} checked the sent mail; the unconfirmed email didn't go out.`.replace("  ", " "),
+      createdAt: new Date().toISOString(),
+    })
+    revalidatePath(`/dashboard/projects/${projectId}/financials/invoices/${invoiceId}`)
+    return { success: true, data: null }
+  } catch (error) {
+    return actionFailure(errorMessage(error, "Unable to update the invoice."))
   }
 }

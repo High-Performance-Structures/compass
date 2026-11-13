@@ -12,6 +12,10 @@ import { PROJECT_DEPARTMENTS } from "@/lib/domain/project/statuses"
  */
 
 const department = z.enum(PROJECT_DEPARTMENTS)
+
+/** Default for emailResendWindowMinutes (owner decision 2026-11-12). */
+const DEFAULT_EMAIL_RESEND_WINDOW_MINUTES = 2
+const MAX_EMAIL_RESEND_WINDOW_MINUTES = 60
 const optionalEmail = z.union([z.literal(""), z.email()])
 
 export const simpleInvoiceSettingsSchema = z.object({
@@ -32,6 +36,11 @@ export const simpleInvoiceSettingsSchema = z.object({
   squareBlockedDepositDepartments: z.array(department).max(PROJECT_DEPARTMENTS.length),
   /** Let customers pay a Square invoice by bank transfer (ACH) as well as card. */
   squareAcceptBankTransfer: z.boolean(),
+  /**
+   * After an invoice is emailed, another send of the same invoice is refused
+   * for this many minutes (a double click, or two staff at once).
+   */
+  emailResendWindowMinutes: z.number().int().min(1).max(MAX_EMAIL_RESEND_WINDOW_MINUTES),
 })
 
 export type SimpleInvoiceSettings = z.infer<typeof simpleInvoiceSettingsSchema>
@@ -43,12 +52,13 @@ const DEFAULT_SIMPLE_INVOICE_SETTINGS: SimpleInvoiceSettings = {
   materialSaleDepartments: ["N"],
   squareBlockedDepositDepartments: ["H", "O"],
   squareAcceptBankTransfer: true,
+  emailResendWindowMinutes: DEFAULT_EMAIL_RESEND_WINDOW_MINUTES,
 }
 
 export const SIMPLE_INVOICE_SETTINGS_GROUP = {
   label: "Simple invoices",
   description:
-    "Invoices built in Compass for material sales and one-off work: the mailbox they are emailed from, which departments invoice from the job's estimate, and when Square may be used.",
+    "Invoices built in Compass for material sales and one-off work: the mailbox they are emailed from, how soon one may be emailed again, which departments invoice from the job's estimate, and when Square may be used.",
   defaults: DEFAULT_SIMPLE_INVOICE_SETTINGS,
   schema: simpleInvoiceSettingsSchema,
 }
