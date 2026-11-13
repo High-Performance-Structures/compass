@@ -385,16 +385,6 @@ export async function selectionPublishedToOwner(db: Db, projectId: string, selec
   return row?.published === true
 }
 
-/** Whether the owner's approval is recorded on the selection itself (a signature, or an older approval). */
-export async function selectionOwnerApproved(db: Db, projectId: string, selectionId: string): Promise<boolean> {
-  const row = await db
-    .select({ ownerApproved: projectFinishSelections.ownerApproved })
-    .from(projectFinishSelections)
-    .where(and(eq(projectFinishSelections.id, selectionId), eq(projectFinishSelections.projectId, projectId)))
-    .get()
-  return row?.ownerApproved === true
-}
-
 /**
  * Whether the owner has confirmed their choice on the selection's published
  * decision (a recorded preference; only a signature approves).

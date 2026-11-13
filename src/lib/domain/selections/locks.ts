@@ -140,43 +140,17 @@ export function replacementStartStatus(hasPick: boolean): ProjectSelectionStatus
 }
 
 /**
- * What a replacement's change order charges for its pick: the new owner
- * price (the earlier item stays installed or bought; owner decision
- * 2026-11-12 — staff add any credit), or for a supplier that couldn't fill
- * the order, the difference from the price already in the contract. $0
- * until the pick has an owner price. Null when staff must enter it: a
- * supplier couldn't fill an order whose price was never recorded.
+ * The one line a replacement's draft change order starts with (owner
+ * decision 2026-11-12): for Replace and "supplier couldn't fill", the new
+ * pick's full owner price when known, else $0; for an owner change, $0.
+ * Staff then edit the change order's amounts on the change-order screens.
  */
-export function replacementLineAmount(reason: SelectionReplacementReason, pickOwnerPriceCents: number | null, settledOwnerPriceCents: number | null): number | null {
-  if (reason === "supplier_couldnt_fill" && settledOwnerPriceCents === null) return null
-  if (pickOwnerPriceCents === null) return 0
-  return reason === "supplier_couldnt_fill" ? pickOwnerPriceCents - (settledOwnerPriceCents ?? 0) : pickOwnerPriceCents
+export function replacementLineAmount(reason: SelectionReplacementReason, pickOwnerPriceCents: number | null): number {
+  return reason === "owner_changed_after_purchase" ? 0 : (pickOwnerPriceCents ?? 0)
 }
 
-export function replacementLineDescription(selectionName: string, pickTitle: string | null, label: string, amountNeeded = false): string {
-  const needed = amountNeeded ? " — amount needed: no price was recorded for the order that couldn't be filled" : ""
-  return `${selectionName}: ${pickTitle ?? "new selection to be made"} (${label.toLocaleLowerCase()})${needed}`.slice(0, 500)
-}
-
-/** The replacement change order's pick line as stored, and as it should be now. */
-export type ReplacementPricingState = {
-  readonly status: string
-  readonly pickId: string | null
-  readonly pricedId: string | null
-  readonly line: { readonly amountCents: number | null; readonly description: string; readonly costCode: string | null } | null
-  /** Null amount: staff enter it (replacementLineAmount). */
-  readonly expected: { readonly amountCents: number | null; readonly description: string; readonly costCode: string | null }
-}
-
-/**
- * Whether the pick line no longer prices the current pick: another pick,
- * or its amount, description or cost code differs from what it should be
- * (a staff-entered amount is theirs). Shown to staff and blocks sending.
- */
-export function replacementPricingStaleState(state: ReplacementPricingState): boolean {
-  if (state.pickId !== state.pricedId || !state.line) return true
-  if (state.expected.amountCents !== null && state.line.amountCents !== state.expected.amountCents) return true
-  return state.line.description !== state.expected.description || (state.line.costCode ?? null) !== state.expected.costCode
+export function replacementLineDescription(selectionName: string, pickTitle: string | null, label: string): string {
+  return `${selectionName}: ${pickTitle ?? "new selection to be made"} (${label.toLocaleLowerCase()})`.slice(0, 500)
 }
 
 /** How each replacement reason reads to staff and on the change order. */
@@ -195,9 +169,8 @@ export const REPLACEMENT_REASON_LABELS: Readonly<Record<SelectionReplacementReas
  *
  * Older approvals are selections imported already approved (Buildertrend):
  * the owner agreed to them and they were billed there, so a Selection Phase
- * must not sign or bill them again. Changing such a pick in Compass reopens
- * the selection (owner_approved cleared), which brings it back into the
- * phase to be signed like any other.
+ * must not sign or bill them again. Their pick can't change either (an
+ * approved selection changes only by change order; pickChangeBlocker).
  */
 export function outsidePhaseWork(row: {
   readonly status: string
@@ -208,3 +181,6 @@ export function outsidePhaseWork(row: {
 }): boolean {
   return row.status === "ordered" || row.status === "installed" || row.replaced || (row.ownerApproved && !row.signedCurrentPick)
 }
+
+export const APPROVED_PICK_MESSAGE = "This selection is approved. Use a change order to change it."
+export const OUT_FOR_SIGNATURE_MESSAGE = "This selection is out for signature."

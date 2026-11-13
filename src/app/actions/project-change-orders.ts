@@ -39,7 +39,7 @@ import { canViewChangeOrder, changeOrderRequesterType, type ChangeOrderRequester
 import { displayChangeOrderRequesterType } from "@/lib/change-orders/provenance"
 import { getCloudflareContext } from "@/lib/db"
 import { rebuildProjectContractBudget } from "@/lib/financials/contract-budget-store"
-import { afterChangeOrdersExecuted, changeOrderMoveBlocker } from "@/lib/change-orders/executed-follow-ups"
+import { afterChangeOrdersExecuted } from "@/lib/change-orders/executed-follow-ups"
 import {
   executeBaselineReplacement,
   rebaselineViewData,
@@ -817,8 +817,6 @@ export async function updateProjectChangeOrder(
     ) {
       return { success: false, error: "That status transition is not allowed." }
     }
-    const moveBlocked = statusChanged ? await changeOrderMoveBlocker(context.db, { projectId, changeOrderId, to: input.status }) : null
-    if (moveBlocked) return { success: false, error: moveBlocked }
     if (input.status === "synced") {
       return {
         success: false,
@@ -915,7 +913,7 @@ export async function updateProjectChangeOrder(
     const reason = contentAllowed
       ? cleanLimitedText(input.reason, "Reason", 4_000)
       : existing.reason
-    // The amount follows how it's built (an estimate sets it on acceptance); written only when that changes.
+    // The amount follows how it's built: an estimate sets it on acceptance.
     const amountCents = rebaselineSelection
       ? rebaselineSelection.replacement.estimateTotalCents -
         rebaselineSelection.baseline.estimateTotalCents
@@ -971,7 +969,7 @@ export async function updateProjectChangeOrder(
         title,
         scope,
         reason,
-        ...(rebaselineSelection || requestedKind !== null ? { amountCents } : {}),
+        amountCents,
         scheduleImpactDays,
         audience: contentAllowed ? audience : existing.audience,
         internalNotes: context.internal

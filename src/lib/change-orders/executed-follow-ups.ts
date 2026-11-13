@@ -9,7 +9,7 @@
  * Today: a selection replacement's change order approves the replacement
  * selection and adds its "Order" to-do.
  */
-import { applyExecutedReplacementChangeOrder, replacementChangeOrderMoveBlocker } from "@/lib/domain/selections/replacement-signing"
+import { applyExecutedReplacementChangeOrder } from "@/lib/domain/selections/replacement-signing"
 import type { Db } from "@/lib/server/action-context"
 
 export async function afterChangeOrdersExecuted(
@@ -21,16 +21,4 @@ export async function afterChangeOrdersExecuted(
     // Never fails the execution that already landed; each follow-up logs its own failure.
     await applyExecutedReplacementChangeOrder(db, { projectId: input.projectId, changeOrderId, actorId: input.actorId })
   }
-}
-
-/**
- * Why a change order may not move to `to` (out of draft toward the owner,
- * or executed), or null. Every status change checks it: today a selection
- * replacement's change order must be priced for its selection's pick.
- */
-export async function changeOrderMoveBlocker(
-  db: Db,
-  input: { readonly projectId: string; readonly changeOrderId: string; readonly to: string },
-): Promise<string | null> {
-  return replacementChangeOrderMoveBlocker(db, input)
 }

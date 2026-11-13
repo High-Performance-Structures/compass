@@ -312,13 +312,10 @@ export async function applyFinishScheduleImport(
     const approvalNeedsReview =
       (existing.ownerApproved || existing.status === "approved") &&
       importedSourceChanged(existing, sourceValues)
-    // An imported (unsigned) approval, or one with no price to keep, isn't reopened by the workbook: a conflict for staff.
-    if (approvalNeedsReview && existing.ownerApproved) {
-      const outcome = await approvalClearOutcome(db, { projectId, selectionId: existing.id, pickChange: false })
-      if (outcome === "keep" || outcome === "refuse") {
-        conflictCount += 1
-        continue
-      }
+    // An imported (unsigned) approval isn't reopened by the workbook: a conflict for staff.
+    if (approvalNeedsReview && existing.ownerApproved && (await approvalClearOutcome(db, { projectId, selectionId: existing.id })) === "keep") {
+      conflictCount += 1
+      continue
     }
     // The workbook changed an approved row: the approval no longer covers it,
     // so it reopens (back to the owner). Otherwise the status is left alone,
@@ -330,7 +327,7 @@ export async function applyFinishScheduleImport(
         ? updateFinishSelectionsWithEventStatement(db, stillUnlocked, "reopen", {
             ...sourceValues,
             sourceRecordId,
-            ...clearApprovalPatch({ pickChange: false }),
+            ...clearApprovalPatch(),
             syncStatus: "selection_change_review"
           })
         : updateFinishSelectionsStatement(db, LOCKED_STATUSES.has(existing.status) ? eq(projectFinishSelections.id, existing.id) : stillUnlocked, {

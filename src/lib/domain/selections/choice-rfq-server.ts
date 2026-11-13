@@ -18,7 +18,6 @@ import type { Db } from "@/lib/server/action-context"
 
 import { setChoicePricesFromRfq } from "./choices-store"
 import { notifyPriceChangesDuringSignature } from "./price-change-notice"
-import { repriceReplacementChangeOrder } from "./replacement-pricing"
 
 type FinishSelectionRow = typeof projectFinishSelections.$inferSelect
 
@@ -160,10 +159,6 @@ async function applyRfqPricesToChoices(db: Db, projectId: string, rfqId: string,
     actor: null,
     now,
   })
-  // A replacement's draft change order follows its pick's new price.
-  for (const selectionId of new Set(prices.map((price) => price.selectionId))) {
-    await repriceReplacementChangeOrder(db, { projectId, selectionId, by: { kind: "system" } })
-  }
   return prices.length
 }
 

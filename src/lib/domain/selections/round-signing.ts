@@ -115,13 +115,6 @@ export async function signedChoices(db: Db, selectionIds: readonly string[]): Pr
   return new Map(chunks.flat().map((row) => [row.selectionId, row.choiceId]))
 }
 
-/** Whether the selection's current pick is the one the owner signed for (the selection is locked). */
-export async function selectionPickIsSigned(db: Db, selectionId: string, chosenChoiceId: string | null): Promise<boolean> {
-  if (!chosenChoiceId) return false
-  const signed = await signedChoices(db, [selectionId])
-  return signed.get(selectionId) === chosenChoiceId
-}
-
 export async function loadRoundSigningView(db: Db, projectId: string, organizationId: string, roundKey: string): Promise<RoundSigningView | null> {
   const [settings, project, variance, selections, owners, signatures] = await Promise.all([
     readFeatureSettings(db, organizationId, "selections"),
@@ -139,7 +132,6 @@ export async function loadRoundSigningView(db: Db, projectId: string, organizati
         costCode: projectFinishSelections.costCode,
         status: projectFinishSelections.status,
         ownerApproved: projectFinishSelections.ownerApproved,
-        settledOwnerPriceCents: projectFinishSelections.settledOwnerPriceCents,
         allowanceCents: projectSelectionDecisions.allowanceCents,
       })
       .from(projectFinishSelections)
@@ -200,9 +192,6 @@ export async function loadRoundSigningView(db: Db, projectId: string, organizati
       linkSite: link ? (link.siteName ?? hostName(link.url)) : null,
       ownerPriceCents: choice?.ownerPriceCents ?? null,
       allowanceCents: selection.allowanceCents,
-      // A changed approved pick is billed against the price already in the
-      // contract (the previous pick's), not the allowance again.
-      settledOwnerPriceCents: selection.settledOwnerPriceCents,
       costCode: selection.costCode,
       pickedBy: choice ? pickedByLabel(choice) : null,
       signedEarlier: choice !== null && signed.get(selection.id) === choice.id,

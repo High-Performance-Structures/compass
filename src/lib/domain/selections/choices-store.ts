@@ -63,8 +63,21 @@ const replacementOrderLive = sql`EXISTS (SELECT 1 FROM project_change_orders AS 
  * a draft is re-priced in place); nothing on a replaced selection.
  */
 const choiceWritable = sql`NOT ((project_selection_choices.chosen = 1 AND (${selectionLocked} OR ${choiceSigned} OR ${selectionApproved} OR ${replacementOrderLive})) OR ${selectionReplaced})`
-/** The selection's pick may change: it is not ordered, installed or replaced, and no live replacement change order prices it. */
-const pickChangeable = sql`NOT (${selectionLocked} OR ${selectionReplaced} OR ${replacementOrderLive})`
+/** The selection's current pick is covered by a signed Selection Phase. */
+const currentPickSigned = sql`EXISTS (SELECT 1 FROM project_selection_round_signature_items AS signed_item INNER JOIN project_selection_round_signatures AS signed_round ON signed_round.id = signed_item.signature_id
+  WHERE signed_round.status = 'signed' AND signed_item.selection_id = project_selection_choices.selection_id
+    AND signed_item.choice_id = (SELECT current_pick.id FROM project_selection_choices AS current_pick WHERE current_pick.selection_id = project_selection_choices.selection_id AND current_pick.chosen = 1))`
+/** The selection is in a Selection Phase signature being prepared or sent. */
+const outForSignature = sql`EXISTS (SELECT 1 FROM project_selection_round_signature_items AS out_item INNER JOIN project_selection_round_signatures AS out_round ON out_round.id = out_item.signature_id
+  WHERE out_round.status IN ('preparing', 'sent') AND out_item.selection_id = project_selection_choices.selection_id)`
+/**
+ * The selection's pick may change (staff or owner; owner decision
+ * 2026-11-12): not ordered, installed or replaced (Replace instead), not
+ * approved and its pick not signed (a change order instead; includes
+ * imported approvals), not out for signature, and no replacement change
+ * order out or executed prices it.
+ */
+const pickChangeable = sql`NOT (${selectionLocked} OR ${selectionReplaced} OR ${replacementOrderLive} OR ${selectionApproved} OR ${currentPickSigned} OR ${outForSignature})`
 
 // ---- choices
 
@@ -144,23 +157,13 @@ export async function reorderSelectionChoices(
 }
 
 /**
- * An owner may pick only while the selection's approval isn't recorded and
- * no signature covers its current pick (staff change approved picks).
- */
-const ownerPickAllowed = sql`(NOT EXISTS (SELECT 1 FROM project_finish_selections AS approved WHERE approved.id = project_selection_choices.selection_id AND approved.owner_approved = 1)
-  AND NOT EXISTS (SELECT 1 FROM project_selection_round_signature_items AS signed_item INNER JOIN project_selection_round_signatures AS signed_round ON signed_round.id = signed_item.signature_id
-    WHERE signed_round.status = 'signed' AND signed_item.selection_id = project_selection_choices.selection_id
-      AND signed_item.choice_id = (SELECT current_pick.id FROM project_selection_choices AS current_pick WHERE current_pick.selection_id = project_selection_choices.selection_id AND current_pick.chosen = 1)))`
-
-/**
  * The statements that mark one choice chosen and clear the others on the
  * same selection (the unique index allows one chosen choice per selection);
- * `chosen` false clears just this one. Nothing changes on an ordered,
- * installed or replaced selection (or, for an owner, an approved or signed
- * one). The last statement is the pick itself: none of its rows changed
- * means the pick didn't land.
+ * `chosen` false clears just this one. Nothing changes where the pick is
+ * fixed (pickChangeable). The last statement is the pick itself: none of
+ * its rows changed means the pick didn't land.
  */
-export function selectionPickStatements(
+function selectionPickStatements(
   db: Db,
   selectionId: string,
   choiceId: string,
@@ -168,7 +171,7 @@ export function selectionPickStatements(
   now: string,
   pickedBy: { readonly userId: string; readonly audience: SelectionAuthorAudience; readonly note: string | null },
 ): readonly [BatchItem<"sqlite">, ...BatchItem<"sqlite">[]] {
-  const allowed = pickedBy.audience === "owner" ? and(pickChangeable, ownerPickAllowed) : pickChangeable
+  const allowed = pickChangeable
   const cleared = { chosen: false, chosenByUserId: null, chosenByAudience: null, chosenAt: null, chosenNote: null, updatedAt: now }
   const setThis = db
     .update(projectSelectionChoices)

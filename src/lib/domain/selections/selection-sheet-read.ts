@@ -34,7 +34,6 @@ export async function loadSelectionSheet(db: Db, projectId: string): Promise<rea
         roundKey: projectFinishSelections.roundKey,
         replacesSelectionId: projectFinishSelections.replacesSelectionId,
         ownerApproved: projectFinishSelections.ownerApproved,
-        settledOwnerPriceCents: projectFinishSelections.settledOwnerPriceCents,
       })
       .from(projectFinishSelections)
       .leftJoin(projectSelectionDecisions, eq(projectSelectionDecisions.selectionId, projectFinishSelections.id))

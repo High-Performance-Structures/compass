@@ -8,7 +8,7 @@ import { projectSelectionChoices, projectSelectionRoundSignatureItems, projectSe
 import { chunkD1Values } from "@/lib/d1-query"
 import type { Db } from "@/lib/server/action-context"
 
-import { selectionLock, type SelectionLock } from "./locks"
+import { APPROVED_PICK_MESSAGE, OUT_FOR_SIGNATURE_MESSAGE, selectionLock, type SelectionLock } from "./locks"
 import type { SelectionReplacementReason } from "./statuses"
 
 /** Whether another selection replaces this one. */
@@ -94,7 +94,7 @@ export const EXECUTED_CHANGE_ORDER_STATUSES = ["executed", "sage_pending", "sync
 /**
  * The job's selections a signature covers for their CURRENT pick: the pick
  * is the choice the latest signed Selection Phase covered, or the selection
- * is a replacement whose executed change order was priced for its pick. "Approved" without one (set
+ * is a replacement whose change order was executed. "Approved" without one (set
  * by hand, an older click approval, or a pick changed since) isn't signed.
  */
 export async function signedSelectionIds(db: Db, projectId: string): Promise<ReadonlySet<string>> {
@@ -109,15 +109,10 @@ export async function signedSelectionIds(db: Db, projectId: string): Promise<Rea
       .select({ selectionId: projectSelectionChoices.selectionId, choiceId: projectSelectionChoices.id })
       .from(projectSelectionChoices)
       .where(and(eq(projectSelectionChoices.projectId, projectId), eq(projectSelectionChoices.chosen, true))),
-    // A replacement's executed change order covers the pick it was priced for.
+    // A replacement's executed change order covers its pick (which can't change once the change order is out).
     db
       .selectDistinct({ id: projectChangeOrders.sourceRecordId })
       .from(projectChangeOrders)
-      .innerJoin(projectFinishSelections, eq(projectFinishSelections.id, projectChangeOrders.sourceRecordId))
-      .innerJoin(
-        projectSelectionChoices,
-        and(eq(projectSelectionChoices.id, projectFinishSelections.replacementPricedChoiceId), eq(projectSelectionChoices.chosen, true)),
-      )
       .where(
         and(
           eq(projectChangeOrders.projectId, projectId),
@@ -156,4 +151,36 @@ export async function replacementChangeOrderFor(
     .orderBy(desc(projectChangeOrders.createdAt))
     .get()
   return row ?? null
+}
+
+/**
+ * Why the selection's pick can't change now (staff or owner), or null. The
+ * same rules the pick write enforces (choices-store pickChangeable), read
+ * here for the message: ordered, installed or replaced (its lock message);
+ * approved or its pick signed ("Use a change order"); out for signature; a
+ * replacement change order out or executed.
+ */
+export async function pickChangeBlocker(db: Db, projectId: string, selectionId: string): Promise<string | null> {
+  const state = await loadSelectionLock(db, projectId, selectionId)
+  if (!state) return "Selection not found"
+  if (state.lock) return state.lock.message
+  const [row, signed, out, liveOrder] = await Promise.all([
+    db
+      .select({ approved: projectFinishSelections.ownerApproved })
+      .from(projectFinishSelections)
+      .where(eq(projectFinishSelections.id, selectionId))
+      .get(),
+    signedSelectionIds(db, projectId),
+    db
+      .select({ id: projectSelectionRoundSignatureItems.selectionId })
+      .from(projectSelectionRoundSignatureItems)
+      .innerJoin(projectSelectionRoundSignatures, eq(projectSelectionRoundSignatures.id, projectSelectionRoundSignatureItems.signatureId))
+      .where(and(eq(projectSelectionRoundSignatureItems.selectionId, selectionId), inArray(projectSelectionRoundSignatures.status, ["preparing", "sent"])))
+      .get(),
+    replacementChangeOrderFor(db, projectId, selectionId),
+  ])
+  if (row?.approved || signed.has(selectionId)) return APPROVED_PICK_MESSAGE
+  if (out) return OUT_FOR_SIGNATURE_MESSAGE
+  if (liveOrder && liveOrder.status !== "draft") return "The pick can't change now: its replacement change order is out for signature or executed."
+  return null
 }

@@ -32,7 +32,7 @@ export type SelectionChangeOrderLine = {
 }
 
 /** Project liability insurance for the coded, priced lines (change orders get it the way estimates do). */
-export async function selectionInsuranceLines(db: Db, projectId: string, lines: readonly SelectionChangeOrderLine[]) {
+async function selectionInsuranceLines(db: Db, projectId: string, lines: readonly SelectionChangeOrderLine[]) {
   const coded = lines.flatMap((line) => (line.costCode && line.amountCents !== 0 ? [{ costCode: line.costCode, description: line.description, amountCents: line.amountCents }] : []))
   return changeOrderInsuranceLines({ db, projectId, lines: coded })
 }

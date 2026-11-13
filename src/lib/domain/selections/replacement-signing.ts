@@ -12,7 +12,6 @@ import { projectSelectionChoices } from "@/db/schema-selection-choices"
 import type { Db } from "@/lib/server/action-context"
 
 import { EXECUTED_CHANGE_ORDER_STATUSES } from "./lock-read"
-import { replacementPricingBlocker } from "./replacement-pricing"
 import { ensureSelectionTodo } from "./selection-todos"
 import { updateFinishSelectionsWithEventStatement } from "./store"
 
@@ -35,8 +34,13 @@ export async function applyExecutedReplacementChangeOrder(
       .get()
     const selectionId = order?.selectionId
     if (!selectionId) return false
-    // The owner signed for the priced pick; a selection whose pick differs isn't approved by it.
-    if (!(await pickIsPriced(db, input.projectId, selectionId))) return false
+    // Approved for its pick; a replacement with nothing picked yet isn't approved by it (staff set it by hand).
+    const pick = await db
+      .select({ id: projectSelectionChoices.id })
+      .from(projectSelectionChoices)
+      .where(and(eq(projectSelectionChoices.selectionId, selectionId), eq(projectSelectionChoices.chosen, true)))
+      .get()
+    if (!pick) return false
     const now = new Date().toISOString()
     // Once: only while the owner's approval isn't recorded yet. The status
     // moves as a signature does (never back from ordered or installed).
@@ -63,44 +67,4 @@ export async function applyExecutedReplacementChangeOrder(
     console.error("[selections] replacement approval after its change order failed", error)
     return false
   }
-}
-
-/** The replacement's current pick, and the choice its change order is priced for (null when none). */
-async function replacementPick(db: Db, projectId: string, selectionId: string): Promise<{ readonly pickId: string | null; readonly pricedId: string | null } | null> {
-  const row = await db
-    .select({ pricedId: projectFinishSelections.replacementPricedChoiceId, pickId: projectSelectionChoices.id })
-    .from(projectFinishSelections)
-    .leftJoin(projectSelectionChoices, and(eq(projectSelectionChoices.selectionId, projectFinishSelections.id), eq(projectSelectionChoices.chosen, true)))
-    .where(and(eq(projectFinishSelections.id, selectionId), eq(projectFinishSelections.projectId, projectId)))
-    .get()
-  return row ? { pickId: row.pickId ?? null, pricedId: row.pricedId } : null
-}
-
-async function pickIsPriced(db: Db, projectId: string, selectionId: string): Promise<boolean> {
-  const pick = await replacementPick(db, projectId, selectionId)
-  return pick !== null && pick.pickId !== null && pick.pickId === pick.pricedId
-}
-
-/** Statuses a change order may hold without having gone to the owner. */
-const NOT_SENT: ReadonlySet<string> = new Set(["draft", "void", "declined"])
-
-/**
- * Why a selection replacement's change order may not move to `to`, or null:
- * it can't leave draft (go to the owner, be accepted or executed) until its
- * selection has a pick and the change order's pick line prices it (same
- * test as the drawer's "update the change order" flag), with any amount
- * staff must enter filled in. Other change orders are never blocked.
- */
-export async function replacementChangeOrderMoveBlocker(
-  db: Db,
-  input: { readonly projectId: string; readonly changeOrderId: string; readonly to: string },
-): Promise<string | null> {
-  if (NOT_SENT.has(input.to)) return null
-  const order = await db
-    .select({ selectionId: projectChangeOrders.sourceRecordId })
-    .from(projectChangeOrders)
-    .where(and(eq(projectChangeOrders.id, input.changeOrderId), eq(projectChangeOrders.projectId, input.projectId), eq(projectChangeOrders.sourceType, "selection_replacement")))
-    .get()
-  if (!order?.selectionId) return null
-  return replacementPricingBlocker(db, input.projectId, order.selectionId)
 }

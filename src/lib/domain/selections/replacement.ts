@@ -30,7 +30,7 @@ import { REPLACEMENT_REASON_LABELS, replacementBlocker, replacementLineAmount, r
 import { readProjectSelectionSettings } from "./project-settings"
 import { createSelectionChangeOrder, type SelectionChangeOrderActor } from "./selection-change-orders"
 import type { SelectionReplacementReason } from "./statuses"
-import { insertReplacementSelectionStatement, setReplacementPricing } from "./store"
+import { insertReplacementSelectionStatement } from "./store"
 
 export type ReplaceSelectionResult =
   | {
@@ -72,7 +72,6 @@ export async function replaceLockedSelection(
       roomName: projectFinishSelections.roomName,
       status: projectFinishSelections.status,
       costCode: projectFinishSelections.costCode,
-      settledOwnerPriceCents: projectFinishSelections.settledOwnerPriceCents,
       procurementReleasedAt: projectFinishSelections.procurementReleasedAt,
     })
     .from(projectFinishSelections)
@@ -187,7 +186,7 @@ async function replacementChangeOrder(
   input: {
     readonly projectId: string
     readonly newId: string
-    readonly old: { readonly id: string; readonly name: string; readonly roomName: string; readonly costCode: string | null; readonly settledOwnerPriceCents: number | null }
+    readonly old: { readonly id: string; readonly name: string; readonly roomName: string; readonly costCode: string | null }
     readonly pick: { readonly id: string; readonly title: string; readonly ownerPriceCents: number | null } | null
     readonly label: string
     readonly note: string | null
@@ -198,9 +197,8 @@ async function replacementChangeOrder(
 ): Promise<{ readonly changeOrder: { readonly id: string; readonly number: string } | null; readonly changeOrderError: string | null }> {
   const { old, pick, label, note } = input
   try {
-    // One line always prices the pick ($0 until there is one); re-pricing updates it in place.
-    const lineId = crypto.randomUUID()
-    const amount = replacementLineAmount(input.reason, pick?.ownerPriceCents ?? null, old.settledOwnerPriceCents)
+    // One line, written once here; staff edit the amounts on the change-order screens.
+    const amountCents = replacementLineAmount(input.reason, pick?.ownerPriceCents ?? null)
     const changeOrder = await createSelectionChangeOrder(db, {
       projectId: input.projectId,
       start: { kind: "draft" },
@@ -213,13 +211,7 @@ async function replacementChangeOrder(
         " The earlier selection stays on record.",
       reason: note ?? label,
       lines: [
-        {
-          id: lineId,
-          costCode: old.costCode?.trim() || null,
-          description: replacementLineDescription(old.name, pick?.title ?? null, label, amount === null),
-          // Staff enter it when the unfilled order's price was never recorded; sending waits for it.
-          amountCents: amount ?? 0,
-        },
+        { costCode: old.costCode?.trim() || null, description: replacementLineDescription(old.name, pick?.title ?? null, label), amountCents },
       ],
       history: {
         eventType: "created_from_selection_replacement",
@@ -229,8 +221,6 @@ async function replacementChangeOrder(
       actor: input.actor,
       now: input.now,
     })
-    // The replacement counts as signed only while its pick is the one priced here.
-    await setReplacementPricing(db, { projectId: input.projectId, selectionId: input.newId, choiceId: pick?.id ?? null, lineId })
     return { changeOrder, changeOrderError: null }
   } catch (error) {
     // The one-live-change-order index refuses a second (a double submit).
@@ -264,7 +254,6 @@ export async function startReplacementChangeOrder(
       name: projectFinishSelections.name,
       roomName: projectFinishSelections.roomName,
       costCode: projectFinishSelections.costCode,
-      settledOwnerPriceCents: projectFinishSelections.settledOwnerPriceCents,
     })
     .from(projectFinishSelections)
     .where(and(eq(projectFinishSelections.id, selection.replacesSelectionId), eq(projectFinishSelections.projectId, input.projectId)))

@@ -14,9 +14,7 @@ import {
 } from "drizzle-orm/sqlite-core"
 
 import { PROJECT_SELECTION_STATUSES, SELECTION_REPLACEMENT_REASONS } from "../lib/domain/selections/statuses"
-import { projectChangeOrderLines } from "./schema-change-orders"
 import { projectOperations } from "./schema-operations"
-import { projectSelectionChoices } from "./schema-selection-choices"
 import { projects } from "./schema-projects"
 
 export const projectFinishSelections = sqliteTable("project_finish_selections", {
@@ -68,12 +66,6 @@ export const projectFinishSelections = sqliteTable("project_finish_selections", 
   // The ordered or installed selection this one replaces; that one stays on record, locked. One replacement each. (0321)
   replacesSelectionId: text("replaces_selection_id").references((): AnySQLiteColumn => projectFinishSelections.id, { onDelete: "set null" }),
   replacementReason: text("replacement_reason", { enum: SELECTION_REPLACEMENT_REASONS }),
-  // The choice its replacement change order is priced for; signed only while it is still the pick. (0321)
-  replacementPricedChoiceId: text("replacement_priced_choice_id").references((): AnySQLiteColumn => projectSelectionChoices.id, { onDelete: "set null" }),
-  // The change-order line that prices that pick (re-priced in place). (0321)
-  replacementPricedLineId: text("replacement_priced_line_id").references((): AnySQLiteColumn => projectChangeOrderLines.id, { onDelete: "set null" }),
-  // The previous pick's owner price, already in the contract, when an approved pick changes. (0321)
-  settledOwnerPriceCents: integer("settled_owner_price_cents"),
   // When staff marked it Unavailable from Ordered; purchase orders linked before then no longer move it. (0321)
   procurementReleasedAt: text("procurement_released_at"),
   syncStatus: text("sync_status").notNull().default("manual"),
@@ -98,8 +90,6 @@ export const projectFinishSelections = sqliteTable("project_finish_selections", 
     index("project_finish_selections_rfq_operation_id_idx").on(table.rfqOperationId),
     index("project_finish_selections_round_idx").on(table.projectId, table.roundKey),
     uniqueIndex("project_finish_selections_replaces_unique").on(table.replacesSelectionId),
-    index("project_finish_selections_replacement_priced_choice_idx").on(table.replacementPricedChoiceId),
-    index("project_finish_selections_replacement_priced_line_idx").on(table.replacementPricedLineId),
   ])
 
 export const projectFinishSelectionRooms = sqliteTable("project_finish_selection_rooms", {

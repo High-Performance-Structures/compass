@@ -7,7 +7,6 @@ import { selectionDeletionAllowed } from "@/lib/selections/deletion"
 import type { Db } from "@/lib/server/action-context"
 import { assertListFields } from "@/lib/shared/statuses"
 
-import { clearApprovalPatch } from "./approval-clear"
 import { insertCopyStatement } from "./copy-rows"
 import { LOCKED_SELECTION_STATUSES, staffStatusChangeBlocker } from "./locks"
 import { automaticSelectionStatus, selectionStatusSources, selectionStatusTarget, type SelectionStatusEvent } from "./status-machine"
@@ -138,17 +137,12 @@ export async function setSelectionStatusByStaff(
   const blocker = staffStatusChangeBlocker(input.expected, input.status, false)
   if (blocker) throw new Error(blocker)
   // Ordered → Unavailable (the supplier can't fill it): the old purchase
-  // order lets go (PO links before now no longer move it; history kept), and
-  // the pick's owner price stays as the price already in the contract.
+  // order lets go (PO links before now no longer move it; history kept).
   const unfilled =
     input.expected === "ordered" && input.status === "unavailable"
-      ? {
-          purchaseOrderOperationId: null,
-          procurementReleasedAt: new Date().toISOString(),
-          settledOwnerPriceCents: sql`(SELECT owner_price_cents FROM project_selection_choices WHERE selection_id = ${input.selectionId} AND chosen = 1)`,
-        }
+      ? { purchaseOrderOperationId: null, procurementReleasedAt: new Date().toISOString() }
       : input.status === "ordered"
-        ? // Ordered again: a new order holds it; the settled price stays.
+        ? // Ordered again: a new order holds it.
           { procurementReleasedAt: null }
         : {}
   const values = { ...withoutStatus(input.values ?? {}), ...unfilled, status: input.status }
@@ -293,9 +287,6 @@ export function insertReplacementSelectionStatement(
       lastSyncedAt: null,
       replacesSelectionId: input.replacesSelectionId,
       replacementReason: input.reason,
-      replacementPricedChoiceId: null,
-      replacementPricedLineId: null,
-      settledOwnerPriceCents: null,
       procurementReleasedAt: null,
       createdAt: input.now,
       updatedAt: input.now,
@@ -337,72 +328,6 @@ export async function updateLockedSelection(
     )
     .run()
   return result.meta.changes > 0
-}
-
-/** Records the choice a replacement's change order is priced for (null: none yet) and the line that prices it. */
-export async function setReplacementPricing(
-  db: Db,
-  input: { readonly projectId: string; readonly selectionId: string; readonly choiceId: string | null; readonly lineId: string },
-): Promise<void> {
-  await db
-    .update(projectFinishSelections)
-    .set({ replacementPricedChoiceId: input.choiceId, replacementPricedLineId: input.lineId })
-    .where(and(eq(projectFinishSelections.id, input.selectionId), eq(projectFinishSelections.projectId, input.projectId)))
-    .run()
-}
-
-/**
- * Re-prices a replacement for `choiceId`, for the caller's batch: lands only
- * while the selection is still priced for `expectedChoiceId` (another
- * re-price meanwhile wins), and stamps `token` in updated_at so the batch's
- * line, change-order and history writes can land only with it.
- */
-export function repriceReplacementStatement(
-  db: Db,
-  input: {
-    readonly projectId: string
-    readonly selectionId: string
-    readonly changeOrderId: string
-    readonly expectedChoiceId: string | null
-    readonly choiceId: string | null
-    readonly lineId: string
-    readonly token: string
-  },
-): Statement {
-  return db
-    .update(projectFinishSelections)
-    .set({ replacementPricedChoiceId: input.choiceId, replacementPricedLineId: input.lineId, updatedAt: input.token })
-    .where(
-      and(
-        eq(projectFinishSelections.id, input.selectionId),
-        eq(projectFinishSelections.projectId, input.projectId),
-        sql`${projectFinishSelections.replacementPricedChoiceId} IS ${input.expectedChoiceId}`,
-        // Only while the change order is still a draft (it can't be re-priced once sent).
-        sql`EXISTS (SELECT 1 FROM project_change_orders AS replacement_change WHERE replacement_change.id = ${input.changeOrderId} AND replacement_change.status = 'draft')`,
-      ),
-    )
-}
-
-/**
- * A staff pick change on an approved selection, for the batch BEFORE the
- * pick write (so it reads the previous pick): reopens it for signing and
- * clears the approval keeping the price already in the contract
- * (approval-clear.ts). Lands only where the pick write may (not ordered,
- * installed or replaced, no replacement change order out or executed).
- */
-export function reopenForPickChangeStatement(db: Db, input: { readonly projectId: string; readonly selectionId: string; readonly now: string }): Statement {
-  return db
-    .update(projectFinishSelections)
-    .set({ ...clearApprovalPatch({ pickChange: true }), status: statusAfterEvent("reopen"), updatedAt: input.now })
-    .where(
-      and(
-        eq(projectFinishSelections.id, input.selectionId),
-        eq(projectFinishSelections.projectId, input.projectId),
-        notInArray(projectFinishSelections.status, [...LOCKED_SELECTION_STATUSES]),
-        notReplaced,
-        sql`NOT EXISTS (SELECT 1 FROM project_change_orders AS replacement_change WHERE replacement_change.source_type = 'selection_replacement' AND replacement_change.source_record_id = project_finish_selections.id AND replacement_change.status NOT IN ('draft', 'void', 'declined'))`,
-      ),
-    )
 }
 
 /** The ids of the rows the delete removed. */

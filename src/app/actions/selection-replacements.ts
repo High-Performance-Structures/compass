@@ -4,7 +4,6 @@ import { revalidatePath } from "next/cache"
 
 import { actionFailure, errorMessage, type ActionResult } from "@/lib/action-result"
 import { replaceLockedSelection, startReplacementChangeOrder } from "@/lib/domain/selections/replacement"
-import { repriceReplacementChangeOrder } from "@/lib/domain/selections/replacement-pricing"
 import { canFeature, requireFeaturePermission } from "@/lib/permission-enforcement"
 import { projectContext } from "@/lib/server/action-context"
 import type { SelectionReplacementReason } from "@/lib/domain/selections/statuses"
@@ -97,21 +96,6 @@ export async function supplierCouldntFillSelection(
   note: string | null,
 ): Promise<ActionResult<SelectionReplacementDone>> {
   return replace(projectId, selectionId, "supplier_couldnt_fill", choiceId, note)
-}
-
-/** Re-prices a replacement's draft change order for its current pick (after the owner picked, say). */
-export async function updateReplacementChangeOrder(projectId: string, selectionId: string): Promise<ActionResult<{ readonly changeOrderNumber: string | null }>> {
-  try {
-    const { db, user } = await writeContext(projectId)
-    await requireFeaturePermission(user, "change-orders", "update")
-    const result = await repriceReplacementChangeOrder(db, { projectId, selectionId, by: { kind: "staff", actor: user, canUpdateChangeOrders: true } })
-    if (result.kind === "skipped") return actionFailure(result.reason)
-    revalidatePath(`/dashboard/projects/${projectId}/selections`)
-    revalidatePath(`/dashboard/projects/${projectId}/change-orders`)
-    return { success: true, data: { changeOrderNumber: result.kind === "repriced" ? result.changeOrderNumber : null } }
-  } catch (error) {
-    return actionFailure(errorMessage(error, "Unable to update the change order."))
-  }
 }
 
 /** Starts the draft change order for a replacement that has none. */

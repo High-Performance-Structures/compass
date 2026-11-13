@@ -15,7 +15,7 @@
 import { and, eq, inArray } from "drizzle-orm"
 
 import { projectChangeOrders, projectFinishSelections } from "@/db/schema"
-import { projectSelectionRoundSignatureItems, projectSelectionRoundSignatures } from "@/db/schema-selection-choices"
+import { projectSelectionChoices, projectSelectionRoundSignatureItems, projectSelectionRoundSignatures } from "@/db/schema-selection-choices"
 import { recordActivityEvents, type ActivityActor } from "@/lib/activity-log"
 import { namedProjectManager, projectMembersWithRole } from "@/lib/domain/project/member-role"
 import { formatCents } from "@/lib/format"
@@ -104,13 +104,15 @@ export async function notifyPriceChangesDuringSignature(
     const replacementOut = await db
       .select({
         selectionId: projectFinishSelections.id,
-        signedChoiceId: projectFinishSelections.replacementPricedChoiceId,
+        signedChoiceId: projectSelectionChoices.id,
         status: projectChangeOrders.status,
         number: projectChangeOrders.changeOrderNumber,
         selectionName: projectFinishSelections.name,
       })
       .from(projectChangeOrders)
       .innerJoin(projectFinishSelections, eq(projectFinishSelections.id, projectChangeOrders.sourceRecordId))
+      // The change order was written for the current pick.
+      .leftJoin(projectSelectionChoices, and(eq(projectSelectionChoices.selectionId, projectFinishSelections.id), eq(projectSelectionChoices.chosen, true)))
       .where(
         and(
           eq(projectChangeOrders.projectId, input.projectId),
