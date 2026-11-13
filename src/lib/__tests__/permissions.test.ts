@@ -13,6 +13,7 @@ import {
   getPermissions,
 } from "@/lib/permissions"
 import { USER_ROLES } from "@/lib/domain/identity/statuses"
+import { canReviewHeldJobEmails } from "@/lib/staff-message-desk"
 import { isInternalStaffRole } from "@/lib/user-roles"
 
 function userWithRole(role: string): AuthUser {
@@ -319,6 +320,19 @@ describe("private employee contact permissions", () => {
   })
 })
 
+
+describe("canReviewHeldJobEmails", () => {
+  it.each(["admin", "secondary_admin", "project_manager", "project_administrator"])("lets %s review held job emails", (role) => {
+    expect(canReviewHeldJobEmails(userWithRole(role))).toBe(true)
+  })
+  it.each(["field_crew", "accounting", "client", "subcontractor", "guest"])("keeps %s out", (role) => {
+    expect(canReviewHeldJobEmails(userWithRole(role))).toBe(false)
+  })
+  it("refuses inactive and demo accounts", () => {
+    expect(canReviewHeldJobEmails({ ...userWithRole("project_manager"), isActive: false })).toBe(false)
+    expect(canReviewHeldJobEmails({ ...userWithRole("project_manager"), id: DEMO_USER.id })).toBe(false)
+  })
+})
 
 describe("external person preview defaults", () => {
   it.each(USER_ROLES)("keeps %s at the internal staff boundary", (role) => {

@@ -15,13 +15,21 @@ import { inboundMessageMentionsSomeone, inboundProjectMessageRecipients } from "
 import { storeInboundMessageAttachments } from "@/lib/correspondence/inbound-attachments"
 import { attachmentInsertStatement, conversationInsertStatement, messageInsertStatement, participantInsertStatement, recipientInsertStatement, writeGuardDeleteStatement, writeGuardInsertStatement } from "@/lib/domain/correspondence/store"
 import { notificationEventInsertStatement, notificationRecipientInsertStatement } from "@/lib/domain/notifications/store"
+import type { HeldMessageReason } from "./held-email-reasons"
 
 const memberships = membershipsView()
 const companies = companiesView()
 const accounts = peopleView()
 const projectMemberships = projectMembersView()
 
-/** Called only after the shared email/SMS router verifies the sender and project. */
+export type RoutedProjectMessage = { readonly id: string; readonly status: "routed_message" }
+/** The message was not saved; the email or text stays in review for this reason. */
+export type HeldProjectMessage = { readonly status: "held"; readonly reason: HeldMessageReason }
+
+/**
+ * Called only after the shared email/SMS router verifies the sender and
+ * project, or when staff post a held email from the Staff Message Desk.
+ */
 export async function routeInboundProjectMessage(input: {
   readonly db: ReturnType<typeof getDb>
   readonly env: unknown
@@ -31,8 +39,15 @@ export async function routeInboundProjectMessage(input: {
   readonly body: string
   readonly source: "email" | "sms"
   readonly now: string
-}): Promise<{ readonly id: string; readonly status: "routed_message" } | null> {
-  if (!isCorrespondenceEnabled(input.projectId, input.env) && !isCorrespondenceEnabled(input.projectId)) return null
+  /**
+   * Staff posting a held email: who to notify when no @mention can be matched
+   * and no staff are assigned to the job (the reviewer). They must still be
+   * active internal staff.
+   */
+  readonly fallbackRecipientUserId?: string | null
+}): Promise<RoutedProjectMessage | HeldProjectMessage> {
+  const held = (reason: HeldMessageReason): HeldProjectMessage => ({ status: "held", reason })
+  if (!isCorrespondenceEnabled(input.projectId, input.env) && !isCorrespondenceEnabled(input.projectId)) return held("messaging_off")
   const sourceKey = JSON.stringify(["project-message", input.organizationId, input.projectId, input.source, input.candidate.gmailMessageId])
   const digest = new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(sourceKey)))
   const id = `inbound-message-${Array.from(digest, (byte) => byte.toString(16).padStart(2, "0")).join("")}`
@@ -51,15 +66,21 @@ export async function routeInboundProjectMessage(input: {
     .leftJoin(notificationPreferences, eq(notificationPreferences.userId, accounts.id))
     .where(and(eq(accounts.isActive, true), inArray(memberships.role, staffRoles)))
   const text = `${input.candidate.subject}\n${input.body}`
-  const requiresAssignment = !inboundMessageMentionsSomeone(text)
-  const recipients = inboundProjectMessageRecipients(text, staff.map((person) => ({
+  const mentionsSomeone = inboundMessageMentionsSomeone(text)
+  const people = staff.map((person) => ({
     ...person, name: person.name ?? [person.firstName, person.lastName].filter(Boolean).join(" "), assigned: Boolean(person.assigned), inApp: person.inApp ?? true,
-  })))
-  if (!recipients || !recipients[0]) return null
+  }))
+  const resolved = inboundProjectMessageRecipients(text, people)
+  // Only when no one else can be resolved does the reviewing staff member receive it.
+  const fallback = resolved?.[0] ? undefined : people.find((person) => person.id === input.fallbackRecipientUserId)
+  const recipients = fallback ? [fallback] : resolved
+  if (!recipients || !recipients[0]) return held(mentionsSomeone ? "mention_unmatched" : "no_recipients")
+  // The batch guard re-checks job assignment unless someone was @mentioned or staff chose the recipient.
+  const requiresAssignment = !mentionsSomeone && !fallback
   // Files are stored before the batch; any that can't be stored keep the email in review.
   const files = await storeInboundMessageAttachments({ ...input, messageId: id, ownerUserId: recipients[0].id, attachments: input.candidate.attachments })
     .catch((error: unknown) => { console.error("[project-message-routing] attachment storage failed", error); return null })
-  if (!files) return null
+  if (!files) return held("attachment_failed")
   const title = projectEmailTitle(input.candidate.subject) || "Project message"
   const sender = `${input.candidate.fromName?.trim() || input.candidate.fromAddress} <${input.candidate.fromAddress}>`
   const eventId = `notification-${id}`

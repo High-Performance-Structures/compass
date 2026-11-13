@@ -1,4 +1,7 @@
-import { isInternalStaffRole } from "@/lib/user-roles"
+import type { AuthUser } from "@/lib/auth"
+import { isDemoOrg, isDemoUser } from "@/lib/demo"
+import { canManageProjectRegistry } from "@/lib/permissions"
+import { isInternalStaffRole, isProjectLeadRole } from "@/lib/user-roles"
 
 export type StaffMessageDeskUser = Readonly<{
   readonly id: string
@@ -18,6 +21,18 @@ export function isStaffMessageDeskUser(
     user.organizationType === "internal" &&
     isInternalStaffRole(user.role)
   )
+}
+
+/**
+ * Who reviews job emails Compass held back (the desk's "Held job emails"):
+ * anyone who manages the project registry, plus project managers and project
+ * administrators, who run jobs day to day.
+ */
+export function canReviewHeldJobEmails(user: AuthUser | null): boolean {
+  if (canManageProjectRegistry(user)) return true
+  if (!user || !user.isActive) return false
+  if (isDemoUser(user.id) || (user.organizationId !== null && isDemoOrg(user.organizationId))) return false
+  return isProjectLeadRole(user.role)
 }
 
 export function isEligibleStaffMessageAssignee(

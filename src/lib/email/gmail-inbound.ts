@@ -574,7 +574,7 @@ class GmailRateLimitError extends Error {
   }
 }
 
-async function fetchJson(input: {
+export async function fetchGmailJson(input: {
   readonly url: string
   readonly accessToken: string
 }): Promise<unknown> {
@@ -595,7 +595,7 @@ async function fetchJson(input: {
   return JSON.parse(text)
 }
 
-async function hydrateCandidateAttachments(input: {
+export async function hydrateCandidateAttachments(input: {
   readonly candidate: InboundCandidate
   readonly accessToken: string
 }): Promise<InboundCandidate> {
@@ -605,7 +605,7 @@ async function hydrateCandidateAttachments(input: {
       const attachmentUrl = new URL(
         `https://gmail.googleapis.com/gmail/v1/users/me/messages/${input.candidate.gmailMessageId}/attachments/${attachment.attachmentId}`
       )
-      const response = await fetchJson({
+      const response = await fetchGmailJson({
         url: attachmentUrl.toString(),
         accessToken: input.accessToken,
       })
@@ -680,7 +680,7 @@ async function syncGmailInboundRepliesWithLease(input: {
       listUrl.searchParams.set("q", query)
       listUrl.searchParams.set("maxResults", String(maxResults))
       if (pageToken) listUrl.searchParams.set("pageToken", pageToken)
-      const listResponse = await fetchJson({
+      const listResponse = await fetchGmailJson({
         url: listUrl.toString(),
         accessToken: access.accessToken,
       })
@@ -711,7 +711,7 @@ async function syncGmailInboundRepliesWithLease(input: {
           `https://gmail.googleapis.com/gmail/v1/users/me/messages/${id}`
         )
         messageUrl.searchParams.set("format", "full")
-        const messageResponse = await fetchJson({
+        const messageResponse = await fetchGmailJson({
           url: messageUrl.toString(),
           accessToken: access.accessToken,
         })
