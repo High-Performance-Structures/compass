@@ -4,6 +4,7 @@ import { projectChangeOrders } from "@/db/schema"
 import { sageChangeOrderExports } from "@/db/schema-sage"
 import { insertChangeOrderHistoryStatement, updateChangeOrdersStatement } from "@/lib/domain/estimates/store"
 import { updateSageChangeOrderExportsStatement } from "@/lib/domain/sage-bridge/change-order-store"
+import { takeSageResultLease } from "@/lib/domain/sage-bridge/store"
 import { readBoundedSageBridgeBody } from "@/lib/sage/bridge-auth"
 import { authorizeSageChangeOrderBridge, CHANGE_ORDER_WRITER } from "@/lib/sage/change-order-bridge"
 import { sageChangeOrderWriteResultSchema } from "@/lib/sage/change-order-write"
@@ -43,10 +44,20 @@ export async function POST(request: Request): Promise<Response> {
     .where(fence)
     .get()
   if (!row) return Response.json({ error: "Change order claim changed" }, { status: 409 })
+  // One handler per claim: a result posted twice applies (and logs) once.
+  const leaseToken = crypto.randomUUID()
+  if (!(await takeSageResultLease(db, "sage_change_order_exports", { id: result.id, organizationId, claimToken: result.claimToken, leaseToken }))) {
+    return Response.json({ error: "Change order claim changed" }, { status: 409 })
+  }
+  const leased = and(
+    eq(sageChangeOrderExports.id, result.id),
+    eq(sageChangeOrderExports.organizationId, organizationId),
+    eq(sageChangeOrderExports.claimToken, leaseToken)
+  )
   const now = new Date().toISOString()
 
   if (result.outcome === "failed") {
-    const updated = await updateSageChangeOrderExportsStatement(db, fence, {
+    const updated = await updateSageChangeOrderExportsStatement(db, leased, {
       status: "failed",
       errorMessage: result.error,
       completedAt: now,
@@ -59,7 +70,7 @@ export async function POST(request: Request): Promise<Response> {
   // The export row is fenced on the claim; the change order and its history
   // are written in the same batch so they can't disagree.
   const results = await db.batch([
-    updateSageChangeOrderExportsStatement(db, fence, {
+    updateSageChangeOrderExportsStatement(db, leased, {
       status: "succeeded",
       sageRecordId: result.sageRecordId,
       errorMessage: null,
@@ -72,7 +83,7 @@ export async function POST(request: Request): Promise<Response> {
         eq(projectChangeOrders.id, row.changeOrderId),
         eq(projectChangeOrders.projectId, row.projectId),
         // Only when the export update above still held the claim.
-        sql`EXISTS (SELECT 1 FROM sage_change_order_exports WHERE id = ${result.id} AND status = 'succeeded' AND claim_token = ${result.claimToken})`
+        sql`EXISTS (SELECT 1 FROM sage_change_order_exports WHERE id = ${result.id} AND status = 'succeeded' AND claim_token = ${leaseToken})`
       ),
       { sageRecordId: result.sageRecordId, sageStatus: "in_sage", lastSageSyncAt: now, updatedAt: now }
     ),

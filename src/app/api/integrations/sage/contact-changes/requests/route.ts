@@ -1,4 +1,4 @@
-import { and, asc, eq, lt, or, sql } from "drizzle-orm"
+import { and, asc, eq, isNull, lt, or, sql } from "drizzle-orm"
 import { z } from "zod/v4"
 
 import { getDb } from "@/db"
@@ -100,7 +100,9 @@ export async function GET(request: Request): Promise<Response> {
         await updateSageContactChangeProposals(db, {
           status: "failed", errorMessage: "Stored Sage contact proposal is invalid",
           completedAt: nowIso, updatedAt: nowIso,
-        }, eq(sageContactChangeProposals.id, candidate.id))
+          // Only the row this poll read: never over a change staff rejected or a writer claimed meanwhile.
+        }, and(eq(sageContactChangeProposals.id, candidate.id), eq(sageContactChangeProposals.status, candidate.status),
+          candidate.claimToken === null ? isNull(sageContactChangeProposals.claimToken) : eq(sageContactChangeProposals.claimToken, candidate.claimToken)))
         continue
       }
       // The writer only gets a change planned against a recent Sage read. An

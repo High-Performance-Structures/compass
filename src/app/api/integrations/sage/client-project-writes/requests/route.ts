@@ -1,4 +1,4 @@
-import { and, asc, eq, lt, ne, or, sql } from "drizzle-orm"
+import { and, asc, eq, lt, ne, or } from "drizzle-orm"
 
 import { getDb } from "@/db"
 import {
@@ -12,6 +12,7 @@ import {
   sageBridgeCutoff,
 } from "@/lib/domain/sage-bridge/rules"
 import {
+  claimSageClientProjectWrite,
   deleteSageBridgeRequestNonces,
   insertSageBridgeRequestNonce,
   sageBridgeHeartbeatStatement,
@@ -103,26 +104,7 @@ export async function GET(request: Request): Promise<Response> {
   const requests: unknown[] = []
   for (const candidate of candidates) {
     const claimToken = crypto.randomUUID()
-    await updateSageClientProjectWriteOperations(
-      db,
-      {
-        status: "running",
-        claimToken,
-        claimedAt: nowIso,
-        attemptCount: sql`${sageClientProjectWriteOperations.attemptCount} + 1`,
-        updatedAt: nowIso,
-      },
-      and(
-        eq(sageClientProjectWriteOperations.id, candidate.id),
-        or(
-          eq(sageClientProjectWriteOperations.status, "queued"),
-          and(
-            eq(sageClientProjectWriteOperations.status, "running"),
-            lt(sageClientProjectWriteOperations.claimedAt, staleClaimIso)
-          )
-        )
-      )
-    )
+    if (!(await claimSageClientProjectWrite(db, { id: candidate.id, claimToken, now: nowIso, staleBefore: staleClaimIso }))) continue
     const claimed = await db
       .select()
       .from(sageClientProjectWriteOperations)
@@ -152,7 +134,7 @@ export async function GET(request: Request): Promise<Response> {
           completedAt: nowIso,
           updatedAt: nowIso,
         },
-        eq(sageClientProjectWriteOperations.id, claimed.id)
+        and(eq(sageClientProjectWriteOperations.id, claimed.id), eq(sageClientProjectWriteOperations.claimToken, claimToken))
       )
       continue
     }

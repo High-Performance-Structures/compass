@@ -3,7 +3,7 @@
  * the values Sage holds (see lib/domain/sage-bridge/vendor-directory-updates).
  * The statements themselves come from store.ts, the vendors table's writer.
  */
-import { and, eq, isNotNull, isNull } from "drizzle-orm"
+import { and, eq, isNotNull, isNull, type SQL } from "drizzle-orm"
 
 import { vendors } from "@/db/schema"
 import type { Db } from "@/lib/server/action-context"
@@ -60,7 +60,7 @@ export async function applySageVendorUpdates(
   input: {
     readonly organizationId: string
     readonly now: string
-    readonly updates: readonly { readonly vendorId: string; readonly sageRecordId: string; readonly patch: VendorPatch }[]
+    readonly updates: readonly { readonly vendorId: string; readonly sageRecordId: string; readonly patch: VendorPatch; readonly guard?: SQL }[]
   }
 ): Promise<readonly string[]> {
   const written: string[] = []

@@ -4,6 +4,9 @@
  * columns with them.
  */
 
+/** A client, job, vendor or job tax district write queued for the Sage writer. */
+export const SAGE_CLIENT_PROJECT_WRITE_STATUSES = ["queued", "running", "succeeded", "failed"] as const
+
 export const SAGE_LABOR_REQUEST_STATUSES = ["queued", "running", "done", "failed"] as const
 export type SageLaborRequestStatus = (typeof SAGE_LABOR_REQUEST_STATUSES)[number]
 

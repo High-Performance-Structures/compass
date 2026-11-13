@@ -7,7 +7,7 @@ import { membershipsView, peopleView } from "@/lib/domain/identity/views"
 import { sageDirectoryAddRequests } from "@/db/schema-sage"
 import { recordActivityEvent, type ActivityActor } from "@/lib/activity-log"
 import { insertSageContactCreateEvent, insertSageContactCreateProposal } from "@/lib/domain/sage-bridge/contact-store"
-import { updateSageDirectoryAddRequest } from "@/lib/domain/sage-bridge/directory-add-store"
+import { moveSageDirectoryAddRequest } from "@/lib/domain/sage-bridge/directory-add-store"
 import type { SageDirectoryAddKind } from "@/lib/domain/sage-bridge/statuses"
 import { insertSageClientProjectWriteOperation } from "@/lib/domain/sage-bridge/store"
 import { readFeatureSettings } from "@/lib/feature-settings/server"
@@ -145,32 +145,85 @@ export async function recordSageAddActivity(
   })
 }
 
-type QueueResult = { readonly status: "sent" | "approved"; readonly error: string | null }
+type QueueResult = { readonly status: "sent" | "approved" | "cancelled"; readonly error: string | null }
 
 /**
  * Queues an approved request for the Sage writer: a company as a client/job
  * writer add, a person as a Sage contact Add under its company. A person
  * whose company isn't in Sage yet stays "approved" until it is.
+ *
+ * "sent" is taken (compare-and-set from approved) before the writer's request
+ * exists, so a withdrawal that lands first stops it from reaching Sage, and
+ * two callers queuing the same person (the approval and its company's
+ * result) queue it once. If queuing then fails, the request waits approved
+ * again.
  */
 export async function queueApprovedSageAdd(db: Db, request: AddRequestRow, approverUserId: string, now: string): Promise<QueueResult> {
   const operationId = crypto.randomUUID()
   let raw: unknown
   try { raw = JSON.parse(request.fieldsJson) } catch { raw = null }
-  if (request.kind === "vendor_company" || request.kind === "client_company") {
-    const fields = sageCompanyAddFieldsSchema.safeParse(raw)
-    if (!fields.success) return { status: "approved", error: "The request's details are no longer valid." }
-    if (request.kind === "vendor_company") {
-      const payload = sageVendorAddPayload(request.entityId, fields.data, request.vendorType ?? "", request.form1099 ?? "unknown")
+  const isCompany = request.kind === "vendor_company" || request.kind === "client_company"
+  const companyFields = isCompany ? sageCompanyAddFieldsSchema.safeParse(raw) : null
+  const personFields = isCompany ? null : sagePersonAddFieldsSchema.safeParse(raw)
+  if (companyFields?.success === false || personFields?.success === false) {
+    return { status: "approved", error: "The request's details are no longer valid." }
+  }
+  const parent = isCompany ? null : await personParent(db, request)
+  if (!isCompany && !parent?.sageRecordId) return { status: "approved", error: null }
+
+  const sent = await moveSageDirectoryAddRequest(db, {
+    id: request.id, organizationId: request.organizationId, event: "send",
+    values: { writeOperationId: operationId, errorMessage: null, updatedAt: now },
+  })
+  if (sent === 0) {
+    const current = await db.select({ status: sageDirectoryAddRequests.status }).from(sageDirectoryAddRequests)
+      .where(eq(sageDirectoryAddRequests.id, request.id)).get()
+    if (current?.status === "cancelled") return { status: "cancelled", error: "The request was withdrawn before it went to Sage." }
+    // Someone else sent it (or it is already finished): nothing more to queue.
+    return { status: "sent", error: null }
+  }
+
+  const queued = await queueWriterRequest(db, request, { operationId, approverUserId, now, companyFields, personFields, parent })
+  if (queued !== null) {
+    await moveSageDirectoryAddRequest(db, {
+      id: request.id, organizationId: request.organizationId, event: "unsend",
+      where: eq(sageDirectoryAddRequests.writeOperationId, operationId),
+      values: { writeOperationId: null, errorMessage: queued, updatedAt: now },
+    })
+    return { status: "approved", error: queued }
+  }
+  return { status: "sent", error: null }
+}
+
+/** Queues the writer's request for a request already taken "sent"; returns why it couldn't, or null. */
+async function queueWriterRequest(
+  db: Db,
+  request: AddRequestRow,
+  input: {
+    readonly operationId: string
+    readonly approverUserId: string
+    readonly now: string
+    readonly companyFields: ReturnType<typeof sageCompanyAddFieldsSchema.safeParse> | null
+    readonly personFields: ReturnType<typeof sagePersonAddFieldsSchema.safeParse> | null
+    readonly parent: { readonly id: string; readonly sageRecordId: string | null } | null
+  }
+): Promise<string | null> {
+  const { operationId, approverUserId, now } = input
+  try {
+    if (input.companyFields?.success && request.kind === "vendor_company") {
+      const payload = sageVendorAddPayload(request.entityId, input.companyFields.data, request.vendorType ?? "", request.form1099 ?? "unknown")
       await insertSageClientProjectWriteOperation(db, {
         id: operationId, organizationId: request.organizationId, customerId: null, projectId: null, vendorId: request.entityId,
         requestedByUserId: request.requestedByUserId, operationType: "ensure_vendor", idempotencyKey: `sage-add:${request.id}`,
         payloadJson: JSON.stringify(payload), status: "queued", requestedAt: now, updatedAt: now,
       })
-    } else {
+      return null
+    }
+    if (input.companyFields?.success) {
       const customer = await db.select({ company: customers.company, statusId: customers.sageClientStatusId }).from(customers)
         .where(and(eq(customers.id, request.entityId), eq(customers.organizationId, request.organizationId))).get()
       const statusId = parseSageClientStatusId(customer?.statusId ?? 1) ?? 1
-      const payload = sageClientAddPayload(request.entityId, fields.data, customer?.company ?? null, {
+      const payload = sageClientAddPayload(request.entityId, input.companyFields.data, customer?.company ?? null, {
         expectedNumber: statusId, name: sageClientStatusName(statusId),
       })
       await insertSageClientProjectWriteOperation(db, {
@@ -178,39 +231,38 @@ export async function queueApprovedSageAdd(db: Db, request: AddRequestRow, appro
         requestedByUserId: request.requestedByUserId, operationType: "ensure_client", idempotencyKey: `sage-add:${request.id}`,
         payloadJson: JSON.stringify(payload), status: "queued", requestedAt: now, updatedAt: now,
       })
+      return null
     }
-  } else {
-    const fields = sagePersonAddFieldsSchema.safeParse(raw)
-    if (!fields.success) return { status: "approved", error: "The request's details are no longer valid." }
-    const parent = await personParent(db, request)
-    if (!parent?.sageRecordId) return { status: "approved", error: null }
-    const kind = request.kind
-    const createFields = { ...fields.data, phoneExtension: null }
-    try {
-      await db.batch([
-        insertSageContactCreateProposal(db, {
-          id: operationId, organizationId: request.organizationId, kind,
-          customerId: kind === "client_person" ? parent.id : null, vendorId: kind === "vendor_person" ? parent.id : null,
-          parentSageRecordId: parent.sageRecordId, fieldsJson: JSON.stringify(createFields),
-          dedupeKey: await sageContactCreateDedupeKey(kind, parent.sageRecordId, createFields),
-          status: "approved", requestedByUserId: request.requestedByUserId ?? approverUserId,
-          reviewedByUserId: approverUserId, reviewedAt: now, compassPersonId: request.entityId,
-          requestedAt: now, updatedAt: now,
-        }),
-        insertSageContactCreateEvent(db, {
-          id: crypto.randomUUID(), proposalId: operationId, organizationId: request.organizationId,
-          actorUserId: approverUserId, eventType: "approved", detailJson: JSON.stringify({ sageAddRequestId: request.id }), createdAt: now,
-        }),
-      ])
-    } catch {
-      return { status: "approved", error: "Sage already has an Add for this person waiting. Check Sage review." }
-    }
+  } catch (error) {
+    // The idempotency key is per request: an earlier send already queued it.
+    console.error("Sage add request could not be queued", error)
+    return "Sage already has a write waiting for this request. Check the Sage queue."
   }
-  await updateSageDirectoryAddRequest(db, {
-    id: request.id, organizationId: request.organizationId, fromStatuses: ["approved", "pending"],
-    values: { status: "sent", writeOperationId: operationId, errorMessage: null, updatedAt: now },
-  })
-  return { status: "sent", error: null }
+  const parent = input.parent
+  if (!input.personFields?.success || !parent?.sageRecordId) return "The request's details are no longer valid."
+  const kind = request.kind
+  if (kind !== "client_person" && kind !== "vendor_person") return "The request's details are no longer valid."
+  const createFields = { ...input.personFields.data, phoneExtension: null }
+  try {
+    await db.batch([
+      insertSageContactCreateProposal(db, {
+        id: operationId, organizationId: request.organizationId, kind,
+        customerId: kind === "client_person" ? parent.id : null, vendorId: kind === "vendor_person" ? parent.id : null,
+        parentSageRecordId: parent.sageRecordId, fieldsJson: JSON.stringify(createFields),
+        dedupeKey: await sageContactCreateDedupeKey(kind, parent.sageRecordId, createFields),
+        status: "approved", requestedByUserId: request.requestedByUserId ?? approverUserId,
+        reviewedByUserId: approverUserId, reviewedAt: now, compassPersonId: request.entityId,
+        requestedAt: now, updatedAt: now,
+      }),
+      insertSageContactCreateEvent(db, {
+        id: crypto.randomUUID(), proposalId: operationId, organizationId: request.organizationId,
+        actorUserId: approverUserId, eventType: "approved", detailJson: JSON.stringify({ sageAddRequestId: request.id }), createdAt: now,
+      }),
+    ])
+  } catch {
+    return "Sage already has an Add for this person waiting. Check Sage review."
+  }
+  return null
 }
 
 async function personParent(db: Db, request: AddRequestRow): Promise<{ readonly id: string; readonly sageRecordId: string | null } | null> {
@@ -251,10 +303,11 @@ export async function recordSageAddOutcome(
       eq(sageDirectoryAddRequests.status, "sent"),
     )).get()
     if (!request) return
-    const changed = await updateSageDirectoryAddRequest(db, {
-      id: request.id, organizationId: request.organizationId, fromStatuses: ["sent"],
+    const changed = await moveSageDirectoryAddRequest(db, {
+      id: request.id, organizationId: request.organizationId, event: input.outcome === "succeeded" ? "succeed" : "fail",
+      where: eq(sageDirectoryAddRequests.writeOperationId, input.operationId),
       values: {
-        status: input.outcome, sageRecordId: input.sageRecordId, sageRecordNumber: input.sageRecordNumber,
+        sageRecordId: input.sageRecordId, sageRecordNumber: input.sageRecordNumber,
         errorMessage: input.error?.slice(0, 1000) ?? null, completedAt: input.now, updatedAt: input.now,
       },
     })

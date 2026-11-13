@@ -11,6 +11,7 @@ import { sql } from "drizzle-orm"
 import {
   SAGE_AR_INVOICE_EXPORT_STATUSES,
   SAGE_CHANGE_ORDER_EXPORT_STATUSES,
+  SAGE_CLIENT_PROJECT_WRITE_STATUSES,
   SAGE_DIRECTORY_ADD_KINDS,
   SAGE_DIRECTORY_ADD_STATUSES,
   SAGE_ESTIMATE_EXPORT_STATUSES,
@@ -70,7 +71,7 @@ export const sageClientProjectWriteOperations = sqliteTable(
     operationType: text("operation_type").notNull(),
     idempotencyKey: text("idempotency_key").notNull(),
     payloadJson: text("payload_json").notNull(),
-    status: text("status").notNull().default("queued"),
+    status: text("status", { enum: SAGE_CLIENT_PROJECT_WRITE_STATUSES }).notNull().default("queued"),
     claimToken: text("claim_token"),
     claimedAt: text("claimed_at"),
     attemptCount: integer("attempt_count").notNull().default(0),

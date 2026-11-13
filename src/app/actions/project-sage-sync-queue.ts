@@ -1,6 +1,6 @@
 "use server"
 
-import { eq, inArray } from "drizzle-orm"
+import { and, eq, inArray, ne, sql, type SQL } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 
 import { projectOperations, projectPurchaseOrderLines } from "@/db/schema"
@@ -11,6 +11,25 @@ import { loadProjectOperation, loadSageSyncQueue } from "@/lib/domain/operations
 import { operationCanQueueForSage } from "@/lib/domain/operations/rules"
 import { operationUpdateQuery, purchaseOrderLinesUpdateQuery } from "@/lib/domain/operations/store"
 import type { ProjectSageSyncQueue, ProjectSyncActionResult } from "@/lib/domain/operations/types"
+
+/**
+ * Still queueable when the write lands (operationCanQueueForSage, as SQL): a
+ * row the Sage bridge marked synced or syncing since the page loaded keeps
+ * its status instead of going back to "queued".
+ */
+function stillQueueable(): SQL | undefined {
+  return and(
+    eq(projectOperations.syncDirection, "write"),
+    ne(projectOperations.sageWriteStatus, "not_ready"),
+    inArray(projectOperations.syncStatus, ["pending_sage", "needs_review", "failed", "compass_only"]),
+  )
+}
+
+/** Lines of operations this queue write just moved (same `updated_at` stamp). */
+function linesOfQueued(now: string): SQL {
+  return sql`EXISTS (SELECT 1 FROM project_operations op WHERE op.id = ${projectPurchaseOrderLines.operationId}
+    AND op.sync_status = 'queued_sage' AND op.updated_at = ${now})`
+}
 
 /*
  * The project's Sage queue: staff of the project's organization with the
@@ -37,12 +56,12 @@ export async function queueProjectOperationForSageSync(
 
     const now = new Date().toISOString()
     await db.batch([
-      operationUpdateQuery(db, eq(projectOperations.id, operationId), {
+      operationUpdateQuery(db, and(eq(projectOperations.id, operationId), stillQueueable()), {
         syncStatus: "queued_sage",
         sageWriteStatus: "queued",
         updatedAt: now,
       }),
-      purchaseOrderLinesUpdateQuery(db, eq(projectPurchaseOrderLines.operationId, operationId), {
+      purchaseOrderLinesUpdateQuery(db, and(eq(projectPurchaseOrderLines.operationId, operationId), linesOfQueued(now)), {
         syncStatus: "queued_sage",
         updatedAt: now,
       }),
@@ -80,12 +99,12 @@ export async function queueProjectOperationsForSageSync(projectId: string): Prom
     // Large jobs can have hundreds of ready items: chunks stay under D1's
     // bound-parameter limit, and one batch writes them all atomically.
     const [first, ...rest] = chunkD1Values(readyIds).flatMap((ids) => [
-      operationUpdateQuery(db, inArray(projectOperations.id, ids), {
+      operationUpdateQuery(db, and(inArray(projectOperations.id, ids), stillQueueable()), {
         syncStatus: "queued_sage",
         sageWriteStatus: "queued",
         updatedAt: now,
       }),
-      purchaseOrderLinesUpdateQuery(db, inArray(projectPurchaseOrderLines.operationId, ids), {
+      purchaseOrderLinesUpdateQuery(db, and(inArray(projectPurchaseOrderLines.operationId, ids), linesOfQueued(now)), {
         syncStatus: "queued_sage",
         updatedAt: now,
       }),

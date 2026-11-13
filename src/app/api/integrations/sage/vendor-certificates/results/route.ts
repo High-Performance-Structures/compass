@@ -1,4 +1,4 @@
-import { and, eq } from "drizzle-orm"
+import { and, eq, sql } from "drizzle-orm"
 import { z } from "zod/v4"
 
 import { sageVendorCertificateSyncs } from "@/db/schema-sage"
@@ -56,24 +56,25 @@ export async function POST(request: Request): Promise<Response> {
     .get()
   if (!sync) return Response.json({ error: "Certificate claim changed" }, { status: 409 })
   const now = new Date().toISOString()
-  // Docs changed while the writer was working: send the vendor round again.
-  const changedSince = sync.claimedAt !== null && sync.requestedAt > sync.claimedAt
   const fence = and(eq(sageVendorCertificateSyncs.id, sync.id), eq(sageVendorCertificateSyncs.claimToken, result.claimToken))
-  const updated =
-    result.outcome === "succeeded"
-      ? await updateVendorCertificateSyncs(db, fence, {
-          status: changedSince ? "queued" : "succeeded",
-          resultJson: JSON.stringify({ lines: result.lines, supersededLineIds: result.supersededLineIds }),
-          errorMessage: null,
-          completedAt: now,
-          updatedAt: now,
-        })
-      : await updateVendorCertificateSyncs(db, fence, {
-          status: changedSince ? "queued" : "failed",
-          errorMessage: result.error,
-          completedAt: now,
-          updatedAt: now,
-        })
+  const finished = result.outcome === "succeeded"
+    ? {
+        resultJson: JSON.stringify({ lines: result.lines, supersededLineIds: result.supersededLineIds }),
+        errorMessage: null,
+        completedAt: now,
+        updatedAt: now,
+      }
+    : { errorMessage: result.error, completedAt: now, updatedAt: now }
+  // Docs changed while the writer was working: send the vendor round again.
+  // Decided in the write itself, so a change landing meanwhile isn't lost.
+  const changedSince = sql`${sageVendorCertificateSyncs.requestedAt} > coalesce(${sageVendorCertificateSyncs.claimedAt}, ${sageVendorCertificateSyncs.requestedAt})`
+  let updated = await updateVendorCertificateSyncs(db, and(fence, changedSince), { status: "queued", ...finished })
+  if (updated === 0) {
+    updated = await updateVendorCertificateSyncs(db, and(fence, sql`NOT (${changedSince})`), {
+      status: result.outcome === "succeeded" ? "succeeded" : "failed",
+      ...finished,
+    })
+  }
   if (updated !== 1) return Response.json({ error: "Certificate claim changed" }, { status: 409 })
   return Response.json({ success: true }, { status: 202 })
 }

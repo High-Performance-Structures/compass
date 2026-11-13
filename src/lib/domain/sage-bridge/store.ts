@@ -13,7 +13,7 @@
  * before, and raw statements come back bound but not run. No auth here:
  * bridge routes verify the HMAC signature first.
  */
-import { and, eq, lt, or, sql, type SQL } from "drizzle-orm"
+import { and, eq, inArray, lt, or, sql, type SQL } from "drizzle-orm"
 import type { SQLiteInsertValue, SQLiteUpdateSetSource } from "drizzle-orm/sqlite-core"
 
 import {
@@ -27,8 +27,13 @@ import {
 } from "@/db/schema-sage"
 import { sageLaborRequests } from "@/db/schema-shop-tickets"
 import { chunkD1InsertRows, chunkD1Rows } from "@/lib/d1-query"
+import { clientProjectWriteMachine, sourcesInto, vendorCertificateSyncMachine } from "@/lib/domain/sage-bridge/machines"
 import type { SageBridgeHeartbeatId } from "@/lib/domain/sage-bridge/rules"
-import { SAGE_VENDOR_CERTIFICATE_SYNC_STATUSES, type SageVendorCertificateSyncStatus } from "@/lib/domain/sage-bridge/statuses"
+import {
+  SAGE_CLIENT_PROJECT_WRITE_STATUSES,
+  SAGE_VENDOR_CERTIFICATE_SYNC_STATUSES,
+  type SageVendorCertificateSyncStatus,
+} from "@/lib/domain/sage-bridge/statuses"
 import { assertListFields } from "@/lib/shared/statuses"
 import type { Db } from "@/lib/server/action-context"
 
@@ -87,15 +92,30 @@ export function insertSageClientProjectWriteOperation(
   return clientProjectWriteInsert(db, values)
 }
 
+const CLIENT_PROJECT_LISTS = { status: SAGE_CLIENT_PROJECT_WRITE_STATUSES }
+
+/** The write is in a state its machine may move into `status` from. */
+function clientProjectWriteMayEnter(status: unknown): SQL | undefined {
+  if (typeof status !== "string") return undefined
+  const to = SAGE_CLIENT_PROJECT_WRITE_STATUSES.find((state) => state === status)
+  if (!to) return undefined
+  return inArray(sageClientProjectWriteOperations.status, [...sourcesInto(clientProjectWriteMachine, to)])
+}
+
 function clientProjectWriteUpdate(
   db: Db,
   changes: SQLiteUpdateSetSource<typeof sageClientProjectWriteOperations>,
   where: SQL | undefined
 ) {
-  return db.update(sageClientProjectWriteOperations).set(changes).where(where)
+  assertListFields("sage_client_project_write_operations", changes, CLIENT_PROJECT_LISTS)
+  // A status change also lands only from a state the machine allows it from.
+  return db.update(sageClientProjectWriteOperations).set(changes).where(and(where, clientProjectWriteMayEnter(changes.status)))
 }
 
-/** Unexecuted update fenced by the caller's `where` (claim token, status, stale cutoff). */
+/**
+ * Unexecuted update fenced by the caller's `where` (claim token, status, stale
+ * cutoff) and, when it sets a status, by the machine's source states.
+ */
 export function updateSageClientProjectWriteOperations(
   db: Db,
   changes: SQLiteUpdateSetSource<typeof sageClientProjectWriteOperations>,
@@ -104,21 +124,48 @@ export function updateSageClientProjectWriteOperations(
   return clientProjectWriteUpdate(db, changes, where)
 }
 
+/** claim: takes one queued (or stale running) write for a writer poll; false when another poll got it first. */
+export async function claimSageClientProjectWrite(
+  db: Db,
+  input: { readonly id: string; readonly claimToken: string; readonly now: string; readonly staleBefore: string }
+): Promise<boolean> {
+  const claimed = await clientProjectWriteUpdate(
+    db,
+    {
+      status: clientProjectWriteMachine.transitions.claim.to,
+      claimToken: input.claimToken,
+      claimedAt: input.now,
+      attemptCount: sql`${sageClientProjectWriteOperations.attemptCount} + 1`,
+      updatedAt: input.now,
+    },
+    and(
+      eq(sageClientProjectWriteOperations.id, input.id),
+      or(
+        eq(sageClientProjectWriteOperations.status, "queued"),
+        and(eq(sageClientProjectWriteOperations.status, "running"), lt(sageClientProjectWriteOperations.claimedAt, input.staleBefore))
+      )
+    )
+  ).returning({ id: sageClientProjectWriteOperations.id })
+  return claimed.length > 0
+}
+
 /**
- * Puts a failed client/job write back in the queue with `payloadJson`, so the
- * Windows writer tries again, under `customerId` (the client it now belongs to).
- * Fenced on the row still being failed.
+ * resend: puts a failed client/job write back in the queue with `payloadJson`,
+ * so the Windows writer tries again, under `customerId` (the client it now
+ * belongs to). Fenced on the row still being failed, so a Send to Sage while
+ * the writer is running (or after it succeeded) changes nothing.
  */
 export function requeueFailedSageClientProjectWriteStatement(database: D1Database, input: {
   readonly operationId: string; readonly organizationId: string
   readonly customerId: string | null; readonly payloadJson: string; readonly now: string
 }): D1PreparedStatement {
+  const { from, to } = clientProjectWriteMachine.transitions.resend
   return database.prepare(
     `UPDATE sage_client_project_write_operations
-       SET status = 'queued', customer_id = ?, payload_json = ?, claim_token = NULL, claimed_at = NULL,
+       SET status = ?, customer_id = ?, payload_json = ?, claim_token = NULL, claimed_at = NULL,
            error_message = NULL, completed_at = NULL, updated_at = ?
-       WHERE id = ? AND organization_id = ? AND status = 'failed'`
-  ).bind(input.customerId, input.payloadJson, input.now, input.operationId, input.organizationId)
+       WHERE id = ? AND organization_id = ? AND status IN (${from.map(() => "?").join(", ")})`
+  ).bind(to, input.customerId, input.payloadJson, input.now, input.operationId, input.organizationId, ...from)
 }
 
 /** The Sage client (and job) the Windows writer created or matched. */
@@ -134,20 +181,25 @@ export type SageClientProjectWriteSuccess = {
   readonly now: string
 }
 
-/** Marks a write operation succeeded with the returned Sage identities. */
+/**
+ * succeed: marks a write succeeded with the returned Sage identities, only
+ * while it is still running under `leaseToken` (see takeSageResultLease).
+ */
 export function sageClientProjectWriteSucceededStatement(
   database: D1Database,
-  input: SageClientProjectWriteSuccess
+  input: SageClientProjectWriteSuccess & { readonly leaseToken: string }
 ): D1PreparedStatement {
+  const { from, to } = clientProjectWriteMachine.transitions.succeed
   return database.prepare(
     `UPDATE sage_client_project_write_operations
-       SET status = 'succeeded', sage_client_id = ?, sage_client_number = ?,
+       SET status = ?, sage_client_id = ?, sage_client_number = ?,
            sage_job_id = ?, sage_job_number = ?,
            resolved_client_status_number = ?, resolved_job_status_number = ?,
            resolved_job_type_number = ?, error_message = NULL,
            completed_at = ?, updated_at = ?
-       WHERE id = ?`
+       WHERE id = ? AND claim_token = ? AND status IN (${from.map(() => "?").join(", ")})`
   ).bind(
+    to,
     input.clientId,
     input.clientNumber,
     input.jobId,
@@ -157,8 +209,49 @@ export function sageClientProjectWriteSucceededStatement(
     input.jobTypeNumber,
     input.now,
     input.now,
-    input.operationId
+    input.operationId,
+    input.leaseToken,
+    ...from
   )
+}
+
+// ---------------------------------------------------------------------------
+// Result leases: one result handler per claim
+// ---------------------------------------------------------------------------
+
+/** The writer queues whose results are applied under a lease. */
+export type SageResultLeaseTable =
+  | "sage_client_project_write_operations"
+  | "sage_change_order_exports"
+  | "sage_estimate_exports"
+  | "sage_ar_invoice_exports"
+
+/**
+ * Before a writer result is applied, swaps the claim token it carries for a
+ * fresh `leaseToken`, while the row is still running under that claim. Only
+ * one handler can win, so a result the writer posts twice (an HTTP retry, two
+ * PCs) applies its side effects once; the loser answers 409 as for a stale
+ * claim. The handler's writes then fence on `leaseToken`.
+ */
+export async function takeSageResultLease(
+  db: Db,
+  table: SageResultLeaseTable,
+  input: { readonly id: string; readonly organizationId: string; readonly claimToken: string; readonly leaseToken: string }
+): Promise<boolean> {
+  const result = await db.run(sql`UPDATE ${sql.identifier(table)} SET claim_token = ${input.leaseToken}
+    WHERE id = ${input.id} AND organization_id = ${input.organizationId}
+      AND status = 'running' AND claim_token = ${input.claimToken}`)
+  return result.meta.changes === 1
+}
+
+/** Hands a lease back to the writer's claim when applying the result threw, so the writer's retry can land. */
+export async function releaseSageResultLease(
+  db: Db,
+  table: SageResultLeaseTable,
+  input: { readonly id: string; readonly claimToken: string; readonly leaseToken: string }
+): Promise<void> {
+  await db.run(sql`UPDATE ${sql.identifier(table)} SET claim_token = ${input.claimToken}
+    WHERE id = ${input.id} AND status = 'running' AND claim_token = ${input.leaseToken}`)
 }
 
 // ---------------------------------------------------------------------------
@@ -370,7 +463,8 @@ export async function queueVendorCertificateSyncs(db: Db, organizationId: string
       .onConflictDoUpdate({
         target: sageVendorCertificateSyncs.vendorId,
         set: {
-          status: sql`CASE WHEN ${sageVendorCertificateSyncs.status} = 'running' THEN 'running' ELSE 'queued' END`,
+          // queue moves only from its source states; a running sync stays running.
+          status: sql`CASE WHEN ${inArray(sageVendorCertificateSyncs.status, [...vendorCertificateSyncMachine.transitions.queue.from])} THEN ${vendorCertificateSyncMachine.transitions.queue.to} ELSE ${sageVendorCertificateSyncs.status} END`,
           requestedAt: now,
           updatedAt: now,
         },
@@ -405,10 +499,15 @@ export type VendorCertificateSyncPatch = {
   readonly updatedAt: string
 }
 
-/** Updates syncs matching the caller's fence (for example id plus claim token). */
+/**
+ * Updates syncs matching the caller's fence (for example id plus claim
+ * token), only from a state the machine may move into `patch.status` from.
+ */
 export async function updateVendorCertificateSyncs(db: Db, where: SQL | undefined, patch: VendorCertificateSyncPatch): Promise<number> {
   assertListFields("sage_vendor_certificate_syncs", patch, LISTS)
-  const rows = await db.update(sageVendorCertificateSyncs).set(patch).where(where).returning({ id: sageVendorCertificateSyncs.id })
+  const rows = await db.update(sageVendorCertificateSyncs).set(patch)
+    .where(and(where, inArray(sageVendorCertificateSyncs.status, [...sourcesInto(vendorCertificateSyncMachine, patch.status)])))
+    .returning({ id: sageVendorCertificateSyncs.id })
   return rows.length
 }
 

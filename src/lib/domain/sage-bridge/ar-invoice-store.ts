@@ -7,14 +7,20 @@
  * Sage bridge. No auth here: callers resolve access or verify the bridge
  * signature first.
  */
-import { and, eq, inArray, lt, ne, or, sql, type SQL } from "drizzle-orm"
+import { and, eq, inArray, lt, or, sql, type SQL } from "drizzle-orm"
 
 import { sageArInvoiceExports, sageDepositArExports, sageInvoiceArExports } from "@/db/schema-sage"
+import { arInvoiceExportMachine, sourcesInto } from "@/lib/domain/sage-bridge/machines"
 import { SAGE_AR_INVOICE_EXPORT_STATUSES, type SageArInvoiceExportStatus } from "@/lib/domain/sage-bridge/statuses"
 import { assertListFields } from "@/lib/shared/statuses"
 import type { Db } from "@/lib/server/action-context"
 
 const LISTS = { status: SAGE_AR_INVOICE_EXPORT_STATUSES }
+
+/** The states the machine may move a row from into `status`: every update below is also fenced on them. */
+function mayEnter(status: SageArInvoiceExportStatus): SageArInvoiceExportStatus[] {
+  return [...sourcesInto(arInvoiceExportMachine, status)]
+}
 
 export type SageArInvoiceExportRequest = {
   readonly organizationId: string
@@ -66,10 +72,10 @@ export async function upsertSageArInvoiceExport(db: Db, row: SageArInvoiceExport
         completedAt: null,
         updatedAt: row.now,
       },
+      // queue / flag from a row that isn't running or succeeded.
       setWhere: and(
         eq(sageArInvoiceExports.organizationId, row.organizationId),
-        ne(sageArInvoiceExports.status, "running"),
-        ne(sageArInvoiceExports.status, "succeeded")
+        inArray(sageArInvoiceExports.status, [...arInvoiceExportMachine.transitions.queue.from])
       ),
     })
     .returning({ id: sageArInvoiceExports.id })
@@ -84,7 +90,7 @@ export async function claimSageArInvoiceExport(
   const claimed = await db
     .update(sageArInvoiceExports)
     .set({
-      status: "running",
+      status: arInvoiceExportMachine.transitions.claim.to,
       claimToken: input.claimToken,
       claimedAt: input.now,
       attemptCount: sql`${sageArInvoiceExports.attemptCount} + 1`,
@@ -117,7 +123,7 @@ export type SageArInvoiceExportPatch = {
 
 function exportUpdate(db: Db, where: SQL | undefined, patch: SageArInvoiceExportPatch) {
   assertListFields("sage_ar_invoice_exports", patch, LISTS)
-  return db.update(sageArInvoiceExports).set(patch).where(where)
+  return db.update(sageArInvoiceExports).set(patch).where(and(where, inArray(sageArInvoiceExports.status, mayEnter(patch.status))))
 }
 
 /** Unexecuted update fenced by the caller's `where` (id plus claim token), for a batch. */
@@ -142,7 +148,7 @@ export async function cancelSageArInvoiceExport(
     eq(sageArInvoiceExports.organizationId, input.organizationId)
   )
   // Fenced on the status, so a claim that lands first wins and this reports it.
-  const cancelled = await exportUpdate(db, and(forApplication, inArray(sageArInvoiceExports.status, ["queued", "failed", "needs_attention", "cancelled"])), {
+  const cancelled = await exportUpdate(db, and(forApplication, inArray(sageArInvoiceExports.status, [...arInvoiceExportMachine.transitions.cancel.from])), {
     status: "cancelled",
     claimToken: null,
     completedAt: input.now,
@@ -201,10 +207,10 @@ export async function upsertSageInvoiceArExport(db: Db, row: SageInvoiceArExport
         completedAt: null,
         updatedAt: row.now,
       },
+      // queue / flag from a row that isn't running or succeeded.
       setWhere: and(
         eq(sageInvoiceArExports.organizationId, row.organizationId),
-        ne(sageInvoiceArExports.status, "running"),
-        ne(sageInvoiceArExports.status, "succeeded")
+        inArray(sageInvoiceArExports.status, [...arInvoiceExportMachine.transitions.queue.from])
       ),
     })
     .returning({ id: sageInvoiceArExports.id })
@@ -219,7 +225,7 @@ export async function claimSageInvoiceArExport(
   const claimed = await db
     .update(sageInvoiceArExports)
     .set({
-      status: "running",
+      status: arInvoiceExportMachine.transitions.claim.to,
       claimToken: input.claimToken,
       claimedAt: input.now,
       attemptCount: sql`${sageInvoiceArExports.attemptCount} + 1`,
@@ -241,7 +247,7 @@ export async function claimSageInvoiceArExport(
 
 function invoiceExportUpdate(db: Db, where: SQL | undefined, patch: SageArInvoiceExportPatch) {
   assertListFields("sage_invoice_ar_exports", patch, LISTS)
-  return db.update(sageInvoiceArExports).set(patch).where(where)
+  return db.update(sageInvoiceArExports).set(patch).where(and(where, inArray(sageInvoiceArExports.status, mayEnter(patch.status))))
 }
 
 /** Unexecuted update fenced by the caller's `where`, for a batch. */
@@ -262,7 +268,7 @@ export async function cancelSageInvoiceArExport(
   input: { readonly organizationId: string; readonly invoiceId: string; readonly now: string }
 ): Promise<boolean> {
   const forInvoice = and(eq(sageInvoiceArExports.invoiceId, input.invoiceId), eq(sageInvoiceArExports.organizationId, input.organizationId))
-  const cancelled = await invoiceExportUpdate(db, and(forInvoice, inArray(sageInvoiceArExports.status, ["queued", "failed", "needs_attention", "cancelled"])), {
+  const cancelled = await invoiceExportUpdate(db, and(forInvoice, inArray(sageInvoiceArExports.status, [...arInvoiceExportMachine.transitions.cancel.from])), {
     status: "cancelled",
     claimToken: null,
     completedAt: input.now,
@@ -321,10 +327,10 @@ export async function upsertSageDepositArExport(db: Db, row: SageDepositArExport
         completedAt: null,
         updatedAt: row.now,
       },
+      // queue / flag from a row that isn't running or succeeded.
       setWhere: and(
         eq(sageDepositArExports.organizationId, row.organizationId),
-        ne(sageDepositArExports.status, "running"),
-        ne(sageDepositArExports.status, "succeeded")
+        inArray(sageDepositArExports.status, [...arInvoiceExportMachine.transitions.queue.from])
       ),
     })
     .returning({ id: sageDepositArExports.id })
@@ -339,7 +345,7 @@ export async function claimSageDepositArExport(
   const claimed = await db
     .update(sageDepositArExports)
     .set({
-      status: "running",
+      status: arInvoiceExportMachine.transitions.claim.to,
       claimToken: input.claimToken,
       claimedAt: input.now,
       attemptCount: sql`${sageDepositArExports.attemptCount} + 1`,
@@ -361,7 +367,7 @@ export async function claimSageDepositArExport(
 
 function depositExportUpdate(db: Db, where: SQL | undefined, patch: SageArInvoiceExportPatch) {
   assertListFields("sage_deposit_ar_exports", patch, LISTS)
-  return db.update(sageDepositArExports).set(patch).where(where)
+  return db.update(sageDepositArExports).set(patch).where(and(where, inArray(sageDepositArExports.status, mayEnter(patch.status))))
 }
 
 /** Unexecuted update fenced by the caller's `where`, for a batch. */
@@ -382,7 +388,7 @@ export async function cancelSageDepositArExport(
   input: { readonly organizationId: string; readonly depositId: string; readonly now: string }
 ): Promise<boolean> {
   const forDeposit = and(eq(sageDepositArExports.depositId, input.depositId), eq(sageDepositArExports.organizationId, input.organizationId))
-  const cancelled = await depositExportUpdate(db, and(forDeposit, inArray(sageDepositArExports.status, ["queued", "failed", "needs_attention", "cancelled"])), {
+  const cancelled = await depositExportUpdate(db, and(forDeposit, inArray(sageDepositArExports.status, [...arInvoiceExportMachine.transitions.cancel.from])), {
     status: "cancelled",
     claimToken: null,
     completedAt: input.now,

@@ -10,7 +10,7 @@
  * resolved-project-contacts.ts. New project contacts must link:
  * insertableProjectContacts.
  */
-import { and, eq, inArray, isNull, ne, or, sql } from "drizzle-orm"
+import { and, eq, inArray, isNull, ne, or, sql, type SQL } from "drizzle-orm"
 import type { BatchItem } from "drizzle-orm/batch"
 
 import { customerContacts, customers, internalContacts, projectContacts, projectContactSourceLinks, vendorContacts, vendors } from "@/db/schema"
@@ -431,11 +431,11 @@ export async function adoptSageCompanyName(
   return true
 }
 
-/** A Sage list update, fenced on the vendor still being active and linked to that Sage record. */
-export function sageVendorUpdateStatement(db: Db, input: { readonly vendorId: string; readonly organizationId: string; readonly sageRecordId: string; readonly patch: VendorPatch; readonly now: string }) {
+/** A Sage list update, fenced on the vendor still being active and linked to that Sage record (and the sync's `guard`). */
+export function sageVendorUpdateStatement(db: Db, input: { readonly vendorId: string; readonly organizationId: string; readonly sageRecordId: string; readonly patch: VendorPatch; readonly now: string; readonly guard?: SQL }) {
   return db.update(vendors).set({ ...input.patch, updatedAt: input.now }).where(and(
     eq(vendors.id, input.vendorId), eq(vendors.organizationId, input.organizationId), eq(vendors.directoryStatus, "active"),
-    isNull(vendors.mergedIntoVendorId), eq(vendors.sageVendorId, input.sageRecordId)
+    isNull(vendors.mergedIntoVendorId), eq(vendors.sageVendorId, input.sageRecordId), input.guard
   )).returning({ id: vendors.id })
 }
 
@@ -571,14 +571,14 @@ export function sageClientIdFromDirectoryStatement(database: D1Database, input: 
     .bind(input.sageClientId, input.now, input.customerId, input.organizationId, input.sageClientNumber, input.sageClientId, input.sageClientNumber)
 }
 
-/** Applies a verified Sage snapshot's `assignments` to the still-linked directory row; `binds` follow the SQL. */
+/** Applies a verified Sage snapshot's `assignments` to the still-linked directory row while `guard` (SQL, binds) holds; `binds` follow the SQL. */
 export function sageSnapshotDirectoryUpdateStatement(
-  database: D1Database, kind: SageDirectoryKind, assignments: string, binds: readonly unknown[]
+  database: D1Database, kind: SageDirectoryKind, assignments: string, binds: readonly unknown[], guard: { readonly sql: string; readonly binds: readonly unknown[] } | null = null
 ): D1PreparedStatement {
   const target = SAGE_DIRECTORY[kind]
   const synced = target.synced ? ", sync_status = 'synced', last_synced_at = ?" : ""
   const scope = target.parent ? `${target.sageId} = ? AND ${target.parent}` : `organization_id = ? AND ${target.sageId} = ?`
-  return database.prepare(`UPDATE ${target.table} SET ${assignments}${synced} WHERE id = ? AND ${scope}`).bind(...binds)
+  return database.prepare(`UPDATE ${target.table} SET ${assignments}${synced} WHERE id = ? AND ${scope}${guard ? ` AND ${guard.sql}` : ""}`).bind(...binds, ...(guard?.binds ?? []))
 }
 
 /** Links a reviewed Sage identity to a still-unlinked directory row while `guard` holds. */

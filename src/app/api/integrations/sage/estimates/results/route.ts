@@ -1,10 +1,11 @@
-import { and, eq } from "drizzle-orm"
+import { and, eq, sql } from "drizzle-orm"
 
 import { projectEstimates } from "@/db/schema-estimates"
 import { sageEstimateExports } from "@/db/schema-sage"
 import { recordActivityEvent } from "@/lib/activity-log"
 import { updateEstimatesStatement } from "@/lib/domain/estimates/store"
 import { updateSageEstimateExportsStatement } from "@/lib/domain/sage-bridge/estimate-store"
+import { takeSageResultLease } from "@/lib/domain/sage-bridge/store"
 import { readBoundedSageBridgeBody } from "@/lib/sage/bridge-auth"
 import { authorizeSageChangeOrderBridge, ESTIMATE_WRITER } from "@/lib/sage/change-order-bridge"
 import { sageExportActor } from "@/lib/sage/estimate-sync"
@@ -47,17 +48,29 @@ export async function POST(request: Request): Promise<Response> {
     .where(fence)
     .get()
   if (!row) return Response.json({ error: "Estimate claim changed" }, { status: 409 })
+  // One handler per claim: a result posted twice applies (and logs, and queues the tax district) once.
+  const leaseToken = crypto.randomUUID()
+  if (!(await takeSageResultLease(db, "sage_estimate_exports", { id: result.id, organizationId, claimToken: result.claimToken, leaseToken }))) {
+    return Response.json({ error: "Estimate claim changed" }, { status: 409 })
+  }
+  const leased = and(
+    eq(sageEstimateExports.id, result.id),
+    eq(sageEstimateExports.organizationId, organizationId),
+    eq(sageEstimateExports.claimToken, leaseToken)
+  )
   const now = new Date().toISOString()
   const status = result.outcome === "succeeded" ? "succeeded" : result.needsAttention ? "needs_attention" : "failed"
   const estimateWhere = and(eq(projectEstimates.id, row.estimateId), eq(projectEstimates.projectId, row.projectId))
   const [updated] = await db.batch([
-    updateSageEstimateExportsStatement(db, fence, {
+    updateSageEstimateExportsStatement(db, leased, {
       status,
       errorMessage: result.outcome === "failed" ? result.error : null,
       completedAt: now,
       updatedAt: now,
     }).returning({ id: sageEstimateExports.id }),
-    updateEstimatesStatement(db, estimateWhere, {
+    // Only when the export update above landed under this lease.
+    updateEstimatesStatement(db, and(estimateWhere, sql`EXISTS (SELECT 1 FROM sage_estimate_exports
+      WHERE id = ${result.id} AND claim_token = ${leaseToken} AND status = ${status} AND completed_at = ${now})`), {
       sageStatus: status === "succeeded" ? "sent" : status,
       ...(status === "succeeded" ? { lastSageSyncAt: now } : {}),
       updatedAt: now,

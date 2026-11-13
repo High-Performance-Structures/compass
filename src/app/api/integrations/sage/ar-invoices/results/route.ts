@@ -1,4 +1,4 @@
-import { and, eq } from "drizzle-orm"
+import { and, eq, sql } from "drizzle-orm"
 import { z } from "zod/v4"
 
 import { projectBudgetApplications, projectOperations } from "@/db/schema"
@@ -7,6 +7,7 @@ import { recordActivityEvent } from "@/lib/activity-log"
 import { updateBudgetApplicationsStatement } from "@/lib/domain/budget/store"
 import { operationUpdateQuery } from "@/lib/domain/operations/store"
 import { updateSageArInvoiceExportsStatement } from "@/lib/domain/sage-bridge/ar-invoice-store"
+import { takeSageResultLease } from "@/lib/domain/sage-bridge/store"
 import { applyDepositSageResult } from "@/lib/financials/deposit-sage-result"
 import { applySimpleInvoiceSageResult } from "@/lib/financials/simple-invoice-sage-result"
 import { formatCents } from "@/lib/format"
@@ -75,12 +76,22 @@ export async function POST(request: Request): Promise<Response> {
     if (!invoiceResult) return Response.json({ error: "AR invoice claim changed" }, { status: 409 })
     return Response.json({ success: true, status: invoiceResult.status }, { status: invoiceResult.httpStatus })
   }
+  // One handler per claim: a result posted twice records the invoice number and logs once.
+  const leaseToken = crypto.randomUUID()
+  if (!(await takeSageResultLease(db, "sage_ar_invoice_exports", { id: result.id, organizationId, claimToken: result.claimToken, leaseToken }))) {
+    return Response.json({ error: "AR invoice claim changed" }, { status: 409 })
+  }
+  const leased = and(
+    eq(sageArInvoiceExports.id, result.id),
+    eq(sageArInvoiceExports.organizationId, organizationId),
+    eq(sageArInvoiceExports.claimToken, leaseToken)
+  )
   const now = new Date().toISOString()
 
   if (result.outcome === "failed") {
     const status = result.needsAttention ? "needs_attention" : "failed"
     const [updated] = await db.batch([
-      updateSageArInvoiceExportsStatement(db, fence, { status, errorMessage: result.error, completedAt: now, updatedAt: now }).returning({ id: sageArInvoiceExports.id }),
+      updateSageArInvoiceExportsStatement(db, leased, { status, errorMessage: result.error, completedAt: now, updatedAt: now }).returning({ id: sageArInvoiceExports.id }),
     ])
     if (updated.length !== 1) return Response.json({ error: "AR invoice claim changed" }, { status: 409 })
     return Response.json({ success: true, status }, { status: 202 })
@@ -93,8 +104,11 @@ export async function POST(request: Request): Promise<Response> {
   const differs = expected !== null && expected !== sageTotalCents
   const status = differs ? "needs_attention" : "succeeded"
   const applicationWhere = and(eq(projectBudgetApplications.id, row.applicationId), eq(projectBudgetApplications.projectId, row.projectId))
+  // The pay request and its operation take the invoice number only when the export update landed under this lease.
+  const exportLanded = sql`EXISTS (SELECT 1 FROM sage_ar_invoice_exports
+    WHERE id = ${result.id} AND claim_token = ${leaseToken} AND status = ${status} AND completed_at = ${now})`
   const [updated] = await db.batch([
-    updateSageArInvoiceExportsStatement(db, fence, {
+    updateSageArInvoiceExportsStatement(db, leased, {
       status,
       sageRecordId: result.sageRecordId,
       sageTotalCents,
@@ -104,13 +118,14 @@ export async function POST(request: Request): Promise<Response> {
       completedAt: now,
       updatedAt: now,
     }).returning({ id: sageArInvoiceExports.id }),
-    updateBudgetApplicationsStatement(db, applicationWhere, { sageInvoiceNumber: row.invoiceNumber, syncStatus: "synced", updatedAt: now }),
+    updateBudgetApplicationsStatement(db, and(applicationWhere, exportLanded), { sageInvoiceNumber: row.invoiceNumber, syncStatus: "synced", updatedAt: now }),
     operationUpdateQuery(
       db,
       and(
         eq(projectOperations.projectId, row.projectId),
         eq(projectOperations.sourceRecordType, "owner_pay_application"),
-        eq(projectOperations.sourceRecordId, row.applicationId)
+        eq(projectOperations.sourceRecordId, row.applicationId),
+        exportLanded
       ),
       { syncStatus: "synced", updatedAt: now }
     ),

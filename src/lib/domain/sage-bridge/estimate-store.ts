@@ -5,9 +5,10 @@
  * Writes are fenced by status and claim token in the WHERE clause. No auth
  * here: callers resolve access or verify the bridge signature first.
  */
-import { and, eq, inArray, lt, ne, or, sql, type SQL } from "drizzle-orm"
+import { and, eq, inArray, lt, or, sql, type SQL } from "drizzle-orm"
 
 import { sageEstimateExports, sageJobProposalReads } from "@/db/schema-sage"
+import { estimateExportMachine, sourcesInto } from "@/lib/domain/sage-bridge/machines"
 import { SAGE_ESTIMATE_EXPORT_STATUSES, type SageEstimateExportStatus } from "@/lib/domain/sage-bridge/statuses"
 import { assertListFields } from "@/lib/shared/statuses"
 import type { Db } from "@/lib/server/action-context"
@@ -60,10 +61,10 @@ export async function upsertSageEstimateExport(db: Db, row: SageEstimateExportRe
         completedAt: null,
         updatedAt: row.now,
       },
+      // queue / wait_for_job / flag from a row that isn't running or finished.
       setWhere: and(
         eq(sageEstimateExports.organizationId, row.organizationId),
-        ne(sageEstimateExports.status, "running"),
-        ne(sageEstimateExports.status, "succeeded")
+        inArray(sageEstimateExports.status, [...estimateExportMachine.transitions.queue.from])
       ),
     })
     .returning({ id: sageEstimateExports.id })
@@ -78,7 +79,7 @@ export async function claimSageEstimateExport(
   const claimed = await db
     .update(sageEstimateExports)
     .set({
-      status: "running",
+      status: estimateExportMachine.transitions.claim.to,
       claimToken: input.claimToken,
       claimedAt: input.now,
       attemptCount: sql`${sageEstimateExports.attemptCount} + 1`,
@@ -110,10 +111,15 @@ export type SageEstimateExportPatch = {
 
 function exportUpdate(db: Db, where: SQL | undefined, patch: SageEstimateExportPatch) {
   assertListFields("sage_estimate_exports", patch, LISTS)
-  return db.update(sageEstimateExports).set(patch).where(where)
+  // Also fenced on the machine: only from a state that may move into patch.status.
+  return db.update(sageEstimateExports).set(patch)
+    .where(and(where, inArray(sageEstimateExports.status, [...sourcesInto(estimateExportMachine, patch.status)])))
 }
 
-/** Unexecuted update fenced by the caller's `where` (id plus claim token), for a batch. */
+/**
+ * Unexecuted update fenced by the caller's `where` (id plus claim token) and
+ * the machine's source states for `patch.status`, for a batch.
+ */
 export function updateSageEstimateExportsStatement(
   db: Db,
   where: SQL | undefined,

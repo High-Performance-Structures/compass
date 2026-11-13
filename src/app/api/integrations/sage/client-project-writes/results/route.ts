@@ -1,4 +1,4 @@
-import { and, eq, or, sql } from "drizzle-orm"
+import { and, eq, or, sql, type SQL } from "drizzle-orm"
 
 import { getDb } from "@/db"
 import { customers, vendors } from "@/db/schema"
@@ -8,7 +8,9 @@ import { getCloudflareContext } from "@/lib/db"
 import { sageClientWriteResultCustomerStatement, updateVendorById } from "@/lib/domain/contacts/store"
 import { sageJobResultStatement } from "@/lib/domain/project/store"
 import {
+  releaseSageResultLease,
   sageClientProjectWriteSucceededStatement,
+  takeSageResultLease,
   updateSageClientProjectWriteOperations,
 } from "@/lib/domain/sage-bridge/store"
 import {
@@ -87,9 +89,23 @@ export async function POST(request: Request): Promise<Response> {
     )
   }
 
+  // One handler per claim: a result posted twice (an HTTP retry, two PCs)
+  // applies once, and its follow-ups (links, Activity, the add request) once.
+  const leaseToken = crypto.randomUUID()
+  const lease = { id: operation.id, organizationId: operation.organizationId, claimToken: result.claimToken, leaseToken }
+  if (!(await takeSageResultLease(db, "sage_client_project_write_operations", lease))) {
+    return Response.json(
+      { error: "Sage write claim is missing, stale, or already completed" },
+      { status: 409 }
+    )
+  }
+  const leased = and(
+    eq(sageClientProjectWriteOperations.id, operation.id),
+    eq(sageClientProjectWriteOperations.claimToken, leaseToken)
+  )
   const now = new Date().toISOString()
   if (result.outcome === "failed") {
-    await updateSageClientProjectWriteOperations(
+    const failed = await updateSageClientProjectWriteOperations(
       db,
       {
         status: "failed",
@@ -97,8 +113,11 @@ export async function POST(request: Request): Promise<Response> {
         completedAt: now,
         updatedAt: now,
       },
-      eq(sageClientProjectWriteOperations.id, operation.id)
-    )
+      leased
+    ).returning({ id: sageClientProjectWriteOperations.id })
+    if (failed.length !== 1) {
+      return Response.json({ error: "Sage write claim is missing, stale, or already completed" }, { status: 409 })
+    }
     await recordTaxDistrictResult(db, operation, result.error, now)
     await recordSageAddOutcome(db, {
       operationId: operation.id, organizationId: operation.organizationId, outcome: "failed",
@@ -109,17 +128,20 @@ export async function POST(request: Request): Promise<Response> {
 
   if ("vendor" in result) {
     if (operation.operationType !== "ensure_vendor") {
+      await releaseSageResultLease(db, "sage_client_project_write_operations", lease)
       return Response.json({ error: "A vendor result answered a non-vendor write" }, { status: 400 })
     }
-    return recordVendorAdded(db, operation, result.vendor, now)
+    return recordVendorAdded(db, operation, leased, result.vendor, now)
   }
   if (operation.operationType === "ensure_vendor") {
+    await releaseSageResultLease(db, "sage_client_project_write_operations", lease)
     return Response.json({ error: "The vendor write returned no vendor" }, { status: 400 })
   }
 
   const statements = [
     sageClientProjectWriteSucceededStatement(env.DB, {
       operationId: operation.id,
+      leaseToken,
       clientId: result.client.id,
       clientNumber: result.client.number,
       clientStatusNumber: result.client.statusNumber,
@@ -154,7 +176,19 @@ export async function POST(request: Request): Promise<Response> {
       })
     )
   }
-  const results = await env.DB.batch(statements)
+  let results: D1Result[]
+  try {
+    results = await env.DB.batch(statements)
+  } catch (error) {
+    // Nothing landed (the batch is atomic): the writer's retry may apply it.
+    await releaseSageResultLease(db, "sage_client_project_write_operations", lease)
+    throw error
+  }
+  if (results[0]?.meta.changes !== 1) {
+    // Only reachable if the row changed under the lease; nothing else in this batch should stand alone.
+    console.error("Sage client/job result lost its lease", { operationId: operation.id })
+    return Response.json({ error: "Sage write claim is missing, stale, or already completed" }, { status: 409 })
+  }
   if (customerStatementIndex !== null && results[customerStatementIndex]?.meta.changes === 0) {
     await recordClientOnDuplicateCustomer(db, operation, result.client, now)
   }
@@ -174,14 +208,18 @@ export async function POST(request: Request): Promise<Response> {
 async function recordVendorAdded(
   db: ReturnType<typeof getDb>,
   operation: typeof sageClientProjectWriteOperations.$inferSelect,
+  leased: SQL | undefined,
   vendor: { readonly id: string; readonly number: string; readonly print1099Applied: boolean },
   now: string
 ): Promise<Response> {
-  await updateSageClientProjectWriteOperations(
+  const succeeded = await updateSageClientProjectWriteOperations(
     db,
     { status: "succeeded", sageVendorId: vendor.id, sageVendorNumber: vendor.number, completedAt: now, updatedAt: now },
-    eq(sageClientProjectWriteOperations.id, operation.id)
-  )
+    leased
+  ).returning({ id: sageClientProjectWriteOperations.id })
+  if (succeeded.length !== 1) {
+    return Response.json({ error: "Sage write claim is missing, stale, or already completed" }, { status: 409 })
+  }
   let linkError: string | null = null
   if (operation.vendorId) {
     const holder = await db.select({ id: vendors.id, name: vendors.name }).from(vendors).where(and(
