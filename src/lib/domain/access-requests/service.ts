@@ -194,6 +194,8 @@ export type ApprovedAccessRequest = DecidedAccessRequest & {
   readonly projects: readonly string[]
   /** Jobs kept staff-only (for example under a legal hold), by label; invite from the job if they should see one. */
   readonly skippedProjects: readonly string[]
+  /** Jobs whose grant failed and was rolled back; staff can grant them from the job. */
+  readonly failedProjects: readonly string[]
 }
 
 type LinkedPerson = { readonly id: string; readonly userId: string | null }
@@ -568,7 +570,7 @@ export async function approveAccessRequest(
     name: found.requesterName, email: found.requesterEmail, phone: request.phone,
     companyName: request.companyName, vendorRole: choice.kind === "vendor" ? choice.role : null,
   }
-  let granted: Result<{ readonly opened: readonly string[]; readonly skipped: readonly string[] }>
+  let granted: Result<{ readonly opened: readonly string[]; readonly skipped: readonly string[]; readonly failed: readonly string[] }>
   try {
     granted = await grantApprovedRequest(db, database, actor, { organizationId, requestId: request.id, userId: request.userId, choice, role, requester, pick, now })
   } catch (error) {
@@ -579,7 +581,7 @@ export async function approveAccessRequest(
     await reopenAfterFailedGrant(db, request.id)
     return granted
   }
-  const { opened, skipped } = granted.data
+  const { opened, skipped, failed } = granted.data
 
   await recordActivityEvent({
     db,
@@ -590,7 +592,7 @@ export async function approveAccessRequest(
     entityType: "organization_access_request",
     entityId: request.id,
     summary: `Approved ${found.requesterName}'s access request as ${role}${opened.length ? ` with ${opened.length} job${opened.length === 1 ? "" : "s"}` : ""}.`,
-    metadata: { role, projects: opened.length, skipped: skipped.length },
+    metadata: { role, projects: opened.length, skipped: skipped.length, failed: failed.length },
     createdAt: now,
   })
   return {
@@ -607,6 +609,7 @@ export async function approveAccessRequest(
       role,
       projects: opened,
       skippedProjects: skipped,
+      failedProjects: failed,
     },
   }
 }
@@ -625,14 +628,15 @@ async function grantApprovedRequest(
     readonly organizationId: string; readonly requestId: string; readonly userId: string
     readonly choice: ApprovalChoice; readonly role: UserRole; readonly requester: Requester; readonly pick: PickRequester; readonly now: string
   },
-): Promise<Result<{ readonly opened: readonly string[]; readonly skipped: readonly string[] }>> {
+): Promise<Result<{ readonly opened: readonly string[]; readonly skipped: readonly string[]; readonly failed: readonly string[] }>> {
   const { organizationId, choice, role, now } = input
   const opened: string[] = []
   const skipped: string[] = []
+  const failed: string[] = []
   if (choice.kind === "employee") {
     await insertOrganizationMember(db, { id: crypto.randomUUID(), organizationId, userId: input.userId, role, joinedAt: now })
     await recordAccessRequestGrant(db, input.requestId, { customerContactId: null, vendorContactId: null, projectCount: 0, now })
-    return { success: true, data: { opened, skipped } }
+    return { success: true, data: { opened, skipped, failed } }
   }
 
   const person = await resolvePerson(db, organizationId, choice, input.requester, { requestId: input.requestId, pick: input.pick }, now)
@@ -701,7 +705,7 @@ async function grantApprovedRequest(
       opened.push(label)
     } catch (error) {
       console.error("[access-requests] job not opened", job.projectId, errorWithCauses(error))
-      skipped.push(label)
+      failed.push(label)
     }
   }
   await recordAccessRequestGrant(db, input.requestId, {
@@ -710,7 +714,7 @@ async function grantApprovedRequest(
     projectCount: opened.length,
     now,
   })
-  return { success: true, data: { opened, skipped } }
+  return { success: true, data: { opened, skipped, failed } }
 }
 
 /** Declines a pending request. Nothing is shared. */

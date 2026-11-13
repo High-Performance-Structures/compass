@@ -87,6 +87,8 @@ export type SendProjectAccessInvitationResult =
       readonly accessStatus: "invited" | "access_granted"
       readonly warning: string | null
       readonly additionalProjects?: number
+      /** Ticked projects that couldn't be opened (rolled back). */
+      readonly failedProjects?: readonly string[]
     }
   | { readonly success: false; readonly error: string }
 
@@ -536,7 +538,7 @@ export async function sendProjectAccessInvitation(
       warning: invitationEmailNotice("queued", null) }
 
     const emailDelivery = await deliverInvitationEmail({ db, env, invitationId })
-    const additionalProjects = welcomeOnly ? 0 : await grantPriorProjectAccess(db, {
+    const extra = welcomeOnly ? { granted: 0, failed: [] } : await grantPriorProjectAccess(db, {
       organizationId: row.organizationId,
       sourceProjectId: parsed.data.projectId,
       // The new job's contact starts from the directory's current values.
@@ -577,7 +579,8 @@ export async function sendProjectAccessInvitation(
       success: true,
       accessStatus,
       warning: invitationEmailNotice(emailDelivery.status, emailDelivery.nextAttemptAt),
-      ...(additionalProjects > 0 ? { additionalProjects } : {}),
+      ...(extra.granted > 0 ? { additionalProjects: extra.granted } : {}),
+      ...(extra.failed.length > 0 ? { failedProjects: extra.failed } : {}),
     }
   } catch (error) {
     console.error("Project access invitation failed", errorWithCauses(error))

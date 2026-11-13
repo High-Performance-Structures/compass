@@ -7,10 +7,11 @@ import { invitationsView } from "@/lib/domain/identity/views"
 import { errorWithCauses } from "@/lib/action-result"
 import { recordActivityEvent, type ActivityActor } from "@/lib/activity-log"
 import { insertProjectContact, updateProjectContactById } from "@/lib/domain/contacts/store"
+import { removeProjectChannelsJoinedAt } from "@/lib/domain/conversations/store"
 import { resolvedContactColumns, withContactDirectory } from "@/lib/domain/contacts/resolved-columns"
 import { projectContactActiveCondition } from "@/lib/domain/contacts/resolved-project-contacts"
 import { insertProjectAccessInvitation } from "@/lib/domain/identity/store"
-import { upsertProjectMemberRole } from "@/lib/domain/project/store"
+import { removeProjectMemberGrant, upsertProjectMemberRole } from "@/lib/domain/project/store"
 import { ensureProjectAudienceConversation } from "@/lib/project-audience-conversations"
 import { projectNumberAndName } from "@/lib/project-display-name"
 import { projectAudienceForRole } from "@/lib/user-roles"
@@ -216,6 +217,7 @@ export async function grantProjectContactAccess(db: Db, input: {
 }): Promise<boolean> {
   const audience = projectAudienceForRole(input.role)
   const contactId = input.projectContactId
+  let createdMembershipId: string | null = null
   if (input.activeUserId) {
     // One conditional write: concurrent grants can't collide, and nothing is
     // granted if staff removed the contact from the job meanwhile.
@@ -225,7 +227,30 @@ export async function grantProjectContactAccess(db: Db, input: {
       { onlyIf: projectContactActiveCondition(contactId) },
     )
     if (!grant.written) return false
+    createdMembershipId = grant.createdId
   }
+  try {
+    await finishProjectContactGrant(db, input, audience)
+  } catch (error) {
+    // D1 commits each write on its own: take back a membership this grant
+    // created so a failed job never leaves access nobody was told about.
+    if (createdMembershipId && input.activeUserId) {
+      // Membership first: it is what opens the job.
+      await removeProjectMemberGrant(db, createdMembershipId)
+      await removeProjectChannelsJoinedAt(db, { projectId: input.projectId, userId: input.activeUserId, joinedAt: input.now })
+        .catch((cleanupError: unknown) => console.error("[project-access] conversation seats not removed", input.projectId, errorWithCauses(cleanupError)))
+    }
+    throw error
+  }
+  return true
+}
+
+async function finishProjectContactGrant(
+  db: Db,
+  input: Parameters<typeof grantProjectContactAccess>[1],
+  audience: ReturnType<typeof projectAudienceForRole>,
+): Promise<void> {
+  const contactId = input.projectContactId
   await updateProjectContactById(db, {
     contactId,
     values: audience === "owner"
@@ -274,7 +299,6 @@ export async function grantProjectContactAccess(db: Db, input: {
       updatedAt: input.now,
     })
   }
-  return true
 }
 
 /**
@@ -296,9 +320,9 @@ export async function grantPriorProjectAccess(db: Db, input: {
   readonly invitedBy: string
   readonly sourceProjectLabel: string
   readonly now: string
-}): Promise<number> {
+}): Promise<{ readonly granted: number; readonly failed: readonly string[] }> {
   const requested = new Set(input.requestedProjectIds)
-  if (requested.size === 0) return 0
+  if (requested.size === 0) return { granted: 0, failed: [] }
   const allowed = (await priorBuildertrendProjects(db, {
     organizationId: input.organizationId,
     projectId: input.sourceProjectId,
@@ -308,6 +332,7 @@ export async function grantPriorProjectAccess(db: Db, input: {
   })).filter((project) => requested.has(project.projectId) && !project.locked)
 
   let granted = 0
+  const failed: string[] = []
   for (const project of allowed) {
     // One job failing must not undo or block the others (each job is its own writes).
     try {
@@ -347,7 +372,8 @@ export async function grantPriorProjectAccess(db: Db, input: {
       granted++
     } catch (error) {
       console.error("[project-access] extra project not opened", project.projectId, errorWithCauses(error))
+      failed.push(project.label)
     }
   }
-  return granted
+  return { granted, failed }
 }

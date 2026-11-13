@@ -236,3 +236,31 @@ export async function adoptImportedSenderMessages(
 export async function insertMessageAttachment(db: Db, row: typeof messageAttachments.$inferInsert): Promise<void> {
   await db.insert(messageAttachments).values(row)
 }
+
+/**
+ * Undo a failed project grant: drop the user from every conversation on the
+ * project that they joined at `joinedAt` (the grant's timestamp), with the
+ * read states created alongside.
+ */
+export async function removeProjectChannelsJoinedAt(
+  db: Db,
+  input: { readonly projectId: string; readonly userId: string; readonly joinedAt: string },
+): Promise<void> {
+  const projectChannels = sql`(SELECT c.id FROM channels c WHERE c.project_id = ${input.projectId})`
+  const joined = await db
+    .select({ channelId: channelMembers.channelId })
+    .from(channelMembers)
+    .where(and(
+      eq(channelMembers.userId, input.userId),
+      eq(channelMembers.joinedAt, input.joinedAt),
+      sql`${channelMembers.channelId} IN ${projectChannels}`,
+    ))
+  const channelIds = joined.map((row) => row.channelId)
+  if (channelIds.length === 0) return
+  await db.delete(channelReadState)
+    .where(and(eq(channelReadState.userId, input.userId), inArray(channelReadState.channelId, channelIds)))
+    .run()
+  await db.delete(channelMembers)
+    .where(and(eq(channelMembers.userId, input.userId), eq(channelMembers.joinedAt, input.joinedAt), sql`${channelMembers.channelId} IN ${projectChannels}`))
+    .run()
+}

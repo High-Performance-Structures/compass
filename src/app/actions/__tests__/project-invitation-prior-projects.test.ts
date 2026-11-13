@@ -59,6 +59,16 @@ describe("invite with the person's Buildertrend projects", () => {
     expect(database.sqlite.prepare("SELECT count(*) AS n FROM project_access_invitations WHERE project_id='project-other'").get()).toEqual({ n: 0 })
     expect(mocks.deliver).toHaveBeenCalledTimes(1)
   })
+  it("reports a ticked project that fails, takes its access back, and still grants the main project", async () => {
+    mocks.conversation.mockImplementation(async (input: { readonly projectId: string }) => {
+      if (input.projectId === "project-b") throw new Error("simulated D1 failure")
+      return "channel"
+    })
+    const result = await sendProjectAccessInvitation(input)
+    expect(result).toMatchObject({ success: true, accessStatus: "access_granted", failedProjects: ["A-2 - Project B"] })
+    expect(result).not.toHaveProperty("additionalProjects")
+    expect(database.sqlite.prepare("SELECT project_id FROM project_members WHERE user_id='owner-a' ORDER BY project_id").all()).toEqual([{ project_id: "project-a" }])
+  })
   it("never grants a staff-only project", async () => {
     database.sqlite.exec("UPDATE projects SET imported_conversations_staff_only=1 WHERE id='project-b'")
     const listed = await listPriorBuildertrendProjects({ projectId: "project-a", contactId: "contact" })

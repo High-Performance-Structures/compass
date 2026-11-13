@@ -310,7 +310,12 @@ describe("deciding a request", () => {
     const result = await approveAccessRequest(db, d1, adminA, { kind: "vendor", requestId: submitted.data.requestId, vendorContactId: "vc-1", role: "supplier" }, NOW)
     if (!result.success) throw new Error(result.error)
     expect(result.data.projects).toEqual(["O-4 - Second Vendor Job"])
-    expect(result.data.skippedProjects).toEqual(["O-3 - Vendor Job"])
+    expect(result.data.skippedProjects).toEqual([])
+    expect(result.data.failedProjects).toEqual(["O-3 - Vendor Job"])
+    // The failed job's membership and conversation seats are taken back.
+    expect(row("SELECT count(*) AS n FROM project_members WHERE project_id = 'p3' AND user_id = 'user_vic'")).toEqual({ n: 0 })
+    expect(row("SELECT count(*) AS n FROM channel_members m JOIN channels c ON c.id = m.channel_id WHERE c.project_id = 'p3' AND m.user_id = 'user_vic'")).toEqual({ n: 0 })
+    expect(row("SELECT count(*) AS n FROM project_members WHERE project_id = 'p4' AND user_id = 'user_vic'")).toEqual({ n: 1 })
     expect(row("SELECT status, vendor_contact_id, granted_project_count FROM organization_access_requests WHERE id = ?", submitted.data.requestId))
       .toEqual({ status: "approved", vendor_contact_id: "vc-1", granted_project_count: 1 })
     expect(row("SELECT user_id FROM vendor_contacts WHERE id = 'vc-1'")).toEqual({ user_id: "user_vic" })

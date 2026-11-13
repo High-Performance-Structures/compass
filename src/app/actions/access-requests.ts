@@ -154,6 +154,8 @@ export type AccessRequestDecisionResult = ActionResult<{
   readonly projects: number
   /** Staff-only jobs that were not opened. */
   readonly skippedProjects: readonly string[]
+  /** Jobs that couldn't be opened (rolled back); grant them from the job. */
+  readonly failedProjects: readonly string[]
   /** Set when the decision stands but the email didn't go out. */
   readonly warning: string | null
 }>
@@ -171,7 +173,7 @@ export async function approveCompanyAccessRequest(input: ApproveAccessRequestInp
     revalidatePath(SETTINGS_PAGE)
     revalidatePath("/dashboard/contacts")
     revalidatePath("/dashboard/projects", "layout")
-    return { success: true, data: { projects: result.data.projects.length, skippedProjects: result.data.skippedProjects, warning } }
+    return { success: true, data: { projects: result.data.projects.length, skippedProjects: result.data.skippedProjects, failedProjects: result.data.failedProjects, warning } }
   } catch (error) {
     return actionFailure(errorMessage(error, "Unable to approve the request."))
   }
@@ -188,7 +190,7 @@ export async function declineCompanyAccessRequest(requestId: string): Promise<Ac
       env, db, actor: user, request: result.data, decision: "declined", message: declineEmailText(result.data),
     })
     revalidatePath(SETTINGS_PAGE)
-    return { success: true, data: { projects: 0, skippedProjects: [], warning } }
+    return { success: true, data: { projects: 0, skippedProjects: [], failedProjects: [], warning } }
   } catch (error) {
     return actionFailure(errorMessage(error, "Unable to decline the request."))
   }
