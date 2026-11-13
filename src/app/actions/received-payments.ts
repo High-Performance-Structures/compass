@@ -399,7 +399,7 @@ export async function releasePaymentFromClosedInvoice(projectId: string, payment
     await recordActivityEvent({
       db, organizationId, projectId, actor: user, category: "financial",
       action: "payment_released_from_closed_invoice", entityType: "payment", entityId: paymentId,
-      summary: `Took a ${formatCents(payment.amountCents)} payment off a void or draft invoice; it can now be applied elsewhere.`,
+      summary: `Took ${formatCents(result.releasedCents)} of a ${formatCents(payment.amountCents)} payment off a void or draft invoice; it can now be applied elsewhere.`,
     })
     revalidatePayments(projectId, [])
     return { success: true }

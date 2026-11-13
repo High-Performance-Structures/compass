@@ -566,9 +566,13 @@ function allocationStatements(
   }
   return [
     database
+      // Revives a released row for the same pair; an active one gets 0 cents, which the CHECK refuses.
       .prepare(`INSERT INTO invoice_payment_allocations (
           id, organization_id, project_id, invoice_id, payment_id, allocation_cents, created_at
-        ) SELECT ?, ?, ?, ?, ?, CASE WHEN ${INVOICE_PAID_CENTS} = ? AND ${INVOICE_TAKES_PAYMENTS} AND ${PAYMENT_GUARD} THEN ? ELSE 0 END, ?`)
+        ) SELECT ?, ?, ?, ?, ?, CASE WHEN ${INVOICE_PAID_CENTS} = ? AND ${INVOICE_TAKES_PAYMENTS} AND ${PAYMENT_GUARD} THEN ? ELSE 0 END, ? WHERE true
+        ON CONFLICT(invoice_id, payment_id) DO UPDATE SET
+          allocation_cents = CASE WHEN released_at IS NULL THEN 0 ELSE excluded.allocation_cents END,
+          released_at = NULL, released_by = NULL`)
       .bind(
         allocation.allocationId, organizationId, projectId, allocation.invoiceId, paymentId,
         allocation.invoiceId, organizationId, projectId, allocation.expectedPaidCents, allocation.invoiceId,
@@ -691,20 +695,21 @@ export async function voidReceivedPayment(database: D1Database, input: PaymentSc
 /** Takes a payment off a void or draft invoice (a late Square payment) so it can be applied elsewhere; the invoice keeps its status. */
 export async function releaseAllocationFromClosedInvoice(database: D1Database, input: PaymentScope & {
   readonly allocationId: string
-}): Promise<PaymentWriteResult> {
+}): Promise<{ readonly releasedCents: number } | "stale"> {
   const { organizationId, projectId, paymentId, actorId, now } = input
-  const allocation = await database.prepare(`SELECT invoice_id FROM invoice_payment_allocations
-    WHERE id = ? AND payment_id = ? AND organization_id = ? AND project_id = ?`).bind(input.allocationId, paymentId, organizationId, projectId).first<{ invoice_id: string }>()
+  const allocation = await database.prepare(`SELECT invoice_id, allocation_cents FROM invoice_payment_allocations
+    WHERE id = ? AND payment_id = ? AND organization_id = ? AND project_id = ?`).bind(input.allocationId, paymentId, organizationId, projectId)
+    .first<{ invoice_id: string; allocation_cents: number }>()
   if (!allocation) return "stale"
   const [released] = await database.batch([
     database
       .prepare(`UPDATE invoice_payment_allocations SET released_at = ?, released_by = ?
-        WHERE id = ? AND payment_id = ? AND released_at IS NULL
+        WHERE id = ? AND payment_id = ? AND released_at IS NULL AND allocation_cents = ?
           AND (SELECT status FROM invoices WHERE id = ?) IN (${CLOSED_TO_PAYMENTS_SQL})`)
-      .bind(now, actorId, input.allocationId, paymentId, allocation.invoice_id),
+      .bind(now, actorId, input.allocationId, paymentId, allocation.allocation_cents, allocation.invoice_id),
     refreshInvoicePaidStatusStatement(database, { invoiceId: allocation.invoice_id, organizationId, projectId, now }),
   ])
-  return Number(released?.meta.changes) === 1 ? "saved" : "stale"
+  return Number(released?.meta.changes) === 1 ? { releasedCents: Number(allocation.allocation_cents) } : "stale"
 }
 
 type PrepaidScope = {

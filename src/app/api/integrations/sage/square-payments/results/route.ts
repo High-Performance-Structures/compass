@@ -3,7 +3,11 @@ import { and, eq } from "drizzle-orm"
 import { getDb } from "@/db"
 import { sageSquarePaymentOperations } from "@/db/schema-sage"
 import { getCloudflareContext } from "@/lib/db"
-import { finishSageSquareFeeOperation, recordResultOnFlaggedSageSquareOperation } from "@/lib/domain/sage-bridge/square-store"
+import {
+  finishSageSquareFeeOperation,
+  recordFailureOnFlaggedSageSquareOperation,
+  recordResultOnFlaggedSageSquareOperation,
+} from "@/lib/domain/sage-bridge/square-store"
 import {
   getSageBridgeSecret,
   readBoundedSageBridgeBody,
@@ -84,19 +88,69 @@ export async function POST(request: Request): Promise<Response> {
     .then((rows) => rows[0] ?? null)
   const now = new Date().toISOString()
   const claim = { operationId: result.operationId, claimToken: result.claimToken, now }
-  const sageRecord = result.outcome === "failed"
-    ? { sageRecordId: null, sageRecordNumber: null }
-    : { sageRecordId: result.sageRecordId, sageRecordNumber: result.sageRecordNumber }
-  // The claim is gone. If only because Square flagged the payment while the
-  // writer held it, keep Sage's record on the flagged row and answer 2xx so
-  // the writer carries on with its run; otherwise 409 as before.
-  const stale = async (): Promise<Response> =>
-    (await recordResultOnFlaggedSageSquareOperation(db, { ...claim, ...sageRecord }))
-      ? Response.json({ success: true, status: "attention" }, { status: 202 })
-      : Response.json(
-          { error: "Sage payment claim is missing, stale, or already completed" },
-          { status: 409 }
+  const conflict = (): Response =>
+    Response.json(
+      { error: "Sage payment claim is missing, stale, or already completed" },
+      { status: 409 }
+    )
+
+  // Alerts the people chosen for Square payment problems that a fee failed in Sage.
+  async function notifyFailure(failed: {
+    readonly id: string
+    readonly operationType: string
+    readonly squarePaymentId: string
+    readonly organizationId: string | null
+    readonly projectId: string | null
+    readonly sageInvoiceNumber: string
+  }, error: string): Promise<void> {
+    await hydrateLegacySageSquarePaymentScopes(env, failed.squarePaymentId)
+    const receipt = await db
+      .select({
+        id: sageSquarePaymentOperations.id,
+        organizationId: sageSquarePaymentOperations.organizationId,
+        projectId: sageSquarePaymentOperations.projectId,
+      })
+      .from(sageSquarePaymentOperations)
+      .where(
+        and(
+          eq(sageSquarePaymentOperations.squarePaymentId, failed.squarePaymentId),
+          eq(sageSquarePaymentOperations.operationType, "post_square_receipt")
         )
+      )
+      .limit(1)
+      .then((rows) => rows[0] ?? null)
+    const organizationId =
+      receipt?.organizationId ?? failed.organizationId ?? sageSquareOrganizationId(env)
+    const projectId = receipt?.projectId ?? failed.projectId ?? null
+    if (!organizationId) return
+    await notifySageSquareException(
+      env,
+      { organizationId, projectId, receiptOperationId: receipt?.id },
+      failed.id,
+      "Square payment could not be posted to Sage",
+      `${failed.operationType} failed for Sage invoice ${failed.sageInvoiceNumber}: ${error}`
+    )
+  }
+
+  // The claim is gone. If only because Square flagged the payment while the
+  // writer held it, keep what Sage did on the flagged row (its record, or its
+  // error plus the usual failure alert) and answer 2xx so the writer carries
+  // on with its run; otherwise 409 as before.
+  async function stale(): Promise<Response> {
+    if (result.outcome === "failed") {
+      const flagged = await recordFailureOnFlaggedSageSquareOperation(db, { ...claim, error: result.error })
+      if (!flagged) return conflict()
+      await notifyFailure(flagged, result.error)
+      return Response.json({ success: true, status: "attention" }, { status: 202 })
+    }
+    const kept = await recordResultOnFlaggedSageSquareOperation(db, {
+      ...claim,
+      sageRecordId: result.sageRecordId,
+      sageRecordNumber: result.sageRecordNumber,
+    })
+    return kept ? Response.json({ success: true, status: "attention" }, { status: 202 }) : conflict()
+  }
+
   if (!operation) return stale()
   if (!isSageSquareWriterOperation(operation.operationType)) {
     return Response.json(
@@ -114,46 +168,7 @@ export async function POST(request: Request): Promise<Response> {
       errorMessage: result.error,
     })
     if (!recorded) return stale()
-    await hydrateLegacySageSquarePaymentScopes(env, operation.squarePaymentId)
-    const receipt = await db
-      .select({
-        id: sageSquarePaymentOperations.id,
-        organizationId: sageSquarePaymentOperations.organizationId,
-        projectId: sageSquarePaymentOperations.projectId,
-      })
-      .from(sageSquarePaymentOperations)
-      .where(
-        and(
-          eq(
-            sageSquarePaymentOperations.squarePaymentId,
-            operation.squarePaymentId
-          ),
-          eq(
-            sageSquarePaymentOperations.operationType,
-            "post_square_receipt"
-          )
-        )
-      )
-      .limit(1)
-      .then((rows) => rows[0] ?? null)
-    const organizationId =
-      receipt?.organizationId ??
-      operation.organizationId ??
-      sageSquareOrganizationId(env)
-    const projectId = receipt?.projectId ?? operation.projectId ?? null
-    if (organizationId) {
-      await notifySageSquareException(
-        env,
-        {
-          organizationId,
-          projectId,
-          receiptOperationId: receipt?.id,
-        },
-        operation.id,
-        "Square payment could not be posted to Sage",
-        `${operation.operationType} failed for Sage invoice ${operation.sageInvoiceNumber}: ${result.error}`
-      )
-    }
+    await notifyFailure(operation, result.error)
     return Response.json({ success: true, status: "failed" }, { status: 202 })
   }
   if (result.outcome === "already_in_sage") {

@@ -135,6 +135,44 @@ export async function recordResultOnFlaggedSageSquareOperation(db: Db, input: {
   return updated.length === 1
 }
 
+/**
+ * The writer's failure arrived just after Square flagged the payment: the
+ * row stays attention and its message gains "Sage writer: <error>". Returns
+ * what the caller's failure alert needs, or null when the row isn't in that
+ * state for this claim.
+ */
+export async function recordFailureOnFlaggedSageSquareOperation(db: Db, input: {
+  readonly operationId: string
+  readonly claimToken: string
+  readonly error: string
+  readonly now: string
+}): Promise<{
+  readonly id: string
+  readonly operationType: string
+  readonly squarePaymentId: string
+  readonly organizationId: string | null
+  readonly projectId: string | null
+  readonly sageInvoiceNumber: string
+} | null> {
+  const message = `Sage writer: ${input.error}`
+  const updated = await operationUpdate(db, {
+    errorMessage: sql`CASE WHEN ${sageSquarePaymentOperations.errorMessage} IS NULL OR ${sageSquarePaymentOperations.errorMessage} = '' THEN ${message} ELSE ${sageSquarePaymentOperations.errorMessage} || '; ' || ${message} END`,
+    updatedAt: input.now,
+  }, and(
+    eq(sageSquarePaymentOperations.id, input.operationId),
+    eq(sageSquarePaymentOperations.claimToken, input.claimToken),
+    eq(sageSquarePaymentOperations.status, squarePaymentOperationMachine.transitions.flag.to),
+  )).returning({
+    id: sageSquarePaymentOperations.id,
+    operationType: sageSquarePaymentOperations.operationType,
+    squarePaymentId: sageSquarePaymentOperations.squarePaymentId,
+    organizationId: sageSquarePaymentOperations.organizationId,
+    projectId: sageSquarePaymentOperations.projectId,
+    sageInvoiceNumber: sageSquarePaymentOperations.sageInvoiceNumber,
+  })
+  return updated[0] ?? null
+}
+
 /** hand_to_staff: an older queued (or stale running) receipt becomes a manual Sage entry. */
 export async function handSageSquareReceiptToStaff(db: Db, input: {
   readonly operationId: string

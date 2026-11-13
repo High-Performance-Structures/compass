@@ -192,7 +192,7 @@ describe("simple invoice status writes", () => {
     expect(listed?.allocations.map((allocation) => allocation.onClosedInvoice)).toEqual([true])
     // Not on an open invoice, and only once.
     expect(await releaseAllocationFromClosedInvoice(d1, { ...scope, allocationId: "missing" })).toBe("stale")
-    expect(await releaseAllocationFromClosedInvoice(d1, { ...scope, allocationId: "sq-alloc" })).toBe("saved")
+    expect(await releaseAllocationFromClosedInvoice(d1, { ...scope, allocationId: "sq-alloc" })).toEqual({ releasedCents: 10000 })
     expect(await releaseAllocationFromClosedInvoice(d1, { ...scope, allocationId: "sq-alloc" })).toBe("stale")
     expect(row("open-1")).toMatchObject({ status: "void", amount_paid: 0, amount_due: 0 })
     const applied = await applyReceivedPayment(d1, {
@@ -201,6 +201,26 @@ describe("simple invoice status writes", () => {
     })
     expect(applied).toBe("saved")
     expect(row("open-2")).toMatchObject({ status: "paid", amount_paid: 100 })
+  })
+
+  it("a payment taken off an invoice can be applied to it again (the released row is revived), but never twice", async () => {
+    sqlite.exec(`
+      INSERT INTO payments (id, organization_id, customer_id, project_id, source_system, payment_type, amount, payment_date, created_at, updated_at)
+        VALUES ('sq-pay', 'org-1', 'c1', 'p1', 'sage', 'received', 100, '2026-11-12', '${NOW}', '${NOW}');
+      INSERT INTO invoice_payment_allocations (id, organization_id, project_id, invoice_id, payment_id, allocation_cents, created_at, released_at)
+        VALUES ('sq-alloc', 'org-1', 'p1', 'open-1', 'sq-pay', 10000, '${NOW}', '${NOW}');
+    `)
+    const apply = (expectedAppliedCents: number, expectedPaidCents: number) => applyReceivedPayment(d1, {
+      organizationId: "org-1", projectId: "p1", paymentId: "sq-pay", actorId: "u1", now: NOW, newPayment: null, expectedAppliedCents,
+      allocations: [{ kind: "invoice", allocationId: "new-id", invoiceId: "open-1", cents: 6000, expectedPaidCents, invoice: { amountPaid: 60, amountDue: 40, status: "partially_paid" } }],
+    })
+    expect(await apply(0, 0)).toBe("saved")
+    expect(sqlite.prepare("SELECT id, allocation_cents, released_at FROM invoice_payment_allocations").all())
+      .toEqual([{ id: "sq-alloc", allocation_cents: 6000, released_at: null }])
+    expect(row("open-1")).toMatchObject({ status: "partially_paid", amount_paid: 60 })
+    // Applying the same payment to the same invoice again, with fresh balances, is still refused.
+    expect(await apply(6000, 6000)).toBe("stale")
+    expect(sqlite.prepare("SELECT allocation_cents FROM invoice_payment_allocations").get()).toEqual({ allocation_cents: 6000 })
   })
 
   it("an allocation on an open invoice is not released by the void-invoice action", async () => {
