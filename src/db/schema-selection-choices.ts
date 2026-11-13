@@ -2,7 +2,7 @@
  * The rows under a finish selection: its choices, supplier product links,
  * photo links, comments, and the follow-up selections a choice opens.
  * Added by migrations 0311, 0312, 0313 (round alerts, the company
- * choice-template library) and 0314 (who picked, round signatures); the older flat `choice_options_json` on
+ * choice-template library), 0314 (who picked, round signatures) and 0324 (owner-suggested choices); the older flat `choice_options_json` on
  * project_finish_selections is kept and backfilled into choice rows.
  * Written by: src/lib/domain/selections/choices-store.ts.
  */
@@ -64,9 +64,17 @@ export const projectSelectionChoices = sqliteTable(
     createdBy: text("created_by").references(() => users.id, { onDelete: "set null" }),
     createdAt: text("created_at").notNull(),
     updatedAt: text("updated_at").notNull(),
+    // An owner's own suggestion ("Add my own choice", 0324): who and when
+    // (suggested_at stays the marker if the user is deleted), pending until
+    // staff set the owner price, and when they did.
+    suggestedByUserId: text("suggested_by_user_id").references(() => users.id, { onDelete: "set null" }),
+    suggestedAt: text("suggested_at"),
+    ownerPricingPending: integer("owner_pricing_pending", { mode: "boolean" }).notNull().default(false),
+    ownerPricedAt: text("owner_priced_at"),
   },
   (table) => [
     index("project_selection_choices_selection_idx").on(table.selectionId, table.sortOrder),
+    index("project_selection_choices_suggested_by_user_id_idx").on(table.suggestedByUserId),
     index("project_selection_choices_project_idx").on(table.projectId),
     index("project_selection_choices_vendor_id_idx").on(table.vendorId),
     index("project_selection_choices_created_by_idx").on(table.createdBy),

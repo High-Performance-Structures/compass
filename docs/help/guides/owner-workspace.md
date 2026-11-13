@@ -12,7 +12,7 @@
   "permissions": ["help:read", "project:read"],
   "routes": ["/preview/projects/[id]/owner", "/preview/projects/[id]/owner/budget", "/preview/projects/[id]/owner/change-orders", "/preview/projects/[id]/owner/change-orders/[changeOrderId]", "/preview/projects/[id]/owner/conversations", "/preview/projects/[id]/owner/conversations/[channelId]", "/preview/projects/[id]/owner/documents", "/preview/projects/[id]/owner/photos", "/preview/projects/[id]/owner/schedule", "/preview/projects/[id]/owner/selections", "/preview/projects/[id]/owner/team", "/preview/projects/[id]/owner/updates", "/preview/projects/[id]/owner/updates/[updateId]", "/preview/projects/[id]/owner/warranty"],
   "owner": "Compass product team",
-  "lastReviewed": "2026-11-12"
+  "lastReviewed": "2026-11-13"
 }
 ---
 
@@ -33,6 +33,8 @@ Use the left navigation on a larger screen or project controls on a smaller scre
 **Selections & Decisions** contains specifications the project team has published for owner review. Open an item and check the product, manufacturer, model, color or finish, allowance, quoted price, difference, schedule impact, notes, and revision.
 
 Use **Request pricing / alternative** when you need another option or clarification. Use **Confirm my choice** only after reviewing the exact revision and terms in the confirmation. Compass records your name, time, and chosen revision as your choice. Your choice becomes final when you sign the Selection Phase document the project team sends you; confirming it does not place an order or change your contract. If the specification changes, wait for the project team to publish a new revision before choosing again.
+
+To propose something the project team hasn't listed, press **Add my own choice** on the selection (when your builder allows it). Enter a name and, if you like, a link to the product page and a note. Your choice shows **Suggested by owner** and **Pending staff pricing** until the project team prices it: the price on a product page is not the price you pay. You can pick it like any other choice, and edit or delete it until it is priced. You can have up to five suggestions waiting for pricing on one selection. A Selection Phase isn't sent for your signature while a choice you picked is still waiting for pricing.
 
 ## Follow Updates and Schedule {#updates-schedule}
 

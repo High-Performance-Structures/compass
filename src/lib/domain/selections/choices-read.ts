@@ -23,6 +23,8 @@ import type { Db } from "@/lib/server/action-context"
 
 // The person who made a choice's current pick.
 const chooser = peopleView("chooser")
+// The owner who suggested a choice ("Add my own choice").
+const suggester = peopleView("suggester")
 
 import { commentVisibleTo } from "./choice-rules"
 import type { SelectionAuthorAudience, SelectionChoiceStatus, SelectionCommentVisibility } from "./statuses"
@@ -70,6 +72,14 @@ export type SelectionChoiceView = {
   readonly chosenNote: string | null
   readonly status: SelectionChoiceStatus
   readonly sourceSystem: string
+  /** The owner added it ("Suggested by owner"). */
+  readonly suggestedByOwner: boolean
+  /** Who suggested it (staff only; null for owners and staff-made choices). */
+  readonly suggestedByName: string | null
+  /** The viewer is the owner who suggested it. */
+  readonly suggestedByViewer: boolean
+  /** An owner's suggestion staff haven't set the owner price for yet ("Pending staff pricing"). */
+  readonly ownerPricingPending: boolean
   readonly links: readonly SelectionLinkView[]
   readonly photos: readonly SelectionPhotoView[]
   readonly dependentSelectionIds: readonly string[]
@@ -122,6 +132,8 @@ export async function choiceInProject(
   readonly chosen: boolean
   readonly priceCents: number | null
   readonly ownerPriceCents: number | null
+  readonly suggestedByUserId: string | null
+  readonly ownerPricingPending: boolean
 } | null> {
   const row = await db
     .select({
@@ -131,6 +143,8 @@ export async function choiceInProject(
       chosen: projectSelectionChoices.chosen,
       priceCents: projectSelectionChoices.priceCents,
       ownerPriceCents: projectSelectionChoices.ownerPriceCents,
+      suggestedByUserId: projectSelectionChoices.suggestedByUserId,
+      ownerPricingPending: projectSelectionChoices.ownerPricingPending,
     })
     .from(projectSelectionChoices)
     .where(and(eq(projectSelectionChoices.id, choiceId), eq(projectSelectionChoices.projectId, projectId)))
@@ -197,10 +211,16 @@ export async function loadChoicePanels(
         chosenNote: projectSelectionChoices.chosenNote,
         status: projectSelectionChoices.status,
         sourceSystem: projectSelectionChoices.sourceSystem,
+        suggestedByUserId: projectSelectionChoices.suggestedByUserId,
+        suggestedAt: projectSelectionChoices.suggestedAt,
+        suggestedByDisplayName: suggester.displayName,
+        suggestedByEmail: suggester.email,
+        ownerPricingPending: projectSelectionChoices.ownerPricingPending,
       })
       .from(projectSelectionChoices)
       .leftJoin(vendors, eq(vendors.id, projectSelectionChoices.vendorId))
       .leftJoin(chooser, eq(chooser.id, projectSelectionChoices.chosenByUserId))
+      .leftJoin(suggester, eq(suggester.id, projectSelectionChoices.suggestedByUserId))
       .where(and(eq(projectSelectionChoices.projectId, projectId), inArray(projectSelectionChoices.selectionId, ids)))
       .orderBy(asc(projectSelectionChoices.sortOrder), asc(projectSelectionChoices.createdAt)),
     db
@@ -273,8 +293,11 @@ export async function loadChoicePanels(
 
   return ids.map((selectionId) => ({
     selectionId,
-    choices: choices.filter((choice) => choice.selectionId === selectionId).map(({ chosenByEmail, ...choice }): SelectionChoiceView => ({
+    choices: choices.filter((choice) => choice.selectionId === selectionId).map(({ chosenByEmail, suggestedByUserId, suggestedAt, suggestedByDisplayName, suggestedByEmail, ...choice }): SelectionChoiceView => ({
       ...choice,
+      suggestedByOwner: suggestedAt !== null,
+      suggestedByName: staff ? (suggestedByDisplayName ?? suggestedByEmail) : null,
+      suggestedByViewer: suggestedByUserId !== null && suggestedByUserId === viewerUserId,
       chosenByName: choice.chosenByName ?? chosenByEmail,
       // Owners see that they picked it, not staff notes.
       chosenNote: staff ? choice.chosenNote : null,
@@ -373,6 +396,39 @@ export async function linkInProject(
     .where(and(eq(projectSelectionLinks.id, linkId), eq(projectSelectionLinks.projectId, projectId)))
     .get()
   return row ?? null
+}
+
+/** How many of the owner's suggestions on the selection still wait for staff pricing. */
+export async function pendingOwnerSuggestionCount(db: Db, selectionId: string, userId: string): Promise<number> {
+  const rows = await db
+    .select({ id: projectSelectionChoices.id })
+    .from(projectSelectionChoices)
+    .where(
+      and(
+        eq(projectSelectionChoices.selectionId, selectionId),
+        eq(projectSelectionChoices.suggestedByUserId, userId),
+        eq(projectSelectionChoices.ownerPricingPending, true),
+      ),
+    )
+  return rows.length
+}
+
+/** The product link the owner added to their suggested choice (the first), or null. */
+export async function ownerChoiceLinkUrl(db: Db, projectId: string, choiceId: string, userId: string): Promise<string | null> {
+  const row = await db
+    .select({ url: projectSelectionLinks.url })
+    .from(projectSelectionLinks)
+    .where(
+      and(
+        eq(projectSelectionLinks.projectId, projectId),
+        eq(projectSelectionLinks.choiceId, choiceId),
+        eq(projectSelectionLinks.addedByUserId, userId),
+        eq(projectSelectionLinks.addedByAudience, "owner"),
+      ),
+    )
+    .orderBy(asc(projectSelectionLinks.createdAt))
+    .get()
+  return row?.url ?? null
 }
 
 /** A choice's editable fields as stored, to tell a price-only edit from others. */

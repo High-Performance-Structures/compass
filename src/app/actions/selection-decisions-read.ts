@@ -273,6 +273,7 @@ export async function getSelectionWorkspace(
     audience,
     statusLabels,
     ownerChoiceConfirmation: selectionSettings.settings.ownerChoiceConfirmation,
+    ownerSuggestedChoices: selectionSettings.settings.ownerSuggestedChoices,
     canWrite:
       audience === "staff"
         ? await canFeature(user, "finish-selections", "update")

@@ -17,6 +17,7 @@ import { parseSpecification } from "@/lib/selections/decisions"
 import type { Db } from "@/lib/server/action-context"
 
 import { setChoicePricesFromRfq } from "./choices-store"
+import { archivePricedSuggestionTodos } from "./owner-suggestions"
 import { notifyPriceChangesDuringSignature } from "./price-change-notice"
 
 type FinishSelectionRow = typeof projectFinishSelections.$inferSelect
@@ -146,6 +147,8 @@ async function applyRfqPricesToChoices(db: Db, projectId: string, rfqId: string,
   const ids = prices.map((price) => price.choiceId)
   const before = await choicePrices(db, projectId, ids)
   await setChoicePricesFromRfq(db, projectId, prices, rfq.vendorId, now, settings?.ownerMarkupPercent ?? null)
+  // An owner's suggestion the supplier's quote (plus markup) priced: its pricing to-do is archived.
+  await archivePricedSuggestionTodos(db, projectId, prices, now)
   // A supplier's new price on a selection out for the owner's signature: the job's managers are told.
   const after = new Map((await choicePrices(db, projectId, ids)).map((row) => [row.id, row]))
   await notifyPriceChangesDuringSignature(db, {

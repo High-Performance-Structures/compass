@@ -100,6 +100,11 @@ export function SelectionChoiceCard({
           </span>
           <div className="flex flex-none items-center gap-1">
             {choice.chosen && <Badge>Owner&apos;s pick</Badge>}
+            {choice.suggestedByOwner && (
+              <Badge variant="outline" title={choice.suggestedByName ? `Suggested by ${choice.suggestedByName}` : undefined}>
+                Suggested by owner
+              </Badge>
+            )}
             {choice.status !== "proposed" && choice.status !== "available" && <Badge variant="outline">{choice.status === "unavailable" ? "Unavailable" : "Declined"}</Badge>}
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
@@ -121,7 +126,14 @@ export function SelectionChoiceCard({
         </div>
         <span className="text-sm">{facts.join(" · ")}</span>
         <span className="text-sm">
-          Owner price {choice.ownerPriceCents !== null ? formatCents(choice.ownerPriceCents) : <span className="text-muted-foreground">not set</span>}
+          Owner price{" "}
+          {choice.ownerPricingPending ? (
+            <span className="font-medium text-warning">pending staff pricing (Edit to set it)</span>
+          ) : choice.ownerPriceCents !== null ? (
+            formatCents(choice.ownerPriceCents)
+          ) : (
+            <span className="text-muted-foreground">not set</span>
+          )}
           {choice.ownerPriceCents !== null && allowanceCents !== null && (
             <> · <OverUnder deltaCents={allowanceDeltaCents(choice.ownerPriceCents, allowanceCents)} /></>
           )}

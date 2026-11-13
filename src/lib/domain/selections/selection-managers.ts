@@ -5,7 +5,7 @@
  * spells the role, plus the project manager named on the job, keeping only
  * the company's staff. In the settings' role order, the named project
  * manager first among project managers. Told about price changes during a
- * signature, and assigned the change-order to-do of a replacement (the
+ * signature, and assigned the change-order to-do of a replacement and the to-do to price an owner's suggested choice (the
  * first one).
  */
 import { namedProjectManager, projectMembersWithRole } from "@/lib/domain/project/member-role"

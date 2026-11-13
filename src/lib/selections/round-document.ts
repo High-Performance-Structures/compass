@@ -7,6 +7,7 @@
  * threshold). Pure: the print view, the signing PDF and the server checks
  * share it.
  */
+import { pendingPricingBlocker } from "@/lib/domain/selections/owner-suggestion-rules"
 
 export type RoundDocumentLineInput = {
   readonly selectionId: string
@@ -25,6 +26,8 @@ export type RoundDocumentLineInput = {
   readonly pickedBy: string | null
   /** Already signed for in an earlier signature on this pick (shown, not signed again). */
   readonly signedEarlier: boolean
+  /** The pick is an owner's suggestion staff haven't priced yet: the phase can't go out for signature. */
+  readonly ownerPricingPending: boolean
 }
 
 type RoundDocumentLine = RoundDocumentLineInput & {
@@ -78,12 +81,15 @@ export function buildRoundDocument(
   const deltaCents = toSign.reduce((total, line) => total + (line.deltaCents ?? 0), 0)
   const missingPick = lines.find((line) => line.choiceId === null)
   const missingPrice = toSign.find((line) => line.ownerPriceCents === null)
+  const pendingPricing = pendingPricingBlocker(toSign)
   const blocker =
     lines.length === 0
       ? "This Selection Phase has no selections."
       : missingPick
         ? `${missingPick.selectionName} doesn't have the owner's pick yet.`
-        : missingPrice
+        : pendingPricing
+          ? pendingPricing
+          : missingPrice
           ? `${missingPrice.selectionName}: set the owner price for the picked choice.`
           : toSign.length === 0
             ? "Every pick in this Selection Phase is already signed for."

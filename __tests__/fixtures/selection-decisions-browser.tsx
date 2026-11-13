@@ -78,6 +78,7 @@ const workspace: SelectionWorkspace = {
   audience: staff ? "staff" : partner ? "sub_vendor" : "owner",
   canWrite: !partner && !preview,
   ownerChoiceConfirmation: true,
+  ownerSuggestedChoices: true,
   statusLabels: DEFAULT_SELECTION_STATUS_LABELS,
   items: params.has("empty")
     ? []

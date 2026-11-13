@@ -5,8 +5,9 @@
  * the schedule item that sets the due date, days before it), default lead
  * times by category, how many days ahead a long lead time is flagged, the
  * owner-price markup, the variance-to-change-order threshold, owner choice
- * confirmation, and who is told about a price change during a signature
- * (and gets a replacement's change-order to-do). Also
+ * confirmation, owner-suggested choices, and who is told about a price
+ * change during a signature (and gets a replacement's change-order to-do and
+ * an owner suggestion's pricing to-do). Also
  * offers the "Save to Compass" bookmarks-bar button.
  */
 import * as React from "react"
@@ -50,6 +51,7 @@ export function SelectionSettingsSection(): React.ReactElement {
   const [markup, setMarkup] = React.useState("")
   const [threshold, setThreshold] = React.useState(String(GROUP.defaults.changeOrderThresholdPercent))
   const [ownerChoice, setOwnerChoice] = React.useState(GROUP.defaults.ownerChoiceConfirmation)
+  const [ownerSuggest, setOwnerSuggest] = React.useState(GROUP.defaults.ownerSuggestedChoices)
   const [noticeRoles, setNoticeRoles] = React.useState<SelectionSettings["priceChangeNoticeRoles"]>(GROUP.defaults.priceChangeNoticeRoles)
   const [pending, startTransition] = React.useTransition()
 
@@ -67,6 +69,7 @@ export function SelectionSettingsSection(): React.ReactElement {
     setMarkup(value.ownerMarkupPercent === null ? "" : String(value.ownerMarkupPercent))
     setThreshold(String(value.changeOrderThresholdPercent))
     setOwnerChoice(value.ownerChoiceConfirmation)
+    setOwnerSuggest(value.ownerSuggestedChoices)
     setNoticeRoles(value.priceChangeNoticeRoles)
     setCanEdit(result.data.canEdit)
     setCustomized(result.data.customized)
@@ -97,6 +100,7 @@ export function SelectionSettingsSection(): React.ReactElement {
       ownerMarkupPercent: numberOrNull(markup),
       changeOrderThresholdPercent: thresholdValue ?? GROUP.defaults.changeOrderThresholdPercent,
       ownerChoiceConfirmation: ownerChoice,
+      ownerSuggestedChoices: ownerSuggest,
       priceChangeNoticeRoles: [...noticeRoles],
     }
     const checked = selectionSettingsSchema.safeParse(value)
@@ -244,8 +248,15 @@ export function SelectionSettingsSection(): React.ReactElement {
                 <p className="text-xs text-muted-foreground">Records the owner&apos;s choice on a published decision. Only a signed document approves a selection, either way.</p>
               </div>
             </div>
+            <div className="flex items-start gap-2">
+              <Checkbox id="selection-owner-suggest" checked={ownerSuggest} disabled={disabled} onCheckedChange={(checked) => setOwnerSuggest(checked === true)} />
+              <div className="space-y-0.5">
+                <Label htmlFor="selection-owner-suggest">Owners can suggest their own choices</Label>
+                <p className="text-xs text-muted-foreground">Shows &quot;Add my own choice&quot; on the owner&apos;s selections. Each suggestion waits for staff to set its owner price, and the project manager gets a to-do to price it.</p>
+              </div>
+            </div>
             <div className="space-y-1 pt-1">
-              <p className="text-sm">Tell these project roles when a price changes while a Selection Phase is out for signature (the first of them on the job also gets a replacement's change-order to-do)</p>
+              <p className="text-sm">Tell these project roles when a price changes while a Selection Phase is out for signature (the first of them on the job also gets a replacement's change-order to-do and the to-do to price an owner's suggested choice)</p>
               <div className="grid gap-1 sm:grid-cols-2">
                 {STAFF_ROLE_OPTIONS.map((option) => (
                   <div key={option.value} className="flex items-center gap-2">

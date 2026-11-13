@@ -44,7 +44,7 @@ export async function AudienceSelectionPage({
     >
       <main className="min-h-screen bg-background">
         <div className="mx-auto flex max-w-6xl flex-col gap-8 px-4 py-6 sm:px-6">
-          <OwnerChoiceBoard projectId={projectId} selections={board} canChoose={!data.viewerIsInternal} />
+          <OwnerChoiceBoard projectId={projectId} selections={board} canChoose={!data.viewerIsInternal} canSuggestChoices={workspace.ownerSuggestedChoices} />
           <SelectionDecisionWorkspace workspace={workspace} reportProject={data.project} />
         </div>
       </main>
