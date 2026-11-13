@@ -38,6 +38,8 @@ const item: SelectionDecisionItem = {
   approvedAt: "2026-09-05",
   approvedByName: "Private owner identity",
   approvalBlocker: null,
+  signed: true,
+  ownerApproved: true,
   status: "selected",
   selectionUpdatedAt: "2026-09-05",
   requests: [],
@@ -81,7 +83,7 @@ describe("portal reports", () => {
   })
   it("prints technical details without owner terms or approval identity for partners, even if supplied", () => {
     const text = JSON.stringify(selectionReport([item], "sub_vendor"))
-    expect(text).toContain("Owner approved")
+    expect(text).toContain("Approved · Revision")
     expect(text).toContain("Henry")
     expect(text).toContain("Quantity")
     expect(text).not.toContain("Private")

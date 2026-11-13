@@ -1,5 +1,6 @@
 "use server"
 
+import { invoiceEmailBlock, invoiceEmailBlockMessage } from "@/lib/domain/financials/invoice-email-fence"
 import { actionFailure, type ActionResult } from "@/lib/action-result"
 import { loadProjectCostCodeChoices } from "@/lib/cost-codes/catalog-server"
 import { simpleInvoiceContext } from "@/lib/domain/financials/access"
@@ -102,10 +103,19 @@ export type ProjectInvoiceEditor = {
   readonly square: SquareEligibility & { readonly connected: boolean }
   readonly sage: InvoiceSageState
   readonly email: {
+    /** Why another email can't start now (in flight, or delivered inside the re-send window); null when it can. */
+    readonly blockedReason: string | null
+    /** A send whose outcome Compass couldn't confirm (it may have gone out). */
+    readonly unconfirmedAt: string | null
     readonly senderAddress: string | null
     readonly recipients: readonly EmailRecipientOption[]
     readonly suggestedTo: readonly string[]
   }
+}
+
+function emailBlockReason(invoice: { readonly emailedAt: string | null; readonly emailClaimedAt: string | null }, windowMs: number): string | null {
+  const block = invoiceEmailBlock({ emailedAt: invoice.emailedAt, emailClaimedAt: invoice.emailClaimedAt, now: new Date().toISOString(), windowMs })
+  return block ? invoiceEmailBlockMessage(block) : null
 }
 
 export async function getProjectInvoiceEditor(projectId: string, invoiceId: string): Promise<ActionResult<ProjectInvoiceEditor>> {
@@ -139,7 +149,8 @@ export async function getProjectInvoiceEditor(projectId: string, invoiceId: stri
       invoice,
       actions: simpleInvoiceActions({
         status: invoice.status,
-        emailed: Boolean(invoice.emailedAt),
+        // Delivered, maybe delivered, or being sent: not reopenable.
+        emailed: Boolean(invoice.emailedAt || invoice.emailUnconfirmedAt || invoiceEmailBlock({ emailedAt: null, emailClaimedAt: invoice.emailClaimedAt, now: new Date().toISOString(), windowMs: 0 })),
         sageExportLive: sageLive,
         squarePublished: invoice.squareState === "published",
         hasPayments: invoice.amountPaidCents > 0,
@@ -170,6 +181,8 @@ export async function getProjectInvoiceEditor(projectId: string, invoiceId: stri
         blockers: plan?.blockers ?? [],
       },
       email: {
+        blockedReason: emailBlockReason(invoice, settings.emailResendWindowMinutes * 60_000),
+        unconfirmedAt: invoice.emailUnconfirmedAt,
         senderAddress: settings.senderAddress || null,
         recipients,
         suggestedTo: customer?.email ? [customer.email] : [],

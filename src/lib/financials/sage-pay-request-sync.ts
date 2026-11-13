@@ -7,14 +7,16 @@ import { payApplicationSageSyncs, sagePayApplicationSnapshots } from "@/db/schem
 import { payApplicationShopTicketImports } from "@/db/schema-shop-tickets"
 import { recordActivityEvent, type ActivityActor } from "@/lib/activity-log"
 import { loadProjectCostCodeCatalog } from "@/lib/cost-codes/catalog-server"
-import { chunkD1InsertRows } from "@/lib/d1-query"
+import { batchGuardStatement, chunkD1InsertRows, isBatchGuardFailure } from "@/lib/d1-query"
 import {
   mapSageLinesToCompass,
   sameApplicationNumber,
   type CompassCostCode,
   type SyncedPayRequestLine,
 } from "@/lib/domain/budget/sage-pay-request-rules"
+import { payApplicationReviewPayload } from "@/lib/domain/budget/pay-application-review"
 import {
+  compassDrawStatusIs,
   deleteBudgetLinesStatement,
   deleteShopTicketImportsStatement,
   insertBudgetApplicationStatement,
@@ -187,7 +189,7 @@ function roundCents(value: number): number {
 function lineRows(
   lines: readonly SyncedPayRequestLine[],
   context: { readonly projectId: string; readonly applicationId: string; readonly now: string }
-): (typeof projectBudgetLines.$inferInsert)[] {
+) {
   return lines.map((line, index) => {
     const total = line.totalCompletedStoredToDate
     return {
@@ -288,16 +290,33 @@ async function replaceWithSageStatements(
     .from(projectBudgetLines)
     .where(and(eq(projectBudgetLines.projectId, projectId), eq(projectBudgetLines.applicationId, application.id)))
   const header = headerValues(snapshot)
+  const rows = lineRows(input.lines, { projectId, applicationId: application.id, now })
+  // A draw in review gets its Sage review snapshot rebuilt from Sage's amounts in the same batch.
+  const revision = await db
+    .select({ id: projectBudgetApplications.budgetRevisionId })
+    .from(projectBudgetApplications)
+    .where(eq(projectBudgetApplications.id, application.id))
+    .get()
+  const review = application.status === "internal_review"
+    ? {
+        sagePayloadJson: payApplicationReviewPayload(
+          { ...header, id: application.id, applicationNumber: application.applicationNumber, budgetRevisionId: revision?.id ?? null },
+          // The order Ready for review reads them in (SQLite's binary text order, then sort order).
+          [...rows].sort((left, right) => binaryCompare(left.csiDivision, right.csiDivision) || left.sortOrder - right.sortOrder)
+        ),
+      }
+    : {}
   return [
+    // Only while the draw is still in the status read (a draft or in review):
+    // an approval for billing meanwhile keeps the amounts that were approved.
+    batchGuardStatement(db, compassDrawStatusIs(projectId, application.id, [application.status]), "pay application refreshable"),
     // Amounts shop tickets added in Compass go with the lines; Sage's billing replaces them.
     deleteShopTicketImportsStatement(
       db,
       and(eq(payApplicationShopTicketImports.applicationId, application.id), eq(payApplicationShopTicketImports.mode, "imported"))
     ),
     deleteBudgetLinesStatement(db, and(eq(projectBudgetLines.projectId, projectId), eq(projectBudgetLines.applicationId, application.id))),
-    ...chunkD1InsertRows(projectBudgetLines, lineRows(input.lines, { projectId, applicationId: application.id, now })).map((rows) =>
-      insertBudgetLinesStatement(db, rows)
-    ),
+    ...chunkD1InsertRows(projectBudgetLines, rows).map((chunk) => insertBudgetLinesStatement(db, chunk)),
     updateBudgetApplicationsStatement(db, eq(projectBudgetApplications.id, application.id), {
       ...header,
       billingSource: "sage",
@@ -305,7 +324,7 @@ async function replaceWithSageStatements(
       lastSyncedAt: now,
       updatedAt: now,
     }),
-    operationUpdateQuery(db, operationFor(projectId, application.id), { amount: header.currentPaymentDue, dueDate: header.periodTo, updatedAt: now }),
+    operationUpdateQuery(db, operationFor(projectId, application.id), { amount: header.currentPaymentDue, dueDate: header.periodTo, ...review, updatedAt: now }),
     insertPayApplicationSageSyncStatement(db, {
       id: crypto.randomUUID(),
       projectId,
@@ -319,6 +338,10 @@ async function replaceWithSageStatements(
   ]
 }
 
+function binaryCompare(left: string, right: string): number {
+  return left < right ? -1 : left > right ? 1 : 0
+}
+
 function operationFor(projectId: string, applicationId: string) {
   return and(
     eq(projectOperations.projectId, projectId),
@@ -330,6 +353,17 @@ function operationFor(projectId: string, applicationId: string) {
 async function runBatch(db: Db, statements: readonly Statement[]): Promise<void> {
   const [first, ...rest] = statements
   if (first) await db.batch([first, ...rest])
+}
+
+/** runBatch for a batch led by a guard; false (nothing written) when the guard refused it. */
+async function runGuardedBatch(db: Db, statements: readonly Statement[]): Promise<boolean> {
+  try {
+    await runBatch(db, statements)
+    return true
+  } catch (error) {
+    if (isBatchGuardFailure(error)) return false
+    throw error
+  }
 }
 
 export type SageSyncOutcome =
@@ -494,8 +528,9 @@ export async function syncPayRequestFromSageSnapshot(
     const sameSnapshot = latest?.snapshotId === snapshot.id
     const refreshable = SAGE_REFRESHABLE_STATUSES.some((status) => status === existing.status)
     if (existing.billingSource === "sage" && refreshable && !sameSnapshot) {
-      await runBatch(db, await replaceWithSageStatements(db, { projectId, application: existing, snapshot, lines, event: "refreshed", userId, now }))
-      kind = "refreshed"
+      const replaced = await runGuardedBatch(db, await replaceWithSageStatements(db, { projectId, application: existing, snapshot, lines, event: "refreshed", userId, now }))
+      // Approved for billing meanwhile: it keeps its amounts.
+      kind = replaced ? "refreshed" : "locked"
     } else if (existing.billingSource !== "sage" && !sameSnapshot) {
       // A pay application built in Compass: link it and leave its amounts alone.
       await runBatch(db, [
@@ -525,7 +560,7 @@ export async function syncPayRequestFromSageSnapshot(
       ])
     }
   }
-  const followsSage = application.billingSource === "sage" && SAGE_REFRESHABLE_STATUSES.some((status) => status === application.status)
+  const followsSage = kind !== "locked" && application.billingSource === "sage" && SAGE_REFRESHABLE_STATUSES.some((status) => status === application.status)
   const ticketsMarked = followsSage
     ? await markShopTicketsCoveredBySage(db, { projectId, applicationId: application.id, periodTo: snapshot.header.periodTo, lines, userId, now })
     : []
@@ -616,10 +651,11 @@ export async function applySageAmounts(
   const snapshot = await loadSageSnapshot(db, projectId, latest.snapshotId)
   if (!snapshot) throw new Error("Sage's pay application totals need review before its amounts can be used.")
   const { lines } = await mappedSnapshotLines(db, projectId, snapshot)
-  await runBatch(
+  const replaced = await runGuardedBatch(
     db,
     await replaceWithSageStatements(db, { projectId, application, snapshot, lines, event: "sage_amounts_applied", userId: input.actor.id, now })
   )
+  if (!replaced) throw new Error("This pay application was approved or changed meanwhile. Refresh to see where it stands.")
   const ticketsMarked = await markShopTicketsCoveredBySage(db, { projectId, applicationId, periodTo: snapshot.header.periodTo, lines, userId: input.actor.id, now })
   await recordActivityEvent({
     db,

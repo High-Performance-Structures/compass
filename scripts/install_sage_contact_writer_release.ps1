@@ -15,8 +15,8 @@ $candidate = Join-Path $work 'CompassSageContactRelease.exe'
 $compiler = Join-Path $env:WINDIR 'Microsoft.NET\Framework\v4.0.30319\csc.exe'
 $base = "https://raw.githubusercontent.com/High-Performance-Structures/compass/$SourceCommit/scripts"
 $sources = @(
-    @{ Name = 'Sage.100.Contractor.CompassClientProjectWriter.cs'; Hash = '965525DC6343796AD081430F93297B284841326BE50FF44BD1B18387877C901D' },
-    @{ Name = 'Sage.100.Contractor.CompassContactWriter.cs'; Hash = 'D27D54245B605D525669E65C34752B183863B2D81FCC9928FD48696D4C0B7FBC' }
+    @{ Name = 'Sage.100.Contractor.CompassClientProjectWriter.cs'; Hash = 'FD4A723AEADD0DE5581E2563857774B45958E8988A530CB73DF35150ADFEDCE1' },
+    @{ Name = 'Sage.100.Contractor.CompassContactWriter.cs'; Hash = '6B3E0595A66CC7B71FFF1CB15F028E0A469499CA764D5D98ADE1D7D9A5FCFA27' }
 )
 
 $identity = [Security.Principal.WindowsIdentity]::GetCurrent()

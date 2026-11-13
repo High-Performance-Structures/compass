@@ -48,6 +48,7 @@ export function PayApplicationBillingControls({
     readonly applicationNumber: string
     readonly status: string
     readonly billedAt: string | null
+    readonly updatedAt: string
     readonly sageInvoiceNumber: string | null
   }
   readonly onMessage: (message: string) => void
@@ -93,7 +94,7 @@ export function PayApplicationBillingControls({
             <AlertDialogCancel>Not yet</AlertDialogCancel>
             <AlertDialogAction
               onClick={() => run(
-                () => approveProjectOwnerPayApplicationForBilling(projectId, application.id),
+                () => approveProjectOwnerPayApplicationForBilling(projectId, application.id, application.updatedAt),
                 `Pay application ${application.applicationNumber} is billed and visible to the owner.`
               )}
             >

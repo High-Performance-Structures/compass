@@ -9,18 +9,30 @@
  * covers only the moves Compass makes as a side effect of something else:
  *
  *   publish        needed | proposed ──▶ owner_review        (released to the owner)
- *   owner_approve  needed | proposed | owner_review ──▶ approved   (owner approved a published decision)
  *   owner_sign     needed | proposed | owner_review | pricing | rfq_sent | unavailable ──▶ approved
  *                                                             (the owner e-signed a Selection Phase)
  *   order          needed … rfq_sent ──▶ ordered             (a linked purchase order went out)
  *   install        needed … ordered ──▶ installed            (a daily log ticked it installed)
- *   reopen         any ──▶ owner_review                      (staff changed a signed pick, or a
+ *   reopen         any but ordered | installed ──▶ owner_review
+ *                                                             (staff changed a signed pick, or a
  *                                                             re-imported approved row changed)
+ *
+ * Only a signed document approves a selection (owner decision 2026-11-12).
+ * The owner's click on a published decision ("Confirm my choice") records
+ * their choice: a decision event and Activity, never a status move, and
+ * never a price, budget, variance or change order change.
+ *
+ * Ordered and installed selections are locked (locks.ts): nothing here moves
+ * them back, and staff may only move an ordered one on to Installed, or to
+ * Unavailable when the supplier can't fill it (a staff-only move; no
+ * automation makes it). A
+ * change after purchase or installation is a new selection that replaces it
+ * (replacement.ts), with a change order.
  *
  * An event never moves a selection that is not in one of its source states,
  * so automation never pulls an ordered, installed, deferred or unavailable
- * selection back (only `reopen`, which undoes an owner approval, does).
- * Approvals still record the owner's approval when the status stays.
+ * selection back; `reopen` undoes a signed approval but never moves an
+ * ordered or installed selection.
  */
 import { defineMachine, nextState } from "@/lib/shared/state-machine"
 import { isListValue } from "@/lib/shared/statuses"
@@ -41,16 +53,15 @@ export const selectionStatusAutomation = defineMachine({
   initial: "needed",
   // Staff create a selection in any status, and set any status by hand.
   entry: PROJECT_SELECTION_STATUSES,
-  terminal: [],
+  // Installed is locked: automation never moves it again (a replacement is a new selection).
+  terminal: ["installed"],
   transitions: {
     publish: { from: ["needed", "proposed"], to: "owner_review" },
-    // Pricing, RFQ sent, Deferred and Unavailable are progress staff set on
-    // purpose; a click approval leaves them (the owner_sign list predates it).
-    owner_approve: { from: ["needed", "proposed", "owner_review"], to: "approved" },
     owner_sign: { from: ["needed", "proposed", "owner_review", "pricing", "rfq_sent", "unavailable"], to: "approved" },
     order: { from: BEFORE_ORDERED, to: "ordered" },
     install: { from: [...BEFORE_ORDERED, "ordered"], to: "installed" },
-    reopen: { from: PROJECT_SELECTION_STATUSES, to: "owner_review" },
+    // Never an ordered or installed selection: those are replaced, not reopened.
+    reopen: { from: ["needed", "proposed", "owner_review", "approved", "pricing", "rfq_sent", "unavailable", "deferred"], to: "owner_review" },
   },
 })
 

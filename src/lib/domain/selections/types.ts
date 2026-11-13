@@ -146,6 +146,8 @@ export type ApplyProjectFinishScheduleImportResult =
       readonly removedCount: number
       readonly conflictCount: number
       readonly staleCount: number
+      /** Workbook rows left out because staff deleted their room in Compass. */
+      readonly skippedCount: number
       readonly roomCount: number
     }
   | { readonly success: false; readonly error: string }

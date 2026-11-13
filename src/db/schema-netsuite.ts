@@ -126,6 +126,11 @@ export const invoices = sqliteTable("invoices", {
   finalizedByUserId: text("finalized_by_user_id").references(() => users.id, { onDelete: "set null" }),
   emailedAt: text("emailed_at"),
   emailedByUserId: text("emailed_by_user_id").references(() => users.id, { onDelete: "set null" }),
+  /** Send claim (lease) held while an email of the invoice is being sent (0322); emailed_at means delivered. */
+  emailClaimedAt: text("email_claimed_at"),
+  emailClaimedBy: text("email_claimed_by").references(() => users.id, { onDelete: "set null" }),
+  /** A send whose outcome is unknown (it may have gone out); cleared by a delivered send or staff confirming it didn't. */
+  emailUnconfirmedAt: text("email_unconfirmed_at"),
   voidedAt: text("voided_at"),
   voidedByUserId: text("voided_by_user_id").references(() => users.id, { onDelete: "set null" }),
   voidReason: text("void_reason"),
@@ -141,6 +146,7 @@ export const invoices = sqliteTable("invoices", {
   index("invoices_tax_entity_id_idx").on(table.taxEntityId),
   index("invoices_finalized_by_user_id_idx").on(table.finalizedByUserId),
   index("invoices_emailed_by_user_id_idx").on(table.emailedByUserId),
+  index("invoices_email_claimed_by_idx").on(table.emailClaimedBy),
   index("invoices_voided_by_user_id_idx").on(table.voidedByUserId),
   index("invoices_created_by_user_id_idx").on(table.createdByUserId),
   uniqueIndex("invoices_source_identity_unique")

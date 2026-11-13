@@ -42,14 +42,13 @@ describe("selection status automation", () => {
     }
   })
 
-  it("an approval never rewinds procurement or installation", () => {
-    expect(automaticSelectionStatus("owner_approve", "owner_review")).toBe("approved")
-    expect(automaticSelectionStatus("owner_approve", "pricing")).toBeNull()
+  it("only a signature approves, and it never rewinds procurement or installation", () => {
+    // The owner's click records their choice; it is no longer a status event.
+    expect(Object.keys(selectionStatusAutomation.transitions)).not.toContain("owner_approve")
+    expect(automaticSelectionStatus("owner_sign", "owner_review")).toBe("approved")
     expect(automaticSelectionStatus("owner_sign", "rfq_sent")).toBe("approved")
     expect(automaticSelectionStatus("owner_sign", "unavailable")).toBe("approved")
-    for (const event of ["owner_approve", "owner_sign"] as const) {
-      for (const status of ["approved", "ordered", "installed", "deferred"]) expect(automaticSelectionStatus(event, status)).toBeNull()
-    }
+    for (const status of ["approved", "ordered", "installed", "deferred"]) expect(automaticSelectionStatus("owner_sign", status)).toBeNull()
   })
 
   it("a purchase order or daily log never moves a selection back, or out of deferred or unavailable", () => {
@@ -60,10 +59,17 @@ describe("selection status automation", () => {
     for (const status of ["installed", "deferred", "unavailable"]) expect(automaticSelectionStatus("install", status)).toBeNull()
   })
 
-  it("reopening sends any selection back to the owner, and old spellings are left alone", () => {
-    for (const status of PROJECT_SELECTION_STATUSES) expect(automaticSelectionStatus("reopen", status)).toBe("owner_review")
+  it("reopening sends a selection back to the owner, but never an ordered or installed one", () => {
+    for (const status of PROJECT_SELECTION_STATUSES) {
+      expect(automaticSelectionStatus("reopen", status)).toBe(status === "ordered" || status === "installed" ? null : "owner_review")
+    }
     expect(automaticSelectionStatus("reopen", "selected")).toBeNull()
     expect(automaticSelectionStatus("order", "Approved")).toBeNull()
+  })
+
+  it("installed is terminal for automation", () => {
+    expect(availableEvents(selectionStatusAutomation, "installed")).toEqual([])
+    expect(availableEvents(selectionStatusAutomation, "ordered")).toEqual(["install"])
   })
 })
 
@@ -149,6 +155,45 @@ describe("selection status writes", () => {
       { id: "legacy", status: "selected", owner_approved: 1 },
       { id: "tile", status: "ordered", owner_approved: 1 },
     ])
+  })
+
+  it("staff can't move an installed selection, and move an ordered one only on to Installed", async () => {
+    const db = drizzleOverSqlite(sqlite)
+    sqlite.exec(`UPDATE project_finish_selections SET status = 'installed' WHERE id = 'tile'`)
+    await expect(setSelectionStatusByStaff(db, { projectId: "p1", selectionId: "tile", expected: "installed", status: "owner_review" })).rejects.toThrow(/installed/)
+    expect(statusOf("tile")).toEqual({ status: "installed" })
+    sqlite.exec(`UPDATE project_finish_selections SET status = 'ordered' WHERE id = 'tile'`)
+    await expect(setSelectionStatusByStaff(db, { projectId: "p1", selectionId: "tile", expected: "ordered", status: "needed" })).rejects.toThrow(/ordered/)
+    expect(await setSelectionStatusByStaff(db, { projectId: "p1", selectionId: "tile", expected: "ordered", status: "installed" })).toBe(true)
+  })
+
+  it("a reopen leaves ordered and installed selections where they are", async () => {
+    const db = drizzleOverSqlite(sqlite)
+    sqlite.exec(`
+      INSERT INTO project_finish_selections (id, project_id, room_name, name, status, created_at, updated_at) VALUES
+        ('ordered', 'p1', 'Bath', 'Faucet', 'ordered', '${NOW}', '${NOW}'),
+        ('installed', 'p1', 'Bath', 'Sink', 'installed', '${NOW}', '${NOW}');
+    `)
+    await updateFinishSelectionsWithEvent(db, eq(projectFinishSelections.projectId, "p1"), "reopen", { ownerApproved: false })
+    expect(sqlite.prepare("SELECT id, status FROM project_finish_selections WHERE id IN ('tile', 'ordered', 'installed') ORDER BY id").all()).toEqual([
+      { id: "installed", status: "installed" },
+      { id: "ordered", status: "ordered" },
+      { id: "tile", status: "owner_review" },
+    ])
+  })
+
+  it("a replaced selection's status never moves, by staff or automation", async () => {
+    const db = drizzleOverSqlite(sqlite)
+    sqlite.exec(`
+      INSERT INTO project_finish_selections (id, project_id, room_name, name, status, replaces_selection_id, replacement_reason, created_at, updated_at)
+      VALUES ('new-tile', 'p1', 'Kitchen', 'Backsplash', 'needed', 'tile', 'owner_changed_after_purchase', '${NOW}', '${NOW}');
+    `)
+    expect(await setSelectionStatusByStaff(db, { projectId: "p1", selectionId: "tile", expected: "approved", status: "pricing" })).toBe(false)
+    expect(await advanceSelectionStatus(db, { projectId: "p1", selectionIds: ["tile"], target: "ordered", reason: { kind: "published" }, actor })).toEqual([])
+    await updateFinishSelectionsWithEvent(db, eq(projectFinishSelections.id, "tile"), "reopen", {})
+    expect(statusOf("tile")).toEqual({ status: "approved" })
+    // The replacement itself moves as usual.
+    expect(await setSelectionStatusByStaff(db, { projectId: "p1", selectionId: "new-tile", expected: "needed", status: "proposed" })).toBe(true)
   })
 
   it("plain updates refuse a status", async () => {

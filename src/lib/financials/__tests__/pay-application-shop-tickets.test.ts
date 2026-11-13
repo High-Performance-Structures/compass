@@ -37,6 +37,8 @@ const TABLES: readonly SQLiteTable[] = [
 
 let sqlite: InstanceType<typeof Database>
 let db: Db
+// Runs once before the next batch: a write that lands between a read and its batch.
+let beforeNextBatch: (() => void) | null = null
 
 function createTable(table: SQLiteTable): void {
   const config = getTableConfig(table)
@@ -130,7 +132,18 @@ beforeEach(() => {
     update: base.update.bind(base),
     insert: base.insert.bind(base),
     delete: base.delete.bind(base),
-    batch: async (queries: readonly { run(): unknown }[]) => sqlite.transaction(() => queries.map((query) => query.run()))(),
+    batch: async (queries: readonly { run(): unknown }[]) => {
+      const hook = beforeNextBatch
+      beforeNextBatch = null
+      hook?.()
+      // D1 refuses a statement with more than 100 bound parameters.
+      for (const query of queries) {
+        const toSQL: unknown = Reflect.get(query, "toSQL")
+        const params: number = typeof toSQL === "function" ? Reflect.apply(toSQL, query, []).params.length : 0
+        if (params > 100) throw new Error(`too many SQL variables (${params})`)
+      }
+      return sqlite.transaction(() => queries.map((query) => query.run()))()
+    },
   }
   // The test double covers the calls the module makes; D1's handle has more.
   db = mock as unknown as Db
@@ -254,6 +267,55 @@ describe("shop tickets on an owner pay application", () => {
     )
     await expect(attachShopTicket(db, "job", "app-3", "t2")).rejects.toThrow("Only a draft")
     expect(await linkShopTicketsByNumber(db, "job", "app-3")).toBe(0)
+  })
+})
+
+describe("shop ticket imports racing other changes", () => {
+  it("an import never overwrites current work typed in meanwhile", async () => {
+    await linkShopTicketsByNumber(db, "job", "app-3")
+    // Staff type $900 on concrete after the import read the lines.
+    beforeNextBatch = () => sqlite.prepare("UPDATE project_budget_lines SET current_work_completed = 900 WHERE id = 'concrete'").run()
+    await expect(importShopTickets(db, { projectId: "job", applicationId: "app-3", userId: "staff", now: NOW })).rejects.toThrow("changed while")
+    expect((await line("concrete"))?.currentWorkCompleted).toBe(900)
+    expect(await db.select().from(payApplicationShopTicketImports)).toEqual([])
+    // Importing again adds the tickets on top of what was typed.
+    await importShopTickets(db, { projectId: "job", applicationId: "app-3", userId: "staff", now: NOW })
+    expect((await line("concrete"))?.currentWorkCompleted).toBe(1_175)
+  })
+
+  it("an import never overwrites stored materials or retainage changed meanwhile", async () => {
+    await linkShopTicketsByNumber(db, "job", "app-3")
+    beforeNextBatch = () => sqlite.prepare("UPDATE project_budget_lines SET stored_materials = 250 WHERE id = 'concrete'").run()
+    await expect(importShopTickets(db, { projectId: "job", applicationId: "app-3", userId: "staff", now: NOW })).rejects.toThrow("changed while")
+    expect((await line("concrete"))?.currentWorkCompleted).toBe(500)
+  })
+
+  it("imports onto a draw with many lines within D1's parameter limit", async () => {
+    const codes = Array.from({ length: 64 }, (_, index) => `09 ${String(10 + index).padStart(2, "0")} 00`)
+    drizzle(sqlite).insert(projectBudgetLines).values(codes.map((code, index) => budgetLine(`big-${index}`, code, 10_000))).run()
+    drizzle(sqlite).insert(shopTickets).values(ticket("big", 9, 3)).run()
+    drizzle(sqlite).insert(shopTicketLines).values(codes.map((code, index) => ({ ...ticketLine(`bl-${index}`, "big", code, 10_000), lineNumber: index + 1 }))).run()
+    await linkShopTicketsByNumber(db, "job", "app-3")
+    const result = await importShopTickets(db, { projectId: "job", applicationId: "app-3", userId: "staff", now: NOW })
+    expect((await line("big-63"))?.currentWorkCompleted).toBe(100)
+    expect(result.addedCents).toBe(64 * 10_000 + 67_500)
+  })
+
+  it("an import racing Ready for review changes nothing", async () => {
+    await linkShopTicketsByNumber(db, "job", "app-3")
+    beforeNextBatch = () => sqlite.prepare("UPDATE project_budget_applications SET status = 'internal_review' WHERE id = 'app-3'").run()
+    await expect(importShopTickets(db, { projectId: "job", applicationId: "app-3", userId: "staff", now: NOW })).rejects.toThrow("changed while")
+    expect((await line("concrete"))?.currentWorkCompleted).toBe(500)
+  })
+
+  it("marking a ticket already included while it is being imported keeps only one", async () => {
+    await linkShopTicketsByNumber(db, "job", "app-3")
+    beforeNextBatch = () =>
+      sqlite
+        .prepare("INSERT INTO pay_application_shop_ticket_imports (id, application_id, ticket_id, budget_line_id, amount_cents, mode, created_at) VALUES ('mark', 'app-3', 't1', NULL, 0, 'already_included', ?)")
+        .run(NOW)
+    await expect(importShopTickets(db, { projectId: "job", applicationId: "app-3", userId: "staff", now: NOW })).rejects.toThrow("changed while")
+    expect(await db.select({ mode: payApplicationShopTicketImports.mode }).from(payApplicationShopTicketImports)).toEqual([{ mode: "already_included" }])
   })
 })
 

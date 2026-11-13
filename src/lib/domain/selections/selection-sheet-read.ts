@@ -13,6 +13,9 @@ import type { Db } from "@/lib/server/action-context"
 
 import { selectionSheetRows, type SelectionSheetInput, type SelectionSheetRow } from "@/lib/selections/sheet"
 
+import { signedSelectionIds } from "./lock-read"
+import { roomOrderBy } from "@/lib/domain/selections/room-order"
+
 export async function loadSelectionSheet(db: Db, projectId: string): Promise<readonly SelectionSheetRow[]> {
   const [selections, choices, dependents] = await Promise.all([
     db
@@ -30,11 +33,13 @@ export async function loadSelectionSheet(db: Db, projectId: string): Promise<rea
         dueDate: projectSelectionDecisions.decisionDueDate,
         published: projectSelectionDecisions.published,
         roundKey: projectFinishSelections.roundKey,
+        replacesSelectionId: projectFinishSelections.replacesSelectionId,
+        ownerApproved: projectFinishSelections.ownerApproved,
       })
       .from(projectFinishSelections)
       .leftJoin(projectSelectionDecisions, eq(projectSelectionDecisions.selectionId, projectFinishSelections.id))
       .where(eq(projectFinishSelections.projectId, projectId))
-      .orderBy(asc(projectFinishSelections.roomName), asc(projectFinishSelections.sortOrder), asc(projectFinishSelections.name)),
+      .orderBy(...roomOrderBy(), asc(projectFinishSelections.roomName), asc(projectFinishSelections.sortOrder), asc(projectFinishSelections.name)),
     db
       .select({
         selectionId: projectSelectionChoices.selectionId,
@@ -51,8 +56,16 @@ export async function loadSelectionSheet(db: Db, projectId: string): Promise<rea
       .innerJoin(projectSelectionChoices, eq(projectSelectionChoices.id, projectSelectionChoiceDependents.choiceId))
       .where(eq(projectSelectionChoices.projectId, projectId)),
   ])
+  const signed = await signedSelectionIds(db, projectId)
+  const replacedIds = new Set(selections.flatMap((row) => (row.replacesSelectionId ? [row.replacesSelectionId] : [])))
   const input: SelectionSheetInput = {
-    selections: selections.map((row) => ({ ...row, published: row.published === true })),
+    selections: selections.map((row) => ({
+      ...row,
+      published: row.published === true,
+      signed: signed.has(row.id),
+      replaced: replacedIds.has(row.id),
+      replacement: row.replacesSelectionId !== null,
+    })),
     choices,
     dependents,
   }

@@ -68,6 +68,8 @@ export type FinancialsData = {
   readonly customers: Customer[]
   readonly vendors: Vendor[]
   readonly invoices: Invoice[]
+  /** Invoices whose amount paid and status come from recorded payments (not editable here). */
+  readonly invoiceIdsSetByPayments: readonly string[]
   readonly bills: VendorBill[]
   readonly payments: Payment[]
   readonly creditMemos: CreditMemo[]
@@ -260,7 +262,7 @@ export function FinancialsWorkspace({ data }: { readonly data: FinancialsData })
     [projectsList]
   )
 
-  const handleInvoiceSubmit = async (data: Parameters<typeof createInvoice>[0] & { lineItems: string; subtotal: number; tax: number; total: number; amountPaid: number; amountDue: number }) => {
+  const handleInvoiceSubmit = async (data: Parameters<typeof createInvoice>[0] & { lineItems: string; subtotal: number; tax: number; total: number; amountPaid?: number; amountDue: number }) => {
     const saved = await saveRecord("Invoice", editingInvoice !== null, () =>
       editingInvoice ? updateInvoice(editingInvoice.id, data) : createInvoice(data))
     if (!saved) return
@@ -384,6 +386,7 @@ export function FinancialsWorkspace({ data }: { readonly data: FinancialsData })
         open={invoiceDialogOpen}
         onOpenChange={setInvoiceDialogOpen}
         initialData={editingInvoice}
+        paidByPayments={editingInvoice !== null && data.invoiceIdsSetByPayments.includes(editingInvoice.id)}
         customers={customersList}
         projects={projectsList}
         onSubmit={handleInvoiceSubmit}

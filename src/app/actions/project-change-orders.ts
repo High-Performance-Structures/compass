@@ -71,6 +71,7 @@ import {
   insertChangeOrderStatement,
   updateChangeOrdersStatement,
 } from "@/lib/domain/estimates/store"
+import { changeOrderEditStatements, runGuardedChangeOrderBatch } from "@/lib/domain/estimates/change-order-status-store"
 import { cleanText } from "@/lib/shared/guards"
 import { changeOrderCompletionView } from "@/lib/domain/estimates/rules"
 import { changeOrderAcceptanceView, changeOrderExecutionLinesError } from "@/lib/domain/estimates/change-order-acceptance"
@@ -996,7 +997,6 @@ export async function updateProjectChangeOrder(
             ? rebaselineSelection?.replacement.id ??
               existing.replacementEstimateId
             : null,
-        status: input.status,
         submittedAt:
           input.status === "submitted"
             ? existing.submittedAt ?? now
@@ -1064,36 +1064,32 @@ export async function updateProjectChangeOrder(
             ),
           ]
         : []
-    if (documents === null) {
-      await context.db.batch([updateStatement, ...deleteLinesStatements, historyStatement])
-    } else {
-      const deleteDocumentsStatement = deleteChangeOrderDocumentsStatement(
+    // Compare-and-set on the status read above: a second click, or someone
+    // executing or voiding it meanwhile, refuses the whole batch.
+    const editStatements = changeOrderEditStatements(context.db, { changeOrderId, projectId, expected: existing.status, to: input.status })
+    if (!editStatements) return { success: false, error: "That status transition is not allowed." }
+    const documentStatements = documents === null ? [] : [
+      deleteChangeOrderDocumentsStatement(
         context.db,
-        and(
-          eq(projectChangeOrderDocuments.changeOrderId, changeOrderId),
-          eq(projectChangeOrderDocuments.projectId, projectId)
-        )
-      )
-      const documentRows = documents.map((document) => ({
-        id: crypto.randomUUID(),
-        projectId,
-        changeOrderId,
-        label: document.label,
-        url: document.url,
-        notes: document.notes,
-        createdBy: context.user.id,
-        createdAt: now,
-      }))
-      await context.db.batch([
-        updateStatement,
-        deleteDocumentsStatement,
-        ...(documentRows.length > 0
-          ? [insertChangeOrderDocumentStatement(context.db, documentRows)]
-          : []),
-        ...deleteLinesStatements,
-        historyStatement,
-      ])
-    }
+        and(eq(projectChangeOrderDocuments.changeOrderId, changeOrderId), eq(projectChangeOrderDocuments.projectId, projectId))
+      ),
+      ...(documents.length > 0
+        ? [insertChangeOrderDocumentStatement(context.db, documents.map((document) => ({
+            id: crypto.randomUUID(),
+            projectId,
+            changeOrderId,
+            label: document.label,
+            url: document.url,
+            notes: document.notes,
+            createdBy: context.user.id,
+            createdAt: now,
+          })))]
+        : []),
+    ]
+    const saved = await runGuardedChangeOrderBatch(context.db, [
+      ...editStatements, updateStatement, ...documentStatements, ...deleteLinesStatements, historyStatement,
+    ])
+    if (!saved) return { success: false, error: "This change order changed while you were working on it. Refresh to see where it stands." }
     if (statusChanged && input.status === "executed") {
       await rebuildProjectContractBudget({
         db: context.db,

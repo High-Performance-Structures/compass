@@ -86,4 +86,10 @@ describe("spreadsheetIdFromUrl", () => {
     ).toBe("source-sheet-id")
     expect(spreadsheetIdFromUrl("https://example.com/not-a-sheet")).toBeNull()
   })
+
+  it("ignores the share settings Google adds after the id", () => {
+    expect(spreadsheetIdFromUrl("https://docs.google.com/spreadsheets/d/source-sheet-id?usp=sharing")).toBe("source-sheet-id")
+    expect(spreadsheetIdFromUrl("https://docs.google.com/spreadsheets/d/source_sheet-ID2/edit?usp=drive_link&ouid=1#gid=5")).toBe("source_sheet-ID2")
+    expect(spreadsheetIdFromUrl("https://docs.google.com/spreadsheets/d/source-sheet-id#gid=0")).toBe("source-sheet-id")
+  })
 })

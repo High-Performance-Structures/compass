@@ -2,7 +2,7 @@ import { Suspense } from "react"
 
 import { getCustomers } from "@/app/actions/customers"
 import { getVendors } from "@/app/actions/vendors"
-import { getInvoices } from "@/app/actions/invoices"
+import { getInvoiceIdsSetByPayments, getInvoices } from "@/app/actions/invoices"
 import { getVendorBills } from "@/app/actions/vendor-bills"
 import { getPayments } from "@/app/actions/payments"
 import { getCreditMemos } from "@/app/actions/credit-memos"
@@ -16,6 +16,7 @@ const EMPTY: FinancialsData = {
   customers: [],
   vendors: [],
   invoices: [],
+  invoiceIdsSetByPayments: [],
   bills: [],
   payments: [],
   creditMemos: [],
@@ -26,7 +27,7 @@ const EMPTY: FinancialsData = {
 /** Every list the workspace shows, read once on the server. */
 async function loadFinancials(): Promise<FinancialsData> {
   try {
-    const [customers, vendors, invoices, bills, payments, creditMemos, squareReceipts] =
+    const [customers, vendors, invoices, bills, payments, creditMemos, squareReceipts, invoiceIdsSetByPayments] =
       await Promise.all([
         getCustomers(),
         getVendors(),
@@ -35,8 +36,9 @@ async function loadFinancials(): Promise<FinancialsData> {
         getPayments(),
         getCreditMemos(),
         getSageSquareReceipts(),
+        getInvoiceIdsSetByPayments(),
       ])
-    return { customers, vendors, invoices, bills, payments, creditMemos, squareReceipts, loadFailed: false }
+    return { customers, vendors, invoices, invoiceIdsSetByPayments, bills, payments, creditMemos, squareReceipts, loadFailed: false }
   } catch {
     // The workspace shows the same "Failed to load financial data" toast.
     return EMPTY

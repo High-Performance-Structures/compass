@@ -65,6 +65,9 @@ jobs:
       - uses: actions/checkout@v4
       - uses: oven-sh/setup-bun@v2
       - run: bun install --frozen-lockfile
+      # The production build peaks near Node's default ~4 GB heap; give it room.
       - run: bun run build
+        env:
+          NODE_OPTIONS: --max-old-space-size=6144
       # Shared server code must stay in one copy (docs/architecture/server-bundle.md).
       - run: bun run bundle:check

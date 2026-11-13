@@ -103,6 +103,11 @@ export function SimpleInvoiceSettingsSection(): React.ReactElement {
             </div>
             <Switch id="simple-invoice-square-ach" checked={value.squareAcceptBankTransfer} disabled={disabled} onCheckedChange={(checked) => setValue({ ...value, squareAcceptBankTransfer: checked })} />
           </div>
+          <div className="max-w-xs space-y-2">
+            <Label htmlFor="simple-invoice-resend-window">Wait before emailing the same invoice again (minutes)</Label>
+            <Input id="simple-invoice-resend-window" type="number" min={1} max={60} step={1} value={value.emailResendWindowMinutes} disabled={disabled} onChange={(event) => setValue({ ...value, emailResendWindowMinutes: Number(event.target.value) })} />
+            <p className="text-xs text-muted-foreground">Stops a double click or two people from sending one invoice twice. A failed send can be retried right away.</p>
+          </div>
           <div className="flex flex-wrap items-center gap-2">
             {canEdit ? (
               <>

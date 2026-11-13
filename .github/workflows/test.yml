@@ -47,6 +47,9 @@ jobs:
 
       - name: Build application
         run: bun run build
+        # The production build peaks near Node's default ~4 GB heap; give it room.
+        env:
+          NODE_OPTIONS: --max-old-space-size=6144
 
       - name: Prepare deterministic E2E database
         run: bun run test:e2e:prepare

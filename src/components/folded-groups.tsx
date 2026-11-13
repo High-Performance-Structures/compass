@@ -81,6 +81,7 @@ export function FoldedGroup({
   open,
   onToggle,
   actions,
+  leading,
   children,
 }: {
   readonly title: string
@@ -91,12 +92,15 @@ export function FoldedGroup({
   readonly onToggle: () => void
   /** Buttons beside the header (kept outside the fold button). */
   readonly actions?: React.ReactNode
+  /** A control before the title, such as a reorder handle (kept outside the fold button). */
+  readonly leading?: React.ReactNode
   readonly children: React.ReactNode
 }): React.ReactElement {
   const Chevron = open ? IconChevronDown : IconChevronRight
   return (
     <section className="border bg-background" aria-label={title}>
       <div className={cn("selection-room-header flex items-center gap-2 px-3 py-2", open && "border-b")}>
+        {leading}
         <button
           type="button"
           aria-expanded={open}

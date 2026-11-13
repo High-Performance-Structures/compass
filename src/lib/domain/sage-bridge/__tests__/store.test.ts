@@ -1,4 +1,4 @@
-import { and, eq, lt, or, sql } from "drizzle-orm"
+import { and, eq, inArray, lt, or, sql } from "drizzle-orm"
 import { describe, expect, it } from "vitest"
 
 import { getDb } from "@/db"
@@ -54,9 +54,9 @@ describe("Sage bridge store: Drizzle builders keep the caller's fences", () => {
     expect(deleteSageBridgeRequestNonces(db, cutoff).toSQL()).toEqual(db.delete(sageBridgeRequestNonces).where(cutoff).toSQL())
   })
 
-  it("claims client/project writes with the stale-claim fence intact", () => {
+  it("claims client/project writes with the stale-claim fence intact, plus the machine's source states", () => {
     const changes = {
-      status: "running", claimToken: "t1", claimedAt: now,
+      status: "running" as const, claimToken: "t1", claimedAt: now,
       attemptCount: sql`${sageClientProjectWriteOperations.attemptCount} + 1`, updatedAt: now,
     }
     const fence = and(eq(sageClientProjectWriteOperations.id, "op1"), or(
@@ -64,14 +64,20 @@ describe("Sage bridge store: Drizzle builders keep the caller's fences", () => {
       and(eq(sageClientProjectWriteOperations.status, "running"), lt(sageClientProjectWriteOperations.claimedAt, stale)),
     ))
     expect(updateSageClientProjectWriteOperations(db, changes, fence).toSQL()).toEqual(
-      db.update(sageClientProjectWriteOperations).set(changes).where(fence).toSQL(),
+      db.update(sageClientProjectWriteOperations).set(changes)
+        .where(and(fence, inArray(sageClientProjectWriteOperations.status, ["queued", "running"]))).toSQL(),
+    )
+    // A patch without a status keeps only the caller's fence.
+    const noStatus = { errorMessage: "x", updatedAt: now }
+    expect(updateSageClientProjectWriteOperations(db, noStatus, fence).toSQL()).toEqual(
+      db.update(sageClientProjectWriteOperations).set(noStatus).where(fence).toSQL(),
     )
   })
 
   it("queues client/project writes and labor requests with the same SQL", () => {
     const operation = {
       id: "op1", organizationId: "org-1", customerId: "c1", projectId: null, requestedByUserId: "u1",
-      operationType: "ensure_client", idempotencyKey: "customer:c1", payloadJson: "{}", status: "queued",
+      operationType: "ensure_client", idempotencyKey: "customer:c1", payloadJson: "{}", status: "queued" as const,
       requestedAt: now, updatedAt: now,
     }
     expect(insertSageClientProjectWriteOperation(db, operation).toSQL()).toEqual(
@@ -132,20 +138,20 @@ describe("Sage bridge store: raw statements", () => {
     }
   })
 
-  it("marks a client/project write succeeded with the same SQL and binds", () => {
+  it("marks a client/project write succeeded only under the result's lease", () => {
     const statement = sageClientProjectWriteSucceededStatement(d1, {
-      operationId: "op1", clientId: "c-id", clientNumber: "101", clientStatusNumber: 1,
+      operationId: "op1", leaseToken: "lease-1", clientId: "c-id", clientNumber: "101", clientStatusNumber: 1,
       jobId: null, jobNumber: null, jobStatusNumber: null, jobTypeNumber: null, now,
     })
     expect(statementShape(statement)).toEqual(expectedShape(
       `UPDATE sage_client_project_write_operations
-       SET status = 'succeeded', sage_client_id = ?, sage_client_number = ?,
+       SET status = ?, sage_client_id = ?, sage_client_number = ?,
            sage_job_id = ?, sage_job_number = ?,
            resolved_client_status_number = ?, resolved_job_status_number = ?,
            resolved_job_type_number = ?, error_message = NULL,
            completed_at = ?, updated_at = ?
-       WHERE id = ?`,
-      ["c-id", "101", null, null, 1, null, null, now, now, "op1"],
+       WHERE id = ? AND claim_token = ? AND status IN (?)`,
+      ["succeeded", "c-id", "101", null, null, 1, null, null, now, now, "op1", "lease-1", "running"],
     ))
   })
 

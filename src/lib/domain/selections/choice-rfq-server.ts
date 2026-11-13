@@ -17,6 +17,7 @@ import { parseSpecification } from "@/lib/selections/decisions"
 import type { Db } from "@/lib/server/action-context"
 
 import { setChoicePricesFromRfq } from "./choices-store"
+import { notifyPriceChangesDuringSignature } from "./price-change-notice"
 
 type FinishSelectionRow = typeof projectFinishSelections.$inferSelect
 
@@ -100,6 +101,20 @@ export async function choicesBelongToSelections(
   return wanted.every((line) => line.selectionId !== null && found.get(line.choiceId) === line.selectionId)
 }
 
+/** The choices' current prices, for comparing before and after a fill-back. */
+async function choicePrices(db: Db, projectId: string, choiceIds: readonly string[]) {
+  return db
+    .select({
+      id: projectSelectionChoices.id,
+      selectionId: projectSelectionChoices.selectionId,
+      title: projectSelectionChoices.title,
+      priceCents: projectSelectionChoices.priceCents,
+      ownerPriceCents: projectSelectionChoices.ownerPriceCents,
+    })
+    .from(projectSelectionChoices)
+    .where(and(eq(projectSelectionChoices.projectId, projectId), inArray(projectSelectionChoices.id, [...new Set(choiceIds)])))
+}
+
 /**
  * After a supplier answers an RFQ, copies each priced line onto the choice it
  * priced (supplier price; the RFQ's vendor becomes the choice's supplier when
@@ -128,7 +143,22 @@ async function applyRfqPricesToChoices(db: Db, projectId: string, rfqId: string,
   if (prices.length === 0) return 0
   const project = await db.select({ organizationId: projects.organizationId }).from(projects).where(eq(projects.id, projectId)).get()
   const settings = project?.organizationId ? await readFeatureSettings(db, project.organizationId, "selections") : null
+  const ids = prices.map((price) => price.choiceId)
+  const before = await choicePrices(db, projectId, ids)
   await setChoicePricesFromRfq(db, projectId, prices, rfq.vendorId, now, settings?.ownerMarkupPercent ?? null)
+  // A supplier's new price on a selection out for the owner's signature: the job's managers are told.
+  const after = new Map((await choicePrices(db, projectId, ids)).map((row) => [row.id, row]))
+  await notifyPriceChangesDuringSignature(db, {
+    projectId,
+    changes: before.flatMap((row) => {
+      const current = after.get(row.id)
+      return current
+        ? [{ choiceId: row.id, selectionId: row.selectionId, title: row.title, before: row, after: current }]
+        : []
+    }),
+    actor: null,
+    now,
+  })
   return prices.length
 }
 

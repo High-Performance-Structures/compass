@@ -1,4 +1,4 @@
-import { and, eq, inArray, sql, type SQL } from "drizzle-orm"
+import { and, eq, inArray, notInArray, sql, type SQL } from "drizzle-orm"
 import type { BatchItem } from "drizzle-orm/batch"
 import type { IndexColumn, SQLiteUpdateSetSource } from "drizzle-orm/sqlite-core"
 
@@ -7,11 +7,22 @@ import { selectionDeletionAllowed } from "@/lib/selections/deletion"
 import type { Db } from "@/lib/server/action-context"
 import { assertListFields } from "@/lib/shared/statuses"
 
+import { insertCopyStatement } from "./copy-rows"
+import { LOCKED_SELECTION_STATUSES, staffStatusChangeBlocker } from "./locks"
+import { archiveReplacementTodos } from "./selection-todos"
 import { automaticSelectionStatus, selectionStatusSources, selectionStatusTarget, type SelectionStatusEvent } from "./status-machine"
-import { PROJECT_SELECTION_STATUSES, type ProjectSelectionStatus } from "./statuses"
+import { PROJECT_SELECTION_STATUSES, SELECTION_REPLACEMENT_REASONS, type ProjectSelectionStatus, type SelectionReplacementReason } from "./statuses"
 
 // Enumerated columns are checked against their shared list before every write.
-const SELECTION_LISTS = { status: PROJECT_SELECTION_STATUSES }
+const SELECTION_LISTS = { status: PROJECT_SELECTION_STATUSES, replacementReason: SELECTION_REPLACEMENT_REASONS }
+
+/**
+ * True while no other selection replaces the row being written. A replaced
+ * selection stays on record as it was, so no status write touches it. The
+ * outer table is named in full: inside the subquery a bare "id" would be the
+ * replacement's.
+ */
+const notReplaced = sql`NOT EXISTS (SELECT 1 FROM project_finish_selections AS replacement WHERE replacement.replaces_selection_id = project_finish_selections.id)`
 
 /*
  * The only code that inserts, updates or deletes project finish selections and their rooms
@@ -56,6 +67,10 @@ export function updateSelectionRoomsStatement(db: Db, where: SQL | undefined, pa
   return db.update(projectFinishSelectionRooms).set(patch).where(where)
 }
 
+export function deleteSelectionRoomsStatement(db: Db, where: SQL | undefined): Statement {
+  return db.delete(projectFinishSelectionRooms).where(where)
+}
+
 // ---- projectFinishSelections
 
 type FinishSelectionInsert = typeof projectFinishSelections.$inferInsert
@@ -82,8 +97,20 @@ export function updateFinishSelectionsStatement(db: Db, where: SQL | undefined, 
   return db.update(projectFinishSelections).set(withoutStatus(patch)).where(where)
 }
 
-export async function updateFinishSelections(db: Db, where: SQL | undefined, patch: FinishSelectionPatch): Promise<D1Result> {
-  return db.update(projectFinishSelections).set(withoutStatus(patch)).where(where).run()
+/**
+ * Plain column update; the number of rows written. `unlockedOnly`: lands
+ * only on a row that is not ordered, installed or replaced at write time
+ * (locks.ts), for edits that change the product.
+ */
+export async function updateFinishSelections(
+  db: Db,
+  where: SQL | undefined,
+  patch: FinishSelectionPatch,
+  options: { readonly unlockedOnly?: boolean } = {},
+): Promise<number> {
+  const guarded = options.unlockedOnly ? and(where, unlockedSelection) : where
+  const result = await db.update(projectFinishSelections).set(withoutStatus(patch)).where(guarded).run()
+  return result.meta.changes
 }
 
 // ---- selection status (issue #1329, phase 2)
@@ -92,9 +119,14 @@ export async function updateFinishSelections(db: Db, where: SQL | undefined, pat
 // moves follow status-machine.ts. Both are compare-and-set, so a stale read
 // never overwrites a newer status. Every other update leaves status out.
 
+/** True while the row is neither ordered nor installed, and nothing replaces it. */
+const unlockedSelection = and(notInArray(projectFinishSelections.status, [...LOCKED_SELECTION_STATUSES]), notReplaced)
+
 /**
  * A staff status change: lands only while the selection still has
- * `expected`, the status the person saw. False when it changed meanwhile.
+ * `expected`, the status the person saw, and no selection replaces it.
+ * False when that changed meanwhile. Throws when the move is locked: an
+ * installed selection does not move, an ordered one only on to Installed.
  */
 export async function setSelectionStatusByStaff(
   db: Db,
@@ -107,7 +139,18 @@ export async function setSelectionStatusByStaff(
     readonly values?: FinishSelectionPatch
   },
 ): Promise<boolean> {
-  const values = { ...withoutStatus(input.values ?? {}), status: input.status }
+  const blocker = staffStatusChangeBlocker(input.expected, input.status, false)
+  if (blocker) throw new Error(blocker)
+  // Ordered → Unavailable (the supplier can't fill it): the old purchase
+  // order lets go (PO links before now no longer move it; history kept).
+  const unfilled =
+    input.expected === "ordered" && input.status === "unavailable"
+      ? { purchaseOrderOperationId: null, procurementReleasedAt: new Date().toISOString() }
+      : input.status === "ordered"
+        ? // Ordered again: a new order holds it.
+          { procurementReleasedAt: null }
+        : {}
+  const values = { ...withoutStatus(input.values ?? {}), ...unfilled, status: input.status }
   assertListFields("project_finish_selections", values, SELECTION_LISTS)
   const result = await db
     .update(projectFinishSelections)
@@ -118,6 +161,7 @@ export async function setSelectionStatusByStaff(
         eq(projectFinishSelections.projectId, input.projectId),
         // The stored value may be off the list (an old spelling), so compare as text.
         sql`${projectFinishSelections.status} = ${input.expected}`,
+        notReplaced,
       ),
     )
     .run()
@@ -151,6 +195,7 @@ export function automaticSelectionStatusStatement(
         eq(projectFinishSelections.id, move.selectionId),
         eq(projectFinishSelections.projectId, move.projectId),
         sql`${projectFinishSelections.status} = ${move.stored}`,
+        notReplaced,
       ),
     )
     .returning({ id: projectFinishSelections.id })
@@ -158,13 +203,14 @@ export function automaticSelectionStatusStatement(
 
 /**
  * `event`'s status as a column expression: the event's target where the row
- * is in one of its source statuses at write time, otherwise unchanged. For
- * writes whose other columns land regardless (an owner approval records the
- * approval even on an ordered selection; a reopen clears it everywhere).
+ * is in one of its source statuses at write time (and not replaced),
+ * otherwise unchanged. For writes whose other columns land regardless (a
+ * signature records the approval even on an ordered selection; a reopen
+ * clears it everywhere).
  */
 function statusAfterEvent(event: SelectionStatusEvent): SQL {
   const to = selectionStatusTarget(event)
-  return sql`CASE WHEN ${inArray(projectFinishSelections.status, [...selectionStatusSources(event)])} THEN ${to} ELSE ${projectFinishSelections.status} END`
+  return sql`CASE WHEN ${inArray(projectFinishSelections.status, [...selectionStatusSources(event)])} AND ${notReplaced} THEN ${to} ELSE ${projectFinishSelections.status} END`
 }
 
 /** Columns plus `event`'s status move (see statusAfterEvent), as a batch statement. */
@@ -194,12 +240,179 @@ export async function updateFinishSelectionsWithEvent(
     .run()
 }
 
+/**
+ * A new selection replacing `input.replacesSelectionId`, as one statement for
+ * the caller's batch: copied from that row (room, name, category, quantity,
+ * cost and phase codes, follow-up links, order) only while it still has
+ * `input.expected` and nothing replaces it yet. The old product fields are
+ * left off: the new pick is a different product, carried by its choice. It
+ * starts hidden from the owner, unapproved and outside any Selection Phase
+ * (staff write its change order from a to-do). The unique index on
+ * replaces_selection_id allows one replacement per selection.
+ */
+export function insertReplacementSelectionStatement(
+  db: Db,
+  input: {
+    readonly id: string
+    readonly projectId: string
+    readonly replacesSelectionId: string
+    readonly expected: string
+    readonly reason: SelectionReplacementReason
+    readonly status: ProjectSelectionStatus
+    readonly notes: string | null
+    readonly now: string
+  },
+): Statement {
+  assertListFields("project_finish_selections", { status: input.status, replacementReason: input.reason }, SELECTION_LISTS)
+  return insertCopyStatement(
+    db,
+    projectFinishSelections,
+    {
+      id: input.id,
+      sourceSystem: "compass",
+      sourceRecordId: null,
+      sourceWorkbookId: null,
+      sourceSheetName: null,
+      manufacturer: null,
+      model: null,
+      colorFinish: null,
+      choiceOptionsJson: null,
+      supplierName: null,
+      productUrl: null,
+      status: input.status,
+      ownerVisible: false,
+      ownerApproved: false,
+      approvedBy: null,
+      approvedAt: null,
+      rfqOperationId: null,
+      purchaseOrderOperationId: null,
+      notes: input.notes,
+      roundKey: null,
+      syncStatus: "manual",
+      lastSyncedAt: null,
+      replacesSelectionId: input.replacesSelectionId,
+      replacementReason: input.reason,
+      procurementReleasedAt: null,
+      createdAt: input.now,
+      updatedAt: input.now,
+    },
+    and(
+      eq(projectFinishSelections.id, input.replacesSelectionId),
+      eq(projectFinishSelections.projectId, input.projectId),
+      sql`${projectFinishSelections.status} = ${input.expected}`,
+      notReplaced,
+      // Never while its Selection Phase is out for signature (the phase would bill the old product).
+      sql`NOT EXISTS (SELECT 1 FROM project_selection_round_signature_items AS out_item INNER JOIN project_selection_round_signatures AS out_round ON out_round.id = out_item.signature_id WHERE out_item.selection_id = project_finish_selections.id AND out_round.status IN ('preparing', 'sent'))`,
+      // "Owner changed after approval": only while it is still approved (or its pick signed).
+      input.reason === "owner_changed_after_approval"
+        ? sql`(project_finish_selections.owner_approved = 1 OR EXISTS (SELECT 1 FROM project_selection_round_signature_items AS signed_item INNER JOIN project_selection_round_signatures AS signed_round ON signed_round.id = signed_item.signature_id WHERE signed_round.status = 'signed' AND signed_item.selection_id = project_finish_selections.id AND signed_item.choice_id = (SELECT pick.id FROM project_selection_choices AS pick WHERE pick.selection_id = project_finish_selections.id AND pick.chosen = 1)))`
+        : undefined,
+    ),
+  )
+}
+
+/**
+ * A copy of one selection as a new, undecided selection (Duplicate room,
+ * Duplicate selection), for the caller's batch. Every product field is
+ * copied; the copy starts unapproved, outside any Selection Phase and
+ * unlinked from RFQs, purchase orders and the workbook. A replaced
+ * selection stays on record as it was and is never copied.
+ */
+export function copyFinishSelectionStatement(
+  db: Db,
+  input: {
+    readonly id: string
+    readonly projectId: string
+    readonly fromSelectionId: string
+    readonly roomName: string
+    readonly roomType: string | null
+    readonly name: string
+    readonly parentSelectionId: string | null
+    readonly now: string
+  },
+): Statement {
+  return insertCopyStatement(
+    db,
+    projectFinishSelections,
+    {
+      id: input.id,
+      sourceSystem: "compass",
+      sourceRecordId: null,
+      sourceWorkbookId: null,
+      sourceSheetName: null,
+      roomName: input.roomName,
+      roomType: input.roomType,
+      name: input.name,
+      parentSelectionId: input.parentSelectionId,
+      status: "needed",
+      ownerApproved: false,
+      approvedBy: null,
+      approvedAt: null,
+      rfqOperationId: null,
+      purchaseOrderOperationId: null,
+      roundKey: null,
+      syncStatus: "manual",
+      lastSyncedAt: null,
+      replacesSelectionId: null,
+      replacementReason: null,
+      procurementReleasedAt: null,
+      createdAt: input.now,
+      updatedAt: input.now,
+    },
+    and(eq(projectFinishSelections.id, input.fromSelectionId), eq(projectFinishSelections.projectId, input.projectId), notReplaced),
+  )
+}
+
+/**
+ * An allowed edit of a locked (ordered or installed) selection: room, room
+ * type or notes. Lands only while the row still has `expected` and nothing
+ * replaces it. Its published decision stays current: a room move isn't a
+ * product change (specificationCurrent). False when nothing landed.
+ */
+export async function updateLockedSelection(
+  db: Db,
+  input: {
+    readonly projectId: string
+    readonly selectionId: string
+    readonly expected: string
+    readonly values: FinishSelectionPatch
+  },
+): Promise<boolean> {
+  const result = await db
+    .update(projectFinishSelections)
+    .set(withoutStatus(input.values))
+    .where(
+      and(
+        eq(projectFinishSelections.id, input.selectionId),
+        eq(projectFinishSelections.projectId, input.projectId),
+        sql`${projectFinishSelections.status} = ${input.expected}`,
+        notReplaced,
+      ),
+    )
+    .run()
+  return result.meta.changes > 0
+}
+
 /** The ids of the rows the delete removed. */
 export async function deleteFinishSelectionsReturningIds(
   db: Db,
   where: SQL | undefined,
-): Promise<readonly { readonly id: string }[]> {
-  return db.delete(projectFinishSelections).where(where).returning({ id: projectFinishSelections.id })
+): Promise<readonly { readonly id: string; readonly projectId: string }[]> {
+  const deleted = await db
+    .delete(projectFinishSelections)
+    .where(where)
+    .returning({ id: projectFinishSelections.id, projectId: projectFinishSelections.projectId })
+  await archiveDeletedReplacementTodos(db, deleted)
+  return deleted
+}
+
+/** A deleted replacement leaves no change order to write: its open to-do is archived. */
+async function archiveDeletedReplacementTodos(db: Db, deleted: readonly { readonly id: string; readonly projectId: string }[]): Promise<void> {
+  const now = new Date().toISOString()
+  const byProject = Map.groupBy(deleted, (row) => row.projectId)
+  for (const [projectId, rows] of byProject) {
+    await archiveReplacementTodos(db, projectId, rows.map((row) => row.id), now)
+  }
 }
 
 // ---- named operations
@@ -216,12 +429,14 @@ export async function deleteRemovableSelections(
     db
       .delete(projectFinishSelections)
       .where(and(eq(projectFinishSelections.id, selectionId), selectionDeletionAllowed(selectionId)))
-      .returning({ id: projectFinishSelections.id }),
+      .returning({ id: projectFinishSelections.id, projectId: projectFinishSelections.projectId }),
   )
   const [first, ...rest] = statements
   if (!first) return new Set()
   const results = await db.batch([first, ...rest])
-  return new Set(results.flatMap((rows) => rows.map((row) => row.id)))
+  const deleted = results.flat()
+  await archiveDeletedReplacementTodos(db, deleted)
+  return new Set(deleted.map((row) => row.id))
 }
 
 /** A template-applied room row; an existing room with the same id is kept. */

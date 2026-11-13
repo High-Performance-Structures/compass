@@ -17,6 +17,7 @@ import {
   updateChangeOrdersStatement,
   updateEstimatesStatement,
 } from "@/lib/domain/estimates/store"
+import { changeOrderStatusStatement } from "@/lib/domain/estimates/change-order-status-store"
 import {
   activateBudgetProjectionStatement,
   supersedeCurrentBudgetProjectionStatement,
@@ -255,16 +256,13 @@ export async function executeBaselineReplacement(
     // Migration 0148 guards this status write against financial activity
     // created after the read-side eligibility check. Any blocker aborts the
     // entire D1 batch, including estimate and budget activation above.
-    updateChangeOrdersStatement(
-      db,
-      and(
-        eq(projectChangeOrders.id, changeOrder.id),
-        eq(projectChangeOrders.projectId, projectId),
-        eq(projectChangeOrders.status, "signature_pending"),
-        eq(projectChangeOrders.rebaselineExecutionToken, executionToken)
-      ),
-      {
-        status: "executed",
+    changeOrderStatusStatement(db, {
+      changeOrderId: changeOrder.id,
+      projectId,
+      event: "execute_rebaseline",
+      expected: "signature_pending",
+      also: eq(projectChangeOrders.rebaselineExecutionToken, executionToken),
+      values: {
         executedAt: acceptance.signedAt,
         rebaselineCompletedAt: now,
         rebaselineCompletedBy: actor.id,
@@ -274,8 +272,8 @@ export async function executeBaselineReplacement(
           ? { executedDocumentUrl: acceptance.evidenceUrl, executedDocumentLabel: acceptance.evidenceLabel.slice(0, 200) }
           : {}),
         updatedAt: now,
-      }
-    ),
+      },
+    }),
     insertChangeOrderHistoryStatement(db, {
       id: crypto.randomUUID(),
       projectId,

@@ -57,3 +57,7 @@ export type InvoiceCustomerType = (typeof INVOICE_CUSTOMER_TYPES)[number]
 
 /** The Square invoice Compass creates for a simple invoice ("off" when the box isn't checked). */
 export const INVOICE_SQUARE_STATES = ["off", "pending", "published", "failed", "canceled"] as const
+
+/** A contract deposit: requested from the client, received, or voided (see deposit-machine.ts). */
+export const CONTRACT_DEPOSIT_STATUSES = ["requested", "received", "void"] as const
+export type ContractDepositStatus = (typeof CONTRACT_DEPOSIT_STATUSES)[number]

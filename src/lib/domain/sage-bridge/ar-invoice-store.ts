@@ -7,14 +7,158 @@
  * Sage bridge. No auth here: callers resolve access or verify the bridge
  * signature first.
  */
-import { and, eq, inArray, lt, ne, or, sql, type SQL } from "drizzle-orm"
+import { and, eq, inArray, isNull, lt, or, sql, type SQL } from "drizzle-orm"
+import type { SQLiteColumn } from "drizzle-orm/sqlite-core"
 
 import { sageArInvoiceExports, sageDepositArExports, sageInvoiceArExports } from "@/db/schema-sage"
+import { arInvoiceExportMachine, sourcesInto } from "@/lib/domain/sage-bridge/machines"
+import { AR_INVOICE_NO_WRITE_MESSAGES, writerWroteNothingSql } from "@/lib/domain/sage-bridge/writer-outcomes"
 import { SAGE_AR_INVOICE_EXPORT_STATUSES, type SageArInvoiceExportStatus } from "@/lib/domain/sage-bridge/statuses"
 import { assertListFields } from "@/lib/shared/statuses"
 import type { Db } from "@/lib/server/action-context"
 
 const LISTS = { status: SAGE_AR_INVOICE_EXPORT_STATUSES }
+
+/**
+ * The record behind an export is void. Written as SQL so the check and the
+ * write are one statement: a void that lands between a read and a write can't
+ * slip a void record through to Sage.
+ */
+const SOURCE_IS_VOID = {
+  pay: sql.raw(`EXISTS (SELECT 1 FROM project_budget_applications src
+    WHERE src.id = sage_ar_invoice_exports.application_id AND src.status = 'void')`),
+  invoice: sql.raw(`EXISTS (SELECT 1 FROM invoices src
+    WHERE src.id = sage_invoice_ar_exports.invoice_id AND src.status = 'void')`),
+  deposit: sql.raw(`EXISTS (SELECT 1 FROM project_contract_deposits src
+    WHERE src.id = sage_deposit_ar_exports.deposit_id AND src.status = 'void')`),
+} as const
+
+const VOIDED_WHILE_SENDING = "Voided while Sage was adding it; check Sage."
+
+/** How long the writer's claim on an AR export stays live before a poll may take it again. */
+export const AR_EXPORT_CLAIM_RETRY_MILLISECONDS = 10 * 60 * 1000
+
+/** The export's record isn't void, for the writer polls' candidate lists (same SQL as the claim's). */
+export function sageArExportSourceNotVoid(kind: keyof typeof SOURCE_IS_VOID): SQL {
+  return sql`NOT ${SOURCE_IS_VOID[kind]}`
+}
+
+/** The AR export tables and the column naming their record. */
+const AR_EXPORT_TABLES = {
+  pay: { table: "sage_ar_invoice_exports", source: "application_id" },
+  invoice: { table: "sage_invoice_ar_exports", source: "invoice_id" },
+  deposit: { table: "sage_deposit_ar_exports", source: "deposit_id" },
+} as const
+
+/**
+ * Sage may have this export's invoice: the writer is running it or finished
+ * it, Sage's record was read back, or the writer's last result for it was a
+ * failure that isn't one of its explicit nothing-written outcomes (a failed
+ * submit, an invoice that doesn't read back, a claim voided while it ran).
+ * A writer result keeps its claim (lease) token; a failure Compass's own
+ * guards set, a queued row and a cancelled one carry none, and staff clear it
+ * with "checked Sage, it isn't there" (confirmSageArExportNotInSage).
+ */
+export const POSSIBLY_IN_SAGE_SQL = `(status IN ('running', 'succeeded') OR sage_record_id IS NOT NULL
+  OR (status IN ('failed', 'needs_attention') AND claim_token IS NOT NULL
+    AND NOT coalesce(${writerWroteNothingSql(AR_INVOICE_NO_WRITE_MESSAGES)}, 0)))`
+
+/**
+ * Staff checked Sage and the invoice isn't there: the export stops counting
+ * as possibly in Sage (its writer claim is let go), with who and when noted
+ * on it. Not for an export Sage reads back (it has Sage's record) or one
+ * running or done, nor one flagged "voided while sending" whose writer claim
+ * may still be live (the writer could still be adding it). True when it
+ * cleared one.
+ *
+ * Known trade-off (accepted): clearing the claim token means a late repeat of
+ * the writer's result for that claim no longer matches it, so the results
+ * route answers it as a lost claim (409) instead of 2xx.
+ */
+export async function confirmSageArExportNotInSage(
+  db: Db,
+  input: { readonly kind: keyof typeof AR_EXPORT_TABLES; readonly organizationId: string; readonly sourceId: string; readonly note: string; readonly now: string }
+): Promise<boolean> {
+  const { table, source } = AR_EXPORT_TABLES[input.kind]
+  const result = await db.run(sql`UPDATE ${sql.identifier(table)} SET claim_token = NULL, error_message = ${input.note}, updated_at = ${input.now}
+    WHERE ${sql.identifier(source)} = ${input.sourceId} AND organization_id = ${input.organizationId}
+      AND status IN ('failed', 'needs_attention') AND sage_record_id IS NULL AND ${sql.raw(POSSIBLY_IN_SAGE_SQL)}
+      AND NOT (error_message = ${VOIDED_WHILE_SENDING} AND (claimed_at IS NULL OR claimed_at >= ${new Date(Date.parse(input.now) - AR_EXPORT_CLAIM_RETRY_MILLISECONDS).toISOString()}))`)
+  return result.meta.changes > 0
+}
+
+/**
+ * SQL condition: no export of `sourceId` is possibly in Sage
+ * (POSSIBLY_IN_SAGE_SQL), for a write that must not land once Sage may have
+ * the invoice (taking a billing approval back, say).
+ */
+export function arExportNotPossiblyInSage(input: { readonly kind: keyof typeof AR_EXPORT_TABLES; readonly organizationId: string; readonly sourceId: string }): SQL {
+  const { table, source } = AR_EXPORT_TABLES[input.kind]
+  return sql`NOT EXISTS (SELECT 1 FROM ${sql.identifier(table)}
+    WHERE ${sql.identifier(table)}.${sql.identifier(source)} = ${input.sourceId} AND ${sql.identifier(table)}.organization_id = ${input.organizationId} AND ${sql.raw(POSSIBLY_IN_SAGE_SQL)})`
+}
+
+/** Whether Sage may have the invoice of `sourceId`'s export (see POSSIBLY_IN_SAGE_SQL); false with no export. */
+export async function arExportPossiblyInSage(
+  db: Db,
+  input: { readonly kind: keyof typeof AR_EXPORT_TABLES; readonly organizationId: string; readonly sourceId: string }
+): Promise<boolean> {
+  const { table, source } = AR_EXPORT_TABLES[input.kind]
+  const rows = await db.all<{ readonly n: number }>(sql`SELECT count(*) AS n FROM ${sql.identifier(table)}
+    WHERE ${sql.identifier(source)} = ${input.sourceId} AND organization_id = ${input.organizationId} AND ${sql.raw(POSSIBLY_IN_SAGE_SQL)}`)
+  return Number(rows[0]?.n ?? 0) > 0
+}
+
+/**
+ * The writer's late result for a claim whose record was voided while it ran
+ * (flagged "voided while sending"): Sage's record id is kept for staff, the
+ * row stays needs attention, and the claim is used up (its lease token), so
+ * the result answers 2xx instead of a 409 that would end the writer's run.
+ * True when it was that row.
+ */
+export async function recordLateResultOnVoided(
+  db: Db,
+  input: { readonly kind: keyof typeof AR_EXPORT_TABLES; readonly id: string; readonly organizationId: string; readonly claimToken: string; readonly leaseToken: string; readonly sageRecordId: string | null; readonly now: string }
+): Promise<boolean> {
+  const { table } = AR_EXPORT_TABLES[input.kind]
+  const result = await db.run(sql`UPDATE ${sql.identifier(table)}
+    SET claim_token = ${input.leaseToken}, sage_record_id = coalesce(${input.sageRecordId}, sage_record_id), updated_at = ${input.now}
+    WHERE id = ${input.id} AND organization_id = ${input.organizationId} AND claim_token = ${input.claimToken}
+      AND status = 'needs_attention' AND error_message = ${VOIDED_WHILE_SENDING}`)
+  return result.meta.changes === 1
+}
+
+/** A repeat of a late result that already landed on a "voided while sending" row (whatever its outcome). */
+export async function lateResultOnVoidedRecorded(
+  db: Db,
+  input: { readonly kind: keyof typeof AR_EXPORT_TABLES; readonly id: string; readonly organizationId: string; readonly leaseToken: string }
+): Promise<boolean> {
+  const { table } = AR_EXPORT_TABLES[input.kind]
+  const rows = await db.all<{ readonly n: number }>(sql`SELECT count(*) AS n FROM ${sql.identifier(table)}
+    WHERE id = ${input.id} AND organization_id = ${input.organizationId} AND claim_token = ${input.leaseToken}
+      AND status = 'needs_attention' AND error_message = ${VOIDED_WHILE_SENDING}`)
+  return Number(rows[0]?.n ?? 0) > 0
+}
+
+/**
+ * cancel's fence: a source state of the event, and not (possibly) in Sage. A row the
+ * writer added (needs_attention after Sage's total read back differently, say)
+ * carries Sage's record id and is never cancelled; it is voided in Sage.
+ */
+function cancellable(columns: { readonly status: SQLiteColumn; readonly sageRecordId: SQLiteColumn }): SQL | undefined {
+  return and(
+    inArray(columns.status, [...arInvoiceExportMachine.transitions.cancel.from]),
+    isNull(columns.sageRecordId),
+    // Nor one Sage may have (a writer failure that may have saved it): it stays,
+    // flagged, until staff check Sage ("I checked Sage: it isn't there").
+    sql`NOT ${sql.raw(POSSIBLY_IN_SAGE_SQL)}`,
+  )
+}
+
+/** The states the machine may move a row from into `status`: every update below is also fenced on them. */
+function mayEnter(status: SageArInvoiceExportStatus): SageArInvoiceExportStatus[] {
+  return [...sourcesInto(arInvoiceExportMachine, status)]
+}
 
 export type SageArInvoiceExportRequest = {
   readonly organizationId: string
@@ -61,15 +205,16 @@ export async function upsertSageArInvoiceExport(db: Db, row: SageArInvoiceExport
         requestedAt: row.now,
         claimToken: null,
         claimedAt: null,
-        payloadJson: null,
+        // payload_json stays: it shows the writer was handed this invoice before (it may be in Sage).
         errorMessage: row.errorMessage,
         completedAt: null,
         updatedAt: row.now,
       },
+      // queue / flag from a row that isn't running or succeeded.
       setWhere: and(
         eq(sageArInvoiceExports.organizationId, row.organizationId),
-        ne(sageArInvoiceExports.status, "running"),
-        ne(sageArInvoiceExports.status, "succeeded")
+        inArray(sageArInvoiceExports.status, [...arInvoiceExportMachine.transitions.queue.from]),
+        sql`NOT ${SOURCE_IS_VOID.pay}`
       ),
     })
     .returning({ id: sageArInvoiceExports.id })
@@ -84,7 +229,7 @@ export async function claimSageArInvoiceExport(
   const claimed = await db
     .update(sageArInvoiceExports)
     .set({
-      status: "running",
+      status: arInvoiceExportMachine.transitions.claim.to,
       claimToken: input.claimToken,
       claimedAt: input.now,
       attemptCount: sql`${sageArInvoiceExports.attemptCount} + 1`,
@@ -97,11 +242,34 @@ export async function claimSageArInvoiceExport(
         or(
           eq(sageArInvoiceExports.status, "queued"),
           and(eq(sageArInvoiceExports.status, "running"), lt(sageArInvoiceExports.claimedAt, input.staleBefore))
-        )
+        ),
+        // A void record is never handed to the writer.
+        sql`NOT ${SOURCE_IS_VOID.pay}`
       )
     )
     .returning({ id: sageArInvoiceExports.id })
-  return claimed.length > 0
+  if (claimed.length > 0) return true
+  // Queued (or failed) for a record voided since, and not in Sage: cancelled, so it stops being offered.
+  await db.update(sageArInvoiceExports)
+    .set({ status: arInvoiceExportMachine.transitions.cancel.to, claimToken: null, completedAt: input.now, updatedAt: input.now })
+    .where(and(
+      eq(sageArInvoiceExports.id, input.id),
+      eq(sageArInvoiceExports.organizationId, input.organizationId),
+      cancellable(sageArInvoiceExports),
+      SOURCE_IS_VOID.pay
+    ))
+  // Running for a record voided since, and stale: never offered again; staff check Sage.
+  await db.update(sageArInvoiceExports)
+    // The claim token stays, so the writer's late result for it still lands (recordLateResultOnVoided).
+    .set({ status: arInvoiceExportMachine.transitions.flag.to, errorMessage: VOIDED_WHILE_SENDING, completedAt: input.now, updatedAt: input.now })
+    .where(and(
+      eq(sageArInvoiceExports.id, input.id),
+      eq(sageArInvoiceExports.organizationId, input.organizationId),
+      eq(sageArInvoiceExports.status, "running"),
+      lt(sageArInvoiceExports.claimedAt, input.staleBefore),
+      SOURCE_IS_VOID.pay
+    ))
+  return false
 }
 
 export type SageArInvoiceExportPatch = {
@@ -117,7 +285,7 @@ export type SageArInvoiceExportPatch = {
 
 function exportUpdate(db: Db, where: SQL | undefined, patch: SageArInvoiceExportPatch) {
   assertListFields("sage_ar_invoice_exports", patch, LISTS)
-  return db.update(sageArInvoiceExports).set(patch).where(where)
+  return db.update(sageArInvoiceExports).set(patch).where(and(where, inArray(sageArInvoiceExports.status, mayEnter(patch.status))))
 }
 
 /** Unexecuted update fenced by the caller's `where` (id plus claim token), for a batch. */
@@ -142,15 +310,30 @@ export async function cancelSageArInvoiceExport(
     eq(sageArInvoiceExports.organizationId, input.organizationId)
   )
   // Fenced on the status, so a claim that lands first wins and this reports it.
-  const cancelled = await exportUpdate(db, and(forApplication, inArray(sageArInvoiceExports.status, ["queued", "failed", "needs_attention", "cancelled"])), {
-    status: "cancelled",
-    claimToken: null,
-    completedAt: input.now,
-    updatedAt: input.now,
-  }).returning({ id: sageArInvoiceExports.id })
+  const cancelled = await cancelSageArInvoiceExportStatement(db, input).returning({ id: sageArInvoiceExports.id })
   if (cancelled.length > 0) return true
   const row = await db.select({ id: sageArInvoiceExports.id }).from(sageArInvoiceExports).where(forApplication).get()
   return !row
+}
+
+/**
+ * The cancel of a pay request's export that never reached Sage, as one
+ * statement (for the batch that takes its billing back, so it lands only with
+ * the undo).
+ */
+export function cancelSageArInvoiceExportStatement(
+  db: Db,
+  input: { readonly organizationId: string; readonly applicationId: string; readonly now: string }
+) {
+  return exportUpdate(
+    db,
+    and(
+      eq(sageArInvoiceExports.applicationId, input.applicationId),
+      eq(sageArInvoiceExports.organizationId, input.organizationId),
+      cancellable(sageArInvoiceExports),
+    ),
+    { status: "cancelled", claimToken: null, completedAt: input.now, updatedAt: input.now },
+  )
 }
 
 // ---------------------------------------------------------------------------
@@ -196,15 +379,16 @@ export async function upsertSageInvoiceArExport(db: Db, row: SageInvoiceArExport
         requestedAt: row.now,
         claimToken: null,
         claimedAt: null,
-        payloadJson: null,
+        // payload_json stays: it shows the writer was handed this invoice before (it may be in Sage).
         errorMessage: row.errorMessage,
         completedAt: null,
         updatedAt: row.now,
       },
+      // queue / flag from a row that isn't running or succeeded.
       setWhere: and(
         eq(sageInvoiceArExports.organizationId, row.organizationId),
-        ne(sageInvoiceArExports.status, "running"),
-        ne(sageInvoiceArExports.status, "succeeded")
+        inArray(sageInvoiceArExports.status, [...arInvoiceExportMachine.transitions.queue.from]),
+        sql`NOT ${SOURCE_IS_VOID.invoice}`
       ),
     })
     .returning({ id: sageInvoiceArExports.id })
@@ -219,7 +403,7 @@ export async function claimSageInvoiceArExport(
   const claimed = await db
     .update(sageInvoiceArExports)
     .set({
-      status: "running",
+      status: arInvoiceExportMachine.transitions.claim.to,
       claimToken: input.claimToken,
       claimedAt: input.now,
       attemptCount: sql`${sageInvoiceArExports.attemptCount} + 1`,
@@ -232,16 +416,39 @@ export async function claimSageInvoiceArExport(
         or(
           eq(sageInvoiceArExports.status, "queued"),
           and(eq(sageInvoiceArExports.status, "running"), lt(sageInvoiceArExports.claimedAt, input.staleBefore))
-        )
+        ),
+        // A void record is never handed to the writer.
+        sql`NOT ${SOURCE_IS_VOID.invoice}`
       )
     )
     .returning({ id: sageInvoiceArExports.id })
-  return claimed.length > 0
+  if (claimed.length > 0) return true
+  // Queued (or failed) for a record voided since, and not in Sage: cancelled, so it stops being offered.
+  await db.update(sageInvoiceArExports)
+    .set({ status: arInvoiceExportMachine.transitions.cancel.to, claimToken: null, completedAt: input.now, updatedAt: input.now })
+    .where(and(
+      eq(sageInvoiceArExports.id, input.id),
+      eq(sageInvoiceArExports.organizationId, input.organizationId),
+      cancellable(sageInvoiceArExports),
+      SOURCE_IS_VOID.invoice
+    ))
+  // Running for a record voided since, and stale: never offered again; staff check Sage.
+  await db.update(sageInvoiceArExports)
+    // The claim token stays, so the writer's late result for it still lands (recordLateResultOnVoided).
+    .set({ status: arInvoiceExportMachine.transitions.flag.to, errorMessage: VOIDED_WHILE_SENDING, completedAt: input.now, updatedAt: input.now })
+    .where(and(
+      eq(sageInvoiceArExports.id, input.id),
+      eq(sageInvoiceArExports.organizationId, input.organizationId),
+      eq(sageInvoiceArExports.status, "running"),
+      lt(sageInvoiceArExports.claimedAt, input.staleBefore),
+      SOURCE_IS_VOID.invoice
+    ))
+  return false
 }
 
 function invoiceExportUpdate(db: Db, where: SQL | undefined, patch: SageArInvoiceExportPatch) {
   assertListFields("sage_invoice_ar_exports", patch, LISTS)
-  return db.update(sageInvoiceArExports).set(patch).where(where)
+  return db.update(sageInvoiceArExports).set(patch).where(and(where, inArray(sageInvoiceArExports.status, mayEnter(patch.status))))
 }
 
 /** Unexecuted update fenced by the caller's `where`, for a batch. */
@@ -262,7 +469,7 @@ export async function cancelSageInvoiceArExport(
   input: { readonly organizationId: string; readonly invoiceId: string; readonly now: string }
 ): Promise<boolean> {
   const forInvoice = and(eq(sageInvoiceArExports.invoiceId, input.invoiceId), eq(sageInvoiceArExports.organizationId, input.organizationId))
-  const cancelled = await invoiceExportUpdate(db, and(forInvoice, inArray(sageInvoiceArExports.status, ["queued", "failed", "needs_attention", "cancelled"])), {
+  const cancelled = await invoiceExportUpdate(db, and(forInvoice, cancellable(sageInvoiceArExports)), {
     status: "cancelled",
     claimToken: null,
     completedAt: input.now,
@@ -271,6 +478,23 @@ export async function cancelSageInvoiceArExport(
   if (cancelled.length > 0) return true
   const row = await db.select({ id: sageInvoiceArExports.id }).from(sageInvoiceArExports).where(forInvoice).get()
   return !row
+}
+
+/**
+ * cancel, as an unexecuted statement for the caller's batch: the invoice's
+ * export that hasn't reached Sage, only while `when` holds (the caller's own
+ * write in the same batch landed).
+ */
+export function cancelSageInvoiceArExportStatement(
+  db: Db,
+  input: { readonly organizationId: string; readonly invoiceId: string; readonly now: string; readonly when: SQL }
+) {
+  return invoiceExportUpdate(db, and(
+    eq(sageInvoiceArExports.invoiceId, input.invoiceId),
+    eq(sageInvoiceArExports.organizationId, input.organizationId),
+    cancellable(sageInvoiceArExports),
+    input.when
+  ), { status: "cancelled", claimToken: null, completedAt: input.now, updatedAt: input.now })
 }
 
 // ---------------------------------------------------------------------------
@@ -316,15 +540,16 @@ export async function upsertSageDepositArExport(db: Db, row: SageDepositArExport
         requestedAt: row.now,
         claimToken: null,
         claimedAt: null,
-        payloadJson: null,
+        // payload_json stays: it shows the writer was handed this invoice before (it may be in Sage).
         errorMessage: row.errorMessage,
         completedAt: null,
         updatedAt: row.now,
       },
+      // queue / flag from a row that isn't running or succeeded.
       setWhere: and(
         eq(sageDepositArExports.organizationId, row.organizationId),
-        ne(sageDepositArExports.status, "running"),
-        ne(sageDepositArExports.status, "succeeded")
+        inArray(sageDepositArExports.status, [...arInvoiceExportMachine.transitions.queue.from]),
+        sql`NOT ${SOURCE_IS_VOID.deposit}`
       ),
     })
     .returning({ id: sageDepositArExports.id })
@@ -339,7 +564,7 @@ export async function claimSageDepositArExport(
   const claimed = await db
     .update(sageDepositArExports)
     .set({
-      status: "running",
+      status: arInvoiceExportMachine.transitions.claim.to,
       claimToken: input.claimToken,
       claimedAt: input.now,
       attemptCount: sql`${sageDepositArExports.attemptCount} + 1`,
@@ -352,16 +577,39 @@ export async function claimSageDepositArExport(
         or(
           eq(sageDepositArExports.status, "queued"),
           and(eq(sageDepositArExports.status, "running"), lt(sageDepositArExports.claimedAt, input.staleBefore))
-        )
+        ),
+        // A void record is never handed to the writer.
+        sql`NOT ${SOURCE_IS_VOID.deposit}`
       )
     )
     .returning({ id: sageDepositArExports.id })
-  return claimed.length > 0
+  if (claimed.length > 0) return true
+  // Queued (or failed) for a record voided since, and not in Sage: cancelled, so it stops being offered.
+  await db.update(sageDepositArExports)
+    .set({ status: arInvoiceExportMachine.transitions.cancel.to, claimToken: null, completedAt: input.now, updatedAt: input.now })
+    .where(and(
+      eq(sageDepositArExports.id, input.id),
+      eq(sageDepositArExports.organizationId, input.organizationId),
+      cancellable(sageDepositArExports),
+      SOURCE_IS_VOID.deposit
+    ))
+  // Running for a record voided since, and stale: never offered again; staff check Sage.
+  await db.update(sageDepositArExports)
+    // The claim token stays, so the writer's late result for it still lands (recordLateResultOnVoided).
+    .set({ status: arInvoiceExportMachine.transitions.flag.to, errorMessage: VOIDED_WHILE_SENDING, completedAt: input.now, updatedAt: input.now })
+    .where(and(
+      eq(sageDepositArExports.id, input.id),
+      eq(sageDepositArExports.organizationId, input.organizationId),
+      eq(sageDepositArExports.status, "running"),
+      lt(sageDepositArExports.claimedAt, input.staleBefore),
+      SOURCE_IS_VOID.deposit
+    ))
+  return false
 }
 
 function depositExportUpdate(db: Db, where: SQL | undefined, patch: SageArInvoiceExportPatch) {
   assertListFields("sage_deposit_ar_exports", patch, LISTS)
-  return db.update(sageDepositArExports).set(patch).where(where)
+  return db.update(sageDepositArExports).set(patch).where(and(where, inArray(sageDepositArExports.status, mayEnter(patch.status))))
 }
 
 /** Unexecuted update fenced by the caller's `where`, for a batch. */
@@ -382,7 +630,7 @@ export async function cancelSageDepositArExport(
   input: { readonly organizationId: string; readonly depositId: string; readonly now: string }
 ): Promise<boolean> {
   const forDeposit = and(eq(sageDepositArExports.depositId, input.depositId), eq(sageDepositArExports.organizationId, input.organizationId))
-  const cancelled = await depositExportUpdate(db, and(forDeposit, inArray(sageDepositArExports.status, ["queued", "failed", "needs_attention", "cancelled"])), {
+  const cancelled = await depositExportUpdate(db, and(forDeposit, cancellable(sageDepositArExports)), {
     status: "cancelled",
     claimToken: null,
     completedAt: input.now,

@@ -251,7 +251,7 @@ requested value as "Pending Sage approval".
 | Record | Sage-shared | Compass-only |
 | --- | --- | --- |
 | Vendor | name (`actpay.vndnme`), owner, email (`e_mail`), phone (`phnnum`), primary email (`prmeml`), address 1/2, city, state, ZIP | category (locked while it follows a mapped Sage vendor type), Compass-only people |
-| Client | name (`reccln.clnnme`), email (`e_mail`), phone (`phnnum`), address and billing address | company, notes, Compass-only people |
+| Client | name (`reccln.clnnme`), email and phone (the client's first contact line, `clncnt.e_mail` / `clncnt.phnnum`), address and billing address | company, notes, Compass-only people |
 | Client/vendor person in Sage | name, job title, email, phone | none |
 
 Client primary email stays read-only: its Sage binding is still unverified
@@ -439,3 +439,14 @@ employee private contact access, CHERISH review, greeting-card approval and
 release, and Project Archive. All four are individual staff permissions in
 Settings > Permissions; there is no runtime email allowlist. A grant can be
 added, changed, or revoked there, with an audit event.
+
+### Client email and phone live on the first contact line
+
+Sage accepts `Email1`/`Phone1` on `ClientModRq` but stores nothing there:
+`reccln.e_mail` and `reccln.phnnum` stay blank for every client. A client
+company's email and phone in Compass are its first contact line (lowest
+`clncnt.linnum`). The contact writer reads them from that line, changes them
+with a nested `ClientContactMod` (LineID), or, when the client has no line,
+adds one under the client's name with `ClientContactAdd`. The read-back that
+confirms an approved change reads the same line.
+

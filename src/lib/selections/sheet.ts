@@ -23,6 +23,14 @@ export type SelectionSheetInput = {
     readonly dueDate: string | null
     readonly published: boolean
     readonly roundKey: string | null
+    /** A signed Selection Phase covers its current pick. */
+    readonly signed?: boolean
+    /** Another selection replaces it (it stays on record, locked). */
+    readonly replaced?: boolean
+    /** It replaces another selection. */
+    readonly replacement?: boolean
+    /** The owner's approval is recorded on the selection (a signature, or an older approval). */
+    readonly ownerApproved?: boolean
   }[]
   readonly choices: readonly {
     readonly selectionId: string
@@ -60,6 +68,14 @@ export type SelectionSheetRow = {
   readonly published: boolean
   /** The company round (Settings > Selections) it belongs to, or null. */
   readonly roundKey: string | null
+  /** A signature covers it: "Approved" reads "Approved (signed)". */
+  readonly signed: boolean
+  /** Another selection replaces it. */
+  readonly replaced: boolean
+  /** It replaces another selection (outside Selection Phases; staff write its change order). */
+  readonly replacement: boolean
+  /** The owner's approval is recorded on the selection. */
+  readonly ownerApproved: boolean
   /** Sorts room, then parent, then its follow-ups right under it. */
   readonly orderKey: string
 }
@@ -78,6 +94,9 @@ export function selectionSheetRows(input: SelectionSheetInput): readonly Selecti
   for (const parentId of parentOf.values()) followUps.set(parentId, (followUps.get(parentId) ?? 0) + 1)
 
   const position = new Map(input.selections.map((row, index) => [row.id, String(index).padStart(6, "0")]))
+  // Rooms keep the order the rows arrive in (the job's room order, room-order.ts).
+  const roomPosition = new Map<string, string>()
+  for (const row of input.selections) if (!roomPosition.has(row.roomName)) roomPosition.set(row.roomName, String(roomPosition.size).padStart(6, "0"))
   return input.selections.map((row) => {
     const choices = input.choices.filter((choice) => choice.selectionId === row.id)
     const pick = choices.find((choice) => choice.chosen) ?? null
@@ -106,7 +125,11 @@ export function selectionSheetRows(input: SelectionSheetInput): readonly Selecti
       dueDate: row.dueDate,
       published: row.published,
       roundKey: row.roundKey,
-      orderKey: [topRow.roomName.toLocaleLowerCase(), position.get(top) ?? "", parentId ? "1" : "0", position.get(row.id) ?? ""].join("\u0000"),
+      signed: row.signed ?? false,
+      replaced: row.replaced ?? false,
+      replacement: row.replacement ?? false,
+      ownerApproved: row.ownerApproved ?? false,
+      orderKey: [roomPosition.get(topRow.roomName) ?? "", position.get(top) ?? "", parentId ? "1" : "0", position.get(row.id) ?? ""].join("\u0000"),
     }
   })
 }

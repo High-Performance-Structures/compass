@@ -460,6 +460,9 @@ export type SimpleInvoiceRecord = {
   readonly totalCents: number
   readonly amountPaidCents: number
   readonly emailedAt: string | null
+  /** A send in flight (lease) and a send whose outcome is unknown (migration 0322). */
+  readonly emailClaimedAt: string | null
+  readonly emailUnconfirmedAt: string | null
   readonly finalizedAt: string | null
   readonly voidedAt: string | null
   readonly voidReason: string | null
@@ -512,6 +515,8 @@ export async function loadSimpleInvoice(db: Db, organizationId: string, projectI
     totalCents: cents(invoice.total),
     amountPaidCents: cents(invoice.amountPaid),
     emailedAt: invoice.emailedAt,
+    emailClaimedAt: invoice.emailClaimedAt,
+    emailUnconfirmedAt: invoice.emailUnconfirmedAt,
     finalizedAt: invoice.finalizedAt,
     voidedAt: invoice.voidedAt,
     voidReason: invoice.voidReason,

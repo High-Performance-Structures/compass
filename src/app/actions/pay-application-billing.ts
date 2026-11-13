@@ -1,15 +1,17 @@
 "use server"
 
-import { and, eq, gt, notInArray } from "drizzle-orm"
+import { and, eq, gt, isNull, notInArray, sql } from "drizzle-orm"
+import { alias } from "drizzle-orm/sqlite-core"
 import { revalidatePath } from "next/cache"
 
 import { getDb } from "@/db"
 import { projectBudgetApplications, projectOperations, projects } from "@/db/schema"
 import { activityActorName, recordActivityEvent } from "@/lib/activity-log"
-import { updateBudgetApplicationsStatement } from "@/lib/domain/budget/store"
-import { payApplicationHasActivePayments } from "@/lib/domain/financials/receivables"
+import { batchGuardStatement, isBatchGuardFailure } from "@/lib/d1-query"
+import { compassDrawStatusIs, movePayApplicationStatus, updateBudgetApplicationsStatement } from "@/lib/domain/budget/store"
+import { drawHasNoActivePayments, payApplicationHasActivePayments } from "@/lib/domain/financials/receivables"
 import { operationUpdateQuery } from "@/lib/domain/operations/store"
-import { cancelSageArInvoiceExport } from "@/lib/domain/sage-bridge/ar-invoice-store"
+import { arExportNotPossiblyInSage, arExportPossiblyInSage, cancelSageArInvoiceExportStatement, confirmSageArExportNotInSage } from "@/lib/domain/sage-bridge/ar-invoice-store"
 import { queueArInvoiceSageExport } from "@/lib/sage/ar-invoice-sync"
 import type { AuthUser } from "@/lib/auth"
 import { requireOrg } from "@/lib/org-scope"
@@ -59,6 +61,9 @@ async function compassApplication(db: ReturnType<typeof getDb>, projectId: strin
     .get()
 }
 
+/** Another draw of the same project, for the undo's write-time check. */
+const laterDraw = alias(projectBudgetApplications, "later_draw")
+
 function operationFor(projectId: string, applicationId: string) {
   return and(
     eq(projectOperations.projectId, projectId),
@@ -80,7 +85,9 @@ function revalidateBillingPaths(projectId: string, applicationId: string): void 
 /** Marks a reviewed pay application billed and publishes it to the owner. */
 export async function approveProjectOwnerPayApplicationForBilling(
   projectId: string,
-  applicationId: string
+  applicationId: string,
+  /** The version staff reviewed; a draw changed since (Sage's amounts applied, say) is refused. */
+  expectedUpdatedAt: string
 ): Promise<BillingActionResult> {
   try {
     const { db, user, organizationId } = await billingAccess(projectId)
@@ -88,19 +95,27 @@ export async function approveProjectOwnerPayApplicationForBilling(
     if (!application || application.status !== "internal_review") {
       throw new Error("Mark the pay application ready for review before approving it for billing.")
     }
+    const changedMessage = "This pay application changed since you opened it. Refresh, check its amounts, and approve again."
+    if (expectedUpdatedAt !== application.updatedAt) throw new Error(changedMessage)
     const now = new Date().toISOString()
-    await db.batch([
-      updateBudgetApplicationsStatement(
-        db,
-        and(eq(projectBudgetApplications.id, applicationId), eq(projectBudgetApplications.status, "internal_review")),
-        { status: "billed", ownerVisible: true, billedAt: now, billedBy: user.id, syncStatus: "awaiting_sage_invoice", updatedAt: now }
-      ),
-      operationUpdateQuery(db, operationFor(projectId, applicationId), {
-        status: "billed",
-        syncStatus: "awaiting_sage_invoice",
-        updatedAt: now,
-      }),
-    ])
+    // Compare-and-set on the status and the version read: a double click or a
+    // second person approving lands once (only that one logs Activity and
+    // queues Sage), and a draw whose amounts changed meanwhile isn't billed.
+    const moved = await movePayApplicationStatus(db, {
+      projectId,
+      applicationId,
+      event: "approve",
+      also: eq(projectBudgetApplications.updatedAt, application.updatedAt),
+      values: { ownerVisible: true, billedAt: now, billedBy: user.id, syncStatus: "awaiting_sage_invoice", updatedAt: now },
+      alongWith: [
+        operationUpdateQuery(db, operationFor(projectId, applicationId), {
+          status: "billed",
+          syncStatus: "awaiting_sage_invoice",
+          updatedAt: now,
+        }),
+      ],
+    })
+    if (!moved) throw new Error("This pay application was already approved or changed by someone else. Refresh to see where it stands.")
     await recordActivityEvent({
       db, organizationId, projectId, actor: user, category: "financial",
       action: "pay_application_billed", entityType: "project_budget_application", entityId: applicationId,
@@ -147,22 +162,42 @@ export async function undoProjectOwnerPayApplicationBilling(
     if (await payApplicationHasActivePayments(db, applicationId)) {
       throw new Error("Payments are recorded against this draw. Void them first.")
     }
-    const now = new Date().toISOString()
-    if (!(await cancelSageArInvoiceExport(db, { organizationId, applicationId, now }))) {
+    if (await arExportPossiblyInSage(db, { kind: "pay", organizationId, sourceId: applicationId })) {
       throw new Error("This draw is being sent to Sage as an AR invoice (or Sage already has it). Wait for it to finish, then void the invoice in Sage first.")
     }
-    await db.batch([
-      updateBudgetApplicationsStatement(
-        db,
-        and(eq(projectBudgetApplications.id, applicationId), eq(projectBudgetApplications.status, "billed")),
-        { status: "internal_review", ownerVisible: false, billedAt: null, billedBy: null, syncStatus: "needs_review", updatedAt: now }
+    const now = new Date().toISOString()
+    // The undo and the cancel of its queued Sage AR invoice land together, and
+    // only while no Sage invoice number is recorded and Sage hasn't started on it.
+    const moved = await movePayApplicationStatus(db, {
+      projectId,
+      applicationId,
+      event: "undo_billing",
+      also: and(
+        isNull(projectBudgetApplications.sageInvoiceNumber),
+        arExportNotPossiblyInSage({ kind: "pay", organizationId, sourceId: applicationId }),
+        // The checks above, again at write time: no payment recorded and no later draw started meanwhile.
+        drawHasNoActivePayments(applicationId),
+        // An alias renders as its name only, so the table is named here.
+        sql`NOT EXISTS (SELECT 1 FROM ${projectBudgetApplications} AS later_draw WHERE ${and(
+          eq(laterDraw.projectId, projectId),
+          eq(laterDraw.sourceSystem, "compass_contract_budget"),
+          gt(laterDraw.createdAt, application.createdAt),
+          notInArray(laterDraw.status, ["building", "void"]),
+        )})`,
       ),
-      operationUpdateQuery(db, operationFor(projectId, applicationId), {
-        status: "internal_review",
-        syncStatus: "needs_review",
-        updatedAt: now,
-      }),
-    ])
+      values: { ownerVisible: false, billedAt: null, billedBy: null, syncStatus: "needs_review", updatedAt: now },
+      alongWith: [
+        operationUpdateQuery(db, operationFor(projectId, applicationId), {
+          status: "internal_review",
+          syncStatus: "needs_review",
+          updatedAt: now,
+        }),
+        cancelSageArInvoiceExportStatement(db, { organizationId, applicationId, now }),
+      ],
+    })
+    if (!moved) {
+      throw new Error("This billing approval was already taken back, or meanwhile a Sage invoice number or a payment was recorded, a later draw was started, or Sage started adding the invoice. Refresh to see where it stands.")
+    }
     await recordActivityEvent({
       db, organizationId, projectId, actor: user, category: "financial",
       action: "pay_application_billing_undone", entityType: "project_budget_application", entityId: applicationId,
@@ -189,14 +224,21 @@ export async function setProjectOwnerPayApplicationSageInvoice(
     const number = invoiceNumber.trim().slice(0, 60) || null
     const syncStatus = number ? "synced" : "awaiting_sage_invoice"
     const now = new Date().toISOString()
-    await db.batch([
-      updateBudgetApplicationsStatement(db, eq(projectBudgetApplications.id, applicationId), {
-        sageInvoiceNumber: number,
-        syncStatus,
-        updatedAt: now,
-      }),
-      operationUpdateQuery(db, operationFor(projectId, applicationId), { syncStatus, updatedAt: now }),
-    ])
+    try {
+      await db.batch([
+        // Only while it is still billed (not taken back meanwhile).
+        batchGuardStatement(db, compassDrawStatusIs(projectId, applicationId, ["billed"]), "pay application still billed"),
+        updateBudgetApplicationsStatement(db, eq(projectBudgetApplications.id, applicationId), {
+          sageInvoiceNumber: number,
+          syncStatus,
+          updatedAt: now,
+        }),
+        operationUpdateQuery(db, operationFor(projectId, applicationId), { syncStatus, updatedAt: now }),
+      ])
+    } catch (error) {
+      if (isBatchGuardFailure(error)) throw new Error("The billing approval was taken back meanwhile. Approve the pay application for billing first.")
+      throw error
+    }
     await recordActivityEvent({
       db, organizationId, projectId, actor: user, category: "financial",
       action: "pay_application_sage_invoice_recorded", entityType: "project_budget_application", entityId: applicationId,
@@ -211,3 +253,36 @@ export async function setProjectOwnerPayApplicationSageInvoice(
     return { success: false, error: error instanceof Error ? error.message : "Unable to record the Sage invoice number." }
   }
 }
+
+/**
+ * Staff checked Sage and this draw's AR invoice isn't there: its export stops
+ * counting as possibly in Sage (compare-and-set on that state), so the billing
+ * approval can be taken back. Nothing is sent to Sage.
+ */
+export async function confirmProjectOwnerPayApplicationNotInSage(
+  projectId: string,
+  applicationId: string
+): Promise<BillingActionResult> {
+  try {
+    const { db, user, organizationId } = await billingAccess(projectId)
+    const application = await compassApplication(db, projectId, applicationId)
+    if (!application) throw new Error("Pay application not found.")
+    const now = new Date().toISOString()
+    const who = user.displayName ?? user.email
+    const note = `${who} checked Sage on ${now.slice(0, 10)}: the invoice isn't there.`
+    if (!(await confirmSageArExportNotInSage(db, { kind: "pay", organizationId, sourceId: applicationId, note, now }))) {
+      throw new Error("This pay application isn't waiting on a Sage check (Sage has it, or it changed). Refresh to see where it is.")
+    }
+    await recordActivityEvent({
+      db, organizationId, projectId, actor: user, category: "financial",
+      action: "pay_application_sage_checked_absent", entityType: "project_budget_application", entityId: applicationId,
+      summary: `Pay application ${application.applicationNumber}: ${who} checked Sage and its AR invoice isn't there.`,
+      metadata: {},
+    })
+    revalidateBillingPaths(projectId, applicationId)
+    return { success: true, id: applicationId }
+  } catch (error) {
+    return { success: false, error: error instanceof Error ? error.message : "Unable to record the Sage check." }
+  }
+}
+

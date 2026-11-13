@@ -8,7 +8,7 @@
  * syncing the rest. A change that failed or did not read back keeps holding
  * its fields, so Compass keeps the new value while staff retry or reject.
  */
-import { and, asc, desc, eq, inArray, ne } from "drizzle-orm"
+import { and, asc, desc, eq, inArray, ne, sql, type SQL } from "drizzle-orm"
 import { z } from "zod/v4"
 
 import { sageContactChangeProposals } from "@/db/schema-sage"
@@ -46,8 +46,25 @@ export async function heldSageFields(
   entityId: string,
   options: { readonly exceptProposalId?: string } = {}
 ): Promise<ReadonlySet<string>> {
-  if (!HOLDING_KINDS.has(kind)) return new Set()
-  const rows = await db.select({ changesJson: sageContactChangeProposals.changesJson })
+  return (await sageHolds(db, organizationId, kind, entityId, options)).fields
+}
+
+/** A record's held fields and the unfinished changes holding them, for a guarded sync write. */
+export type SageHolds = {
+  readonly fields: ReadonlySet<string>
+  readonly proposalIds: readonly string[]
+}
+
+/** heldSageFields, plus which changes hold them (see noNewSageHoldGuard). */
+export async function sageHolds(
+  db: Db,
+  organizationId: string,
+  kind: string,
+  entityId: string,
+  options: { readonly exceptProposalId?: string } = {}
+): Promise<SageHolds> {
+  if (!HOLDING_KINDS.has(kind)) return { fields: new Set(), proposalIds: [] }
+  const rows = await db.select({ id: sageContactChangeProposals.id, changesJson: sageContactChangeProposals.changesJson })
     .from(sageContactChangeProposals).where(and(
       eq(sageContactChangeProposals.organizationId, organizationId),
       eq(sageContactChangeProposals.kind, kind),
@@ -55,18 +72,62 @@ export async function heldSageFields(
       inArray(sageContactChangeProposals.status, [...HOLDING_SAGE_CHANGE_STATUSES]),
       options.exceptProposalId ? ne(sageContactChangeProposals.id, options.exceptProposalId) : undefined
     ))
-  return new Set(rows.flatMap((row) => changedFields(row.changesJson)))
+  return {
+    fields: new Set(rows.flatMap((row) => changedFields(row.changesJson))),
+    proposalIds: rows.map((row) => row.id),
+  }
 }
 
-/** Held fields of every record of one kind, for list-wide syncs (one query). */
-export async function heldSageFieldsByEntity(
+/**
+ * A WHERE fragment (raw SQL and its binds) for a Sage → Compass write: true
+ * only while the record has no unfinished Sage change beyond `seen`, the ones
+ * the sync already left out. A staff edit that lands between the sync's read
+ * of the held fields and its write opens a change first (its request lands
+ * before Compass changes), so the write then matches nothing instead of
+ * putting Sage's old value over the new one. Null for kinds that hold nothing.
+ */
+export function noNewSageHoldGuard(input: {
+  readonly organizationId: string
+  readonly kind: string
+  readonly entityId: string
+  readonly seen: readonly string[]
+}): { readonly sql: string; readonly binds: readonly string[] } | null {
+  if (!HOLDING_KINDS.has(input.kind)) return null
+  const statuses = HOLDING_SAGE_CHANGE_STATUSES.map(() => "?").join(", ")
+  const seen = input.seen.length > 0 ? ` AND hold.id NOT IN (${input.seen.map(() => "?").join(", ")})` : ""
+  return {
+    sql: `NOT EXISTS (SELECT 1 FROM sage_contact_change_proposals hold
+      WHERE hold.organization_id = ? AND hold.kind = ? AND hold.entity_id = ?
+        AND hold.status IN (${statuses})${seen})`,
+    binds: [input.organizationId, input.kind, input.entityId, ...HOLDING_SAGE_CHANGE_STATUSES, ...input.seen],
+  }
+}
+
+/** noNewSageHoldGuard as a Drizzle condition, for a record whose id is `entityId`. */
+export function noNewSageHoldCondition(input: {
+  readonly organizationId: string
+  readonly kind: string
+  readonly entityId: string
+  readonly seen: readonly string[]
+}): SQL | undefined {
+  if (!HOLDING_KINDS.has(input.kind)) return undefined
+  const list = (values: readonly string[]): SQL => sql`(${sql.join(values.map((value) => sql`${value}`), sql`, `)})`
+  const seen = input.seen.length > 0 ? sql` AND hold.id NOT IN ${list(input.seen)}` : sql``
+  return sql`NOT EXISTS (SELECT 1 FROM sage_contact_change_proposals hold
+    WHERE hold.organization_id = ${input.organizationId} AND hold.kind = ${input.kind} AND hold.entity_id = ${input.entityId}
+      AND hold.status IN ${list(HOLDING_SAGE_CHANGE_STATUSES)}${seen})`
+}
+
+/** Held fields and holding changes of every record of one kind, for list-wide syncs (one query). */
+export async function sageHoldsByEntity(
   db: Db,
   organizationId: string,
   kind: string
-): Promise<ReadonlyMap<string, ReadonlySet<string>>> {
-  const held = new Map<string, Set<string>>()
-  if (!HOLDING_KINDS.has(kind)) return held
+): Promise<ReadonlyMap<string, SageHolds>> {
+  const holds = new Map<string, { fields: Set<string>; proposalIds: string[] }>()
+  if (!HOLDING_KINDS.has(kind)) return holds
   const rows = await db.select({
+    id: sageContactChangeProposals.id,
     entityId: sageContactChangeProposals.entityId,
     changesJson: sageContactChangeProposals.changesJson,
   }).from(sageContactChangeProposals).where(and(
@@ -75,11 +136,12 @@ export async function heldSageFieldsByEntity(
     inArray(sageContactChangeProposals.status, [...HOLDING_SAGE_CHANGE_STATUSES])
   ))
   for (const row of rows) {
-    const fields = held.get(row.entityId) ?? new Set<string>()
-    for (const field of changedFields(row.changesJson)) fields.add(field)
-    held.set(row.entityId, fields)
+    const entry = holds.get(row.entityId) ?? { fields: new Set<string>(), proposalIds: [] }
+    for (const field of changedFields(row.changesJson)) entry.fields.add(field)
+    entry.proposalIds.push(row.id)
+    holds.set(row.entityId, entry)
   }
-  return held
+  return holds
 }
 
 /** The record's latest unfinished Sage change, if any. */

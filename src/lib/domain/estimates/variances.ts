@@ -1,6 +1,6 @@
 // Estimates domain: variances (owner-requested changes billed with a fee by
 // contract type, plus liability insurance), recorded as change orders.
-import { and, asc, desc, eq, inArray, isNotNull } from "drizzle-orm"
+import { and, asc, desc, eq, inArray, isNotNull, isNull, sql, type SQL } from "drizzle-orm"
 
 import { projectChangeOrderHistory, projectChangeOrderLines, projectChangeOrders, projects } from "@/db/schema"
 import { projectContractBudgetLines, projectContractBudgetRevisions, projectEstimates } from "@/db/schema-estimates"
@@ -17,6 +17,7 @@ import {
   updateChangeOrdersStatement,
   type Statement,
 } from "@/lib/domain/estimates/store"
+import { changeOrderMoveStatements, changeOrderStatusGuardStatement, runGuardedChangeOrderBatch } from "@/lib/domain/estimates/change-order-status-store"
 import {
   contractAllowsVariances,
   contractInsuranceRate,
@@ -299,6 +300,22 @@ async function loadVariance(db: Db, projectId: string, changeOrderId: string): P
     .get()
 }
 
+/**
+ * SQL condition: the variance's typed (not derived) lines are still the ones
+ * read. A save replaces every line with new rows stamped with its time, so
+ * the count, total and newest stamp change with any save.
+ */
+function pricedLinesUnchanged(
+  changeOrderId: string,
+  lines: readonly { readonly amountCents: number | null; readonly createdAt: string }[]
+): SQL {
+  const typed = and(eq(projectChangeOrderLines.changeOrderId, changeOrderId), isNull(projectChangeOrderLines.derivedFrom))
+  const total = lines.reduce((sum, line) => sum + (line.amountCents ?? 0), 0)
+  const newest = lines.reduce((max, line) => (line.createdAt > max ? line.createdAt : max), "")
+  return sql`(SELECT count(*) = ${lines.length} AND COALESCE(SUM(${projectChangeOrderLines.amountCents}), 0) = ${total}
+    AND COALESCE(MAX(${projectChangeOrderLines.createdAt}), '') = ${newest} FROM ${projectChangeOrderLines} WHERE ${typed})`
+}
+
 const OPEN_VARIANCE_STATUSES: readonly string[] = ["draft", "submitted", "triage", "needs_information", "pricing", "internal_review"]
 
 /** Replaces a draft variance's cost lines (increases and decreases by cost code). */
@@ -322,7 +339,9 @@ export async function saveVarianceLines(input: {
   if (!plan.success) return plan
   const now = new Date().toISOString()
   const amountCents = plan.lines.reduce((sum, line) => sum + line.amountCents, 0)
-  await db.batch([
+  const saved = await runGuardedChangeOrderBatch(db, [
+    // Not once it was approved meanwhile.
+    changeOrderStatusGuardStatement(db, { changeOrderId, projectId, expected: row.status }),
     deleteChangeOrderLinesStatement(db, eq(projectChangeOrderLines.changeOrderId, changeOrderId)),
     insertChangeOrderLineStatement(
       db,
@@ -345,6 +364,7 @@ export async function saveVarianceLines(input: {
       history({ projectId, changeOrderId, eventType: "variance_lines_saved", fromStatus: row.status, toStatus: row.status, actor, note: null, metadata: { lines: plan.lines }, now })
     ),
   ])
+  if (!saved) return { success: false, error: "This variance was approved or changed meanwhile. Refresh to see where it stands." }
   return { success: true, id: changeOrderId, budgetNote: null }
 }
 
@@ -392,7 +412,17 @@ export async function approveVariance(input: {
   const now = new Date().toISOString()
   const amountCents = [...priced, ...derived].reduce((sum, line) => sum + (line.amountCents ?? 0), 0)
   const firstLineNumber = Math.max(0, ...priced.map((line) => line.lineNumber)) + 1
-  const statements: Statement[] = [
+  const statements: [Statement, ...Statement[]] = [
+    // Compare-and-set on the status and the priced lines read above: a second
+    // approval, or lines saved meanwhile, refuses the whole batch.
+    ...changeOrderMoveStatements(db, {
+      changeOrderId,
+      projectId,
+      event: "approve_variance",
+      expected: row.status,
+      also: pricedLinesUnchanged(changeOrderId, priced),
+      values: { executedAt: now, amountCents, budgetTreatment: "additive", updatedAt: now },
+    }),
     deleteChangeOrderLinesStatement(
       db,
       and(eq(projectChangeOrderLines.changeOrderId, changeOrderId), isNotNull(projectChangeOrderLines.derivedFrom))
@@ -401,12 +431,6 @@ export async function approveVariance(input: {
   const derivedRows = derivedLineRows({ projectId, changeOrderId, firstLineNumber, lines: derived, now })
   if (derivedRows.length > 0) statements.push(insertChangeOrderLineStatement(db, derivedRows))
   statements.push(
-    updateChangeOrdersStatement(
-      db,
-      // Guarded on the status read above so two people can't approve it twice.
-      and(eq(projectChangeOrders.id, changeOrderId), eq(projectChangeOrders.status, row.status)),
-      { status: "executed", executedAt: now, amountCents, budgetTreatment: "additive", updatedAt: now }
-    ),
     insertChangeOrderHistoryStatement(
       db,
       history({
@@ -422,8 +446,9 @@ export async function approveVariance(input: {
       })
     )
   )
-  const [first, ...rest] = statements
-  if (first) await db.batch([first, ...rest])
+  if (!(await runGuardedChangeOrderBatch(db, statements))) {
+    return { success: false, error: "This variance was already approved, or its lines changed meanwhile. Refresh to see where it stands." }
+  }
   const budget = await rebuildProjectContractBudget({ db, projectId, actorUserId: actor.id })
   if (project.organizationId) {
     await recordActivityEvent({

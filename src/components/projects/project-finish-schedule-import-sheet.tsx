@@ -13,6 +13,7 @@ import type {
 } from "@/lib/domain/selections/types"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import { Checkbox } from "@/components/ui/checkbox"
 import { Input } from "@/components/ui/input"
 import {
   Sheet,
@@ -44,6 +45,7 @@ export function ProjectFinishScheduleImportSheet({
   const [open, setOpen] = React.useState(false)
   const [workbookUrl, setWorkbookUrl] = React.useState("")
   const [state, setState] = React.useState<ImportState>({ kind: "idle" })
+  const [restoreDeletedRooms, setRestoreDeletedRooms] = React.useState(false)
 
   function changeWorkbookUrl(value: string): void {
     setWorkbookUrl(value)
@@ -62,7 +64,7 @@ export function ProjectFinishScheduleImportSheet({
 
   async function applyImport(previewValue: ProjectFinishScheduleImportPreview): Promise<void> {
     setState({ kind: "importing", preview: previewValue })
-    const result = await importProjectFinishSchedule(projectId, workbookUrl)
+    const result = await importProjectFinishSchedule(projectId, workbookUrl, { restoreDeletedRooms })
     if (!result.success) {
       setState({ kind: "error", message: result.error })
       return
@@ -73,6 +75,7 @@ export function ProjectFinishScheduleImportSheet({
       result.removedCount > 0 ? `${result.removedCount} removed from source` : null,
       result.conflictCount > 0 ? `${result.conflictCount} preserved for review` : null,
       result.staleCount > 0 ? `${result.staleCount} stale source rows retained` : null,
+      result.skippedCount > 0 ? `${result.skippedCount} left out (their rooms were deleted in Compass)` : null,
     ].filter((value) => value !== null)
     setState({
       kind: "complete",
@@ -178,6 +181,23 @@ export function ProjectFinishScheduleImportSheet({
             <p className="text-sm text-success" role="status">
               Import complete: {state.message}
             </p>
+          )}
+
+          {activePreview && (
+            <label className="flex items-start gap-2 text-sm">
+              <Checkbox
+                checked={restoreDeletedRooms}
+                onCheckedChange={(checked) => setRestoreDeletedRooms(checked === true)}
+                className="mt-0.5"
+              />
+              <span>
+                Bring back rooms deleted in Compass
+                <span className="block text-xs text-muted-foreground">
+                  Rooms you deleted here are left out of a re-import unless you tick this.
+                  Renamed rooms keep their Compass name either way.
+                </span>
+              </span>
+            </label>
           )}
 
           {activePreview && (

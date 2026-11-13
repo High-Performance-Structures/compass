@@ -8,6 +8,7 @@ import { sageInvoiceArExports } from "@/db/schema-sage"
 import { simpleInvoiceUpdateStatement } from "@/lib/domain/financials/store"
 import { recordActivityEvent } from "@/lib/activity-log"
 import { updateSageInvoiceArExportsStatement } from "@/lib/domain/sage-bridge/ar-invoice-store"
+import { releaseSageResultLease, takeSageResultLease } from "@/lib/domain/sage-bridge/store"
 import { formatCents } from "@/lib/format"
 import { sageAmountCents, type sageArInvoiceWriteResultSchema } from "@/lib/sage/ar-invoice-write"
 import { sageExportActor } from "@/lib/sage/estimate-sync"
@@ -57,53 +58,62 @@ export async function applySimpleInvoiceSageResult(
     .where(fence)
     .get()
   if (!row) return null
+  // One handler per claim: a result posted twice applies (and logs) once.
   const now = new Date().toISOString()
-  if (result.outcome === "failed") {
-    const status = result.needsAttention ? "needs_attention" : "failed"
-    const updated = await updateSageInvoiceArExportsStatement(db, fence, { status, errorMessage: result.error, completedAt: now, updatedAt: now }).returning({
-      id: sageInvoiceArExports.id,
+  const leaseToken = await takeSageResultLease(db, "sage_invoice_ar_exports", { id: result.id, organizationId, claimToken: result.claimToken, now })
+  if (!leaseToken) return null
+  const leased = and(eq(sageInvoiceArExports.id, result.id), eq(sageInvoiceArExports.organizationId, organizationId), eq(sageInvoiceArExports.claimToken, leaseToken))
+  try {
+    if (result.outcome === "failed") {
+      const status = result.needsAttention ? "needs_attention" : "failed"
+      const updated = await updateSageInvoiceArExportsStatement(db, leased, { status, errorMessage: result.error, completedAt: now, updatedAt: now }).returning({
+        id: sageInvoiceArExports.id,
+      })
+      return updated.length === 1 ? { status, httpStatus: 202 } : null
+    }
+    // Sage computes the sales tax itself; a total that reads back differently
+    // keeps the invoice (it is in Sage) but flags it for the office.
+    const sageTotalCents = sageAmountCents(result.sageInvoiceTotal)
+    const expected = expectedTotalCents(row.payloadJson)
+    const differs = expected !== null && expected !== sageTotalCents
+    const status = differs ? "needs_attention" : "succeeded"
+    const updated = await updateSageInvoiceArExportsStatement(db, leased, {
+      status,
+      sageRecordId: result.sageRecordId,
+      sageTotalCents,
+      errorMessage:
+        differs && expected !== null
+          ? `Sage has invoice ${row.invoiceNumber}, but its total reads back as ${formatCents(sageTotalCents)} (sales tax ${formatCents(sageAmountCents(result.sageSalesTax))}); Compass expected ${formatCents(expected)}. Check it in Sage.`
+          : null,
+      completedAt: now,
+      updatedAt: now,
+    }).returning({ id: sageInvoiceArExports.id })
+    if (updated.length !== 1) return null
+    // The invoice now carries Sage's identity, so the Square webhook's payment
+    // (keyed "sage-ar-invoice:<record>") applies to it rather than a copy.
+    await simpleInvoiceUpdateStatement(db, and(eq(invoices.id, row.invoiceId), eq(invoices.organizationId, organizationId), isNull(invoices.sourceExternalId)), {
+      sourceExternalId: `sage-ar-invoice:${result.sageRecordId}`,
+      updatedAt: now,
     })
-    return updated.length === 1 ? { status, httpStatus: 202 } : null
+    const actor = await sageExportActor(db, row.requestedByUserId)
+    if (actor) {
+      await recordActivityEvent({
+        db,
+        organizationId,
+        projectId: row.projectId,
+        actor,
+        category: "financial",
+        action: "invoice_sage_added",
+        entityType: "invoice",
+        entityId: row.invoiceId,
+        summary: `Invoice ${row.invoiceNumber}: ${result.alreadyInSage ? "already in Sage" : "added to Sage"} as an AR invoice (${formatCents(sageTotalCents)}).${differs ? " Sage's total differs; check it in Sage." : ""}`,
+        metadata: { invoiceNumber: row.invoiceNumber, sageRecordId: result.sageRecordId, sageTotalCents, alreadyInSage: result.alreadyInSage },
+        createdAt: now,
+      })
+    }
+    return { status, httpStatus: 200 }
+  } catch (error) {
+    await releaseSageResultLease(db, "sage_invoice_ar_exports", { id: result.id, claimToken: result.claimToken })
+    throw error
   }
-  // Sage computes the sales tax itself; a total that reads back differently
-  // keeps the invoice (it is in Sage) but flags it for the office.
-  const sageTotalCents = sageAmountCents(result.sageInvoiceTotal)
-  const expected = expectedTotalCents(row.payloadJson)
-  const differs = expected !== null && expected !== sageTotalCents
-  const status = differs ? "needs_attention" : "succeeded"
-  const updated = await updateSageInvoiceArExportsStatement(db, fence, {
-    status,
-    sageRecordId: result.sageRecordId,
-    sageTotalCents,
-    errorMessage:
-      differs && expected !== null
-        ? `Sage has invoice ${row.invoiceNumber}, but its total reads back as ${formatCents(sageTotalCents)} (sales tax ${formatCents(sageAmountCents(result.sageSalesTax))}); Compass expected ${formatCents(expected)}. Check it in Sage.`
-        : null,
-    completedAt: now,
-    updatedAt: now,
-  }).returning({ id: sageInvoiceArExports.id })
-  if (updated.length !== 1) return null
-  // The invoice now carries Sage's identity, so the Square webhook's payment
-  // (keyed "sage-ar-invoice:<record>") applies to it rather than a copy.
-  await simpleInvoiceUpdateStatement(db, and(eq(invoices.id, row.invoiceId), eq(invoices.organizationId, organizationId), isNull(invoices.sourceExternalId)), {
-    sourceExternalId: `sage-ar-invoice:${result.sageRecordId}`,
-    updatedAt: now,
-  })
-  const actor = await sageExportActor(db, row.requestedByUserId)
-  if (actor) {
-    await recordActivityEvent({
-      db,
-      organizationId,
-      projectId: row.projectId,
-      actor,
-      category: "financial",
-      action: "invoice_sage_added",
-      entityType: "invoice",
-      entityId: row.invoiceId,
-      summary: `Invoice ${row.invoiceNumber}: ${result.alreadyInSage ? "already in Sage" : "added to Sage"} as an AR invoice (${formatCents(sageTotalCents)}).${differs ? " Sage's total differs; check it in Sage." : ""}`,
-      metadata: { invoiceNumber: row.invoiceNumber, sageRecordId: result.sageRecordId, sageTotalCents, alreadyInSage: result.alreadyInSage },
-      createdAt: now,
-    })
-  }
-  return { status, httpStatus: 200 }
 }

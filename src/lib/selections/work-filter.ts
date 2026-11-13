@@ -76,12 +76,17 @@ function selectionMatchesWorkFilter(
   return matchesSearch(selection, filter.search)
 }
 
-/** The summary narrowed to the filter, with its counts recomputed; empty rooms drop out. */
+/**
+ * The summary narrowed to the filter, with its counts recomputed. Rooms the
+ * filter leaves empty drop out; with no filter on, every room shows, including
+ * a room with no selections yet (Add room).
+ */
 export function filterSelectionsSummary(
   summary: ProjectSelectionsSummary,
   filter: SelectionWorkFilter,
   divisions: ReadonlyMap<string, string>
 ): ProjectSelectionsSummary {
+  const active = selectionFilterActive(filter)
   const rooms = summary.rooms
     .map((room) => ({
       ...room,
@@ -89,7 +94,7 @@ export function filterSelectionsSummary(
         selectionMatchesWorkFilter(selection, filter, divisions)
       ),
     }))
-    .filter((room) => room.selections.length > 0)
+    .filter((room) => room.selections.length > 0 || !active)
     .map((room) => ({ ...room, selectionCount: room.selections.length }))
   const selections = rooms.flatMap((room) => room.selections)
   return {
@@ -186,8 +191,9 @@ export function publishRoomPills(
   const waiting = items.filter((item) => item.published && item.current && !item.approvedAt).length
   const requests = items.filter((item) => item.requests.some((request) => request.status === "open")).length
   const pills: RoomPill[] = []
+  // The owner's confirmed choice; only a signature approves (the Finish specs pills show that).
   if (items.length > 0 && items.every((item) => item.published && item.current && item.approvedAt)) {
-    pills.push({ label: "all approved", tone: "done" })
+    pills.push({ label: "all chosen", tone: "done" })
   }
   if (waiting > 0) pills.push({ label: `${waiting} waiting on owner`, tone: "attention" })
   if (requests > 0) pills.push({ label: plural(requests, "owner request", "owner requests"), tone: "attention" })

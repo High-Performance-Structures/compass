@@ -4,11 +4,12 @@ import type * as React from "react"
 
 import { deleteProjectSelection } from "@/app/actions/project-selections"
 import { ConfirmDeleteButton } from "@/components/shared/confirm-delete-button"
+import { selectionLock } from "@/lib/domain/selections/locks"
 import type { ProjectSelectionItem } from "@/lib/domain/selections/types"
 
-/** Approved selections are part of the record, so they get no Delete button. */
+/** Approved, ordered and installed selections are part of the record, so they get no Delete button. */
 function canDeleteSelection(selection: ProjectSelectionItem): boolean {
-  return !selection.ownerApproved && selection.status !== "approved"
+  return !selection.ownerApproved && selection.status !== "approved" && selectionLock(selection.status, false) === null
 }
 
 export function ProjectSelectionDeleteButton({

@@ -8,7 +8,7 @@
  * only the moves that landed are logged to Activity. Staff can still set any
  * status by hand.
  */
-import { and, eq, inArray } from "drizzle-orm"
+import { and, eq, inArray, sql } from "drizzle-orm"
 
 import { projectFinishSelections, projects } from "@/db/schema"
 import { projectSelectionProcurementLinks } from "@/db/schema-selection-decisions"
@@ -77,7 +77,9 @@ export async function advanceSelectionStatus(
   ).flat()
   // updated_at is the edit token staff forms send back; an automatic status move leaves it.
   const statements = before.flatMap((row) => {
-    const statement = automaticSelectionStatusStatement(db, { projectId: input.projectId, selectionId: row.id, event, stored: row.status })
+    // Ordered again: a new order holds it (an earlier release no longer applies; the settled price stays).
+    const values = event === "order" ? { procurementReleasedAt: null } : undefined
+    const statement = automaticSelectionStatusStatement(db, { projectId: input.projectId, selectionId: row.id, event, stored: row.status, values })
     return statement ? [statement] : []
   })
   const [first, ...rest] = statements
@@ -120,10 +122,18 @@ export async function advanceSelectionStatus(
 /** Selections tied to a purchase order: procurement links and the selection's own PO link. */
 async function selectionsForPurchaseOrder(db: Db, projectId: string, purchaseOrderId: string): Promise<readonly string[]> {
   const [linked, own] = await Promise.all([
+    // A link made before the selection let go of its order (Ordered → Unavailable) no longer moves it.
     db
       .select({ id: projectSelectionProcurementLinks.selectionId })
       .from(projectSelectionProcurementLinks)
-      .where(and(eq(projectSelectionProcurementLinks.projectId, projectId), eq(projectSelectionProcurementLinks.operationId, purchaseOrderId))),
+      .innerJoin(projectFinishSelections, eq(projectFinishSelections.id, projectSelectionProcurementLinks.selectionId))
+      .where(
+        and(
+          eq(projectSelectionProcurementLinks.projectId, projectId),
+          eq(projectSelectionProcurementLinks.operationId, purchaseOrderId),
+          sql`(${projectFinishSelections.procurementReleasedAt} IS NULL OR ${projectSelectionProcurementLinks.createdAt} > ${projectFinishSelections.procurementReleasedAt})`,
+        ),
+      ),
     db
       .select({ id: projectFinishSelections.id })
       .from(projectFinishSelections)

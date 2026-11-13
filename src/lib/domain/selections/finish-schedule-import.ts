@@ -3,7 +3,7 @@
  * reconcile its rooms and selections into the project. Writes go through the
  * selections store. Access is resolved by the caller.
  */
-import { and, eq } from "drizzle-orm"
+import { and, eq, notInArray } from "drizzle-orm"
 
 import { projectFinishSelectionRooms, projectFinishSelections } from "@/db/schema"
 import { googleAuth } from "@/db/schema-google"
@@ -14,6 +14,8 @@ import { getGoogleConfig, getGoogleCryptoSalt, parseServiceAccountKey } from "@/
 import { parseFinishScheduleWorkbook } from "@/lib/selections/google-finish-schedule-import"
 import type { Db, ProjectContext } from "@/lib/server/action-context"
 
+import { clearApprovalPatch } from "./approval-clear"
+import { LOCKED_SELECTION_STATUSES } from "./locks"
 import {
   importedSelectionIdentity,
   importedSourceChanged,
@@ -41,6 +43,8 @@ export type FinishScheduleImportAccess = {
 }
 
 /** Adds the organization's Google Sheets client to a staff selections context. */
+const LOCKED_STATUSES: ReadonlySet<string> = new Set(LOCKED_SELECTION_STATUSES)
+
 export async function finishScheduleImportAccess(
   context: ProjectContext & { readonly organizationId: string }
 ): Promise<FinishScheduleImportAccess> {
@@ -124,14 +128,20 @@ export type FinishScheduleImportCounts = {
   readonly removedCount: number
   readonly conflictCount: number
   readonly staleCount: number
+  /** Workbook rows left out because staff deleted their room in Compass. */
+  readonly skippedCount: number
 }
+
+/** Each workbook sheet's room as Compass shows it: staff renames win; deleted rooms are left out. */
+type ImportedRooms = ReadonlyMap<string, { readonly roomName: string; readonly roomType: string | null } | "deleted">
 
 async function reconcileRooms(
   db: Db,
   projectId: string,
   loaded: LoadedFinishSchedule,
-  now: string
-): Promise<void> {
+  now: string,
+  restoreDeletedRooms: boolean
+): Promise<ImportedRooms> {
   const existingRooms = await db
     .select()
     .from(projectFinishSelectionRooms)
@@ -149,9 +159,29 @@ async function reconcileRooms(
   )
   const importedSheetIds = new Set(loaded.parsed.rooms.map((room) => String(room.sheetId)))
   const statements: Statement[] = []
+  const imported = new Map<string, { readonly roomName: string; readonly roomType: string | null } | "deleted">()
   for (const room of loaded.parsed.rooms) {
     const sourceSheetId = String(room.sheetId)
     const existing = roomsBySheetId.get(sourceSheetId)
+    // Staff deleted this room in Compass: leave it (and its rows) out unless they asked to bring it back.
+    if (existing?.deletedAt && !restoreDeletedRooms) {
+      imported.set(sourceSheetId, "deleted")
+      continue
+    }
+    // Staff renamed, retyped or reordered it in Compass: keep theirs.
+    if (existing?.staffEditedAt) {
+      imported.set(sourceSheetId, { roomName: existing.roomName, roomType: existing.roomType })
+      statements.push(
+        updateSelectionRoomsStatement(db, eq(projectFinishSelectionRooms.id, existing.id), {
+          sourceSheetName: room.sheetName,
+          active: true,
+          deletedAt: null,
+          updatedAt: now
+        })
+      )
+      continue
+    }
+    imported.set(sourceSheetId, { roomName: room.roomName, roomType: room.roomType })
     if (existing) {
       statements.push(
         updateSelectionRoomsStatement(db, eq(projectFinishSelectionRooms.id, existing.id), {
@@ -160,6 +190,7 @@ async function reconcileRooms(
           roomType: room.roomType,
           sortOrder: room.sortOrder,
           active: true,
+          deletedAt: null,
           updatedAt: now
         })
       )
@@ -194,6 +225,7 @@ async function reconcileRooms(
     )
   }
   await runBatch(db, statements)
+  return imported
 }
 
 /**
@@ -204,10 +236,11 @@ async function reconcileRooms(
 export async function applyFinishScheduleImport(
   db: Db,
   projectId: string,
-  loaded: LoadedFinishSchedule
+  loaded: LoadedFinishSchedule,
+  options: { readonly restoreDeletedRooms?: boolean } = {}
 ): Promise<FinishScheduleImportCounts> {
   const now = new Date().toISOString()
-  await reconcileRooms(db, projectId, loaded, now)
+  const rooms = await reconcileRooms(db, projectId, loaded, now, options.restoreDeletedRooms ?? false)
 
   const existingSelections = await db
     .select()
@@ -246,7 +279,13 @@ export async function applyFinishScheduleImport(
   let updatedCount = 0
   let conflictCount = 0
 
+  let skippedCount = 0
   for (const selection of loaded.parsed.selections) {
+    const room = rooms.get(String(selection.sheetId))
+    if (room === "deleted") {
+      skippedCount += 1
+      continue
+    }
     const sourceRecordId = `${loaded.workbookId}:${selection.sheetId}:${selection.sourceRowNumber}`
     const identity = importedSelectionIdentity({
       sourceSheetName: selection.sheetName,
@@ -262,8 +301,8 @@ export async function applyFinishScheduleImport(
     })
     const sourceValues: ImportedSelectionSourceValues = {
       sourceSheetName: selection.sheetName,
-      roomName: selection.roomName,
-      roomType: selection.roomType,
+      roomName: room?.roomName ?? selection.roomName,
+      roomType: room ? room.roomType : selection.roomType,
       category: selection.category,
       name: selection.name,
       description: selection.description,
@@ -300,23 +339,34 @@ export async function applyFinishScheduleImport(
       conflictCount += 1
       continue
     }
+    // An ordered or installed selection keeps its product: a workbook change to it is a conflict for staff.
+    if (LOCKED_STATUSES.has(existing.status) && importedSourceChanged(existing, sourceValues)) {
+      conflictCount += 1
+      continue
+    }
     const approvalNeedsReview =
       (existing.ownerApproved || existing.status === "approved") &&
       importedSourceChanged(existing, sourceValues)
+    // An owner approval (signed or imported) isn't reopened by the workbook: a conflict for staff.
+    if (approvalNeedsReview && existing.ownerApproved) {
+      conflictCount += 1
+      continue
+    }
     // The workbook changed an approved row: the approval no longer covers it,
     // so it reopens (back to the owner). Otherwise the status is left alone,
     // so a status staff set meanwhile is never overwritten by the import.
+    // Both writes skip a row that became ordered or installed after the read.
+    const stillUnlocked = and(eq(projectFinishSelections.id, existing.id), notInArray(projectFinishSelections.status, [...LOCKED_SELECTION_STATUSES]))
     statements.push(
       approvalNeedsReview
-        ? updateFinishSelectionsWithEventStatement(db, eq(projectFinishSelections.id, existing.id), "reopen", {
+        ? // Only while no owner approval landed meanwhile (an approved row is a conflict, above).
+          updateFinishSelectionsWithEventStatement(db, and(stillUnlocked, eq(projectFinishSelections.ownerApproved, false)), "reopen", {
             ...sourceValues,
             sourceRecordId,
-            ownerApproved: false,
-            approvedBy: null,
-            approvedAt: null,
+            ...clearApprovalPatch(),
             syncStatus: "selection_change_review"
           })
-        : updateFinishSelectionsStatement(db, eq(projectFinishSelections.id, existing.id), {
+        : updateFinishSelectionsStatement(db, LOCKED_STATUSES.has(existing.status) ? eq(projectFinishSelections.id, existing.id) : stillUnlocked, {
             ...sourceValues,
             sourceRecordId,
             syncStatus: "imported"
@@ -347,6 +397,7 @@ export async function applyFinishScheduleImport(
     updatedCount,
     removedCount,
     conflictCount,
-    staleCount: staleSelections.length - removedCount
+    staleCount: staleSelections.length - removedCount,
+    skippedCount
   }
 }

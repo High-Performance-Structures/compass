@@ -6,6 +6,7 @@ import type { z } from "zod/v4"
 import { sageDepositArExports } from "@/db/schema-sage"
 import { recordActivityEvent } from "@/lib/activity-log"
 import { updateSageDepositArExportsStatement } from "@/lib/domain/sage-bridge/ar-invoice-store"
+import { releaseSageResultLease, takeSageResultLease } from "@/lib/domain/sage-bridge/store"
 import { formatCents } from "@/lib/format"
 import { sageAmountCents, type sageArInvoiceWriteResultSchema } from "@/lib/sage/ar-invoice-write"
 import { sageExportActor } from "@/lib/sage/estimate-sync"
@@ -56,45 +57,54 @@ export async function applyDepositSageResult(
     .where(fence)
     .get()
   if (!row) return null
+  // One handler per claim: a result posted twice applies (and logs) once.
   const now = new Date().toISOString()
-  if (result.outcome === "failed") {
-    const status = result.needsAttention ? "needs_attention" : "failed"
-    const updated = await updateSageDepositArExportsStatement(db, fence, { status, errorMessage: result.error, completedAt: now, updatedAt: now }).returning({
-      id: sageDepositArExports.id,
-    })
-    return updated.length === 1 ? { status, httpStatus: 202 } : null
+  const leaseToken = await takeSageResultLease(db, "sage_deposit_ar_exports", { id: result.id, organizationId, claimToken: result.claimToken, now })
+  if (!leaseToken) return null
+  const leased = and(eq(sageDepositArExports.id, result.id), eq(sageDepositArExports.organizationId, organizationId), eq(sageDepositArExports.claimToken, leaseToken))
+  try {
+    if (result.outcome === "failed") {
+      const status = result.needsAttention ? "needs_attention" : "failed"
+      const updated = await updateSageDepositArExportsStatement(db, leased, { status, errorMessage: result.error, completedAt: now, updatedAt: now }).returning({
+        id: sageDepositArExports.id,
+      })
+      return updated.length === 1 ? { status, httpStatus: 202 } : null
+    }
+    const sageTotalCents = sageAmountCents(result.sageInvoiceTotal)
+    const expected = sentTotalCents(row.payloadJson)
+    const differs = expected !== null && expected !== sageTotalCents
+    const status = differs ? "needs_attention" : "succeeded"
+    const updated = await updateSageDepositArExportsStatement(db, leased, {
+      status,
+      sageRecordId: result.sageRecordId,
+      sageTotalCents,
+      errorMessage:
+        differs && expected !== null
+          ? `Sage has invoice ${row.invoiceNumber}, but its total reads back as ${formatCents(sageTotalCents)}; Compass expected ${formatCents(expected)}. Check it in Sage.`
+          : null,
+      completedAt: now,
+      updatedAt: now,
+    }).returning({ id: sageDepositArExports.id })
+    if (updated.length !== 1) return null
+    const actor = await sageExportActor(db, row.requestedByUserId)
+    if (actor) {
+      await recordActivityEvent({
+        db,
+        organizationId,
+        projectId: row.projectId,
+        actor,
+        category: "financial",
+        action: "deposit_sage_added",
+        entityType: "project_contract_deposit",
+        entityId: row.depositId,
+        summary: `Deposit request ${row.invoiceNumber}: ${result.alreadyInSage ? "already in Sage" : "added to Sage"} as an AR invoice (${formatCents(sageTotalCents)}).${differs ? " Sage's total differs; check it in Sage." : ""}`,
+        metadata: { invoiceNumber: row.invoiceNumber, sageRecordId: result.sageRecordId, sageTotalCents, alreadyInSage: result.alreadyInSage },
+        createdAt: now,
+      })
+    }
+    return { status, httpStatus: 200 }
+  } catch (error) {
+    await releaseSageResultLease(db, "sage_deposit_ar_exports", { id: result.id, claimToken: result.claimToken })
+    throw error
   }
-  const sageTotalCents = sageAmountCents(result.sageInvoiceTotal)
-  const expected = sentTotalCents(row.payloadJson)
-  const differs = expected !== null && expected !== sageTotalCents
-  const status = differs ? "needs_attention" : "succeeded"
-  const updated = await updateSageDepositArExportsStatement(db, fence, {
-    status,
-    sageRecordId: result.sageRecordId,
-    sageTotalCents,
-    errorMessage:
-      differs && expected !== null
-        ? `Sage has invoice ${row.invoiceNumber}, but its total reads back as ${formatCents(sageTotalCents)}; Compass expected ${formatCents(expected)}. Check it in Sage.`
-        : null,
-    completedAt: now,
-    updatedAt: now,
-  }).returning({ id: sageDepositArExports.id })
-  if (updated.length !== 1) return null
-  const actor = await sageExportActor(db, row.requestedByUserId)
-  if (actor) {
-    await recordActivityEvent({
-      db,
-      organizationId,
-      projectId: row.projectId,
-      actor,
-      category: "financial",
-      action: "deposit_sage_added",
-      entityType: "project_contract_deposit",
-      entityId: row.depositId,
-      summary: `Deposit request ${row.invoiceNumber}: ${result.alreadyInSage ? "already in Sage" : "added to Sage"} as an AR invoice (${formatCents(sageTotalCents)}).${differs ? " Sage's total differs; check it in Sage." : ""}`,
-      metadata: { invoiceNumber: row.invoiceNumber, sageRecordId: result.sageRecordId, sageTotalCents, alreadyInSage: result.alreadyInSage },
-      createdAt: now,
-    })
-  }
-  return { status, httpStatus: 200 }
 }

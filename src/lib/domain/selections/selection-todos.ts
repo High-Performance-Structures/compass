@@ -6,12 +6,13 @@
  * selection step it is for, so the same open step is not created twice.
  * Finishing a to-do stays a person's decision: nothing here closes one.
  */
-import { and, asc, eq, inArray, sql } from "drizzle-orm"
+import { and, asc, eq, inArray, or, sql } from "drizzle-orm"
 
 import { projectOperations, projects } from "@/db/schema"
 import { countProjectOperations } from "@/lib/domain/operations/queries"
 import { projectTaskNumberFor } from "@/lib/domain/operations/rules"
-import { insertOperations, recordTodoEvent } from "@/lib/domain/operations/store"
+import { archiveTodos, insertOperationUnlessDuplicate, recordTodoEvent } from "@/lib/domain/operations/store"
+import { chunkD1Values } from "@/lib/d1-query"
 import { PROJECT_TODO_RECORD_TYPES } from "@/lib/project-todos"
 import { recordStatusColor, recordStatusLabel } from "@/lib/domain/record-statuses/rules"
 import type { RecordStatusColor } from "@/lib/domain/record-statuses/statuses"
@@ -21,7 +22,7 @@ import type { Db } from "@/lib/server/action-context"
 
 /** The selection steps that make a to-do. */
 
-export type SelectionTodoStep = "price_choices" | "order" | "owner_question" | "order_lead_time"
+export type SelectionTodoStep = "price_choices" | "order" | "owner_question" | "order_lead_time" | "replacement_change_order"
 
 const STEP_TEXT: Readonly<Record<SelectionTodoStep, { readonly title: string; readonly description: string; readonly priority: string }>> = {
   price_choices: {
@@ -42,6 +43,11 @@ const STEP_TEXT: Readonly<Record<SelectionTodoStep, { readonly title: string; re
   order_lead_time: {
     title: "Place long-lead order for",
     description: "This selection has a long lead time. Order it soon so it arrives in time.",
+    priority: "high",
+  },
+  replacement_change_order: {
+    title: "Create a change order for this replacement:",
+    description: "A new selection replaces an approved, ordered or installed one. Write the change order for it on the change-order screens and send it for the owner's signature.",
     priority: "high",
   },
 }
@@ -80,7 +86,11 @@ export async function loadSelectionTodos(db: Db, projectId: string, selectionId:
     .where(
       and(
         eq(projectOperations.projectId, projectId),
-        eq(projectOperations.sourceRecordId, selectionId),
+        // Its own to-dos, and a replacement's change-order to-do on the selection it replaces.
+        or(
+          eq(projectOperations.sourceRecordId, selectionId),
+          sql`json_extract(${projectOperations.sagePayloadJson}, '$.replacedSelectionId') = ${selectionId}`,
+        ),
         inArray(projectOperations.sourceRecordType, [...PROJECT_TODO_RECORD_TYPES]),
       ),
     )
@@ -93,10 +103,60 @@ export async function loadSelectionTodos(db: Db, projectId: string, selectionId:
   }))
 }
 
+/** The selection's to-dos for a step (any status). */
+async function stepTodos(db: Db, projectId: string, selectionIds: readonly string[], step: SelectionTodoStep) {
+  // Chunked: a bulk delete can pass more ids than one D1 statement binds.
+  const chunks = await Promise.all(chunkD1Values(selectionIds).map((ids) => stepTodosChunk(db, projectId, ids, step)))
+  return chunks.flat()
+}
+
+async function stepTodosChunk(db: Db, projectId: string, selectionIds: readonly string[], step: SelectionTodoStep) {
+  return db
+    .select({
+      id: projectOperations.id,
+      projectId: projectOperations.projectId,
+      status: projectOperations.status,
+      onceKey: sql<string | null>`json_extract(${projectOperations.sagePayloadJson}, '$.selectionStepKey')`,
+    })
+    .from(projectOperations)
+    .where(
+      and(
+        eq(projectOperations.projectId, projectId),
+        inArray(projectOperations.sourceRecordId, [...selectionIds]),
+        eq(projectOperations.sourceRecordType, "staff_task"),
+        sql`json_extract(${projectOperations.sagePayloadJson}, '$.selectionStep') = ${step}`,
+      ),
+    )
+}
+
+/**
+ * Whether the selection has a to-do for the step that wasn't archived (open
+ * or done). A replacement without one can have its change-order to-do made
+ * from its drawer.
+ */
+export async function hasSelectionStepTodo(db: Db, projectId: string, selectionId: string, step: SelectionTodoStep): Promise<boolean> {
+  const statuses = await loadRecordStatusListForProject(db, projectId, "todo")
+  const rows = await stepTodos(db, projectId, [selectionId], step)
+  return rows.some((row) => !isArchivedTodoStatus(statuses, row.status))
+}
+
+/**
+ * Archives the open change-order to-dos of replacements being deleted: with
+ * the replacement gone there is no change order to write. Done ones stay.
+ */
+export async function archiveReplacementTodos(db: Db, projectId: string, selectionIds: readonly string[], now: string): Promise<void> {
+  if (selectionIds.length === 0) return
+  const statuses = await loadRecordStatusListForProject(db, projectId, "todo")
+  const open = (await stepTodos(db, projectId, selectionIds, "replacement_change_order"))
+    .filter((row) => !isCompletedTodoStatus(statuses, row.status) && !isArchivedTodoStatus(statuses, row.status))
+  await archiveTodos(db, projectId, open, now)
+}
+
 /**
  * Creates the step's to-do for the selection unless one is still open.
- * Assigned to the project manager named on the job. Returns the new to-do's
- * id, or null when an open one already exists.
+ * Assigned to `assigneeName` when given (null leaves it unassigned), else to
+ * the project manager named on the job. Returns the new to-do's id, or null
+ * when an open one already exists.
  *
  * `onceKey` makes it once only: no new to-do while any to-do for the step
  * (open or finished) carries the same key. Scheduled checks use it so a
@@ -115,24 +175,14 @@ export async function ensureSelectionTodo(
     readonly dueDate?: string | null
     /** Replaces the step's standard description. */
     readonly description?: string
+    /** Who it is assigned to (a name; null for no one); the project manager named on the job when left out. */
+    readonly assigneeName?: string | null
+    /** The selection a replacement replaces: the to-do shows on both. */
+    readonly replacedSelectionId?: string
   },
 ): Promise<string | null> {
   const statuses = await loadRecordStatusListForProject(db, input.projectId, "todo")
-  const open = await db
-    .select({
-      id: projectOperations.id,
-      status: projectOperations.status,
-      onceKey: sql<string | null>`json_extract(${projectOperations.sagePayloadJson}, '$.selectionStepKey')`,
-    })
-    .from(projectOperations)
-    .where(
-      and(
-        eq(projectOperations.projectId, input.projectId),
-        eq(projectOperations.sourceRecordId, input.selectionId),
-        eq(projectOperations.sourceRecordType, "staff_task"),
-        sql`json_extract(${projectOperations.sagePayloadJson}, '$.selectionStep') = ${input.step}`,
-      ),
-    )
+  const open = await stepTodos(db, input.projectId, [input.selectionId], input.step)
   if (open.some((row) => !isCompletedTodoStatus(statuses, row.status) && !isArchivedTodoStatus(statuses, row.status))) return null
   if (input.onceKey !== undefined && open.some((row) => row.onceKey === input.onceKey)) return null
 
@@ -154,7 +204,10 @@ export async function ensureSelectionTodo(
   const text = STEP_TEXT[input.step]
   const id = crypto.randomUUID()
   const title = selectionTodoTitle(input.step, input.selectionName)
-  await insertOperations(db, {
+  // Atomic against a double click or a concurrent request: when another
+  // to-do for the step landed since the read above, this one is taken back.
+  const duplicate = sql`(SELECT count(*) FROM project_operations AS step_todo WHERE step_todo.project_id = ${input.projectId} AND step_todo.source_record_id = ${input.selectionId} AND step_todo.source_record_type = 'staff_task' AND json_extract(step_todo.sage_payload_json, '$.selectionStep') = ${input.step}) > ${open.length + 1}`
+  const kept = await insertOperationUnlessDuplicate(db, {
     id,
     projectId: input.projectId,
     sourceSystem: "compass",
@@ -166,7 +219,7 @@ export async function ensureSelectionTodo(
     status: "open",
     priority: text.priority,
     assigneeType: "internal",
-    assigneeName: project.projectManager,
+    assigneeName: input.assigneeName !== undefined ? input.assigneeName : project.projectManager,
     dueDate: input.dueDate ?? null,
     sageJobId: project.sageJobId,
     sageJobNumber: project.sageJobNumber,
@@ -176,6 +229,7 @@ export async function ensureSelectionTodo(
       selectionId: input.selectionId,
       selectionStep: input.step,
       ...(input.onceKey !== undefined ? { selectionStepKey: input.onceKey } : {}),
+      ...(input.replacedSelectionId !== undefined ? { replacedSelectionId: input.replacedSelectionId } : {}),
       taskType: "staff_task",
       title,
     }),
@@ -183,7 +237,8 @@ export async function ensureSelectionTodo(
     syncStatus: "compass_only",
     createdAt: input.now,
     updatedAt: input.now,
-  })
+  }, duplicate)
+  if (!kept) return null
   if (project.organizationId) {
     await recordTodoEvent(db, {
       organizationId: project.organizationId,

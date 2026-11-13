@@ -128,6 +128,10 @@ export function ProjectFinancialWorkspace({
   readonly projectDriveFolderId: string | null
 }): ReactElement {
   const { developerModeEnabled } = useDeveloperMode()
+  // Imported copies of bills listed under Received payments show there, once.
+  const queueItems = items.filter((item) => item.shownUnder === null)
+  const shownElsewhere = items.length - queueItems.length
+  const differingCopies = items.flatMap((item) => (item.shownUnderNote ? [item.shownUnderNote] : []))
   const router = useRouter()
   const [isPending, startTransition] = useTransition()
   const [message, setMessage] = useState<string | null>(null)
@@ -345,17 +349,23 @@ export function ProjectFinancialWorkspace({
                 : "Review project financial records and their current status."}
             </p>
           </div>
-          <Badge variant="outline">{items.length} records</Badge>
+          <Badge variant="outline">{queueItems.length} records</Badge>
         </div>
+        {shownElsewhere > 0 && (
+          <p className="px-4 pt-3 text-xs text-muted-foreground">
+            {shownElsewhere === 1 ? "1 imported bill is" : `${shownElsewhere} imported bills are`} shown under Received payments.
+            {differingCopies.length > 0 && ` ${differingCopies.join("; ")}.`}
+          </p>
+        )}
 
-        {items.length === 0 ? (
+        {queueItems.length === 0 ? (
           <p className="px-4 py-4 text-sm text-muted-foreground">
             No project financial records have been staged yet.
           </p>
         ) : (
           <div className="p-4">
             <ProjectFinancialQueueTable
-              items={items}
+              items={queueItems}
               projectId={projectId}
               projectDriveUrl={projectDriveUrl}
               developerModeEnabled={developerModeEnabled}

@@ -1,9 +1,13 @@
 "use server"
 
+import { and, eq } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 
+import { projectContractDeposits } from "@/db/schema"
 import { actionFailure, errorMessage, type ActionResult } from "@/lib/action-result"
 import { loadDepositSageExports, loadDepositSageSource, queueDepositSageExport, type DepositSageExportView } from "@/lib/financials/deposit-sage"
+import { recordActivityEvent } from "@/lib/activity-log"
+import { confirmSageArExportNotInSage } from "@/lib/domain/sage-bridge/ar-invoice-store"
 import { requirePermission } from "@/lib/permissions"
 import { sageArInvoiceWritesEnabled } from "@/lib/sage/ar-invoice-write"
 import { canSendToSage } from "@/lib/sage/sage-send-access"
@@ -75,3 +79,47 @@ export async function sendProjectDepositToSage(
     return actionFailure(errorMessage(error, "Unable to send the deposit request to Sage."))
   }
 }
+
+/**
+ * Staff checked Sage and this deposit request's AR invoice isn't there: its
+ * export stops counting as possibly in Sage (compare-and-set on that state).
+ * Nothing is sent to Sage.
+ */
+export async function confirmProjectDepositNotInSage(projectId: string, depositId: string): Promise<ActionResult<{ readonly depositId: string }>> {
+  try {
+    const context = await staffProject(projectId)
+    if (!context.success) return context
+    const { db, user, organizationId } = context.data
+    requirePermission(user, "project", "update")
+    if (!canSendToSage(user)) return actionFailure("Only office staff with finance access can record a Sage check on deposit requests.")
+    const deposit = await db
+      .select({ id: projectContractDeposits.id })
+      .from(projectContractDeposits)
+      .where(and(eq(projectContractDeposits.id, depositId), eq(projectContractDeposits.projectId, projectId)))
+      .get()
+    if (!deposit) return actionFailure("Deposit request not found.")
+    const now = new Date().toISOString()
+    const who = user.displayName ?? user.email
+    const note = `${who} checked Sage on ${now.slice(0, 10)}: the invoice isn't there.`
+    if (!(await confirmSageArExportNotInSage(db, { kind: "deposit", organizationId, sourceId: depositId, note, now }))) {
+      return actionFailure("This deposit request isn't waiting on a Sage check (Sage has it, or it changed). Refresh to see where it is.")
+    }
+    await recordActivityEvent({
+      db,
+      organizationId,
+      projectId,
+      actor: user,
+      category: "financial",
+      action: "deposit_sage_checked_absent",
+      entityType: "project_contract_deposit",
+      entityId: depositId,
+      summary: `Deposit request: ${who} checked Sage and its AR invoice isn't there.`,
+      createdAt: now,
+    })
+    revalidatePath(`/dashboard/projects/${projectId}/financials`)
+    return { success: true, data: { depositId } }
+  } catch (error) {
+    return actionFailure(errorMessage(error, "Unable to record the Sage check."))
+  }
+}
+

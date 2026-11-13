@@ -1,0 +1,269 @@
+import { describe, expect, it } from "vitest"
+
+import { billSequence, listedBillFor, receivablesShownAs, ownerPayApplicationHistory, ownerPayApplicationsOnce, receivablesOncePerBill, type BillRef } from "@/lib/domain/financials/bill-matching"
+
+/*
+ * A job brought over from another system has bills twice: once as an
+ * invoice or pay application (listed with received payments) and once as the
+ * promoted cutover row in the financial workflow list, not always under the
+ * same source system. Two records are the same bill only when the amounts
+ * agree to the cent and an id or the number matches. Shapes from production;
+ * ids fictional.
+ */
+
+type Listed = BillRef & { readonly label: string }
+
+/** listedBillFor on a job (default: one with no number, each copy's number unique). */
+function match(row: Parameters<typeof listedBillFor>[0], listed: readonly Listed[], job: Partial<Parameters<typeof listedBillFor>[2]> = {}) {
+  return listedBillFor(row, listed, { projectNumber: null, sameNumberCopies: 1, ...job })
+}
+
+const workflow = (overrides: Partial<Parameters<typeof listedBillFor>[0]>) => ({
+  sourceSystem: "buildertrend",
+  sourceRecordType: "owner_invoice",
+  sourceRecordId: "bt-inv-1001",
+  sourceRecordNumber: "INV-7",
+  amount: 1234.5,
+  ...overrides,
+})
+
+describe("imported workflow copies of listed bills", () => {
+  it("H-329-9607: the buildertrend_import pay requests are the Compass invoices -01 and -02", () => {
+    const listed: Listed[] = [
+      { kind: "invoice", ids: ["inv-a", null], number: "H-329-9607-01", cents: 5_673_883, label: "Invoice H-329-9607-01" },
+      { kind: "invoice", ids: ["inv-b", null], number: "H-329-9607-02", cents: 9_034_813, label: "Invoice H-329-9607-02" },
+    ]
+    const payRequest = (number: string, amount: number) =>
+      workflow({ sourceSystem: "buildertrend_import", sourceRecordType: "owner_pay_application", sourceRecordId: `bt-${number}`, sourceRecordNumber: number, amount })
+    expect(match(payRequest("H-329-9607-01", 56_738.83), listed)?.bill.label).toBe("Invoice H-329-9607-01")
+    expect(match(payRequest("H-329-9607-02", 90_348.13), listed)?.bill.label).toBe("Invoice H-329-9607-02")
+    // A different amount is a different bill.
+    expect(match(payRequest("H-329-9607-02", 90_348.14), listed)).toBeNull()
+  })
+
+  it("matches an invoice only to an invoice and a pay request only to a draw", () => {
+    const invoice: Listed = { kind: "invoice", ids: ["inv-1", "bt-inv-1001"], number: "INV-7", cents: 123_450, label: "Invoice INV-7" }
+    const draw: Listed = { kind: "draw", ids: ["app-4", "drive-file-4"], number: "PA-004", cents: 123_450, label: "Pay application PA-004" }
+    expect(match(workflow({}), [invoice, draw])?.bill.label).toBe("Invoice INV-7")
+    expect(match(workflow({ sourceRecordId: "staging-9" }), [draw])).toBeNull()
+    // A Drive draw's workflow row matches its listed pay application by id or sequence ("4" is PA-004).
+    const drivePayRequest = { sourceSystem: "google_drive_g702_g703", sourceRecordType: "owner_pay_application", sourceRecordNumber: "4" }
+    expect(match(workflow({ ...drivePayRequest, sourceRecordId: null }), [invoice, draw])?.bill.label).toBe("Pay application PA-004")
+    expect(match(workflow({ ...drivePayRequest, sourceSystem: "buildertrend", sourceRecordId: null, sourceRecordNumber: "INV-7" }), [invoice])).toBeNull()
+  })
+
+  it("keeps bills not listed elsewhere, Compass's own workflow items, and payments", () => {
+    const listed: Listed[] = [{ kind: "draw", ids: ["app-1"], number: "1", cents: 123_450, label: "Pay application 1" }]
+    expect(match(workflow({ sourceRecordType: "owner_pay_application", sourceRecordId: "bt-2", sourceRecordNumber: "9" }), listed)).toBeNull()
+    expect(match(workflow({ sourceSystem: "compass", sourceRecordType: "owner_pay_application", sourceRecordId: "app-1" }), listed)).toBeNull()
+    for (const sourceRecordType of ["payment", "deposit", "credit_memo"]) {
+      expect(match(workflow({ sourceRecordType, sourceRecordId: "app-1" }), listed)).toBeNull()
+    }
+  })
+
+  it("reads a draw's sequence from the end of its number", () => {
+    expect(billSequence("PA-009")).toBe("9")
+    expect(billSequence("H-329-9607-01")).toBe("1")
+    expect(billSequence("Contract Budget R2")).toBe("2")
+    expect(billSequence("Final")).toBeNull()
+    expect(billSequence("O-170-PR5-31Aug26")).toBe("5")
+    expect(billSequence("O-170-2684-PAYAPP-003")).toBe("3")
+    expect(billSequence("O-202-595-PR09")).toBe("9")
+  })
+})
+
+describe("received payments list each bill once", () => {
+  const item = (label: string, overrides: Partial<{ bill: BillRef; sourceSystem: string; paidCents: number; prepaid: unknown }>) => ({
+    label,
+    bill: { kind: "invoice" as const, ids: [], number: "H-1-01", cents: 100_000 },
+    sourceSystem: "buildertrend",
+    paidCents: 0,
+    prepaid: null,
+    ...overrides,
+  })
+
+  it("a Buildertrend invoice and a Drive G702 for the same bill show once, as the draw", () => {
+    const invoice = item("Invoice H-1-01", {})
+    const draw = item("Pay application 1", { bill: { kind: "draw", ids: [], number: "1", cents: 100_000 }, sourceSystem: "google_drive_g702_g703" })
+    expect(receivablesOncePerBill([invoice, draw])).toEqual([{ row: draw, sameBillAs: "Invoice H-1-01" }])
+  })
+
+  it("never leaves out a copy with payments, a Compass or Sage record, or a different amount", () => {
+    const paid = item("Invoice H-1-01", { paidCents: 5_000 })
+    const draw = item("Pay application 1", { bill: { kind: "draw", ids: [], number: "1", cents: 100_000 }, sourceSystem: "google_drive_g702_g703" })
+    expect(receivablesOncePerBill([paid, draw]).map((entry) => entry.row)).toEqual([paid])
+    const compassDraw = item("Pay application 1", { bill: { kind: "draw", ids: [], number: "1", cents: 100_000 }, sourceSystem: "compass_contract_budget" })
+    const compassInvoice = item("Invoice H-1-01", { sourceSystem: "compass" })
+    expect(receivablesOncePerBill([compassInvoice, compassDraw])).toHaveLength(2)
+    const other = item("Pay application 1", { bill: { kind: "draw", ids: [], number: "1", cents: 100_001 }, sourceSystem: "google_drive_g702_g703" })
+    expect(receivablesOncePerBill([item("Invoice H-1-01", {}), other])).toHaveLength(2)
+  })
+})
+
+describe("owner pay applications", () => {
+  it("show each bill once, keeping the live record, matched by sequence and amount", () => {
+    const rows = [
+      { id: "drive-9", sourceSystem: "google_drive_g702_g703", applicationNumber: "9", currentPaymentDue: 1200 },
+      { id: "compass-9", sourceSystem: "compass_contract_budget", applicationNumber: "PA-009", currentPaymentDue: 1200 },
+      { id: "sage-8", sourceSystem: "sage_pay_request", applicationNumber: "8", currentPaymentDue: 900 },
+      { id: "drive-8", sourceSystem: "google_drive_g702_g703", applicationNumber: "8", currentPaymentDue: 900 },
+      // Same number, different amount: not the same bill.
+      { id: "drive-7", sourceSystem: "google_drive_g702_g703", applicationNumber: "7", currentPaymentDue: 700 },
+      { id: "drive-7b", sourceSystem: "google_drive_g702_g703", applicationNumber: "7", currentPaymentDue: 701 },
+      { id: "budget", sourceSystem: "compass_contract_budget_projection", applicationNumber: "Contract Budget R9", currentPaymentDue: 0 },
+    ]
+    expect(ownerPayApplicationsOnce(rows).map((row) => row.id)).toEqual(["compass-9", "sage-8", "drive-7", "drive-7b", "budget"])
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Production shapes the owner pointed at (read-only data, 2026-11-12).
+// ---------------------------------------------------------------------------
+
+const dollars = (value: number): number => Math.round(value * 100)
+
+describe("Loomis (O-170-2684), staff side", () => {
+  // Recorded before Compass built its own invoices (no kind): they came over with the cutover.
+  const invoice = (number: string, amount: number): Listed => ({ kind: "invoice", ids: [`inv-${number}`], number, cents: dollars(amount), importedRecord: true, label: `Invoice ${number}` })
+  const loomis = { projectNumber: "O-170-2684" }
+  const invoices: Listed[] = [
+    invoice("O-170-0001", 6178.75), invoice("O-170-0002", 1425), invoice("O-170-0003", 50322.11), invoice("O-170-002", 18460.77),
+    invoice("O-170-003", 127452.82), invoice("O-170-004", 109097.63), invoice("O-170-005", 93632.88), invoice("O-170-O-170-001", 1576.25),
+    invoice("O-170-PR5-31Aug26", 68614.43), invoice("O-170-PR6-FINAL", 30944.17),
+  ]
+  // Drive draws 1-6: amount due, and total earned less retainage.
+  const draws: Listed[] = [
+    [18460.77, 68782.88], [133149.11, 199584.37], [109097.63, 307605.58], [99936.54, 407542.12], [68614.43, 476156.55], [0, 507100.72],
+  ].map(([due, earned], index) => ({
+    kind: "draw", ids: [`draw-${index + 1}`, `drive-file-${index + 1}`], number: String(index + 1),
+    cents: dollars(due ?? 0), otherCents: [dollars(earned ?? 0)], label: `Pay application ${index + 1}`,
+  }))
+  const listed = [...invoices, ...draws]
+
+  it("hides every Buildertrend owner invoice copy, noting the two whose amounts differ", () => {
+    const buildertrend: [string, number][] = [
+      ["O-170-0001", 6178.75], ["O-170-0002", 1425], ["O-170-002", 18460.77], ["O-170-003", 133149.12],
+      ["O-170-004", 109097.63], ["O-170-005", 99936.54], ["O-170-O-170-001", 1576.25],
+    ]
+    const matches = buildertrend.map(([number, amount]) => match(workflow({ sourceRecordId: `bt-${number}`, sourceRecordNumber: number, amount }), listed, loomis))
+    expect(matches.map((found) => found?.bill.label)).toEqual(buildertrend.map(([number]) => `Invoice ${number}`))
+    const differing = matches.filter((found) => found && found.recordedCents !== found.bill.cents)
+    expect(differing.map((found) => [found?.bill.label, found?.recordedCents, found?.how])).toEqual([
+      ["Invoice O-170-003", 13_314_912, "number"],
+      ["Invoice O-170-005", 9_993_654, "number"],
+    ])
+  })
+
+  it("matches a number alone only between cutover records, on the job's prefix, positive, and unique", () => {
+    const copy = (number: string, amount: number) => workflow({ sourceRecordId: `bt-${number}`, sourceRecordNumber: number, amount })
+    // A bare number, or one without the job's prefix, still needs equal cents.
+    expect(match(copy("3", 1), [invoice("3", 2)], loomis)).toBeNull()
+    expect(match(copy("INV-1", 1), [invoice("INV-1", 2)], loomis)).toBeNull()
+    // An invoice staff built in Compass after the cutover.
+    expect(match(copy("O-170-003", 1331.49), [{ ...invoice("O-170-003", 1274.52), importedRecord: false }], loomis)).toBeNull()
+    // Credits never match by number.
+    expect(match(copy("O-170-003", -100), [invoice("O-170-003", 1274.52)], loomis)).toBeNull()
+    expect(match(copy("O-170-003", 100), [invoice("O-170-003", -1274.52)], loomis)).toBeNull()
+    // Two imported copies carry the number.
+    expect(match(copy("O-170-003", 1331.49), [invoice("O-170-003", 1274.52)], { ...loomis, sameNumberCopies: 2 })).toBeNull()
+    expect(match(copy("O-170-003", 1331.49), [invoice("O-170-003", 1274.52)], loomis)?.how).toBe("number")
+  })
+
+  it("hides the Drive PAYAPP copies: by amount due, or by total earned (PAYAPP-001 is draw 1)", () => {
+    const drive = (number: string, amount: number) =>
+      workflow({ sourceSystem: "google_drive_g702_g703", sourceRecordType: "owner_pay_application", sourceRecordId: `op-${number}`, sourceRecordNumber: number, amount })
+    expect(match(drive("O-170-2684-PAYAPP-001", 68782.88), listed)).toMatchObject({ bill: { label: "Pay application 1" }, how: "total_earned" })
+    expect(match(drive("O-170-2684-PAYAPP-002", 133149.11), listed)).toMatchObject({ bill: { label: "Pay application 2" }, how: "amount" })
+    expect(match(drive("O-170-2684-PAYAPP-003", 109097.63), listed)?.bill.label).toBe("Pay application 3")
+    // Never matched to an invoice, even one with the same amount (O-170-004 is $109,097.63 too).
+    expect(match(drive("O-170-2684-PAYAPP-003", 109097.63), invoices)).toBeNull()
+  })
+})
+
+describe("Loeffler (O-202-595)", () => {
+  const due = [58064.24, 172958.05, 169104.24, 177307.15, 41847.62]
+  const draws: Listed[] = due.map((amount, index) => ({
+    kind: "draw", ids: [`draw-${index + 1}`], number: String(index + 1), cents: dollars(amount), label: `Pay application ${index + 1}`,
+  }))
+
+  it("staff: the Drive PAYAPP-001..005 copies are draws 1-5", () => {
+    const labels = due.map((amount, index) =>
+      match(workflow({ sourceSystem: "google_drive_g702_g703", sourceRecordType: "owner_pay_application", sourceRecordId: `op-${index}`, sourceRecordNumber: `O-202-595-PAYAPP-00${index + 1}`, amount }), draws)?.bill.label
+    )
+    expect(labels).toEqual(draws.map((draw) => draw.label))
+  })
+
+  it("owner: no contract budget revisions in the pay application history", () => {
+    const revision = (number: number, status: string) => ({
+      id: `rev-${number}`, sourceSystem: "compass_contract_budget_projection", status, applicationNumber: `Contract Budget R${number}`, currentPaymentDue: 0,
+    })
+    const draw = (number: number) => ({
+      id: `draw-${number}`, sourceSystem: "google_drive_g702_g703", status: "current", applicationNumber: String(number), currentPaymentDue: due[number - 1] ?? 0,
+    })
+    const rows = [revision(6, "budget_current"), ...[5, 4, 3, 2, 1].map((number) => revision(number, "budget_superseded")), ...[5, 4, 3, 2, 1].map(draw)]
+    expect(ownerPayApplicationHistory(rows).map((row) => row.id)).toEqual(["draw-5", "draw-4", "draw-3", "draw-2", "draw-1"])
+  })
+})
+
+describe("LaCasse (O-58-3674)", () => {
+  it("keeps all 21 Buildertrend pay requests: nothing on the job to match", () => {
+    const copies = Array.from({ length: 21 }, (_, index) =>
+      workflow({ sourceRecordType: "owner_pay_application", sourceRecordId: `bt-pr-${index + 1}`, sourceRecordNumber: String(index + 1), amount: 10_000 + index })
+    )
+    expect(copies.filter((copy) => match(copy, [], { projectNumber: "O-58-3674" }) !== null)).toEqual([])
+  })
+})
+
+describe("Loomis (O-170-2684): legacy invoices and the Drive draws they billed (owner rule 2026-11-13)", () => {
+  type Item = Parameters<typeof receivablesOncePerBill>[0][number]
+  const invoice = (number: string, amount: number, issued: string, paid = true): Item => ({
+    label: `Invoice ${number}`, bill: { kind: "invoice", ids: [`inv-${number}`], number, cents: dollars(amount) },
+    sourceSystem: "compass", paidCents: paid ? dollars(amount) : 0, prepaid: null, billDate: issued, legacyInvoice: true,
+  })
+  const draw = (number: number, due: number, periodTo: string): Item => ({
+    label: `Pay application ${number}`, bill: { kind: "draw", ids: [`draw-${number}`], number: String(number), cents: dollars(due) },
+    sourceSystem: "google_drive_g702_g703", paidCents: 0, prepaid: null, billDate: periodTo, legacyInvoice: false,
+  })
+  const invoices = [
+    invoice("O-170-0001", 6178.75, "2026-03-02"), invoice("O-170-0002", 1425, "2026-03-20"), invoice("O-170-0003", 50322.11, "2026-04-02"),
+    invoice("O-170-002", 18460.77, "2026-05-07"), invoice("O-170-003", 127452.82, "2026-06-05"), invoice("O-170-004", 109097.63, "2026-07-10"),
+    invoice("O-170-005", 93632.88, "2026-08-04"), invoice("O-170-O-170-001", 1576.25, "2026-02-10"),
+    invoice("O-170-PR5-31Aug26", 68614.43, "2026-08-31"), invoice("O-170-PR6-FINAL", 30944.17, "2026-10-01"),
+  ]
+  const draws = [
+    draw(1, 18460.77, "2026-04-29"), draw(2, 133149.11, "2026-05-31"), draw(3, 109097.63, "2026-06-30"),
+    draw(4, 99936.54, "2026-07-31"), draw(5, 68614.43, "2026-08-31"), draw(6, 0, "2026-09-30"),
+  ]
+
+  it("lists 16 items as 13: the three paid invoices stay, noting the draw each billed", () => {
+    const kept = receivablesOncePerBill([...invoices, ...draws])
+    expect(invoices.length + draws.length).toBe(16)
+    expect(kept).toHaveLength(13)
+    expect(kept.filter((entry) => entry.sameBillAs).map((entry) => [entry.row.label, entry.sameBillAs])).toEqual([
+      ["Invoice O-170-002", "Pay application 1"],
+      ["Invoice O-170-004", "Pay application 3"],
+      ["Invoice O-170-PR5-31Aug26", "Pay application 5"],
+    ])
+    // The Drive copies of draws 1 and 3 in the workflow queue still find the row they are shown under.
+    const shown = new Map(receivablesShownAs([...invoices, ...draws]).map((entry) => [entry.row.label, entry.shownAs]))
+    expect(shown.get("Pay application 1")).toBe("Invoice O-170-002")
+  })
+
+  it("keeps the draw when only the draw has payments", () => {
+    const kept = receivablesOncePerBill([invoice("O-170-002", 18460.77, "2026-05-07", false), { ...draw(1, 18460.77, "2026-04-29"), paidCents: 100 }])
+    expect(kept.map((entry) => [entry.row.label, entry.sameBillAs])).toEqual([["Pay application 1", "Invoice O-170-002"]])
+  })
+
+  it("leaves both listed: a cent off, 20 days apart, a Compass-built invoice, or two candidates", () => {
+    expect(receivablesOncePerBill([invoice("O-170-002", 18460.76, "2026-05-07"), draw(1, 18460.77, "2026-04-29")])).toHaveLength(2)
+    expect(receivablesOncePerBill([invoice("O-170-002", 18460.77, "2026-05-19"), draw(1, 18460.77, "2026-04-29")])).toHaveLength(2)
+    expect(receivablesOncePerBill([invoice("O-170-002", 18460.77, "2026-04-25"), draw(1, 18460.77, "2026-04-29")])).toHaveLength(2)
+    expect(receivablesOncePerBill([{ ...invoice("O-170-002", 18460.77, "2026-05-07"), legacyInvoice: false }, draw(1, 18460.77, "2026-04-29")])).toHaveLength(2)
+    // Two draws an invoice could have billed, or two invoices for one draw.
+    expect(receivablesOncePerBill([invoice("O-170-002", 18460.77, "2026-05-07"), draw(1, 18460.77, "2026-04-29"), draw(7, 18460.77, "2026-05-01")])).toHaveLength(3)
+    expect(receivablesOncePerBill([invoice("O-170-002", 18460.77, "2026-05-07"), invoice("O-170-002B", 18460.77, "2026-05-08"), draw(1, 18460.77, "2026-04-29")])).toHaveLength(3)
+    // Within 3 days before the period end still matches.
+    expect(receivablesOncePerBill([invoice("O-170-002", 18460.77, "2026-04-27"), draw(1, 18460.77, "2026-04-29")])).toHaveLength(1)
+  })
+})
+

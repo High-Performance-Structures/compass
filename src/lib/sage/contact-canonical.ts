@@ -9,7 +9,7 @@ import type { SageContactKind } from "@/lib/sage/contact-change-proposal"
 import type { SageContactEntityIdentity } from "@/lib/sage/contact-entity"
 import { sageContactIdentityError } from "@/lib/sage/contact-bridge"
 import { formatVendorAddress } from "@/lib/domain/sage-bridge/vendor-directory-updates"
-import { heldSageFields, withoutHeldFields } from "@/lib/sage/sage-held-fields"
+import { noNewSageHoldGuard, sageHolds, withoutHeldFields } from "@/lib/sage/sage-held-fields"
 
 type Snapshot = {
   readonly kind: SageContactKind
@@ -119,15 +119,26 @@ export async function applySageContactSnapshotToCanonical(
   const identityError = sageContactIdentityError(identity, snapshot)
   if (identityError) return { success: false, error: identityError }
   // Compass already shows the value of an unfinished Sage change: Sage's
-  // older value must not overwrite it. Every other field syncs as usual.
-  const held = await heldSageFields(getDb(database), organizationId, snapshot.kind, snapshot.entityId,
-    { exceptProposalId: options.releaseProposalId })
-  if (held.size > 0) {
-    return applySnapshotFields(database, organizationId, identity, {
-      ...snapshot, fields: withoutHeldFields(snapshot.fields, held),
-    }, writtenFields.filter((field) => !held.has(field)))
+  // older value must not overwrite it. Every other field syncs as usual. The
+  // write is guarded on no new change appearing meanwhile (a staff edit made
+  // while this read was applied); when one did, it is planned once more.
+  let result: CanonicalUpdateResult = { success: false, error: "The canonical directory link changed before Sage read-back." }
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    const holds = await sageHolds(getDb(database), organizationId, snapshot.kind, snapshot.entityId,
+      { exceptProposalId: options.releaseProposalId })
+    const guard = noNewSageHoldGuard({
+      organizationId, kind: snapshot.kind, entityId: snapshot.entityId,
+      seen: options.releaseProposalId ? [...holds.proposalIds, options.releaseProposalId] : holds.proposalIds,
+    })
+    const held = holds.fields
+    result = held.size > 0
+      ? await applySnapshotFields(database, organizationId, identity, {
+          ...snapshot, fields: withoutHeldFields(snapshot.fields, held),
+        }, writtenFields.filter((field) => !held.has(field)), guard)
+      : await applySnapshotFields(database, organizationId, identity, snapshot, writtenFields, guard)
+    if (result.success) return result
   }
-  return applySnapshotFields(database, organizationId, identity, snapshot, writtenFields)
+  return result
 }
 
 async function applySnapshotFields(
@@ -135,7 +146,8 @@ async function applySnapshotFields(
   organizationId: string,
   identity: SageContactEntityIdentity,
   snapshot: Snapshot,
-  writtenFields: readonly string[]
+  writtenFields: readonly string[],
+  guard: ReturnType<typeof noNewSageHoldGuard>
 ): Promise<CanonicalUpdateResult> {
   // The snapshot names the same Sage record (ids compare case-insensitively), but the
   // guards below match the directory row exactly, so bind the id spelling it stores.
@@ -147,25 +159,25 @@ async function applySnapshotFields(
   if (snapshot.kind === "client_company") {
     const patch = merged(patchFor(snapshot.fields, CLIENT_COMPANY), writtenCompanyPatch(snapshot.fields, writtenFields))
     statement = sageSnapshotDirectoryUpdateStatement(database, snapshot.kind, updateAssignments("sage_client_id", patch),
-      [sageRecordId, ...patch.values, now, snapshot.entityId, organizationId, sageRecordId])
+      [sageRecordId, ...patch.values, now, snapshot.entityId, organizationId, sageRecordId], guard)
   } else if (snapshot.kind === "vendor_company") {
     const patch = merged(patchFor(snapshot.fields, VENDOR_COMPANY), writtenCompanyPatch(snapshot.fields, writtenFields))
     statement = sageSnapshotDirectoryUpdateStatement(database, snapshot.kind, updateAssignments("sage_vendor_id", patch),
-      [sageRecordId, ...patch.values, now, now, snapshot.entityId, organizationId, sageRecordId])
+      [sageRecordId, ...patch.values, now, now, snapshot.entityId, organizationId, sageRecordId], guard)
   } else if (snapshot.kind === "client_person") {
     const patch = patchFor(snapshot.fields, PERSON)
     statement = sageSnapshotDirectoryUpdateStatement(database, snapshot.kind, updateAssignments("sage_contact_id", patch),
       [sageRecordId, ...patch.values, now, now, snapshot.entityId, sageRecordId,
-        organizationId, parentSageRecordId])
+        organizationId, parentSageRecordId], guard)
   } else if (snapshot.kind === "vendor_person") {
     const patch = patchFor(snapshot.fields, PERSON)
     statement = sageSnapshotDirectoryUpdateStatement(database, snapshot.kind, updateAssignments("sage_contact_id", patch),
       [sageRecordId, ...patch.values, now, snapshot.entityId, sageRecordId,
-        organizationId, parentSageRecordId])
+        organizationId, parentSageRecordId], guard)
   } else {
     const patch = patchFor(snapshot.fields, EMPLOYEE)
     statement = sageSnapshotDirectoryUpdateStatement(database, snapshot.kind, updateAssignments("sage_employee_id", patch),
-      [sageRecordId, ...patch.values, now, now, snapshot.entityId, organizationId, sageRecordId])
+      [sageRecordId, ...patch.values, now, now, snapshot.entityId, organizationId, sageRecordId], guard)
   }
   const result = await statement.run()
   if (result.meta.changes !== 1) {

@@ -2,8 +2,10 @@ import { and, asc, eq, lt, or } from "drizzle-orm"
 
 import { sageArInvoiceExports, sageInvoiceArExports } from "@/db/schema-sage"
 import {
+  AR_EXPORT_CLAIM_RETRY_MILLISECONDS,
   claimSageArInvoiceExport,
   claimSageInvoiceArExport,
+  sageArExportSourceNotVoid,
   updateSageArInvoiceExportsStatement,
   updateSageInvoiceArExportsStatement,
 } from "@/lib/domain/sage-bridge/ar-invoice-store"
@@ -14,7 +16,7 @@ import { buildArInvoiceWriterRequest } from "@/lib/sage/ar-invoice-sync"
 import { AR_INVOICE_WRITER, authorizeSageChangeOrderBridge } from "@/lib/sage/change-order-bridge"
 
 const MAX_BATCH = 5
-const CLAIM_RETRY_MILLISECONDS = 10 * 60 * 1000
+const CLAIM_RETRY_MILLISECONDS = AR_EXPORT_CLAIM_RETRY_MILLISECONDS
 
 /**
  * The Sage writer's poll for billed pay requests, simple Compass invoices
@@ -41,7 +43,8 @@ export async function GET(request: Request): Promise<Response> {
       and(
         eq(sageArInvoiceExports.organizationId, organizationId),
         or(
-          eq(sageArInvoiceExports.status, "queued"),
+          // A void record's queued export is never offered (a stale running one is, so the claim can flag it).
+          and(eq(sageArInvoiceExports.status, "queued"), sageArExportSourceNotVoid("pay")),
           and(eq(sageArInvoiceExports.status, "running"), lt(sageArInvoiceExports.claimedAt, staleBefore))
         )
       )
@@ -88,7 +91,7 @@ export async function GET(request: Request): Promise<Response> {
         and(
           eq(sageInvoiceArExports.organizationId, organizationId),
           or(
-            eq(sageInvoiceArExports.status, "queued"),
+            and(eq(sageInvoiceArExports.status, "queued"), sageArExportSourceNotVoid("invoice")),
             and(eq(sageInvoiceArExports.status, "running"), lt(sageInvoiceArExports.claimedAt, staleBefore))
           )
         )

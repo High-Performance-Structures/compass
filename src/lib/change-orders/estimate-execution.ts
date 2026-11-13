@@ -1,4 +1,4 @@
-import { and, eq, isNull, ne, type SQL } from "drizzle-orm"
+import { and, eq, isNull, ne, sql, type SQL } from "drizzle-orm"
 import type { getDb } from "@/db"
 import { projectChangeOrderLines, projectChangeOrders } from "@/db/schema"
 import { projectEstimateAssemblies, projectEstimateLines, projectEstimates } from "@/db/schema-estimates"
@@ -9,9 +9,9 @@ import {
   deleteChangeOrderLinesStatement,
   insertChangeOrderHistoryStatement,
   insertChangeOrderLineStatement,
-  updateChangeOrdersStatement,
   type Statement,
 } from "@/lib/domain/estimates/store"
+import { changeOrderMoveStatements } from "@/lib/domain/estimates/change-order-status-store"
 
 type Db = ReturnType<typeof getDb>
 type EstimateRow = typeof projectEstimates.$inferSelect
@@ -103,6 +103,8 @@ export function changeOrderLinesFromEstimate(
  * lines become the estimate's priced cost codes, its amount the estimate
  * total, and it is marked executed with the signed document. Run them in the
  * same batch as the estimate acceptance, then rebuild the contract budget.
+ * The batch fails (isBatchGuardFailure) when the change order or estimate
+ * changed since they were read.
  */
 export async function changeOrderExecutionFromEstimate(input: {
   readonly db: Db
@@ -180,18 +182,25 @@ export async function changeOrderExecutionFromEstimate(input: {
     )
   }
   return [
+    // Compare-and-set on the change order and the estimate as read: a void
+    // meanwhile, or a duplicate signing event, refuses the whole batch.
+    ...changeOrderMoveStatements(input.db, {
+      changeOrderId,
+      event: "execute_from_estimate",
+      expected: changeOrder.status,
+      also: sql`EXISTS (SELECT 1 FROM ${projectEstimates} WHERE ${and(eq(projectEstimates.id, input.estimate.id), eq(projectEstimates.status, input.estimate.status))})`,
+      values: {
+        amountCents: totalCents,
+        budgetTreatment: "additive",
+        executedAt: input.signedAt,
+        executedDocumentUrl: input.evidenceUrl,
+        executedDocumentLabel: input.evidenceLabel.slice(0, 200),
+        foxitStatus: "completed",
+        updatedAt: input.now,
+      },
+    }),
     deleteChangeOrderLinesStatement(input.db, eq(projectChangeOrderLines.changeOrderId, changeOrderId)),
     ...lineInserts,
-    updateChangeOrdersStatement(input.db, eq(projectChangeOrders.id, changeOrderId), {
-      status: "executed",
-      amountCents: totalCents,
-      budgetTreatment: "additive",
-      executedAt: input.signedAt,
-      executedDocumentUrl: input.evidenceUrl,
-      executedDocumentLabel: input.evidenceLabel.slice(0, 200),
-      foxitStatus: "completed",
-      updatedAt: input.now,
-    }),
     insertChangeOrderHistoryStatement(input.db, {
       id: crypto.randomUUID(),
       projectId: input.estimate.projectId,

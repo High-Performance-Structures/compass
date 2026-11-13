@@ -259,7 +259,8 @@ export function ProjectContractDepositsPanel({
         toast.error(result.error)
         return
       }
-      toast.success("Deposit voided.")
+      if (result.note) toast.warning(`Deposit voided. ${result.note}`)
+      else toast.success("Deposit voided.")
       router.refresh()
     })
   }

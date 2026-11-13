@@ -5,8 +5,8 @@ import { useRouter } from "next/navigation"
 import { IconAlertTriangle, IconArrowBackUp, IconBan, IconMail, IconRefresh, IconSend } from "@tabler/icons-react"
 import { toast } from "sonner"
 
-import { emailProjectInvoice } from "@/app/actions/project-invoice-email"
-import { reopenProjectInvoice, sendProjectInvoiceToSage, voidProjectInvoice } from "@/app/actions/project-invoices"
+import { confirmInvoiceEmailNotSent, emailProjectInvoice } from "@/app/actions/project-invoice-email"
+import { confirmProjectInvoiceNotInSage, reopenProjectInvoice, sendProjectInvoiceToSage, voidProjectInvoice } from "@/app/actions/project-invoices"
 import type { ProjectInvoiceEditor } from "@/app/actions/project-invoice-views"
 import { EmailRecipientPicker } from "@/components/email/email-recipient-picker"
 import { Badge } from "@/components/ui/badge"
@@ -75,6 +75,19 @@ export function InvoiceSendPanel({ editor }: { readonly editor: ProjectInvoiceEd
     })
   }
 
+  function confirmNotSent(): void {
+    if (!window.confirm("You checked the sent mail and this email isn't there? Compass then lets you send, reopen or delete the invoice again.")) return
+    startTransition(async () => {
+      const result = await confirmInvoiceEmailNotSent(project.id, invoice.id)
+      if (!result.success) {
+        toast.error(result.error)
+        return
+      }
+      toast.success("Marked as not sent.")
+      router.refresh()
+    })
+  }
+
   function reopen(): void {
     startTransition(async () => {
       const result = await reopenProjectInvoice(project.id, invoice.id)
@@ -83,6 +96,19 @@ export function InvoiceSendPanel({ editor }: { readonly editor: ProjectInvoiceEd
         return
       }
       toast.success("Invoice reopened as a draft.")
+      router.refresh()
+    })
+  }
+
+  function confirmNotInSage(): void {
+    if (!window.confirm("You checked Sage and this invoice isn't there? Compass then lets you reopen or void it as if it never reached Sage.")) return
+    startTransition(async () => {
+      const result = await confirmProjectInvoiceNotInSage(project.id, invoice.id)
+      if (!result.success) {
+        toast.error(result.error)
+        return
+      }
+      toast.success("Noted: the invoice isn't in Sage.")
       router.refresh()
     })
   }
@@ -122,6 +148,14 @@ export function InvoiceSendPanel({ editor }: { readonly editor: ProjectInvoiceEd
           ) : null}
         </div>
         {attention && sage.export?.errorMessage ? <p className="text-sm text-destructive">{sage.export.errorMessage}</p> : null}
+        {attention && sage.export?.possiblyInSage && !sage.export.sageRecordId ? (
+          <div className="flex flex-wrap items-center gap-2 text-sm">
+            <span className="text-muted-foreground">Sage may have this invoice. Check Sage before reopening it.</span>
+            <Button type="button" size="sm" variant="outline" disabled={pending} onClick={confirmNotInSage}>
+              I checked Sage: it isn't there
+            </Button>
+          </div>
+        ) : null}
         {sage.blockers.length > 0 && sageStatus !== "succeeded" && !isVoid ? (
           <ul className="list-disc space-y-1 pl-5 text-sm text-destructive">
             {sage.blockers.map((blocker) => (
@@ -148,13 +182,21 @@ export function InvoiceSendPanel({ editor }: { readonly editor: ProjectInvoiceEd
               From {editor.email.senderAddress ?? "your own mailbox (set the invoice mailbox in Settings › Workflows › Simple invoices)"}. Replies come back to this invoice in Compass.
             </p>
           </div>
-          {!isVoid && (
+          {!isVoid && !editor.email.blockedReason && !editor.email.unconfirmedAt && (
             <Button type="button" size="sm" disabled={pending || squareWaitingForSage} onClick={() => setEmailOpen(true)} title={squareWaitingForSage ? "Square invoices go out once the invoice is in Sage." : undefined}>
               <IconMail className="size-4" aria-hidden />
               {invoice.squareRequested && !invoice.squarePublicUrl ? "Create Square invoice and email" : invoice.emailedAt ? "Email again" : "Email invoice"}
             </Button>
           )}
         </div>
+        {!isVoid && editor.email.blockedReason ? <p className="text-xs text-muted-foreground">{editor.email.blockedReason}</p> : null}
+        {editor.email.unconfirmedAt ? (
+          <div className="flex flex-wrap items-center gap-2 text-sm text-destructive">
+            <IconAlertTriangle className="size-4" aria-hidden />
+            <span>An email sent {formatDateTime(editor.email.unconfirmedAt)} may have gone out; Compass couldn&apos;t confirm it. Check the sent mail.</span>
+            <Button type="button" size="sm" variant="outline" disabled={pending} onClick={confirmNotSent}>It didn&apos;t go out</Button>
+          </div>
+        ) : null}
         {invoice.squareRequested && (
           <div className="text-sm">
             <span className="font-medium">Square: </span>
