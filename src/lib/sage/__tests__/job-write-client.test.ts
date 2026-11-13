@@ -40,7 +40,6 @@ beforeEach(() => {
   sqlite.pragma("foreign_keys = OFF")
   // @ts-expect-error The test binding implements only what drizzle's D1 driver calls.
   d1 = d1Over(sqlite)
-  // @ts-expect-error The test binding implements only what drizzle's D1 driver calls.
   db = drizzle(d1)
   insertCustomer({ id: "kept", name: "Acme Homes, LLC", company: "Acme Development", phone: "303-555-0100", sage_client_id: "ABC", sage_client_number: "101" })
   insertCustomer({ id: "middle", name: "Acme Development", merged_into_customer_id: "kept" })

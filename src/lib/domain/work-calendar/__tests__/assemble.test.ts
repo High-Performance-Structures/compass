@@ -25,6 +25,8 @@ const project: CalendarProjectRow = {
   projectNumber: "O-1",
   schedulePublished: false,
   ownerScheduleView: "items",
+  // A missing value falls back to "assigned" in assembleWorkCalendar.
+  subScheduleView: "assigned",
 }
 
 function event(overrides: Partial<CalendarEventRow> = {}): CalendarEventRow {

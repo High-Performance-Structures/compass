@@ -45,6 +45,9 @@ const formOptions: ProjectChangeOrderFormOptions = {
 function record(sourceType = "buildertrend_import"): ProjectChangeOrderItem {
   return {
     id: "synthetic-co0007", projectId: "cedar", changeOrderNumber: "CO-0007",
+    recordType: "change_order", formerChangeOrderNumber: null, canEditVarianceLines: false,
+    canApproveVariance: false, canReclassify: false, changeOrderEstimate: null, executedAt: null,
+    canCompleteCostCodes: false,
     title: "Millwork Budget Reallocation",
     scope: "Owner-approved interior-door and railing reallocations plus remaining July transfers.",
     reason: "Owner-requested and approved budget reconciliation (recorded wording).",
@@ -64,6 +67,7 @@ function record(sourceType = "buildertrend_import"): ProjectChangeOrderItem {
       phaseCode: "01", costCode: `code-${index + 1}`,
       amountCents: (Math.floor(index / 2) + 1) * 10000 * (index % 2 === 0 ? 1 : -1),
       changeKind: null, previousAmountCents: null, newAmountCents: null,
+      assemblyName: null, derivedFrom: null,
     })),
     documents: [
       { id: "doors", label: "Interior Door Homeowner Approval.pdf", url: "https://example.com/doors", notes: "Recorded door acceptance text" },

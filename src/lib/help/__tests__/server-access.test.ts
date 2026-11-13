@@ -63,8 +63,7 @@ describe("effective Help guide server access", () => {
   })
 
   it("exposes the full Help guide set during local development", async () => {
-    const previousNodeEnv = process.env.NODE_ENV
-    process.env.NODE_ENV = "development"
+    vi.stubEnv("NODE_ENV", "development")
 
     try {
       await expect(getEffectiveHelpGuideAccess(user("unknown"))).resolves.toEqual({
@@ -73,11 +72,7 @@ describe("effective Help guide server access", () => {
       })
       expect(canFeatureMock).not.toHaveBeenCalled()
     } finally {
-      if (previousNodeEnv === undefined) {
-        delete process.env.NODE_ENV
-      } else {
-        process.env.NODE_ENV = previousNodeEnv
-      }
+      vi.unstubAllEnvs()
     }
   })
 })

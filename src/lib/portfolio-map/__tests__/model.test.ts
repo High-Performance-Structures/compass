@@ -1,4 +1,6 @@
 import { describe, expect, it } from "vitest"
+
+import { DEFAULT_MAP_STATE } from "@/lib/portfolio-map/states"
 import {
   isMappedDepartment,
   portfolioPhaseFor,
@@ -204,7 +206,7 @@ describe("company map rules", () => {
   }
 
   it("puts a status in the phase the company chose, or leaves it off", () => {
-    const rules = { statusPhases: { complete: "closeout" as const, under_construction: "off" as const }, departmentViews: {}, salesTitles: {} }
+    const rules = { statusPhases: { complete: "closeout" as const, under_construction: "off" as const }, departmentViews: {}, salesTitles: {}, mapState: DEFAULT_MAP_STATE }
     expect(phaseForJobStatus("complete", "Complete", rules)).toBe("closeout")
     expect(portfolioPhaseFor(rule, rules)).toBeNull()
     expect(portfolioPhaseFor({ ...rule, jobStatusId: "custom-1", jobStatusLabel: "Complete" }, rules)).toBe("closeout")
@@ -212,14 +214,14 @@ describe("company map rules", () => {
 
   it("puts each department on the view the company chose", () => {
     expect(isMappedDepartment({ department: "N", projectId: "p", projectNumber: null })).toBe(false)
-    expect(isMappedDepartment({ department: "N", projectId: "p", projectNumber: null }, { statusPhases: {}, departmentViews: { N: "projects" }, salesTitles: {} })).toBe(true)
-    expect(portfolioPhaseFor(rule, { statusPhases: {}, departmentViews: { H: "internal" }, salesTitles: {} })).toBeNull()
-    expect(portfolioPhaseFor(rule, { statusPhases: {}, departmentViews: { H: "off" }, salesTitles: {} })).toBeNull()
+    expect(isMappedDepartment({ department: "N", projectId: "p", projectNumber: null }, { statusPhases: {}, departmentViews: { N: "projects" }, salesTitles: {}, mapState: DEFAULT_MAP_STATE })).toBe(true)
+    expect(portfolioPhaseFor(rule, { statusPhases: {}, departmentViews: { H: "internal" }, salesTitles: {}, mapState: DEFAULT_MAP_STATE })).toBeNull()
+    expect(portfolioPhaseFor(rule, { statusPhases: {}, departmentViews: { H: "off" }, salesTitles: {}, mapState: DEFAULT_MAP_STATE })).toBeNull()
   })
 
   it("lists a phase's statuses for moves, in workflow order, with the company's changes", () => {
     expect(portfolioPhaseStatuses("closeout")).toEqual(["punchlist", "under_warranty"])
-    expect(portfolioPhaseStatuses("closeout", { statusPhases: { complete: "closeout" }, departmentViews: {}, salesTitles: {} })).toContain("complete")
+    expect(portfolioPhaseStatuses("closeout", { statusPhases: { complete: "closeout" }, departmentViews: {}, salesTitles: {}, mapState: DEFAULT_MAP_STATE })).toContain("complete")
   })
 })
 

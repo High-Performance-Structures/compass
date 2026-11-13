@@ -99,7 +99,7 @@ function Fixture(): React.ReactElement {
         warrantyEnabled={data.project.warrantyEnabled}
       >
         {url.pathname.endsWith("/change-orders") && !data.viewerIsInternal && (
-          <ProjectChangeOrderCreateForm projectId={projectId} detailBaseHref={url.pathname} internal={false} formOptions={{ phases: [], costCodes: [], companies: [], estimates: [], currentBaselineEstimateId: null }} />
+          <ProjectChangeOrderCreateForm projectId={projectId} detailBaseHref={url.pathname} internal={false} formOptions={{ phases: [], costCodes: [], companies: [], estimates: [], currentBaselineEstimateId: null, contractAssemblies: [] }} />
         )}
         {url.pathname.endsWith("/warranty") && (
           <ProjectWarrantyWorkspace workspace={{ project: { ...data.project, googleDriveFolderId: null }, viewerIsInternal: false, claims: [] }} />

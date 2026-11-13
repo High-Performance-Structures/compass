@@ -41,6 +41,7 @@ function selection(id: string, roomName: string, category: string): ProjectSelec
     purchaseOrderOperationId: null,
     notes: null,
     syncStatus: "synced",
+    updatedAt: "2026-09-01T00:00:00.000Z",
   }
 }
 

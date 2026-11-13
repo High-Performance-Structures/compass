@@ -35,6 +35,7 @@ function project(id: string, name = id): ProjectListItem {
     clientStatus: "active",
     jobStatusId: "active",
     jobStatusLabel: "Active",
+    internalDepartment: false,
     createdAt: "2026-09-05T12:00:00.000Z",
   }
 }

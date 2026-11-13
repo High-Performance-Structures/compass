@@ -71,7 +71,7 @@ describe("the Columns button", () => {
   it("hides a column for this person and Reset brings back the company default", async () => {
     const savePersonal = vi.fn().mockResolvedValue({ success: true, data: null })
     const preferences: ListSheetPreferences = { ...EMPTY_LIST_SHEET_PREFERENCES, canSavePersonal: true }
-    await act(async () => root.render(React.createElement(ListSheetProvider, { preferences, savePersonal }, React.createElement(Sheet))))
+    await act(async () => root.render(React.createElement(ListSheetProvider, { preferences, savePersonal, children: React.createElement(Sheet) })))
     expect(headers(host)).toEqual(["Name", "Description", "Author", ""])
 
     await click(byText("Columns"))
@@ -89,7 +89,7 @@ describe("the Columns button", () => {
   it("keeps a person's change when an unrelated refresh brings new server data", async () => {
     const savePersonal = vi.fn().mockResolvedValue({ success: true, data: null })
     const render = (preferences: ListSheetPreferences) =>
-      root.render(React.createElement(ListSheetProvider, { preferences, savePersonal }, React.createElement(Sheet)))
+      root.render(React.createElement(ListSheetProvider, { preferences, savePersonal, children: React.createElement(Sheet) }))
     await act(async () => render({ ...EMPTY_LIST_SHEET_PREFERENCES, canSavePersonal: true }))
     await click(byText("Columns"))
     await click(checkboxFor("Author"))
@@ -110,7 +110,7 @@ describe("the Columns button", () => {
         },
       },
     }
-    await act(async () => root.render(React.createElement(ListSheetProvider, { preferences, savePersonal: vi.fn() }, React.createElement(Sheet))))
+    await act(async () => root.render(React.createElement(ListSheetProvider, { preferences, savePersonal: vi.fn(), children: React.createElement(Sheet) })))
     expect(headers(host)).toEqual(["Author", "Name", ""])
   })
 })

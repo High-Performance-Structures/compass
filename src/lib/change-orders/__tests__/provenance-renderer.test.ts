@@ -28,7 +28,10 @@ const formOptions: ProjectChangeOrderFormOptions = {
 
 function item(overrides: Partial<ProjectChangeOrderItem> = {}): ProjectChangeOrderItem {
   return {
-    id: "synthetic-co", projectId: "project-test", changeOrderNumber: "CO-001", title: "Budgeted fixture adjustment",
+    id: "synthetic-co", projectId: "project-test", changeOrderNumber: "CO-001",
+    recordType: "change_order", formerChangeOrderNumber: null, canEditVarianceLines: false,
+    canApproveVariance: false, canReclassify: false, changeOrderEstimate: null, executedAt: null,
+    canCompleteCostCodes: false, title: "Budgeted fixture adjustment",
     scope: "Fixture allowance variance", reason: "Owner request copied from a legacy note",
     amountCents: 12345, scheduleImpactDays: 2, status: "executed", audience: "owner",
     requesterType: "owner", recordIssues: [], requesterUserId: null, requesterName: "Legacy project owner",
