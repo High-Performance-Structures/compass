@@ -163,6 +163,13 @@ const NAV_GROUPS: ReadonlyArray<SidebarNavGroupSource> = [
         ],
       },
       {
+        kind: "link",
+        title: "Messages",
+        url: "/dashboard/projects",
+        icon: IconMessageCircle,
+        projectPath: "/messages",
+      },
+      {
         kind: "subgroup",
         title: "Project Records",
         icon: IconFiles,
@@ -319,13 +326,6 @@ const NAV_GROUPS: ReadonlyArray<SidebarNavGroupSource> = [
         title: "Collaboration & Access",
         icon: IconUsers,
         items: [
-          {
-            kind: "link",
-            title: "Project Conversations",
-            url: "/dashboard/projects",
-            icon: IconMessageCircle,
-            projectPath: "/conversations",
-          },
           {
             kind: "link",
             title: "Owner Preview",

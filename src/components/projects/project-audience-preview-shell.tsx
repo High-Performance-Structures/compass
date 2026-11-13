@@ -57,6 +57,11 @@ const OWNER_NAVIGATION: readonly PreviewNavigationItem[] = [
     icon: <IconClipboardCheck className="size-4" />,
   },
   {
+    label: "Messages",
+    section: "conversations",
+    icon: <IconMessageCircle className="size-4" />,
+  },
+  {
     label: "Schedule",
     section: "schedule",
     icon: <IconCalendar className="size-4" />,
@@ -70,11 +75,6 @@ const OWNER_NAVIGATION: readonly PreviewNavigationItem[] = [
     label: "Change Orders",
     section: "change-orders",
     icon: <IconFileInvoice className="size-4" />,
-  },
-  {
-    label: "Conversations",
-    section: "conversations",
-    icon: <IconMessageCircle className="size-4" />,
   },
   {
     label: "Photos",
@@ -98,6 +98,11 @@ const SUB_VENDOR_NAVIGATION: readonly PreviewNavigationItem[] = [
     label: "Dashboard",
     section: "overview",
     icon: <IconHome className="size-4" />,
+  },
+  {
+    label: "Messages",
+    section: "conversations",
+    icon: <IconMessageCircle className="size-4" />,
   },
   {
     label: "Approved Selections",
@@ -128,11 +133,6 @@ const SUB_VENDOR_NAVIGATION: readonly PreviewNavigationItem[] = [
     label: "Change Orders",
     section: "change-orders",
     icon: <IconFileInvoice className="size-4" />,
-  },
-  {
-    label: "Conversations",
-    section: "conversations",
-    icon: <IconMessageCircle className="size-4" />,
   },
   {
     label: "Photos",

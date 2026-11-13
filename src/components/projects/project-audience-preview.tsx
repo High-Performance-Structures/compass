@@ -1,11 +1,8 @@
 import type * as React from "react"
 import { Suspense } from "react"
 import { ProjectAudienceArchiveSection } from "@/components/projects/project-audience-archive"
-import { getCorrespondenceInbox } from "@/app/actions/project-correspondence"
-import { ProjectAudienceCorrespondencePreview } from "@/components/projects/project-audience-correspondence-preview"
-import { ProjectCorrespondenceWorkspace } from "@/components/correspondence/project-correspondence-workspace"
-import { isCorrespondenceEnabled } from "@/lib/correspondence/access"
-import { getCloudflareContext } from "@/lib/db"
+import { AudienceConversationSection } from "@/components/projects/project-audience-conversation-section"
+import type { ProjectConversationsQuery } from "@/components/conversations/project-conversations-tab"
 import Link from "next/link"
 import {
   IconArrowRight,
@@ -16,12 +13,10 @@ import {
 } from "@tabler/icons-react"
 
 import type {
-  AudienceMessageChannel,
   AudienceContact,
   AudienceOperationItem,
   AudienceOwnerUpdate,
   AudienceRfq,
-  ProjectAudience,
   ProjectAudiencePreview as ProjectAudiencePreviewData,
 } from "@/app/actions/project-audience-preview"
 import { ProjectPortalPrintButton } from "@/components/projects/project-portal-print-button"
@@ -318,99 +313,6 @@ function RfqRow({
   )
 }
 
-function MessageChannelRow({
-  channel,
-  projectId,
-  audience,
-}: {
-  readonly channel: AudienceMessageChannel
-  readonly projectId: string
-  readonly audience: ProjectAudience
-}): React.ReactElement {
-  const routeAudience = audience === "owner" ? "owner" : "sub-vendor"
-
-  return (
-    <Link
-      href={projectAudienceConversationHref(
-        projectId,
-        routeAudience,
-        channel.id
-      )}
-      className="block rounded-md border bg-background p-3 transition-colors hover:bg-accent"
-    >
-      <div className="flex items-center justify-between gap-3">
-        <p className="line-clamp-1 text-sm font-medium">{channel.name}</p>
-        <Badge variant={channel.isPrivate ? "secondary" : "outline"}>
-          {channel.isPrivate ? "Private" : "Project"}
-        </Badge>
-      </div>
-      {channel.description && (
-        <p className="mt-1 line-clamp-2 text-xs text-muted-foreground">
-          {channel.description}
-        </p>
-      )}
-    </Link>
-  )
-}
-
-async function AudienceConversationSection({
-  data,
-  initialNewMessage = false,
-}: {
-  readonly data: ProjectAudiencePreviewData
-  readonly initialNewMessage?: boolean
-}): Promise<React.ReactElement> {
-  const { env } = await getCloudflareContext()
-  if (isCorrespondenceEnabled(data.project.id, env) || isCorrespondenceEnabled(data.project.id)) {
-    const inbox = await getCorrespondenceInbox(data.project.id)
-    return <section id="messages" className="min-w-0">
-
-      {inbox.success ? data.viewerIsInternal ? <ProjectAudienceCorrespondencePreview key={inbox.data.viewerId} projectId={data.project.id} inbox={inbox.data} /> : <ProjectCorrespondenceWorkspace projectId={data.project.id} initialInbox={inbox.data} initialNewMessage={initialNewMessage} /> : <p className="p-4 text-sm">Messages are unavailable. {inbox.error}</p>}
-      {data.messageChannels.length > 0 && <details className="mt-4 border-t pt-3"><summary className="cursor-pointer text-sm">Earlier Compass conversations</summary><div className="mt-3 grid gap-3">{data.messageChannels.map((channel) => <MessageChannelRow key={channel.id} channel={channel} projectId={data.project.id} audience={data.audience} />)}</div></details>}
-    </section>
-  }
-  return (
-    <section
-      id="messages"
-      className="scroll-mt-24 border bg-background p-4 sm:p-5"
-    >
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="flex items-center gap-2">
-          <IconMessageCircle className="size-4 text-muted-foreground" />
-          <h2 className="text-sm font-semibold">Project Conversations</h2>
-        </div>
-        <Badge variant="outline">
-          {data.messageChannels.length}{" "}
-          {data.messageChannels.length === 1
-            ? "conversation"
-            : "conversations"}
-        </Badge>
-      </div>
-      <p className="mt-2 text-xs text-muted-foreground">
-        Messages here go only to the internal project team and approved
-        participants in this private workspace.
-      </p>
-      {data.messageChannels.length > 0 ? (
-        <div className="mt-4 grid gap-3 md:grid-cols-2">
-          {data.messageChannels.map((channel) => (
-            <MessageChannelRow
-              key={channel.id}
-              channel={channel}
-              projectId={data.project.id}
-              audience={data.audience}
-            />
-          ))}
-        </div>
-      ) : (
-        <p className="mt-4 border p-3 text-sm text-muted-foreground">
-          Your private project conversation will appear when access is
-          activated.
-        </p>
-      )}
-    </section>
-  )
-}
-
 function ContactRow({
   contact,
   messageHref,
@@ -532,10 +434,12 @@ function OwnerProjectPreview({
   data,
   section,
   initialNewMessage,
+  conversationsQuery,
 }: {
   readonly data: ProjectAudiencePreviewData
   readonly section: ProjectAudienceWorkspaceSection
   readonly initialNewMessage: boolean
+  readonly conversationsQuery: ProjectConversationsQuery | null
 }): React.ReactElement {
   return (
     <main className="min-h-screen bg-background">
@@ -600,7 +504,7 @@ function OwnerProjectPreview({
         )}
 
         {section === "conversations" && (
-        <AudienceConversationSection data={data} initialNewMessage={initialNewMessage} />
+        <AudienceConversationSection data={data} initialNewMessage={initialNewMessage} conversationsQuery={conversationsQuery} />
         )}
 
         {section === "photos" && (
@@ -630,10 +534,12 @@ export function ProjectAudiencePreview({
   data,
   section = "overview",
   initialNewMessage = false,
+  conversationsQuery = null,
 }: {
   readonly data: ProjectAudiencePreviewData
   readonly section?: ProjectAudienceWorkspaceSection
   readonly initialNewMessage?: boolean
+  readonly conversationsQuery?: ProjectConversationsQuery | null
 }): React.ReactElement {
   const isOwner = data.audience === "owner"
   const messageShortcut = projectAudienceMessageShortcut({
@@ -677,7 +583,7 @@ export function ProjectAudiencePreview({
         activeSection={section}
         warrantyEnabled={data.project.warrantyEnabled}
       >
-        <OwnerProjectPreview data={data} section={section} initialNewMessage={initialNewMessage} />
+        <OwnerProjectPreview data={data} section={section} initialNewMessage={initialNewMessage} conversationsQuery={conversationsQuery} />
       </ProjectAudiencePreviewShell>
     )
   }
@@ -832,7 +738,7 @@ export function ProjectAudiencePreview({
         )}
 
         {section === "conversations" && (
-          <AudienceConversationSection data={data} initialNewMessage={initialNewMessage} />
+          <AudienceConversationSection data={data} initialNewMessage={initialNewMessage} conversationsQuery={conversationsQuery} />
         )}
 
         {section === "photos" && (

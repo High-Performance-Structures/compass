@@ -289,6 +289,11 @@ export const HELP_TOPIC_LOCATIONS: Readonly<Record<string, HelpTopicLocation>> =
     "guideSlug": "conversations-and-notifications",
     "sectionId": "choose-conversation"
   },
+  "conversations.job-conversations": {
+    "guideId": "conversations",
+    "guideSlug": "conversations-and-notifications",
+    "sectionId": "job-conversations"
+  },
   "conversations.send-message": {
     "guideId": "conversations",
     "guideSlug": "conversations-and-notifications",

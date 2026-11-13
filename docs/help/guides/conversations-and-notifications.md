@@ -22,6 +22,10 @@ Use a project channel for communication the project team should find with the jo
 
 The **Conversations** side panel opens team and project conversations without leaving the page you're on. To start a private conversation from it, choose **New conversation**, pick one or more teammates, and choose **Start conversation**. It opens in the panel and is added to your list.
 
+## Find a Job's Conversations {#job-conversations}
+
+Each job's conversations live on that job, not in the left menu. Choose the job, then **Messages** (right under **Updates & Logs**). The page has two tabs: **Emails** and **Conversations**. **Conversations** lists only that job's conversations, the job's own first and then newest activity first. Each row shows who can see it (**Staff only**, **Owners**, **Vendors**) and a **BT** tag on conversations imported from Buildertrend. **My conversations** shows the ones you're in; **Global** shows every conversation on the job that staff may open, like Global email history. Filter by **Unread**, **Staff only**, **With owners**, **With vendors**, or **Imported history**, or search subjects and message text. Click a conversation to read and reply beside the list. Owners and vendors see the same **Messages** page in their workspace, listing only the conversations they're part of. The left menu's **Conversations & Requests** keeps company channels and direct messages.
+
 ## Send a Message {#send-message}
 
 Open the correct channel, confirm its name and project context, write the message, mention only people whose attention is required, attach permitted files, and send. Include searchable context such as the project number, subject, company, or scope.

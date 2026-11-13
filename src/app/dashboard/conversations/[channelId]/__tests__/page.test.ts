@@ -71,7 +71,11 @@ const params = (): Promise<{ channelId: string }> =>
 
 describe("shared conversation notification entry", () => {
   it("renders the authorized vendor conversation in the internal workspace for staff", async () => {
-    expect(await ChannelPage({ params: params() })).toBeTruthy()
+    const page = await ChannelPage({ params: params() })
+    expect(page).toBeTruthy()
+    // The page hands the conversation to ChannelView, which loads its messages.
+    const view = page as unknown as { type: (props: unknown) => Promise<unknown>; props: unknown }
+    expect(await view.type(view.props)).toBeTruthy()
     expect(mocks.getMessages).toHaveBeenCalledWith("vendor-channel")
   })
 

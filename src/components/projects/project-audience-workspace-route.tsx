@@ -6,6 +6,7 @@ import {
   type ProjectAudiencePreview as ProjectAudiencePreviewData,
 } from "@/app/actions/project-audience-preview"
 import { ProjectAudiencePreview } from "@/components/projects/project-audience-preview"
+import type { ProjectConversationsQuery } from "@/components/conversations/project-conversations-tab"
 import type { ProjectAudience } from "@/lib/project-audience-access"
 import type { ProjectAudienceWorkspaceSection } from "@/lib/project-audience-preview-routes"
 
@@ -18,11 +19,13 @@ export async function ProjectAudienceWorkspaceRoute({
   audience,
   section,
   initialNewMessage = false,
+  conversationsQuery = null,
 }: {
   readonly projectId: string
   readonly audience: ProjectAudience
   readonly section: ProjectAudienceWorkspaceSection
   readonly initialNewMessage?: boolean
+  readonly conversationsQuery?: ProjectConversationsQuery | null
 }): Promise<React.ReactElement> {
   let data: ProjectAudiencePreviewData
 
@@ -33,5 +36,5 @@ export async function ProjectAudienceWorkspaceRoute({
     notFound()
   }
 
-  return <ProjectAudiencePreview data={data} section={section} initialNewMessage={initialNewMessage} />
+  return <ProjectAudiencePreview data={data} section={section} initialNewMessage={initialNewMessage} conversationsQuery={conversationsQuery} />
 }

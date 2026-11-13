@@ -52,6 +52,10 @@ describe("Projects sidebar navigation", () => {
         title: "Overview",
         url: "/dashboard/projects/project-123",
       },
+      {
+        title: "Messages",
+        url: "/dashboard/projects/project-123/messages",
+      },
     ])
   })
 
@@ -67,33 +71,29 @@ describe("Projects sidebar navigation", () => {
     })
   })
 
-  it("records the current project location in the conversations link", () => {
+  it("puts the job's Messages page right after Updates & Logs", () => {
     const projects = projectsNavigation(
       "project-123",
       "/dashboard/projects/project-123/schedule?view=gantt",
     )
+    const titles = projects?.items.map((item) => item.title) ?? []
+    expect(titles.indexOf("Messages")).toBe(titles.indexOf("Updates & Logs") + 1)
+    const messages = projects?.items.find(
+      (item) => item.kind === "link" && item.title === "Messages",
+    )
+    expect(messages).toMatchObject({
+      kind: "link",
+      url: "/dashboard/projects/project-123/messages",
+    })
     const collaboration = projects?.items.find(
       (item) =>
         item.kind === "subgroup" && item.title === "Collaboration & Access",
     )
-    const conversations =
+    expect(
       collaboration?.kind === "subgroup"
-        ? collaboration.items.find(
-            (item) =>
-              item.kind === "link" && item.title === "Project Conversations",
-          )
-        : undefined
-    const url = new URL(
-      conversations?.kind === "link" ? conversations.url : "",
-      "https://compass.local",
-    )
-
-    expect(url.pathname).toBe(
-      "/dashboard/projects/project-123/conversations",
-    )
-    expect(url.searchParams.get("returnTo")).toBe(
-      "/dashboard/projects/project-123/schedule?view=gantt",
-    )
+        ? collaboration.items.map((item) => item.title)
+        : [],
+    ).not.toContain("Project Conversations")
   })
 })
 
