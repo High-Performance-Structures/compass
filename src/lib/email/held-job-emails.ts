@@ -17,7 +17,7 @@ import { actionFailure, type ActionResult } from "@/lib/action-result"
 import { recordActivityEvent } from "@/lib/activity-log"
 import type { AuthUser } from "@/lib/auth"
 import { chunkD1Values } from "@/lib/d1-query"
-import { markInboundEmailPosted } from "@/lib/domain/correspondence/email-store"
+import { claimInboundEmailForReview, markInboundEmailPosted, releaseInboundEmailClaim } from "@/lib/domain/correspondence/email-store"
 import { COMPASS_GMAIL_READONLY_SCOPE, getCompassGmailAccessToken } from "@/lib/email/compass-email"
 import { fetchGmailJson, hydrateCandidateAttachments } from "@/lib/email/gmail-inbound"
 import { candidateFromMessage, isGmailMessage, stripHtml, type InboundCandidate } from "@/lib/email/gmail-message-parser"
@@ -218,6 +218,8 @@ export type PostedHeldJobEmail = {
   readonly messageId: string
   /** The email had files that could not be posted with it. */
   readonly filesLeftOut: boolean
+  /** Gmail couldn't be reached, so any files weren't copied (there may have been none). */
+  readonly filesUnchecked: boolean
 }
 
 /**
@@ -252,6 +254,29 @@ export async function postHeldJobEmail(input: {
     .limit(1)
   if (!project) return actionFailure("Job not found.")
 
+  // Take the email first so a second reviewer can't post or dismiss it meanwhile.
+  if (!(await claimInboundEmailForReview(db, email.id, organizationId))) {
+    return actionFailure("Someone else is already handling this email.")
+  }
+  try {
+    const posted = await postClaimedEmail({ ...input, email, project })
+    if (!posted.success) await releaseInboundEmailClaim(db, email.id)
+    return posted
+  } catch (error) {
+    await releaseInboundEmailClaim(db, email.id)
+    throw error
+  }
+}
+
+async function postClaimedEmail(input: {
+  readonly db: Db
+  readonly env: unknown
+  readonly organizationId: string
+  readonly reviewer: AuthUser
+  readonly email: typeof inboundEmails.$inferSelect
+  readonly project: { readonly id: string; readonly projectNumber: string | null; readonly name: string }
+}): Promise<ActionResult<PostedHeldJobEmail>> {
+  const { db, organizationId, reviewer, email, project } = input
   const { candidate, filesFetched } = await heldEmailCandidate({
     db,
     env: input.env,
@@ -273,7 +298,9 @@ export async function postHeldJobEmail(input: {
     })
   }
   let routed = await post(candidate.attachments)
-  let filesLeftOut = !filesFetched
+  // Files are "left out" only when there were files; Gmail being unreachable is "unchecked".
+  let filesLeftOut = false
+  const filesUnchecked = !filesFetched
   // The reviewer asked for the email itself; files that can't be saved don't block it.
   if (routed.status === "held" && routed.reason === "attachment_failed" && candidate.attachments.length > 0) {
     routed = await post([])
@@ -301,13 +328,14 @@ export async function postHeldJobEmail(input: {
     action: "project_email.routed",
     entityType: "project_correspondence",
     entityId: routed.id,
-    summary: `${personName(reviewer)} reviewed a held email from ${sender} and posted it to job messages: “${title}”.${filesLeftOut ? " Any attached files were not included." : ""}`,
+    summary: `${personName(reviewer)} reviewed a held email from ${sender} and posted it to job messages: “${title}”.${filesLeftOut ? " Its attached files couldn't be saved and were not included." : filesUnchecked ? " Gmail couldn't be reached to copy any attached files." : ""}`,
     metadata: {
       destination: "message",
       manualReview: true,
       routedBy: reviewer.id,
       filesLeftOut,
+      filesUnchecked,
     },
   })
-  return { success: true, data: { projectId: project.id, messageId: routed.id, filesLeftOut } }
+  return { success: true, data: { projectId: project.id, messageId: routed.id, filesLeftOut, filesUnchecked } }
 }

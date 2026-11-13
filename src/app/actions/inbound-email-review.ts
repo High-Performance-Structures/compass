@@ -24,7 +24,8 @@ import { inboundRecordKind, inboundRecordSubject } from "@/lib/email/inbound-rou
 import { notifyRfiCreated } from "@/lib/notifications/events"
 import { canFeature } from "@/lib/permission-enforcement"
 import { canReviewHeldJobEmails } from "@/lib/staff-message-desk"
-import { dismissInboundEmailForReview, markInboundEmailPosted } from "@/lib/domain/correspondence/email-store"
+import type { Db } from "@/lib/server/action-context"
+import { claimInboundEmailForReview, dismissInboundEmailForReview, markInboundEmailPosted, releaseInboundEmailClaim } from "@/lib/domain/correspondence/email-store"
 import { orgContext, type OrgContext } from "@/lib/server/action-context"
 
 const MESSAGE_DESK_PATH = "/dashboard/office-maintenance/message-desk"
@@ -93,7 +94,7 @@ export async function countReviewableHeldJobEmails(): Promise<number> {
 export async function postHeldJobEmailToJob(input: {
   readonly emailId: string
   readonly projectId: string
-}): Promise<ActionResult<{ readonly projectId: string; readonly filesLeftOut: boolean }>> {
+}): Promise<ActionResult<{ readonly projectId: string; readonly filesLeftOut: boolean; readonly filesUnchecked: boolean }>> {
   try {
     const context = await reviewContext(true)
     if (!context.success) return context
@@ -109,7 +110,7 @@ export async function postHeldJobEmailToJob(input: {
     if (!posted.success) return posted
     revalidatePath(MESSAGE_DESK_PATH)
     revalidatePath(`/dashboard/projects/${posted.data.projectId}/messages`)
-    return { success: true, data: { projectId: posted.data.projectId, filesLeftOut: posted.data.filesLeftOut } }
+    return { success: true, data: { projectId: posted.data.projectId, filesLeftOut: posted.data.filesLeftOut, filesUnchecked: posted.data.filesUnchecked } }
   } catch (error) {
     return actionFailure(errorMessage(error, "Couldn't post the email to job messages."))
   }
@@ -120,6 +121,8 @@ export async function routeInboundEmailToRfi(input: {
   readonly emailId: string
   readonly projectId: string
 }): Promise<ActionDone> {
+  // Set once this action has taken the email; released if anything below fails.
+  let claimed: { readonly db: Db; readonly emailId: string } | null = null
   try {
     const context = await reviewContext(true)
     if (!context.success) return context
@@ -157,6 +160,10 @@ export async function routeInboundEmailToRfi(input: {
       )
       .limit(1)
     if (!project) return actionFailure("Job not found.")
+    if (!(await claimInboundEmailForReview(db, email.id, organizationId))) {
+      return actionFailure("Someone else is already handling this email.")
+    }
+    claimed = { db, emailId: email.id }
 
     const [existing] = await db
       .select({ id: projectRfis.id, rfiNumber: projectRfis.rfiNumber })
@@ -250,6 +257,7 @@ export async function routeInboundEmailToRfi(input: {
     revalidatePath("/dashboard/rfis")
     return { success: true }
   } catch (error) {
+    if (claimed) await releaseInboundEmailClaim(claimed.db, claimed.emailId).catch(() => undefined)
     return actionFailure(errorMessage(error, "Couldn't make an RFI from the email."))
   }
 }
@@ -259,7 +267,9 @@ export async function dismissInboundEmail(input: { readonly emailId: string }): 
   try {
     const context = await reviewContext(true)
     if (!context.success) return context
-    await dismissInboundEmailForReview(context.data.db, input.emailId, context.data.organizationId)
+    if (!(await dismissInboundEmailForReview(context.data.db, input.emailId, context.data.organizationId))) {
+      return actionFailure("This email is no longer waiting for review.")
+    }
     revalidatePath(MESSAGE_DESK_PATH)
     return { success: true }
   } catch (error) {

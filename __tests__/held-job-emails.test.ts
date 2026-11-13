@@ -81,12 +81,15 @@ describe("posting held job emails from the Staff Message Desk", () => {
 
     const result = await postHeldJobEmail({ db: db.db, env: ENV, organizationId: "org-a", reviewer: REVIEWER, emailId: "inbound-held-1", projectId: "project-b" })
 
-    expect(result).toEqual({ success: true, data: { projectId: "project-b", messageId: expect.stringMatching(/^inbound-message-/), filesLeftOut: true } })
+    expect(result).toEqual({ success: true, data: { projectId: "project-b", messageId: expect.stringMatching(/^inbound-message-/), filesLeftOut: false, filesUnchecked: true } })
     expect(participants(db)).toEqual([{ user_id: "staff-a" }])
     expect(db.sqlite.prepare("SELECT user_id FROM notification_recipients").all()).toEqual([{ user_id: "staff-a" }])
     expect(db.sqlite.prepare("SELECT body, author_user_id AS author FROM correspondence_messages").get()).toEqual({ body: "Can someone check the deck boards?", author: null })
     const stored = db.sqlite.prepare("SELECT matched_status AS status, project_id AS projectId, posted_message_id AS postedId FROM inbound_emails").get()
     expect(stored).toEqual({ status: "posted", projectId: "project-b", postedId: result.success ? result.data.messageId : null })
+    // Already handled: a second reviewer (or a late click) can't post it again.
+    expect(await postHeldJobEmail({ db: db.db, env: ENV, organizationId: "org-a", reviewer: REVIEWER, emailId: "inbound-held-1", projectId: "project-a" }))
+      .toEqual({ success: false, error: "This email is no longer waiting for review." })
     expect(recordActivityEvent).toHaveBeenCalledWith(expect.objectContaining({
       action: "project_email.routed",
       projectId: "project-b",
@@ -136,5 +139,14 @@ describe("posting held job emails from the Staff Message Desk", () => {
       { id: "inbound-held-1", job: "A-2", suggested: "project-b", reason: "Sender isn't a contact on this job", rfi: false },
       { id: "inbound-held-2", job: null, suggested: null, reason: "Compass couldn't tell which job it's for", rfi: true },
     ])
+  })
+  it("lets only one reviewer take a held email", async () => {
+    const db = setup()
+    holdEmail(db, candidate(), "project-b")
+    // Another reviewer took it between the read and the claim.
+    db.sqlite.exec("UPDATE inbound_emails SET matched_status = 'posting'")
+    expect(await postHeldJobEmail({ db: db.db, env: ENV, organizationId: "org-a", reviewer: REVIEWER, emailId: "inbound-held-1", projectId: "project-b" }))
+      .toEqual({ success: false, error: "This email is no longer waiting for review." })
+    expect(db.sqlite.prepare("SELECT count(*) AS n FROM correspondence_messages").get()).toEqual({ n: 0 })
   })
 })

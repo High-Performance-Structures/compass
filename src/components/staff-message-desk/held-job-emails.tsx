@@ -80,8 +80,10 @@ function HeldEmailRow({
       }
       toast.success(
         result.data.filesLeftOut
-          ? "Posted to job messages. Any attached files stayed in the original email."
-          : "Posted to job messages.",
+          ? "Posted to job messages. Its attached files couldn't be saved and stayed in the original email."
+          : result.data.filesUnchecked
+            ? "Posted to job messages. Gmail couldn't be reached, so any attached files stayed in the original email."
+            : "Posted to job messages.",
       )
       router.refresh()
     })
