@@ -29,6 +29,21 @@ export function selectionSpecification(
 export function specificationJson(row: SelectionSpecification): string {
   return JSON.stringify(selectionSpecification(row))
 }
+/**
+ * Whether a published decision's specification still describes the
+ * selection. For an ordered or installed selection (locked: its product is
+ * fixed) a room move alone keeps it current.
+ */
+export function specificationCurrent(
+  published: string,
+  row: SelectionSpecification,
+  locked: boolean,
+): boolean {
+  if (published === specificationJson(row)) return true
+  if (!locked) return false
+  const before = parseSpecification(published)
+  return before !== null && published === specificationJson({ ...row, roomName: before.roomName })
+}
 export function parseSpecification(
   value: string
 ): SelectionSpecification | null {
@@ -66,12 +81,6 @@ export function safeSelectionUrl(value: string | null): string | null {
     throw new Error("Use a public HTTP or HTTPS product link.")
   return url.toString()
 }
-function approvedChangeOrder(status: string | null): boolean {
-  return (
-    status !== null &&
-    ["executed", "sage_pending", "synced", "closed"].includes(status)
-  )
-}
 export function approvalBlocker(input: {
   readonly current: boolean
   readonly published: boolean
@@ -80,14 +89,13 @@ export function approvalBlocker(input: {
   readonly quotedCents: number | null
   readonly scheduleImpact: string | null
   readonly requiresChangeOrder: boolean
-  readonly changeOrderStatus: string | null
   readonly openRequests: number
 }): string | null {
   if (!input.published)
     return "This selection has not been published for your review."
   if (!input.current)
     return "The specification changed. Your team must publish the revised selection before approval."
-  if (input.approvedAt) return "This revision is already approved."
+  if (input.approvedAt) return "You've already confirmed your choice for this revision."
   if (input.openRequests > 0)
     return "Your team must resolve the outstanding pricing or alternative request before approval."
   if (
@@ -96,11 +104,8 @@ export function approvalBlocker(input: {
     !input.scheduleImpact?.trim()
   )
     return "Your team is preparing the price, allowance, and schedule impact."
-  if (
-    (input.requiresChangeOrder || input.quotedCents !== input.allowanceCents) &&
-    !approvedChangeOrder(input.changeOrderStatus)
-  )
-    return "Approve the associated change order before approving this selection."
+  // Confirming a choice records a preference; the contract change is signed
+  // with the Selection Phase (or its own change order), not before the click.
   return null
 }
 

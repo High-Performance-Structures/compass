@@ -36,7 +36,7 @@ describe("selection status labels", () => {
   it("labels the owner portal's progress, including the awaiting-approval state", () => {
     const labels = resolveSelectionStatusLabels({ ordered: "Purchased" })
     expect(selectionProgressLabel("ordered", labels)).toBe("Purchased")
-    expect(selectionProgressLabel("awaiting_owner_approval", labels)).toBe("Awaiting owner approval")
+    expect(selectionProgressLabel("awaiting_owner_approval", labels)).toBe("Awaiting owner signature")
     expect(selectionProgressLabel("something_else", labels)).toBe("Something else")
   })
 

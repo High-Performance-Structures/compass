@@ -23,6 +23,14 @@ export type SelectionSheetInput = {
     readonly dueDate: string | null
     readonly published: boolean
     readonly roundKey: string | null
+    /** A signed Selection Phase covers its current pick. */
+    readonly signed?: boolean
+    /** Another selection replaces it (it stays on record, locked). */
+    readonly replaced?: boolean
+    /** It replaces another selection. */
+    readonly replacement?: boolean
+    /** The owner's approval is recorded on the selection (a signature, or an older approval). */
+    readonly ownerApproved?: boolean
   }[]
   readonly choices: readonly {
     readonly selectionId: string
@@ -60,6 +68,14 @@ export type SelectionSheetRow = {
   readonly published: boolean
   /** The company round (Settings > Selections) it belongs to, or null. */
   readonly roundKey: string | null
+  /** A signature covers it: "Approved" reads "Approved (signed)". */
+  readonly signed: boolean
+  /** Another selection replaces it. */
+  readonly replaced: boolean
+  /** It replaces another selection (outside Selection Phases; staff write its change order). */
+  readonly replacement: boolean
+  /** The owner's approval is recorded on the selection. */
+  readonly ownerApproved: boolean
   /** Sorts room, then parent, then its follow-ups right under it. */
   readonly orderKey: string
 }
@@ -106,6 +122,10 @@ export function selectionSheetRows(input: SelectionSheetInput): readonly Selecti
       dueDate: row.dueDate,
       published: row.published,
       roundKey: row.roundKey,
+      signed: row.signed ?? false,
+      replaced: row.replaced ?? false,
+      replacement: row.replacement ?? false,
+      ownerApproved: row.ownerApproved ?? false,
       orderKey: [topRow.roomName.toLocaleLowerCase(), position.get(top) ?? "", parentId ? "1" : "0", position.get(row.id) ?? ""].join("\u0000"),
     }
   })

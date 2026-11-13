@@ -82,6 +82,8 @@ function decision(id: string, overrides: Partial<SelectionDecisionItem> = {}): S
     approvedAt: null,
     approvedByName: null,
     approvalBlocker: null,
+    signed: false,
+    ownerApproved: false,
     status: "owner_review",
     selectionUpdatedAt: "2026-11-01T00:00:00Z",
     requests: [],
@@ -160,7 +162,7 @@ describe("selections work filter", () => {
       "1 unpublished",
       "1 late risk",
     ])
-    expect(publishRoomPills([decision("a", { approvedAt: "2026-11-02" })]).map((pill) => pill.label)).toEqual(["all approved"])
+    expect(publishRoomPills([decision("a", { approvedAt: "2026-11-02" })]).map((pill) => pill.label)).toEqual(["all chosen"])
     expect(publishRoomPills([decision("a", { current: false })]).map((pill) => pill.label)).toEqual(["1 revision needed"])
   })
 

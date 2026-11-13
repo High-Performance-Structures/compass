@@ -13,13 +13,18 @@ import {
   projectSelectionRequests as requests,
   projectSelectionProcurementLinks as links,
 } from "@/db/schema-selection-decisions"
+import { recordActivityEvent } from "@/lib/activity-log"
 import { selectionAccess } from "@/lib/domain/selections/access"
-import { ensureSelectionTodo } from "@/lib/domain/selections/selection-todos"
+import { clearApprovalPatch } from "@/lib/domain/selections/approval-clear"
+import { selectionIsReplaced } from "@/lib/domain/selections/lock-read"
+import { selectionLock } from "@/lib/domain/selections/locks"
+import { readProjectSelectionSettings } from "@/lib/domain/selections/project-settings"
 import { advanceSelectionStatus, advanceSelectionsForPurchaseOrder } from "@/lib/domain/selections/status-advance"
-import { updateFinishSelectionsStatement, updateFinishSelectionsWithEventStatement } from "@/lib/domain/selections/store"
+import { updateFinishSelectionsStatement } from "@/lib/domain/selections/store"
 import {
   approvalBlocker,
   moneyCents,
+  specificationCurrent,
   specificationJson,
 } from "@/lib/selections/decisions"
 import { publishSelectionSchema, type PublishSelectionInput } from "@/lib/selections/publish-input"
@@ -69,6 +74,10 @@ export async function publishSelectionDecision(
       throw new Error(
         "The selection changed. Refresh and review it before publishing."
       )
+    // Publishing clears the owner approval columns; an ordered, installed or
+    // replaced selection keeps its record as it is.
+    const lock = selectionLock(row.status, await selectionIsReplaced(db, row.id))
+    if (lock) throw new Error(lock.message)
     if (
       input.decisionDueDate &&
       (!/^\d{4}-\d{2}-\d{2}$/.test(input.decisionDueDate) ||
@@ -208,9 +217,8 @@ export async function publishSelectionDecision(
         ),
         {
           ownerVisible: input.published,
-          ownerApproved: false,
-          approvedBy: null,
-          approvedAt: null,
+          // A new revision needs the owner again; an imported approval stays (approval-clear.ts).
+          ...clearApprovalPatch(),
         }
       ),
     ])
@@ -264,19 +272,12 @@ export async function approveSelectionDecision(
       throw new Error(
         "This decision changed. Refresh and review the current revision."
       )
-    const change = decision.changeOrderId
-      ? await db
-          .select({ status: projectChangeOrders.status })
-          .from(projectChangeOrders)
-          .where(
-            and(
-              eq(projectChangeOrders.id, decision.changeOrderId),
-              eq(projectChangeOrders.projectId, projectId),
-              eq(projectChangeOrders.audience, "owner")
-            )
-          )
-          .get()
-      : null
+    // A company may leave choices to the signed Selection Phase alone.
+    const { organizationId, settings } = await readProjectSelectionSettings(db, projectId)
+    if (!settings.ownerChoiceConfirmation)
+      throw new Error(
+        "Your builder records your choice when you sign the Selection Phase document."
+      )
     const open = await db
       .select({ id: requests.id })
       .from(requests)
@@ -286,16 +287,12 @@ export async function approveSelectionDecision(
       .limit(1)
     const blocker = approvalBlocker({
       ...decision,
-      current: decision.specificationJson === specificationJson(row),
-      changeOrderStatus: change?.status ?? null,
+      current: specificationCurrent(decision.specificationJson, row, row.status === "ordered" || row.status === "installed"),
       openRequests: open.length,
     })
     if (blocker) throw new Error(blocker)
     const now = new Date().toISOString(),
       token = crypto.randomUUID()
-    const needsChange =
-      decision.requiresChangeOrder ||
-      decision.quotedCents !== decision.allowanceCents
     const mutation = db
       .update(decisions)
       .set({
@@ -323,10 +320,7 @@ export async function approveSelectionDecision(
                   eq(requests.status, "open")
                 )
               )
-          ),
-          needsChange
-            ? sql`EXISTS (SELECT 1 FROM ${projectChangeOrders} WHERE ${projectChangeOrders.id} = ${decision.changeOrderId} AND ${projectChangeOrders.projectId} = ${projectId} AND ${projectChangeOrders.audience} = 'owner' AND ${projectChangeOrders.status} IN ('executed','sage_pending','synced','closed'))`
-            : undefined
+          )
         )
       )
     const result = await db.batch([
@@ -350,32 +344,29 @@ export async function approveSelectionDecision(
           .from(decisions)
           .where(eq(decisions.lastMutationId, token))
       ),
-      // The approval lands only with the decision update above (same token);
-      // its status move never rewinds procurement or installation progress.
-      updateFinishSelectionsWithEventStatement(
-        db,
-        and(
-          eq(projectFinishSelections.id, selectionId),
-          sql`EXISTS (SELECT 1 FROM ${decisions} WHERE ${decisions.selectionId} = ${selectionId} AND ${decisions.lastMutationId} = ${token})`
-        ),
-        "owner_approve",
-        {
-          ownerApproved: true,
-          approvedBy: user.id,
-          approvedAt: now,
-          updatedAt: now,
-        }
-      ),
     ])
     if (result[0].meta.changes !== 1)
       throw new Error(
         "The selection or its approval conditions changed. Refresh before approving."
       )
-    // Approved: staff get an "Order" to-do (the approval is already saved).
-    try {
-      await ensureSelectionTodo(db, { projectId, selectionId, selectionName: row.name, step: "order", actorId: user.id, now })
-    } catch (todoError) {
-      console.error("[selections] order to-do failed", todoError)
+    // The owner's choice is recorded (decision + history event above, and
+    // Activity here). It is not an approval: the selection's status, pricing,
+    // budget, variances and change orders change only when the owner signs
+    // (Selection Phase signature). Ordering follows that signature.
+    if (organizationId) {
+      await recordActivityEvent({
+        db,
+        organizationId,
+        projectId,
+        actor: user,
+        category: "field",
+        action: "selection_owner_choice_recorded",
+        entityType: "project_finish_selection",
+        entityId: selectionId,
+        summary: `${actorName} confirmed their choice for ${row.name} (revision ${expectedRevision}). Not final until the owner signs.`,
+        metadata: { revision: expectedRevision, quotedCents: decision.quotedCents, allowanceCents: decision.allowanceCents },
+        createdAt: now,
+      })
     }
     revalidate(projectId)
     return { success: true }

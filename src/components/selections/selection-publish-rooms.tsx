@@ -2,7 +2,7 @@
 
 /*
  * Staff "Publish to owner": selections grouped by room, folded to one line
- * each (room, count, "3 waiting on owner" / "all approved" / late risk).
+ * each (room, count, "3 waiting on owner" / "all chosen" / late risk).
  * Each row has a batch-publish checkbox; clicking it opens the selection's
  * decision (terms, publish form, quote / PO links, requests, history) in the
  * record drawer instead of expanding the list. Owners and subs never see
@@ -27,9 +27,11 @@ function rowStatus(item: SelectionDecisionItem): string {
     ? "Unpublished"
     : !item.current
       ? "Revision needed"
-      : item.approvedAt
-        ? "Owner approved"
-        : "Published for owner"
+      : item.signed
+        ? "Approved (signed)"
+        : item.approvedAt
+          ? "Owner's choice"
+          : "Published for owner"
 }
 
 function PublishRow({

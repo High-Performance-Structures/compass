@@ -688,7 +688,8 @@ export async function loadTodoWorkedLogCounts(db: Db, projectId: string): Promis
  * Selections on the job a log can mark installed: every one not installed
  * yet, except Deferred and Unavailable (nothing to install). The same
  * statuses the automatic move to Installed may replace, so the checklist
- * never offers one the save would skip. Ordered and approved ones come
+ * never offers one the save would skip (nor a replaced one, which the move
+ * also skips). Ordered and approved ones come
  * first; they are the likeliest to be going in.
  */
 async function loadInstallableSelections(db: Db, projectId: string): Promise<readonly DailyLogInstallableSelection[]> {
@@ -700,7 +701,14 @@ async function loadInstallableSelections(db: Db, projectId: string): Promise<rea
       status: projectFinishSelections.status,
     })
     .from(projectFinishSelections)
-    .where(and(eq(projectFinishSelections.projectId, projectId), inArray(projectFinishSelections.status, [...statusesBefore("installed")])))
+    .where(
+      and(
+        eq(projectFinishSelections.projectId, projectId),
+        inArray(projectFinishSelections.status, [...statusesBefore("installed")]),
+        // A replaced selection stays on record; its replacement is the one to install.
+        sql`NOT EXISTS (SELECT 1 FROM project_finish_selections AS replacement WHERE replacement.replaces_selection_id = ${projectFinishSelections.id})`,
+      ),
+    )
     .orderBy(
       sql`CASE ${projectFinishSelections.status} WHEN 'ordered' THEN 0 WHEN 'approved' THEN 1 ELSE 2 END`,
       asc(projectFinishSelections.roomName),

@@ -45,14 +45,24 @@ export function selectionStatusLabel(status: ProjectSelectionStatus, labels: Sel
 
 /**
  * The label for a status string that may not be a stored status: the owner
- * portal shows "awaiting_owner_approval" for a selection staff approved
+ * portal shows "awaiting_owner_approval" for a selection staff marked approved
  * before the owner signed off.
  */
 export function selectionProgressLabel(status: string, labels: SelectionStatusLabels = DEFAULT_SELECTION_STATUS_LABELS): string {
   if (isProjectSelectionStatus(status)) return selectionStatusLabel(status, labels)
-  if (status === "awaiting_owner_approval") return "Awaiting owner approval"
+  if (status === "awaiting_owner_approval") return "Awaiting owner signature"
   const text = status.replaceAll("_", " ")
   return text.charAt(0).toLocaleUpperCase() + text.slice(1)
+}
+
+/**
+ * A selection's status as shown: "Approved" reads "Approved (signed)" only
+ * when a signature covers it (a staff-set or older click approval stays
+ * plain "Approved").
+ */
+export function selectionStatusDisplay(status: ProjectSelectionStatus, labels: SelectionStatusLabels | undefined, signed: boolean): string {
+  const label = selectionStatusLabel(status, labels)
+  return status === "approved" && signed ? `${label} (signed)` : label
 }
 
 /** Status picker options in workflow order, with the company's labels. */

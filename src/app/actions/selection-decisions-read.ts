@@ -20,13 +20,20 @@ import {
   approvalBlocker,
   parseSpecification,
   selectionSpecification,
-  specificationJson,
+  specificationCurrent,
 } from "@/lib/selections/decisions"
 import type {
   SelectionDecisionItem,
   SelectionWorkspace,
 } from "@/lib/selections/types"
+import { replacedSelectionIds, signedSelectionIds } from "@/lib/domain/selections/lock-read"
+import { LOCKED_SELECTION_STATUSES } from "@/lib/domain/selections/locks"
+import { readProjectSelectionSettings } from "@/lib/domain/selections/project-settings"
 import { readProjectSelectionStatusLabels } from "@/lib/domain/selections/status-labels-server"
+
+const PARTNER_VISIBLE_STATUSES: ReadonlySet<string> = new Set(["approved", "ordered", "installed"])
+// Ordered and installed selections keep their product (locks.ts): a room move keeps their decision current.
+const LOCKED_STATUSES: ReadonlySet<string> = new Set(LOCKED_SELECTION_STATUSES)
 
 export async function getSelectionWorkspace(
   projectId: string,
@@ -42,6 +49,7 @@ export async function getSelectionWorkspace(
     operations,
     approvalHistory,
     statusLabels,
+    selectionSettings,
   ] = await Promise.all([
     db
       .select()
@@ -109,6 +117,11 @@ export async function getSelectionWorkspace(
           .orderBy(asc(projectSelectionDecisionEvents.createdAt)),
     // The job's company names its statuses, also for owners and partners.
     readProjectSelectionStatusLabels(db, projectId),
+    readProjectSelectionSettings(db, projectId),
+  ])
+  const [signed, replaced] = await Promise.all([
+    signedSelectionIds(db, projectId),
+    replacedSelectionIds(db, selections.map((row) => row.id)),
   ])
   // Reuse the portal's recipient checks; a link never grants a supplier new access.
   const partnerPreview =
@@ -126,18 +139,25 @@ export async function getSelectionWorkspace(
   const items = selections.flatMap((row): SelectionDecisionItem[] => {
     const decision = decisions.find((item) => item.selectionId === row.id)
     if (audience !== "staff" && !decision?.published) return []
-    const spec = decision
+    const published = decision
       ? parseSpecification(decision.specificationJson)
       : selectionSpecification(row)
-    if (!spec) return []
+    if (!published) return []
+    // A locked selection moved to another room is shown where it is now.
+    // Ordered, installed and replaced selections keep their product: a room move only moves them.
+    const locked = LOCKED_STATUSES.has(row.status) || replaced.has(row.id)
+    const spec = decision && locked ? { ...published, roomName: row.roomName } : published
     const current =
-      !decision || decision.specificationJson === specificationJson(row)
+      !decision || specificationCurrent(decision.specificationJson, row, locked)
     const ownLinks = links.filter((link) => link.selectionId === row.id)
-    if (
-      audience === "sub_vendor" &&
-      (!decision?.approvedAt || !current)
-    )
-      return []
+    // Partners see a specification once a signature finalizes it (or it is
+    // approved, ordered or installed), never on the owner's click alone.
+    const finalized =
+      signed.has(row.id) ||
+      row.ownerApproved ||
+      PARTNER_VISIBLE_STATUSES.has(row.status)
+    // A replaced selection is no longer the one to supply.
+    if (audience === "sub_vendor" && (!finalized || !current || replaced.has(row.id))) return []
     const itemRequests = requests.filter(
       (request) => request.selectionId === row.id
     )
@@ -160,13 +180,16 @@ export async function getSelectionWorkspace(
         ownerNote: partner ? null : (decision?.ownerNote ?? null),
         requiresChangeOrder:
           !partner && (decision?.requiresChangeOrder ?? false),
+        signed: signed.has(row.id),
+        ownerApproved: !partner && row.ownerApproved,
         changeOrderId: partner ? null : (change?.id ?? null),
         approvedAt: partner ? null : (decision?.approvedAt ?? null),
         approvedByName: partner ? null : (decision?.approvedByName ?? null),
         status:
+          // Approved by staff's hand, not by the owner's signature (owner_approved is set only by signing).
           audience === "owner" &&
           row.status === "approved" &&
-          !decision?.approvedAt
+          !row.ownerApproved
             ? "awaiting_owner_approval"
             : row.status,
         selectionUpdatedAt: partner ? "" : row.updatedAt,
@@ -180,7 +203,6 @@ export async function getSelectionWorkspace(
               quotedCents: decision?.quotedCents ?? null,
               scheduleImpact: decision?.scheduleImpact ?? null,
               requiresChangeOrder: decision?.requiresChangeOrder ?? false,
-              changeOrderStatus: change?.status ?? null,
               openRequests: itemRequests.filter(
                 (request) => request.status === "open"
               ).length,
@@ -238,7 +260,7 @@ export async function getSelectionWorkspace(
                 audience === "staff"
                   ? `/dashboard/projects/${encodeURIComponent(projectId)}/${section}#${section === "rfqs" ? "rfq" : "commitment"}-${encodeURIComponent(link.operationId)}`
                   : `/preview/projects/${encodeURIComponent(projectId)}/sub-vendor/${section}`,
-              current: link.specificationJson === specificationJson(row),
+              current: specificationCurrent(link.specificationJson, row, locked),
             },
           ]
         }),
@@ -249,6 +271,7 @@ export async function getSelectionWorkspace(
     projectId,
     audience,
     statusLabels,
+    ownerChoiceConfirmation: selectionSettings.settings.ownerChoiceConfirmation,
     canWrite:
       audience === "staff"
         ? await canFeature(user, "finish-selections", "update")

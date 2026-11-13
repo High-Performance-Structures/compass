@@ -46,6 +46,8 @@ const item: SelectionDecisionItem = {
   changeOrderId: null,
   approvedAt: null,
   approvedByName: null,
+  signed: false,
+  ownerApproved: false,
   approvalBlocker: partner
     ? "Already approved"
     : params.has("request")
@@ -75,6 +77,7 @@ const workspace: SelectionWorkspace = {
   projectId: "cedar",
   audience: staff ? "staff" : partner ? "sub_vendor" : "owner",
   canWrite: !partner && !preview,
+  ownerChoiceConfirmation: true,
   statusLabels: DEFAULT_SELECTION_STATUS_LABELS,
   items: params.has("empty")
     ? []

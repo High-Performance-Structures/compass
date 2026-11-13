@@ -32,7 +32,7 @@ import { recordStep } from "@/lib/shared/record-step"
 import type { ProjectSelectionOptions } from "@/lib/domain/selections/types"
 import { leadTimeLabel, type SelectionLeadTimeWarning } from "@/lib/domain/selections/lead-time-rules"
 import type { RoundCard } from "@/lib/domain/selections/rounds-server"
-import { selectionStatusLabel, type SelectionStatusLabels } from "@/lib/domain/selections/status-labels"
+import { selectionStatusDisplay, type SelectionStatusLabels } from "@/lib/domain/selections/status-labels"
 import type { SupplierOption } from "@/lib/domain/selections/selection-sheet-read"
 import type { RecordStatusColor } from "@/lib/domain/record-statuses/statuses"
 import { formatDate } from "@/lib/format"
@@ -158,7 +158,7 @@ export function selectionColumns(
       header: "Status",
       size: 130,
       cell: ({ row: { original } }) => (
-        <RecordStatusBadge label={selectionStatusLabel(original.status, statusLabels)} color={GROUP_COLOR[selectionStatusGroup(original.status)]} />
+        <RecordStatusBadge label={selectionStatusDisplay(original.status, statusLabels, original.signed)} color={GROUP_COLOR[selectionStatusGroup(original.status)]} />
       ),
     },
   ]

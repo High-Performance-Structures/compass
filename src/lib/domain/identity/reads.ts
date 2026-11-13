@@ -7,7 +7,7 @@ import { and, asc, eq } from "drizzle-orm"
 
 import { organizationMembers, organizations, projectAccessInvitations, users } from "@/db/schema"
 import type { Db } from "@/lib/server/action-context"
-import { isInternalStaffRole } from "@/lib/user-roles"
+import { isAdminRole, isInternalStaffRole } from "@/lib/user-roles"
 
 /**
  * A still-open ("sent") invitation to this project, for staff previewing
@@ -63,6 +63,21 @@ export async function activeStaff(
     .where(and(eq(organizationMembers.organizationId, organizationId), eq(users.isActive, true)))
     .orderBy(asc(users.displayName), asc(users.email))
   return rows.filter((row) => isInternalStaffRole(row.role)).map((row) => ({ id: row.id, name: row.displayName?.trim() || row.email }))
+}
+
+/** The company's first active administrator (longest a member), by name: a last-resort assignee. */
+export async function firstActiveAdmin(
+  db: Db,
+  organizationId: string,
+): Promise<{ readonly id: string; readonly name: string } | null> {
+  const rows = await db
+    .select({ id: users.id, displayName: users.displayName, email: users.email, role: organizationMembers.role })
+    .from(organizationMembers)
+    .innerJoin(users, eq(users.id, organizationMembers.userId))
+    .where(and(eq(organizationMembers.organizationId, organizationId), eq(users.isActive, true)))
+    .orderBy(asc(organizationMembers.joinedAt), asc(users.id))
+  const admin = rows.find((row) => isAdminRole(row.role))
+  return admin ? { id: admin.id, name: admin.displayName?.trim() || admin.email } : null
 }
 
 // ---- Raw D1 reads, for callers that batch plain prepared statements

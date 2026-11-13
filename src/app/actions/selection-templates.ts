@@ -1,6 +1,6 @@
 "use server"
 
-import { and, eq, inArray } from "drizzle-orm"
+import { and, eq, inArray, isNull } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 
 import { projectFinishSelections } from "@/db/schema"
@@ -8,6 +8,7 @@ import { actionFailure, errorMessage, type ActionFailure, type ActionResult } fr
 import { staffSelectionContext } from "@/lib/domain/selections/access"
 import { nextChoiceSortOrder, selectionInProject } from "@/lib/domain/selections/choices-read"
 import { insertSelectionChoices, insertSelectionLinks } from "@/lib/domain/selections/choices-store"
+import { replacedSelectionIds } from "@/lib/domain/selections/lock-read"
 import { checkRoundsReady } from "@/lib/domain/selections/rounds-server"
 import { ensureSelectionTodo } from "@/lib/domain/selections/selection-todos"
 import { updateFinishSelections } from "@/lib/domain/selections/store"
@@ -55,14 +56,19 @@ export async function assignSelectionRound(projectId: string, selectionIds: read
       const settings = await readFeatureSettings(context.db, context.organizationId, "selections")
       if (!settings.rounds.some((round) => round.id === roundKey)) return { success: false, error: "That Selection Phase isn't in Settings › Selections." }
     }
-    const result = await updateFinishSelections(
+    // Ordered, installed and replaced selections only leave a Selection
+    // Phase (never join one), and a replacement stays out of them: its change
+    // order is its signature, so a phase would bill the difference twice.
+    const count = await updateFinishSelections(
       context.db,
-      and(inArray(projectFinishSelections.id, ids), eq(projectFinishSelections.projectId, projectId)),
+      and(inArray(projectFinishSelections.id, ids), eq(projectFinishSelections.projectId, projectId), roundKey === null ? undefined : isNull(projectFinishSelections.replacesSelectionId)),
       { roundKey, updatedAt: new Date().toISOString() },
+      { unlockedOnly: roundKey !== null },
     )
+    if (count === 0) return { success: false, error: "Ordered, installed and replacement selections can't change Selection Phase." }
     await checkRoundsReady(context.db, projectId, context.user.id)
     refresh(projectId)
-    return { success: true, data: { count: result.meta.changes } }
+    return { success: true, data: { count } }
   } catch (error) {
     return failure(error, "Unable to change the Selection Phase.")
   }
@@ -118,7 +124,7 @@ export async function applyChoiceTemplate(projectId: string, templateId: string,
     const template = await loadTemplateItems(db, organizationId, templateId)
     if (!template) return { success: false, error: "Template not found." }
     if (template.items.length === 0) return { success: false, error: "This template has no choices." }
-    const selections =
+    const found =
       target.kind === "selection"
         ? await selectionInProject(db, projectId, target.selectionId).then((row) => (row ? [row] : []))
         : await db
@@ -129,6 +135,10 @@ export async function applyChoiceTemplate(projectId: string, templateId: string,
               const wanted = template.category?.trim().toLocaleLowerCase() ?? ""
               return wanted ? rows.filter((row) => row.category.trim().toLocaleLowerCase() === wanted) : []
             })
+    // A replaced selection stays on record as it was: no new choices.
+    const replaced = await replacedSelectionIds(db, found.map((selection) => selection.id))
+    if (target.kind === "selection" && replaced.size > 0) return { success: false, error: "This selection was replaced. Add choices to the replacement." }
+    const selections = found.filter((selection) => !replaced.has(selection.id))
     if (selections.length === 0) {
       return { success: false, error: target.kind === "selection" ? "Selection not found" : "No selection on this job has the template's category." }
     }

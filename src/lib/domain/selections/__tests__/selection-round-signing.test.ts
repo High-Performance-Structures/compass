@@ -175,15 +175,20 @@ describe("round signing", () => {
       { id: "tile", status: "approved", owner_approved: 1, approved_by: null },
     ])
     expect(sqlite.prepare("SELECT status, foxit_status FROM project_change_orders").get()).toEqual({ status: "executed", foxit_status: "completed" })
+    // Ordering follows the signature: one "Order" to-do per signed selection.
+    expect(
+      sqlite.prepare("SELECT source_record_id AS id FROM project_operations WHERE source_record_type = 'staff_task' AND json_extract(sage_payload_json, '$.selectionStep') = 'order' ORDER BY source_record_id").all(),
+    ).toEqual([{ id: "faucet" }, { id: "tile" }])
     expect(mocks.announce).toHaveBeenCalledWith(expect.objectContaining({ kind: "selections_round", outcome: "signed" }))
 
-    // The owner can't change a signed pick; staff can, which reopens just that selection.
-    expect(await setSelectionChoiceChosen("p1", subway, true, "owner")).toMatchObject({ success: false })
-    expect(await setSelectionChoiceChosen("p1", subway, true)).toMatchObject({ success: true })
-    expect(sqlite.prepare("SELECT status, owner_approved FROM project_finish_selections WHERE id = 'tile'").get()).toEqual({ status: "owner_review", owner_approved: 0 })
+    // A signed (approved) pick changes only by change order: neither the owner nor staff can change it.
+    const approved = { success: false, error: "This selection is approved. Use a change order to change it." }
+    expect(await setSelectionChoiceChosen("p1", subway, true, "owner")).toMatchObject(approved)
+    expect(await setSelectionChoiceChosen("p1", subway, true)).toMatchObject(approved)
+    expect(sqlite.prepare("SELECT status, owner_approved FROM project_finish_selections WHERE id = 'tile'").get()).toEqual({ status: "approved", owner_approved: 1 })
     const again = await getRoundSigning("p1", "rough-in")
     if (!again.success) throw new Error(again.error)
-    expect(again.data.document.toSign.map((line) => line.selectionId)).toEqual(["tile"])
+    expect(again.data.document.toSign).toEqual([])
     expect(again.data.document.lines.find((line) => line.selectionId === "faucet")?.signedEarlier).toBe(true)
     expect(again.data.signatures[0]).toMatchObject({ status: "signed", itemCount: 2, signedDocumentHref: "/api/integrations/foxit/envelopes/env-1/document" })
   })
@@ -238,8 +243,12 @@ describe("round signing", () => {
     const sentRow = await findRoundSignatureByEnvelope(drizzleOverSqlite(sqlite), "env-1")
     if (!sentRow) throw new Error("no signature")
 
-    // Staff switch the faucet while the document is out: the owner signed for Brass, not Chrome.
-    await setSelectionChoiceChosen("p1", chrome, true)
+    // No pick changes while the document is out, for staff or the owner.
+    const out = { success: false, error: "This selection is out for signature." }
+    expect(await setSelectionChoiceChosen("p1", chrome, true)).toMatchObject(out)
+    expect(await setSelectionChoiceChosen("p1", chrome, true, "owner")).toMatchObject(out)
+    // Were the pick switched anyway (written around the rule), the signature wouldn't approve it: the owner signed for Brass.
+    sqlite.exec(`UPDATE project_selection_choices SET chosen = 0 WHERE id = '${brass}'; UPDATE project_selection_choices SET chosen = 1 WHERE id = '${chrome}'`)
 
     // Foxit delivers the event twice, both read while the signature was still sent.
     const db = drizzleOverSqlite(sqlite)

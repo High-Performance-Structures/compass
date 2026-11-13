@@ -26,6 +26,10 @@ export type SelectionDecisionItem = {
   readonly scheduleImpact: string | null
   readonly ownerNote: string | null
   readonly requiresChangeOrder: boolean
+  /** A signature covers it (signed Selection Phase or executed replacement change order); the click alone doesn't. */
+  readonly signed: boolean
+  /** The owner's approval is recorded on the selection (signed, or an older approval). */
+  readonly ownerApproved: boolean
   readonly changeOrderId: string | null
   readonly approvedAt: string | null
   readonly approvedByName: string | null
@@ -53,6 +57,8 @@ export type SelectionWorkspace = {
   readonly projectId: string
   readonly audience: "staff" | "owner" | "sub_vendor"
   readonly canWrite: boolean
+  /** Owners may confirm their choice by click (company setting; a signature approves either way). */
+  readonly ownerChoiceConfirmation: boolean
   /** The job's company status names (Settings › Selections › Status names). */
   readonly statusLabels: SelectionStatusLabels
   readonly items: readonly SelectionDecisionItem[]

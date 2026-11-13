@@ -68,7 +68,8 @@ function SelectionCard({
   const [asking, setAsking] = React.useState(selection.panel.comments.length > 0)
   const choices = selection.panel.choices
   const pick = choices.find((choice) => choice.chosen) ?? null
-  const locked = !canChoose || selection.approved || selection.signed
+  // No clickable choices where the pick can't change (ordered, installed, approved, out for signature, replaced).
+  const locked = !canChoose || selection.approved || selection.signed || selection.replacedByName !== null || selection.pickFixed !== null
 
   function choose(choice: SelectionChoiceView): void {
     if (locked) return
@@ -94,10 +95,14 @@ function SelectionCard({
             </>
           )}
           {selection.dueDate && <span className="text-muted-foreground"> · choose by {formatDate(selection.dueDate)}</span>}
-          {selection.signed ? (
+          {selection.replacedByName !== null ? (
+            <span className="text-muted-foreground"> · replaced by {selection.replacedByName}</span>
+          ) : selection.pickFixed !== null && selection.pickFixed !== "approved" ? (
+            <span className="text-muted-foreground"> · {selection.pickFixed}</span>
+          ) : selection.signed ? (
             <span className="text-muted-foreground"> · signed</span>
           ) : selection.approved ? (
-            <span className="text-muted-foreground"> · approved</span>
+            <span className="text-muted-foreground"> · choice confirmed</span>
           ) : null}
         </span>
       </div>
