@@ -20,12 +20,7 @@ import {
   normalizeTaskRecordType,
   requireText,
 } from "@/lib/domain/operations/rules"
-import {
-  deleteOperationsReturning,
-  recordTodoEvent,
-  updateOperationsReturning,
-  type OperationRow,
-} from "@/lib/domain/operations/store"
+import { deleteOperationsReturning, setTodoStatusByStaff, type OperationRow } from "@/lib/domain/operations/store"
 import type {
   CreateProjectTaskInput,
   ProjectOperationActionResult,
@@ -157,23 +152,25 @@ export async function updateProjectTodo(
     }
 
     const updatedAt = new Date().toISOString()
-    const [updated] = await updateOperationsReturning(db, sameVersion(projectId, todoId, input.expectedUpdatedAt), {
-      sourceRecordType,
-      title,
-      description: cleanText(input.description),
+    const updated = await setTodoStatusByStaff(db, {
+      projectId,
+      todoId,
+      expectedUpdatedAt: input.expectedUpdatedAt,
+      expectedStatus: operation.status,
       status: input.status,
-      priority: cleanText(input.priority) ?? "normal",
-      assigneeType: assigneeTypeForTask(sourceRecordType),
-      assigneeName,
-      companyName,
-      startDate,
-      dueDate,
-      ...(input.costCode !== undefined ? { costCode: cleanText(input.costCode) } : {}),
-      updatedAt,
-    })
-    if (!updated) return { success: false, error: CHANGED_WHILE_SAVING }
-    if (input.status !== operation.status) {
-      await recordTodoEvent(db, {
+      values: {
+        sourceRecordType,
+        title,
+        description: cleanText(input.description),
+        priority: cleanText(input.priority) ?? "normal",
+        assigneeType: assigneeTypeForTask(sourceRecordType),
+        assigneeName,
+        companyName,
+        startDate,
+        dueDate,
+        ...(input.costCode !== undefined ? { costCode: cleanText(input.costCode) } : {}),
+      },
+      history: input.status === operation.status ? null : {
         organizationId,
         projectId,
         todoId,
@@ -184,8 +181,10 @@ export async function updateProjectTodo(
         note: null,
         actorId: user.id,
         createdAt: updatedAt,
-      })
-    }
+      },
+      updatedAt,
+    })
+    if (!updated) return { success: false, error: CHANGED_WHILE_SAVING }
 
     if (assigneeName && assigneeName !== operation.assigneeName) {
       try {
@@ -239,14 +238,13 @@ async function changeTodoStatus(
       return { success: false, error: "Choose a valid to-do status." }
     }
     const updatedAt = new Date().toISOString()
-    const [updated] = await updateOperationsReturning(db, sameVersion(projectId, todoId, expectedUpdatedAt), {
+    const updated = await setTodoStatusByStaff(db, {
+      projectId,
+      todoId,
+      expectedUpdatedAt,
+      expectedStatus: operation.status,
       status,
-      updatedAt,
-    })
-    if (!updated) return { success: false, error: CHANGED_WHILE_SAVING }
-
-    if (status !== operation.status) {
-      await recordTodoEvent(db, {
+      history: status === operation.status ? null : {
         organizationId,
         projectId,
         todoId,
@@ -257,8 +255,10 @@ async function changeTodoStatus(
         note: null,
         actorId: user.id,
         createdAt: updatedAt,
-      })
-    }
+      },
+      updatedAt,
+    })
+    if (!updated) return { success: false, error: CHANGED_WHILE_SAVING }
 
     revalidateProjectTodoPaths(projectId)
     return { success: true, id: updated.id, updatedAt: updated.updatedAt }
@@ -273,10 +273,16 @@ export async function archiveProjectTodo(
   expectedUpdatedAt: string,
 ): Promise<ProjectTodoActionResult> {
   try {
-    const { db } = await findEditableProjectTodo(projectId, todoId, expectedUpdatedAt)
+    const { db, operation } = await findEditableProjectTodo(projectId, todoId, expectedUpdatedAt)
     const updatedAt = new Date().toISOString()
-    const [updated] = await updateOperationsReturning(db, sameVersion(projectId, todoId, expectedUpdatedAt), {
+    // Archiving writes no history, as the To-dos page's bulk archive.
+    const updated = await setTodoStatusByStaff(db, {
+      projectId,
+      todoId,
+      expectedUpdatedAt,
+      expectedStatus: operation.status,
       status: "archived",
+      history: null,
       updatedAt,
     })
     if (!updated) {

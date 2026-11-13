@@ -16,7 +16,10 @@ import { membershipsView, peopleView } from "@/lib/domain/identity/views"
 import { recordProjectAudit } from "@/lib/domain/project-audit/store"
 import { insertProjectInteraction } from "@/lib/domain/crm/store"
 import { internalDutyEntries } from "@/db/schema-internal-duties"
-import { insertOperations, recordTodoEvent, updateOperations } from "@/lib/domain/operations/store"
+import { loadProjectOperation } from "@/lib/domain/operations/queries"
+import type { TodoEventInput } from "@/lib/domain/operations/rules"
+import { insertOperations, moveTodoStatusAutomatically, recordTodoEvent } from "@/lib/domain/operations/store"
+import { automaticTodoStatusAfter, type TodoAutomationEvent } from "@/lib/domain/operations/todo-machines"
 import { clientInteractionRecordProblem } from "@/lib/client-interactions/record-rules"
 import type { DailyLogWorkLine } from "@/lib/daily-logs/daily-log-form"
 import {
@@ -367,50 +370,59 @@ export async function applyDailyLogFollowUps(
   for (const update of followUps.todoUpdates) {
     const todo = checked.todos.get(update.todoId)
     if (!todo) continue
-    let status: string = todo.status
-    if (update.blocked === "still" && status === "blocked") {
-      await recordTodoEvent(db, { organizationId, projectId, todoId: todo.id, kind: "still_blocked", dailyLogId, fromStatus: status, toStatus: status, note: null, actorId: userId })
-    } else if (update.blocked === "cleared" && status === "blocked") {
-      await recordTodoEvent(db, { organizationId, projectId, todoId: todo.id, kind: "unblocked", dailyLogId, fromStatus: status, toStatus: "in_progress", note: null, actorId: userId })
-      status = "in_progress"
+    if (update.blocked === "still" && todo.status === "blocked") {
+      await recordTodoEvent(db, { organizationId, projectId, todoId: todo.id, kind: "still_blocked", dailyLogId, fromStatus: todo.status, toStatus: todo.status, note: null, actorId: userId })
     }
-    if (update.worked) {
-      const next = status === "open" && rules.workedMovesToInProgress ? "in_progress" : status
-      const hours = hoursByTodo.get(todo.id)
-      const note = noteByTodo.get(todo.id) ?? input.workCompleted.slice(0, 300)
-      await recordTodoEvent(db, {
-        organizationId,
-        projectId,
-        todoId: todo.id,
-        kind: "worked",
-        dailyLogId,
-        fromStatus: status,
-        toStatus: next,
-        note: hours ? `${hours} h · ${note}` : note,
-        actorId: userId,
-      })
+    // The log's status moves (todo-machines.ts) and the history rows that
+    // describe them, decided from the status the log read.
+    let status: string = todo.status
+    const events: TodoAutomationEvent[] = []
+    const history: TodoEventInput[] = []
+    // History rows written together keep their order (a millisecond apart).
+    let tick = 0
+    const stamp = (): string => new Date(Date.parse(now) + tick++).toISOString()
+    const step = (event: TodoAutomationEvent): string | null => {
+      const next = automaticTodoStatusAfter(event, status)
+      if (next !== null) events.push(event)
+      return next
+    }
+    const unblocked = update.blocked === "cleared" ? step("unblock") : null
+    if (unblocked !== null) {
+      history.push({ organizationId, projectId, todoId: todo.id, kind: "unblocked", dailyLogId, fromStatus: status, toStatus: unblocked, note: null, actorId: userId, createdAt: stamp() })
+      status = unblocked
+    }
+    const hours = hoursByTodo.get(todo.id)
+    const workNote = noteByTodo.get(todo.id) ?? input.workCompleted.slice(0, 300)
+    const worked = update.worked
+      ? { organizationId, projectId, todoId: todo.id, dailyLogId, note: hours ? `${hours} h · ${workNote}` : workNote, actorId: userId }
+      : null
+    if (worked) {
+      const next = (rules.workedMovesToInProgress ? step("start") : null) ?? status
+      history.push({ ...worked, kind: "worked", fromStatus: status, toStatus: next, createdAt: stamp() })
       status = next
     }
-    if (update.completed === true && rules.todosCanComplete && status !== DAILY_LOG_TODO_DONE_STATUS) {
-      await recordTodoEvent(db, {
-        organizationId,
-        projectId,
-        todoId: todo.id,
-        kind: "completed",
-        dailyLogId,
-        fromStatus: status,
-        toStatus: DAILY_LOG_TODO_DONE_STATUS,
-        note: null,
-        actorId: userId,
-      })
-      completedTodos.push({ id: todo.id, title: todo.title, fromStatus: status })
-      status = DAILY_LOG_TODO_DONE_STATUS
+    const completedFrom = status
+    const completed = update.completed === true && rules.todosCanComplete ? step("complete") : null
+    if (completed !== null) {
+      history.push({ organizationId, projectId, todoId: todo.id, kind: "completed", dailyLogId, fromStatus: status, toStatus: completed, note: null, actorId: userId, createdAt: stamp() })
+      status = completed
     }
-    if (status !== todo.status) {
-      await updateOperations(db, and(eq(projectOperations.id, todo.id), eq(projectOperations.projectId, projectId)), {
-        status,
-        updatedAt: now,
-      })
+
+    if (events.length === 0) {
+      // Nothing to move: only the work is recorded.
+      if (worked) await recordTodoEvent(db, { ...worked, kind: "worked", fromStatus: todo.status, toStatus: todo.status })
+      continue
+    }
+    const moved = await moveTodoStatusAutomatically(db, { projectId, todoId: todo.id, stored: todo.status, events, history, updatedAt: now })
+    if (moved) {
+      if (completed !== null) completedTodos.push({ id: todo.id, title: todo.title, fromStatus: completedFrom })
+      continue
+    }
+    // Someone changed the to-do while the log was saving: their status
+    // stands, and the work is still recorded against it.
+    if (worked) {
+      const current = await loadProjectOperation(db, projectId, todo.id)
+      if (current) await recordTodoEvent(db, { ...worked, kind: "worked", fromStatus: current.status, toStatus: current.status })
     }
   }
 

@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { getTableConfig, type SQLiteTable } from "drizzle-orm/sqlite-core"
 import { projectOperations, projectTodoEvents } from "@/db/schema"
-import { changeProjectTodos, deleteProjectTodo } from "@/app/actions/project-todos"
+import { changeProjectTodos, completeProjectTodo, deleteProjectTodo } from "@/app/actions/project-todos"
 import {
   context,
   openCorrespondenceTestDatabase,
@@ -163,5 +163,19 @@ describe("guarded bulk to-do actions", () => {
       success: true,
       data: { skippedCount: 0 },
     })
+  })
+  it("marks a to-do done with its history, but not over a change made while saving", async () => {
+    seed("one")
+    seed("two")
+    expect(await completeProjectTodo("project-a", "one", now)).toMatchObject({ success: true })
+    expect(status("one")).toEqual({ status: "complete" })
+    testDb.failures.setBeforeBatchHook((sqlite) => {
+      sqlite.exec("UPDATE project_operations SET status='archived' WHERE id='two'")
+    })
+    expect(await completeProjectTodo("project-a", "two", now)).toMatchObject({ success: false })
+    expect(status("two")).toEqual({ status: "archived" })
+    expect(testDb.sqlite.prepare("SELECT todo_id,from_status,to_status FROM project_todo_events").all()).toEqual([
+      { todo_id: "one", from_status: "open", to_status: "complete" },
+    ])
   })
 })
