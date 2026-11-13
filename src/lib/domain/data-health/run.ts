@@ -5,7 +5,7 @@
  * ./notices.ts; the report endpoint and Settings › Data health only read it.
  */
 import { declaredTableColumns } from "@/db/declared-schema"
-import { KNOWN_MIGRATION_ONLY_SCHEMA } from "@/db/known-schema-differences"
+import { KNOWN_MIGRATION_ONLY_SCHEMA, KNOWN_PRODUCTION_ONLY_SCHEMA } from "@/db/known-schema-differences"
 import type { Db } from "@/lib/server/action-context"
 import { envString } from "@/lib/shared/env"
 
@@ -21,7 +21,7 @@ export async function runDataHealthCheck(db: Db, now: Date = new Date()): Promis
     checkedAt: now.toISOString(),
     statusChecks: STATUS_CHECKS.filter((check) => check.kind !== "not_stored").length,
     statusFindings,
-    schema: schemaDrift(declaredTableColumns(), live, KNOWN_MIGRATION_ONLY_SCHEMA),
+    schema: schemaDrift(declaredTableColumns(), live, [...KNOWN_MIGRATION_ONLY_SCHEMA, ...KNOWN_PRODUCTION_ONLY_SCHEMA]),
   }
 }
 

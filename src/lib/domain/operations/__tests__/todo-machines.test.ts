@@ -54,7 +54,7 @@ describe("to-do status automation", () => {
 
   it("matches the stored spelling it read, so compare-and-set finds the row", () => {
     expect(automaticTodoSourceSpellings("blocked")).toEqual(["blocked", "on_hold"])
-    expect(automaticTodoSourceSpellings("Open")).toEqual(["open", "Open"])
+    expect(automaticTodoSourceSpellings("Open")).toEqual(["open", "incomplete", "Open"])
     expect(automaticTodoSourceSpellings("archived")).toEqual([])
     expect(automaticTodoSourceSpellings("waiting_on_owner")).toEqual([])
   })
