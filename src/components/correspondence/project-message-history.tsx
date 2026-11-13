@@ -125,7 +125,7 @@ export function ProjectMessageHistory({
         <aside
           aria-label="Global message history"
           className={cn(
-            "w-full shrink-0 overflow-y-auto md:w-[var(--split-list,45%)]",
+            "w-full shrink-0 overflow-y-auto md:w-[var(--split-list,45%)] md:min-w-64",
             selectedId && "hidden md:block",
           )}
         >
