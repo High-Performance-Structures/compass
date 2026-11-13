@@ -50,6 +50,9 @@ jobs:
           # suite signs in with a dedicated read-only account instead.
           PLAYWRIGHT_SMOKE_EMAIL: ${{ secrets.PLAYWRIGHT_SMOKE_EMAIL }}
           PLAYWRIGHT_SMOKE_PASSWORD: ${{ secrets.PLAYWRIGHT_SMOKE_PASSWORD }}
+          # Read-only drift report (e2e/web/data-health.spec.ts); the same
+          # value as the Worker secret DATA_HEALTH_REPORT_SECRET.
+          PLAYWRIGHT_DATA_HEALTH_SECRET: ${{ secrets.DATA_HEALTH_REPORT_SECRET }}
 
       - uses: actions/upload-artifact@v4
         if: always()

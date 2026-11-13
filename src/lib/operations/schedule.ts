@@ -12,6 +12,9 @@
  *   - offsetMinute: which minute inside that cycle it runs, from 0 up to
  *     everyMinutes - 1. A job with everyMinutes 10 and offsetMinute 3 runs
  *     at :03, :13, :23, :33, :43 and :53.
+ *   - dailyAtUtcHour: for a once-a-day job (everyMinutes 60), the UTC hour
+ *     it runs in. Daily jobs must be light and never share a minute with
+ *     each other; they don't count toward a minute's two-job limit.
  *   - heavy: true for jobs that render PDFs, call Google, or fetch big
  *     outside data. Keep heavy jobs on different minutes (the tests check it).
  *   - why: one line on why it needs that cadence.
@@ -35,6 +38,7 @@ export type ScheduledJob = {
   readonly call: ScheduledJobCall
   readonly everyMinutes: number
   readonly offsetMinute: number
+  readonly dailyAtUtcHour?: number
   readonly heavy: boolean
   readonly why: string
 }
@@ -201,15 +205,32 @@ export const SCHEDULED_JOBS: readonly ScheduledJob[] = [
     heavy: false,
     why: "Alerts if the Square login is rejected; a rare event, 15 minutes is soon enough.",
   },
+
+  // ── Once a day (UTC hour + minute) ───────────────────────────────────────
+  {
+    name: "Data health check",
+    path: "/api/operations/data-health/run",
+    call: "signed",
+    everyMinutes: 60,
+    offsetMinute: 41,
+    // 11:41 UTC: early morning in the Americas, before the 13:15 UTC regression smoke run.
+    dailyAtUtcHour: 11,
+    heavy: false,
+    why: "Read-only drift check; drift builds up over days, so once a day is enough.",
+  },
 ]
 
-/** The jobs due at this minute, in table order. Uses UTC minutes of the hour. */
+/** The jobs due at this minute, in table order. Uses UTC minutes (and hours, for daily jobs). */
 export function jobsDueAt(
   time: Date,
   jobs: readonly ScheduledJob[] = SCHEDULED_JOBS
 ): ScheduledJob[] {
   const minute = time.getUTCMinutes()
-  return jobs.filter((job) => minute % job.everyMinutes === job.offsetMinute)
+  return jobs.filter(
+    (job) =>
+      minute % job.everyMinutes === job.offsetMinute &&
+      (job.dailyAtUtcHour === undefined || time.getUTCHours() === job.dailyAtUtcHour)
+  )
 }
 
 /** How often a job runs, in minutes. Throws if the name is not in the table. */

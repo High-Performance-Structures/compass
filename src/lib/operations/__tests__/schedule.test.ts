@@ -26,6 +26,11 @@ describe("scheduled job table", () => {
       expect(job.offsetMinute, `${job.name}: offset`).toBeLessThan(job.everyMinutes)
       expect(Number.isInteger(job.offsetMinute)).toBe(true)
       expect(job.why.trim().length, `${job.name}: explain why`).toBeGreaterThan(0)
+      if (job.dailyAtUtcHour !== undefined) {
+        expect(job.everyMinutes, `${job.name}: a daily job runs once an hour-of-day`).toBe(60)
+        expect(Number.isInteger(job.dailyAtUtcHour) && job.dailyAtUtcHour >= 0 && job.dailyAtUtcHour < 24, `${job.name}: hour`).toBe(true)
+        expect(job.heavy, `${job.name}: daily jobs must be light`).toBe(false)
+      }
       names.add(job.name)
       paths.add(job.path)
     }
@@ -39,13 +44,34 @@ describe("scheduled job table", () => {
       for (const name of namesAt(minute)) counts.set(name, (counts.get(name) ?? 0) + 1)
     }
     for (const job of SCHEDULED_JOBS) {
-      expect(counts.get(job.name), job.name).toBe(60 / job.everyMinutes)
+      // at() is 15:xx UTC; a daily job runs only in its own hour.
+      const expected = job.dailyAtUtcHour === undefined ? 60 / job.everyMinutes : job.dailyAtUtcHour === 15 ? 1 : 0
+      expect(counts.get(job.name) ?? 0, job.name).toBe(expected)
     }
+  })
+
+  it("runs each daily job once a day, never in the same minute as another daily job", () => {
+    const daily = SCHEDULED_JOBS.filter((job) => job.dailyAtUtcHour !== undefined)
+    expect(daily.map((job) => job.name)).toContain("Data health check")
+    for (const job of daily) {
+      let runs = 0
+      for (let hour = 0; hour < 24; hour += 1) {
+        for (let minute = 0; minute < 60; minute += 1) {
+          if (jobsDueAt(new Date(Date.UTC(2026, 10, 9, hour, minute))).includes(job)) runs += 1
+        }
+      }
+      expect(runs, job.name).toBe(1)
+    }
+    const slots = daily.map((job) => `${job.dailyAtUtcHour}:${job.offsetMinute}`)
+    expect(new Set(slots).size).toBe(slots.length)
   })
 
   it("keeps every minute to inbound email plus at most two jobs", () => {
     for (let minute = 0; minute < 60; minute += 1) {
-      const others = namesAt(minute).filter((name) => name !== ALWAYS)
+      // Daily jobs are light and run once a day; they don't count here.
+      const others = jobsDueAt(at(minute))
+        .filter((job) => job.name !== ALWAYS && job.dailyAtUtcHour === undefined)
+        .map((job) => job.name)
       expect(others.length, `minute :${minute} runs ${others.join(", ")}`).toBeLessThanOrEqual(2)
     }
   })

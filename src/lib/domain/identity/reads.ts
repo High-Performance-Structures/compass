@@ -80,6 +80,23 @@ export async function firstActiveAdmin(
   return admin ? { id: admin.id, name: admin.displayName?.trim() || admin.email } : null
 }
 
+/**
+ * Active staff (internal roles) of every active internal company, with their
+ * company role and email: for company-wide system notices such as the daily
+ * data health check. The caller picks admins or the people its settings name.
+ */
+export async function activeInternalCompanyStaff(
+  db: Db,
+): Promise<readonly { readonly organizationId: string; readonly userId: string; readonly email: string; readonly role: string }[]> {
+  const rows = await db
+    .select({ organizationId: organizationMembers.organizationId, userId: users.id, email: users.email, role: organizationMembers.role })
+    .from(organizationMembers)
+    .innerJoin(users, eq(users.id, organizationMembers.userId))
+    .innerJoin(organizations, eq(organizations.id, organizationMembers.organizationId))
+    .where(and(eq(organizations.type, "internal"), eq(organizations.isActive, true), eq(users.isActive, true)))
+  return rows.filter((row) => isInternalStaffRole(row.role))
+}
+
 // ---- Raw D1 reads, for callers that batch plain prepared statements
 
 /**
