@@ -183,7 +183,7 @@ export function DecisionCard({
             dateStyle: "medium",
             timeStyle: "short",
           })}
-          {item.status === "approved" ? " · Approved (signed)" : " · not final until the owner signs the Selection Phase"}
+          {item.signed ? " · Approved (signed)" : " · not final until the owner signs the Selection Phase"}
         </p>
       )}
       {item.changeOrderId && (

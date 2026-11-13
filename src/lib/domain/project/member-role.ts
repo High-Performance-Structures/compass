@@ -1,8 +1,8 @@
-import { and, eq } from "drizzle-orm"
+import { and, eq, sql } from "drizzle-orm"
 
-import { projectMembers } from "@/db/schema"
+import { projectMembers, projects } from "@/db/schema"
 import { openInvitationForProject } from "@/lib/domain/identity/reads"
-import { peopleView } from "@/lib/domain/identity/views"
+import { membershipsView, peopleView } from "@/lib/domain/identity/views"
 import { invitedPreviewInvitationId } from "@/lib/invited-preview"
 import type { Db } from "@/lib/server/action-context"
 
@@ -51,14 +51,41 @@ export async function projectMembersWithRole(
   db: Db,
   projectId: string,
   matches: (role: string) => boolean
-): Promise<readonly { readonly userId: string; readonly email: string }[]> {
+): Promise<readonly { readonly userId: string; readonly email: string; readonly accountRole: string }[]> {
   const people = peopleView()
   const rows = await db
-    .select({ userId: projectMembers.userId, role: projectMembers.role, email: people.email, googleEmail: people.googleEmail })
+    .select({ userId: projectMembers.userId, role: projectMembers.role, email: people.email, googleEmail: people.googleEmail, accountRole: people.role })
     .from(projectMembers)
     .innerJoin(people, eq(people.id, projectMembers.userId))
     .where(and(eq(projectMembers.projectId, projectId), eq(people.isActive, true)))
   return rows
     .filter((row) => matches(row.role))
-    .map((row) => ({ userId: row.userId, email: row.googleEmail?.trim() || row.email }))
+    .map((row) => ({ userId: row.userId, email: row.googleEmail?.trim() || row.email, accountRole: row.accountRole }))
+}
+
+/**
+ * The active company user named as the job's project manager on the project
+ * record (a name, not a membership), or null when none matches exactly one.
+ */
+export async function namedProjectManager(
+  db: Db,
+  projectId: string
+): Promise<{ readonly userId: string; readonly email: string; readonly accountRole: string } | null> {
+  const project = await db
+    .select({ name: projects.projectManager, organizationId: projects.organizationId })
+    .from(projects)
+    .where(eq(projects.id, projectId))
+    .get()
+  const name = project?.name?.trim()
+  if (!name || !project?.organizationId) return null
+  const people = peopleView()
+  const memberships = membershipsView()
+  const matches = await db
+    .select({ userId: people.id, email: people.email, googleEmail: people.googleEmail, accountRole: people.role })
+    .from(people)
+    .innerJoin(memberships, and(eq(memberships.userId, people.id), eq(memberships.organizationId, project.organizationId)))
+    .where(and(eq(people.isActive, true), sql`lower(trim(${people.displayName})) = lower(${name})`))
+    .limit(2)
+  const only = matches.length === 1 ? matches[0] : undefined
+  return only ? { userId: only.userId, email: only.googleEmail?.trim() || only.email, accountRole: only.accountRole } : null
 }

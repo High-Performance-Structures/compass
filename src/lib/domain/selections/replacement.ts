@@ -25,7 +25,7 @@ import { recordActivityEvents } from "@/lib/activity-log"
 import type { Db } from "@/lib/server/action-context"
 
 import { copyChoicesToReplacementStatements } from "./choices-store"
-import { selectionIsReplaced } from "./lock-read"
+import { replacementChangeOrderFor, selectionIsReplaced } from "./lock-read"
 import { REPLACEMENT_REASON_LABELS, replacementBlocker, replacementStartStatus } from "./locks"
 import { readProjectSelectionSettings } from "./project-settings"
 import { createSelectionChangeOrder, type SelectionChangeOrderActor } from "./selection-change-orders"
@@ -99,6 +99,8 @@ export async function replaceLockedSelection(
     return failed("Choose the different product that replaces the installed item. Add it as a choice first if it isn't listed.")
   }
 
+  // Read before the write, so nothing after it can fail the saved replacement.
+  const { settings } = await readProjectSelectionSettings(db, input.projectId)
   const now = new Date().toISOString()
   const newId = crypto.randomUUID()
   const label = REPLACEMENT_REASON_LABELS[input.reason]
@@ -118,6 +120,7 @@ export async function replaceLockedSelection(
     }),
     ...copyChoicesToReplacementStatements(db, {
       projectId: input.projectId,
+      fromSelectionId: old.id,
       toSelectionId: newId,
       choices: choices.flatMap((choice) => {
         const copy = newChoiceIds.get(choice.id)
@@ -139,7 +142,6 @@ export async function replaceLockedSelection(
     throw error
   }
 
-  const { settings } = await readProjectSelectionSettings(db, input.projectId)
   const created = settings.replacementChangeOrder
     ? await replacementChangeOrder(db, { projectId: input.projectId, newId, old, pick: pick ?? null, label, note, reason: input.reason, actor: input.actor, now })
     : { changeOrder: null, changeOrderError: null }
@@ -206,4 +208,45 @@ async function replacementChangeOrder(
     console.error("[selections] replacement change order failed", error)
     return { changeOrder: null, changeOrderError: error instanceof Error ? error.message : "The change order could not be created." }
   }
+}
+
+/**
+ * Starts the draft change order for a replacement that has none (it failed
+ * when the replacement was made, or the company setting was off then). The
+ * current pick on the replacement prices it.
+ */
+export async function startReplacementChangeOrder(
+  db: Db,
+  input: { readonly projectId: string; readonly selectionId: string; readonly actor: SelectionChangeOrderActor },
+): Promise<{ readonly ok: true; readonly id: string; readonly number: string } | { readonly ok: false; readonly error: string }> {
+  const selection = await db
+    .select({ replacesSelectionId: projectFinishSelections.replacesSelectionId, reason: projectFinishSelections.replacementReason })
+    .from(projectFinishSelections)
+    .where(and(eq(projectFinishSelections.id, input.selectionId), eq(projectFinishSelections.projectId, input.projectId)))
+    .get()
+  if (!selection?.replacesSelectionId || !selection.reason) return { ok: false, error: "Only a replacement selection gets this change order." }
+  if (await replacementChangeOrderFor(db, input.projectId, input.selectionId)) return { ok: false, error: "This replacement already has a change order." }
+  const old = await db
+    .select({ id: projectFinishSelections.id, name: projectFinishSelections.name, roomName: projectFinishSelections.roomName, costCode: projectFinishSelections.costCode })
+    .from(projectFinishSelections)
+    .where(and(eq(projectFinishSelections.id, selection.replacesSelectionId), eq(projectFinishSelections.projectId, input.projectId)))
+    .get()
+  if (!old) return { ok: false, error: "The replaced selection was not found." }
+  const pick = await db
+    .select({ title: projectSelectionChoices.title, ownerPriceCents: projectSelectionChoices.ownerPriceCents })
+    .from(projectSelectionChoices)
+    .where(and(eq(projectSelectionChoices.selectionId, input.selectionId), eq(projectSelectionChoices.chosen, true)))
+    .get()
+  const created = await replacementChangeOrder(db, {
+    projectId: input.projectId,
+    newId: input.selectionId,
+    old,
+    pick: pick ?? null,
+    label: REPLACEMENT_REASON_LABELS[selection.reason],
+    note: null,
+    reason: selection.reason,
+    actor: input.actor,
+    now: new Date().toISOString(),
+  })
+  return created.changeOrder ? { ok: true, ...created.changeOrder } : { ok: false, error: created.changeOrderError ?? "The change order could not be created." }
 }

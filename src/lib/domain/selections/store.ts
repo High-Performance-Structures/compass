@@ -1,4 +1,4 @@
-import { and, eq, inArray, sql, type SQL } from "drizzle-orm"
+import { and, eq, inArray, notInArray, sql, type SQL } from "drizzle-orm"
 import type { BatchItem } from "drizzle-orm/batch"
 import type { IndexColumn, SQLiteUpdateSetSource } from "drizzle-orm/sqlite-core"
 
@@ -8,7 +8,7 @@ import type { Db } from "@/lib/server/action-context"
 import { assertListFields } from "@/lib/shared/statuses"
 
 import { insertCopyStatement } from "./copy-rows"
-import { staffStatusChangeBlocker } from "./locks"
+import { LOCKED_SELECTION_STATUSES, staffStatusChangeBlocker } from "./locks"
 import { automaticSelectionStatus, selectionStatusSources, selectionStatusTarget, type SelectionStatusEvent } from "./status-machine"
 import { PROJECT_SELECTION_STATUSES, SELECTION_REPLACEMENT_REASONS, type ProjectSelectionStatus, type SelectionReplacementReason } from "./statuses"
 
@@ -92,8 +92,20 @@ export function updateFinishSelectionsStatement(db: Db, where: SQL | undefined, 
   return db.update(projectFinishSelections).set(withoutStatus(patch)).where(where)
 }
 
-export async function updateFinishSelections(db: Db, where: SQL | undefined, patch: FinishSelectionPatch): Promise<D1Result> {
-  return db.update(projectFinishSelections).set(withoutStatus(patch)).where(where).run()
+/**
+ * Plain column update; the number of rows written. `unlockedOnly`: lands
+ * only on a row that is not ordered, installed or replaced at write time
+ * (locks.ts), for edits that change the product.
+ */
+export async function updateFinishSelections(
+  db: Db,
+  where: SQL | undefined,
+  patch: FinishSelectionPatch,
+  options: { readonly unlockedOnly?: boolean } = {},
+): Promise<number> {
+  const guarded = options.unlockedOnly ? and(where, unlockedSelection) : where
+  const result = await db.update(projectFinishSelections).set(withoutStatus(patch)).where(guarded).run()
+  return result.meta.changes
 }
 
 // ---- selection status (issue #1329, phase 2)
@@ -101,6 +113,9 @@ export async function updateFinishSelections(db: Db, where: SQL | undefined, pat
 // Staff set any status by hand (setSelectionStatusByStaff); Compass's own
 // moves follow status-machine.ts. Both are compare-and-set, so a stale read
 // never overwrites a newer status. Every other update leaves status out.
+
+/** True while the row is neither ordered nor installed, and nothing replaces it. */
+const unlockedSelection = and(notInArray(projectFinishSelections.status, [...LOCKED_SELECTION_STATUSES]), notReplaced)
 
 /**
  * A staff status change: lands only while the selection still has

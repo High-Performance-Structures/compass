@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { readFileSync } from "node:fs"
-import { projectSelectionComments } from "@/db/schema-selection-choices"
+import { projectSelectionComments, projectSelectionRoundSignatureItems, projectSelectionRoundSignatures } from "@/db/schema-selection-choices"
 import { organizationFeatureSettings } from "@/db/schema"
 import { getTableConfig, type SQLiteTable } from "drizzle-orm/sqlite-core"
 import { eq } from "drizzle-orm"
@@ -119,6 +119,9 @@ beforeEach(async () => {
     projectSelectionComments,
     // Status names (Settings › Selections) are read for publish Activity text.
     organizationFeatureSettings,
+    // Signed Selection Phases mark "Approved (signed)" and open supplier access.
+    projectSelectionRoundSignatures,
+    projectSelectionRoundSignatureItems,
   ])
     createTable(table)
   testDb.sqlite.exec(
@@ -275,7 +278,7 @@ describe("owner selection decisions", () => {
       await testDb.db.select().from(projectFinishSelections).get()
     ).toMatchObject({ ownerApproved: false })
   })
-  it("requires an executed project owner change order for a price difference", async () => {
+  it("records the owner's choice on a price difference without waiting for the change order (the signature carries it)", async () => {
     await testDb.db.insert(projectChangeOrders).values({
       id: "co-a",
       changeOrderNumber: "CO-1",
@@ -294,35 +297,9 @@ describe("owner selection decisions", () => {
     signIn("owner-a")
     expect(
       await approveSelectionDecision("project-a", "selection-a", 1)
-    ).toMatchObject({ success: false })
-    await testDb.db.update(projectChangeOrders).set({ status: "executed" })
-    expect(
-      await approveSelectionDecision("project-a", "selection-a", 1)
     ).toEqual({ success: true })
-  })
-  it("rechecks change order status at the write", async () => {
-    await testDb.db.insert(projectChangeOrders).values({
-      id: "co-a",
-      changeOrderNumber: "CO-1",
-      sourceType: "manual",
-      scope: "Fixture finish upgrade",
-      requesterType: "owner",
-      requesterName: "Owner A",
-      projectId: "project-a",
-      title: "Upgrade",
-      audience: "owner",
-      status: "executed",
-      createdAt: date,
-      updatedAt: date,
-    })
-    await publish({ price: "2700", changeOrderId: "co-a" })
-    signIn("owner-a")
-    testDb.failures.setBeforeBatchHook((sqlite) =>
-      sqlite.exec("UPDATE project_change_orders SET status='draft'")
-    )
-    expect(
-      await approveSelectionDecision("project-a", "selection-a", 1)
-    ).toMatchObject({ success: false })
+    // The change order is untouched by the click.
+    expect(await testDb.db.select({ status: projectChangeOrders.status }).from(projectChangeOrders).get()).toEqual({ status: "approved_for_owner" })
   })
   it("blocks unknown pricing, blank timing, and invalid money", async () => {
     expect(() => moneyCents("-1")).toThrow()
@@ -434,6 +411,11 @@ describe("pricing and alternative requests", () => {
   })
 })
 
+// The owner's signature (a signed Selection Phase) approves the selection.
+function signed(): void {
+  testDb.sqlite.exec("UPDATE project_finish_selections SET status='approved', owner_approved=1")
+}
+
 describe("supplier access through procurement", () => {
   it("requires an assigned sub/vendor membership even for project-wide approved specifications", async () => {
     await publish()
@@ -441,6 +423,9 @@ describe("supplier access through procurement", () => {
     await approveSelectionDecision("project-a", "selection-a", 1)
     await expect(getSelectionWorkspace("project-a", "sub_vendor")).rejects.toThrow("Project not found")
     testDb.sqlite.exec("UPDATE project_members SET role='subcontractor' WHERE user_id='owner-a'")
+    // The owner's click alone shares nothing with suppliers; the signature does.
+    expect((await getSelectionWorkspace("project-a", "sub_vendor")).items).toHaveLength(0)
+    signed()
     expect((await getSelectionWorkspace("project-a", "sub_vendor")).items).toHaveLength(1)
     testDb.sqlite.exec("DELETE FROM project_members WHERE user_id='owner-a'")
     await expect(getSelectionWorkspace("project-a", "sub_vendor")).rejects.toThrow("Project not found")
@@ -460,6 +445,7 @@ describe("supplier access through procurement", () => {
     ).toEqual({ success: true })
     signIn("owner-a")
     await approveSelectionDecision("project-a", "selection-a", 1)
+    signed()
     // An internal portal preview exercises the same supplier-recipient projection.
     signIn()
     expect(
@@ -495,6 +481,7 @@ describe("supplier access through procurement", () => {
     expect((await getSelectionWorkspace("project-a", "sub_vendor")).items).toHaveLength(0)
     signIn("owner-a")
     await approveSelectionDecision("project-a", "selection-a", 1)
+    signed()
     signIn()
     testDb.sqlite.exec("UPDATE project_selection_decisions SET published=0")
     expect((await getSelectionWorkspace("project-a", "sub_vendor")).items).toHaveLength(0)
@@ -645,7 +632,6 @@ it("allows only the request's owner to edit or withdraw it", async () => {
 it.each(["owner_review", "ordered", "installed", "rfq_sent", "deferred"] as const)(
   "the owner's choice is recorded without approving: %s stays",
   async (status) => {
-    await testDb.db.update(projectFinishSelections).set({ status })
     await publish()
     // Publishing moves needed/proposed on to With owner; set the case's status after it.
     await testDb.db.update(projectFinishSelections).set({ status })

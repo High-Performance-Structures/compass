@@ -1,6 +1,7 @@
 import { z } from "zod/v4"
 
 import { USER_ROLES } from "@/lib/domain/identity/statuses"
+import { isInternalStaffRole } from "@/lib/user-roles"
 
 /*
  * Settings > Workflows > Selections: the company's selection rounds (which
@@ -48,7 +49,10 @@ export const selectionSettingsSchema = z.object({
   /** "Replace installed item" and "Owner changed selection after purchase" start a draft change order. */
   replacementChangeOrder: z.boolean(),
   /** Project roles told when a choice's price changes while its Selection Phase is out for signature. */
-  priceChangeNoticeRoles: z.array(z.enum(USER_ROLES)).max(USER_ROLES.length),
+  priceChangeNoticeRoles: z
+    .array(z.enum(USER_ROLES))
+    .max(USER_ROLES.length)
+    .refine((roles) => roles.every(isInternalStaffRole), "Only company staff roles can be told."),
 })
 
 export type SelectionSettings = z.infer<typeof selectionSettingsSchema>

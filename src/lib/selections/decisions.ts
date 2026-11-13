@@ -66,12 +66,6 @@ export function safeSelectionUrl(value: string | null): string | null {
     throw new Error("Use a public HTTP or HTTPS product link.")
   return url.toString()
 }
-function approvedChangeOrder(status: string | null): boolean {
-  return (
-    status !== null &&
-    ["executed", "sage_pending", "synced", "closed"].includes(status)
-  )
-}
 export function approvalBlocker(input: {
   readonly current: boolean
   readonly published: boolean
@@ -80,7 +74,6 @@ export function approvalBlocker(input: {
   readonly quotedCents: number | null
   readonly scheduleImpact: string | null
   readonly requiresChangeOrder: boolean
-  readonly changeOrderStatus: string | null
   readonly openRequests: number
 }): string | null {
   if (!input.published)
@@ -96,11 +89,8 @@ export function approvalBlocker(input: {
     !input.scheduleImpact?.trim()
   )
     return "Your team is preparing the price, allowance, and schedule impact."
-  if (
-    (input.requiresChangeOrder || input.quotedCents !== input.allowanceCents) &&
-    !approvedChangeOrder(input.changeOrderStatus)
-  )
-    return "Approve the associated change order before approving this selection."
+  // Confirming a choice records a preference; the contract change is signed
+  // with the Selection Phase (or its own change order), not before the click.
   return null
 }
 

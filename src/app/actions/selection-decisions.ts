@@ -15,6 +15,8 @@ import {
 } from "@/db/schema-selection-decisions"
 import { recordActivityEvent } from "@/lib/activity-log"
 import { selectionAccess } from "@/lib/domain/selections/access"
+import { selectionIsReplaced } from "@/lib/domain/selections/lock-read"
+import { selectionLock } from "@/lib/domain/selections/locks"
 import { readProjectSelectionSettings } from "@/lib/domain/selections/project-settings"
 import { advanceSelectionStatus, advanceSelectionsForPurchaseOrder } from "@/lib/domain/selections/status-advance"
 import { updateFinishSelectionsStatement } from "@/lib/domain/selections/store"
@@ -70,6 +72,10 @@ export async function publishSelectionDecision(
       throw new Error(
         "The selection changed. Refresh and review it before publishing."
       )
+    // Publishing clears the owner approval columns; an ordered, installed or
+    // replaced selection keeps its record as it is.
+    const lock = selectionLock(row.status, await selectionIsReplaced(db, row.id))
+    if (lock) throw new Error(lock.message)
     if (
       input.decisionDueDate &&
       (!/^\d{4}-\d{2}-\d{2}$/.test(input.decisionDueDate) ||
@@ -271,19 +277,6 @@ export async function approveSelectionDecision(
       throw new Error(
         "Your builder records your choice when you sign the Selection Phase document."
       )
-    const change = decision.changeOrderId
-      ? await db
-          .select({ status: projectChangeOrders.status })
-          .from(projectChangeOrders)
-          .where(
-            and(
-              eq(projectChangeOrders.id, decision.changeOrderId),
-              eq(projectChangeOrders.projectId, projectId),
-              eq(projectChangeOrders.audience, "owner")
-            )
-          )
-          .get()
-      : null
     const open = await db
       .select({ id: requests.id })
       .from(requests)
@@ -294,15 +287,11 @@ export async function approveSelectionDecision(
     const blocker = approvalBlocker({
       ...decision,
       current: decision.specificationJson === specificationJson(row),
-      changeOrderStatus: change?.status ?? null,
       openRequests: open.length,
     })
     if (blocker) throw new Error(blocker)
     const now = new Date().toISOString(),
       token = crypto.randomUUID()
-    const needsChange =
-      decision.requiresChangeOrder ||
-      decision.quotedCents !== decision.allowanceCents
     const mutation = db
       .update(decisions)
       .set({
@@ -330,10 +319,7 @@ export async function approveSelectionDecision(
                   eq(requests.status, "open")
                 )
               )
-          ),
-          needsChange
-            ? sql`EXISTS (SELECT 1 FROM ${projectChangeOrders} WHERE ${projectChangeOrders.id} = ${decision.changeOrderId} AND ${projectChangeOrders.projectId} = ${projectId} AND ${projectChangeOrders.audience} = 'owner' AND ${projectChangeOrders.status} IN ('executed','sage_pending','synced','closed'))`
-            : undefined
+          )
         )
       )
     const result = await db.batch([

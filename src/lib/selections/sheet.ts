@@ -23,6 +23,12 @@ export type SelectionSheetInput = {
     readonly dueDate: string | null
     readonly published: boolean
     readonly roundKey: string | null
+    /** A signature covers it (a signed Selection Phase, or its executed replacement change order). */
+    readonly signed?: boolean
+    /** Another selection replaces it (it stays on record, locked). */
+    readonly replaced?: boolean
+    /** It replaces an ordered or installed selection. */
+    readonly replacement?: boolean
   }[]
   readonly choices: readonly {
     readonly selectionId: string
@@ -60,6 +66,12 @@ export type SelectionSheetRow = {
   readonly published: boolean
   /** The company round (Settings > Selections) it belongs to, or null. */
   readonly roundKey: string | null
+  /** A signature covers it: "Approved" reads "Approved (signed)". */
+  readonly signed: boolean
+  /** Another selection replaces it. */
+  readonly replaced: boolean
+  /** It replaces an ordered or installed selection (outside Selection Phases; its change order is its signature). */
+  readonly replacement: boolean
   /** Sorts room, then parent, then its follow-ups right under it. */
   readonly orderKey: string
 }
@@ -106,6 +118,9 @@ export function selectionSheetRows(input: SelectionSheetInput): readonly Selecti
       dueDate: row.dueDate,
       published: row.published,
       roundKey: row.roundKey,
+      signed: row.signed ?? false,
+      replaced: row.replaced ?? false,
+      replacement: row.replacement ?? false,
       orderKey: [topRow.roomName.toLocaleLowerCase(), position.get(top) ?? "", parentId ? "1" : "0", position.get(row.id) ?? ""].join("\u0000"),
     }
   })
@@ -117,7 +132,7 @@ const SELECTION_LIST_FILTERS: readonly { readonly value: SelectionListFilter; re
   { value: "open", label: "Open" },
   { value: "needed", label: "Needed" },
   { value: "with_owner", label: "With owner" },
-  { value: "approved", label: "Approved (signed)" },
+  { value: "approved", label: "Approved" },
   { value: "ordered", label: "Ordered" },
   { value: "installed", label: "Installed" },
   { value: "all", label: "All" },

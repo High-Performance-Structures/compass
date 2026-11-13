@@ -82,6 +82,7 @@ function decision(id: string, overrides: Partial<SelectionDecisionItem> = {}): S
     approvedAt: null,
     approvedByName: null,
     approvalBlocker: null,
+    signed: false,
     status: "owner_review",
     selectionUpdatedAt: "2026-11-01T00:00:00Z",
     requests: [],

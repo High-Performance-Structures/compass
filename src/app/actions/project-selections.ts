@@ -21,13 +21,7 @@ import {
   projectTaskNumberFor,
   requiredText
 } from "@/lib/domain/selections/rules"
-import {
-  deleteFinishSelectionsReturningIds,
-  insertFinishSelection,
-  insertSelectionRoomIfAbsent,
-  setSelectionStatusByStaff,
-  updateFinishSelections
-} from "@/lib/domain/selections/store"
+import { deleteFinishSelectionsReturningIds, insertFinishSelection, insertSelectionRoomIfAbsent, setSelectionStatusByStaff, updateFinishSelections } from "@/lib/domain/selections/store"
 import type {
   ApplyProjectFinishScheduleImportResult,
   CreateProjectSelectionInput,
@@ -36,12 +30,7 @@ import type {
   ProjectSelectionsSummary,
   UpdateProjectSelectionInput
 } from "@/lib/domain/selections/types"
-import {
-  loadProjectSelectionOptions,
-  loadProjectSelections,
-  loadSelectionRoomOptions,
-  loadPublishedTemplateSelection
-} from "@/lib/domain/selections/workspace"
+import { loadProjectSelectionOptions, loadProjectSelections, loadSelectionRoomOptions, loadPublishedTemplateSelection } from "@/lib/domain/selections/workspace"
 import { requireFeaturePermission } from "@/lib/permission-enforcement"
 import { selectionDeletionAllowed } from "@/lib/selections/deletion"
 import { cleanText } from "@/lib/shared/guards"
@@ -363,8 +352,11 @@ export async function updateProjectSelection(
     ].filter((change) => change !== null)
     const specificationChanged = changes.some(change => change.field !== "Status" && change.field !== "Notes")
     // Ordered and installed selections keep their product; a replaced one keeps everything.
-    const locked = staffEditBlocker({ status: existing.status, replaced: await selectionIsReplaced(db, selectionId), changedFields: changes.map((change) => change.field), statusMove: statusChanged ? { from: seenStatus, to: status } : null })
+    const replaced = await selectionIsReplaced(db, selectionId)
+    const locked = staffEditBlocker({ status: existing.status, replaced, changedFields: changes.map((change) => change.field), statusMove: statusChanged ? { from: seenStatus, to: status } : null })
     if (locked) return { success: false, error: locked }
+    // A locked row never loses its approval; an unlocked one does on a material edit.
+    const clearsApproval = specificationChanged && selectionLock(existing.status, replaced) === null
 
     await insertSelectionRoomIfAbsent(db, {
       id: compassSelectionRoomId(projectId, roomName),
@@ -392,9 +384,9 @@ export async function updateProjectSelection(
       costCode,
       phaseCode,
       // Staff workflow status is not an owner signature. Material edits invalidate it.
-      ownerApproved: specificationChanged ? false : existing.ownerApproved,
-      approvedBy: specificationChanged ? null : existing.approvedBy,
-      approvedAt: specificationChanged ? null : existing.approvedAt,
+      ownerApproved: clearsApproval ? false : existing.ownerApproved,
+      approvedBy: clearsApproval ? null : existing.approvedBy,
+      approvedAt: clearsApproval ? null : existing.approvedAt,
       notes,
       syncStatus:
         existing.status === "approved" && changes.length > 0
@@ -409,7 +401,8 @@ export async function updateProjectSelection(
       if (!saved) return { success: false, error: STATUS_CHANGED }
     } else {
       const row = and(eq(projectFinishSelections.id, selectionId), eq(projectFinishSelections.projectId, projectId))
-      await updateFinishSelections(db, row, values)
+      // A material edit lands only while the row is still unlocked (not ordered, installed or replaced).
+      if ((await updateFinishSelections(db, row, values, { unlockedOnly: clearsApproval })) === 0) return { success: false, error: STATUS_CHANGED }
     }
 
     if (existing.status === "approved" && changes.length > 0) {

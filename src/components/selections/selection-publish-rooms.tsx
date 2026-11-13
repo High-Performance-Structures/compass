@@ -27,9 +27,11 @@ function rowStatus(item: SelectionDecisionItem): string {
     ? "Unpublished"
     : !item.current
       ? "Revision needed"
-      : item.approvedAt
-        ? "Owner's choice"
-        : "Published for owner"
+      : item.signed
+        ? "Approved (signed)"
+        : item.approvedAt
+          ? "Owner's choice"
+          : "Published for owner"
 }
 
 function PublishRow({

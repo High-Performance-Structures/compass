@@ -13,8 +13,8 @@ export const PROJECT_SELECTION_STATUS_LABELS: Readonly<Record<ProjectSelectionSt
   needed: "Needed",
   proposed: "Proposed",
   owner_review: "With owner",
-  // Only a signed document approves; an owner's click records their choice.
-  approved: "Approved (signed)",
+  // Shown as "Approved (signed)" only where a signature covers it (signedSelectionIds).
+  approved: "Approved",
   pricing: "Pricing",
   rfq_sent: "RFQ sent",
   ordered: "Ordered",

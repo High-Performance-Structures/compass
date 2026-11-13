@@ -267,7 +267,7 @@ describe("Field Mode daily log selections installed", () => {
     expect(html).toContain('data-fu="installed" data-fu-key="s1"')
     expect(html).toContain("Kitchen faucet &lt;brass>")
     expect(html).toContain("Kitchen · Ordered")
-    expect(html).toContain(">Approved (signed)</span>")
+    expect(html).toContain(">Approved</span>")
     draft = { ...draft, followUps: storedFollowUpDraft(followUpAction(draft.followUps, rules, { control: "installed", key: "s1", value: "true" }, key)) }
     html = installedSelectionsHtml(setup, draft.followUps, escape)
     expect(html).toContain("Ordered → Installed")

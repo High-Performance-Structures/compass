@@ -37,7 +37,7 @@ import {
 } from "@/lib/domain/selections/choices-read"
 import { loadLeadTimeContext, loadSelectionLeadTimeWarnings } from "@/lib/domain/selections/lead-time-read"
 import type { SelectionLeadTimeWarning } from "@/lib/domain/selections/lead-time-rules"
-import { loadSelectionLock, loadSelectionReplacement, type SelectionReplacementLink } from "@/lib/domain/selections/lock-read"
+import { loadSelectionLock, loadSelectionReplacement, replacementChangeOrderFor, type SelectionReplacementLink } from "@/lib/domain/selections/lock-read"
 import type { SelectionLock } from "@/lib/domain/selections/locks"
 import { loadOwnerChoiceBoard, type OwnerBoardSelection } from "@/lib/domain/selections/owner-board-read"
 import { notifyPriceChangesDuringSignature } from "@/lib/domain/selections/price-change-notice"
@@ -117,9 +117,26 @@ async function staffChoice(projectId: string, choiceId: string) {
   return { ...context, choice }
 }
 
+type ChoicesDb = Awaited<ReturnType<typeof staffSelectionContext>>["db"]
+
 /** Why the selection's pick and chosen product can't change (ordered, installed or replaced), or null. */
-async function pickLockMessage(db: Awaited<ReturnType<typeof staffSelectionContext>>["db"], projectId: string, selectionId: string): Promise<string | null> {
+async function pickLockMessage(db: ChoicesDb, projectId: string, selectionId: string): Promise<string | null> {
   return (await loadSelectionLock(db, projectId, selectionId))?.lock?.message ?? null
+}
+
+/**
+ * Why a choice can't be edited or deleted, or null: any choice of a replaced
+ * selection, or the pick (`chosen`) of an ordered or installed one.
+ */
+async function choiceLockMessage(db: ChoicesDb, projectId: string, selectionId: string, chosen: boolean): Promise<string | null> {
+  const lock = (await loadSelectionLock(db, projectId, selectionId))?.lock ?? null
+  return lock && (chosen || lock.kind === "replaced") ? lock.message : null
+}
+
+/** Why nothing may be added to or changed on the selection (it was replaced), or null. */
+async function replacedMessage(db: ChoicesDb, projectId: string, selectionId: string): Promise<string | null> {
+  const lock = (await loadSelectionLock(db, projectId, selectionId))?.lock ?? null
+  return lock?.kind === "replaced" ? lock.message : null
 }
 
 /** The selection's current pick, or null. */
@@ -157,21 +174,24 @@ export type SelectionDetail = {
   /** The selection that replaced this one, and the one this one replaces. */
   readonly replacedBy: SelectionReplacementLink | null
   readonly replaces: SelectionReplacementLink | null
+  /** A replacement's change order (not void), or null. */
+  readonly replacementChangeOrder: { readonly id: string; readonly number: string; readonly status: string } | null
 }
 
 /** Everything the staff detail panel shows for one selection. */
 export async function getSelectionDetail(projectId: string, selectionId: string): Promise<ActionResult<SelectionDetail>> {
   try {
     const { db, userId } = await audienceAccess(projectId, selectionId, "staff", false)
-    const [panel, todos, rfqs, draftRfqs, lock, replacement] = await Promise.all([
+    const [panel, todos, rfqs, draftRfqs, lock, replacement, replacementChangeOrder] = await Promise.all([
       loadSelectionChoicesPanel(db, projectId, selectionId, "staff", userId),
       loadSelectionTodos(db, projectId, selectionId),
       loadSelectionRfqs(db, projectId, selectionId),
       loadDraftRfqOptions(db, projectId),
       loadSelectionLock(db, projectId, selectionId),
       loadSelectionReplacement(db, projectId, selectionId),
+      replacementChangeOrderFor(db, projectId, selectionId),
     ])
-    return { success: true, data: { panel, todos, rfqs, draftRfqs, lock: lock?.lock ?? null, ...replacement } }
+    return { success: true, data: { panel, todos, rfqs, draftRfqs, lock: lock?.lock ?? null, ...replacement, replacementChangeOrder } }
   } catch (error) {
     return failure(error, "Unable to load the selection.")
   }
@@ -217,11 +237,9 @@ export async function saveSelectionChoice(
     if (choiceId) {
       const existing = await choiceInProject(db, projectId, choiceId)
       if (!existing || existing.selectionId !== selectionId) return { success: false, error: "Choice not found" }
-      // The pick of an ordered or installed selection is the product bought; it stays as it was.
-      if (existing.chosen) {
-        const locked = await pickLockMessage(db, projectId, selectionId)
-        if (locked) return { success: false, error: locked }
-      }
+      // The pick of an ordered or installed selection is the product bought; a replaced selection is read-only.
+      const locked = await choiceLockMessage(db, projectId, selectionId, existing.chosen)
+      if (locked) return { success: false, error: locked }
       const { status, ...fields } = value
       const expected = input.expectedStatus ?? null
       // An unchanged status is left out, so a status someone else set meanwhile stays.
@@ -232,7 +250,10 @@ export async function saveSelectionChoice(
         { ...fields, updatedAt: now },
         expected === status ? undefined : { expected, to: status },
       )
-      if (!saved) return { success: false, error: "Someone changed this choice's status while you were editing. Refresh and try again." }
+      if (!saved) {
+        const lockedNow = await choiceLockMessage(db, projectId, selectionId, existing.chosen)
+        return { success: false, error: lockedNow ?? "Someone changed this choice's status while you were editing. Refresh and try again." }
+      }
       // Allowed while the selection is out for the owner's signature, but the job's managers are told.
       await notifyPriceChangesDuringSignature(db, {
         projectId,
@@ -251,6 +272,8 @@ export async function saveSelectionChoice(
       refresh(projectId)
       return { success: true, data: { id: choiceId } }
     }
+    const readOnly = await replacedMessage(db, projectId, selectionId)
+    if (readOnly) return { success: false, error: readOnly }
     const id = crypto.randomUUID()
     await insertSelectionChoice(db, {
       id,
@@ -276,11 +299,10 @@ export async function saveSelectionChoice(
 export async function deleteSelectionChoice(projectId: string, choiceId: string): Promise<Done> {
   try {
     const { db, user, choice } = await staffChoice(projectId, choiceId)
-    if (choice.chosen) {
-      const locked = await pickLockMessage(db, projectId, choice.selectionId)
-      if (locked) return { success: false, error: locked }
-    }
-    await deleteChoiceRow(db, projectId, choiceId)
+    const locked = await choiceLockMessage(db, projectId, choice.selectionId, choice.chosen)
+    if (locked) return { success: false, error: locked }
+    // The write re-checks the lock, so a selection ordered meanwhile keeps its pick.
+    if (!(await deleteChoiceRow(db, projectId, choiceId))) return { success: false, error: "This choice can't be deleted now. Refresh and try again." }
     await checkRoundsReady(db, projectId, user.id)
     refresh(projectId)
     return { success: true, data: { id: choiceId } }
@@ -294,6 +316,8 @@ export async function reorderSelectionChoices(projectId: string, selectionId: st
   try {
     const { db } = await staffSelectionContext(projectId, "update")
     if (!(await selectionInProject(db, projectId, selectionId))) return { success: false, error: "Selection not found" }
+    const readOnly = await replacedMessage(db, projectId, selectionId)
+    if (readOnly) return { success: false, error: readOnly }
     if (!validChoiceOrder(await selectionChoiceIds(db, selectionId), orderedIds)) {
       return { success: false, error: "The choices changed; refresh and try again." }
     }
@@ -333,7 +357,9 @@ export async function setSelectionChoiceChosen(
       if (await selectionPickIsSigned(access.db, choice.selectionId, await currentPickId(access.db, choice.selectionId))) {
         return { success: false, error: "You've signed for this selection. Ask your builder to change it." }
       }
-      await setChosenRow(access.db, choice.selectionId, choiceId, chosen, new Date().toISOString(), { userId: access.user.id, audience: "owner", note: null })
+      if (!(await setChosenRow(access.db, choice.selectionId, choiceId, chosen, new Date().toISOString(), { userId: access.user.id, audience: "owner", note: null }))) {
+        return { success: false, error: "This selection can't be changed here any more. Ask your builder." }
+      }
       await checkRoundsReady(access.db, projectId, access.user.id)
       refresh(projectId)
       return { success: true, data: { id: choiceId } }
@@ -345,11 +371,13 @@ export async function setSelectionChoiceChosen(
     const before = await currentPickId(db, choice.selectionId)
     const wasSigned = await selectionPickIsSigned(db, choice.selectionId, before)
     const now = new Date().toISOString()
-    await setChosenRow(db, choice.selectionId, choiceId, chosen, now, {
+    // The write re-checks the lock (a selection ordered meanwhile keeps its pick).
+    const picked = await setChosenRow(db, choice.selectionId, choiceId, chosen, now, {
       userId: user.id,
       audience: "staff",
       note: note?.trim().slice(0, 500) || null,
     })
+    if (!picked) return { success: false, error: (await pickLockMessage(db, projectId, choice.selectionId)) ?? "The pick changed. Refresh and try again." }
     // Changing a signed pick reopens just this selection (never an ordered or installed one); the next round signature covers it.
     if (wasSigned && (!chosen || before !== choiceId)) {
       await updateFinishSelectionsWithEvent(
@@ -371,6 +399,8 @@ export async function setSelectionChoiceChosen(
 export async function setChoiceDependentSelections(projectId: string, choiceId: string, selectionIds: readonly string[]): Promise<Done> {
   try {
     const { db, choice } = await staffChoice(projectId, choiceId)
+    const readOnly = await replacedMessage(db, projectId, choice.selectionId)
+    if (readOnly) return { success: false, error: readOnly }
     const ids = cleanDependentSelectionIds(choice.selectionId, selectionIds)
     const valid = await projectSelectionIds(db, projectId, ids)
     if (valid.size !== ids.length) return { success: false, error: "A follow-up selection was not found on this project." }
@@ -400,6 +430,8 @@ export async function addSelectionLink(
     const url = normalizeSupplierUrl(rawUrl)
     if (!url) return { success: false, error: "Enter a web address that starts with http:// or https://." }
     const { db, userId } = await audienceAccess(projectId, selectionId, audience, true)
+    const readOnly = await replacedMessage(db, projectId, selectionId)
+    if (readOnly) return { success: false, error: readOnly }
     if (choiceId) {
       const choice = await choiceInProject(db, projectId, choiceId)
       if (!choice || choice.selectionId !== selectionId) return { success: false, error: "Choice not found" }
@@ -435,6 +467,8 @@ export async function deleteSelectionLink(projectId: string, selectionId: string
     const { db, userId } = await audienceAccess(projectId, selectionId, audience, true)
     const link = await linkInProject(db, projectId, linkId)
     if (!link) return { success: false, error: "Link not found" }
+    const readOnly = await replacedMessage(db, projectId, selectionId)
+    if (readOnly) return { success: false, error: readOnly }
     if (audience === "owner" && link.addedByUserId !== userId) return { success: false, error: "Only the person who added this link can remove it." }
     await deleteLinkRow(db, projectId, linkId)
     refresh(projectId)
@@ -478,6 +512,8 @@ export async function attachSelectionPhotos(
     const context = await staffSelectionContext(projectId, "update")
     const { db } = context
     if (!(await selectionInProject(db, projectId, selectionId))) return { success: false, error: "Selection not found" }
+    const readOnly = await replacedMessage(db, projectId, selectionId)
+    if (readOnly) return { success: false, error: readOnly }
     if (choiceId) {
       const choice = await choiceInProject(db, projectId, choiceId)
       if (!choice || choice.selectionId !== selectionId) return { success: false, error: "Choice not found" }

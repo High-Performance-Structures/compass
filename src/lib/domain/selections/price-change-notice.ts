@@ -16,10 +16,11 @@ import { and, eq, inArray } from "drizzle-orm"
 import { projectFinishSelections } from "@/db/schema"
 import { projectSelectionRoundSignatureItems, projectSelectionRoundSignatures } from "@/db/schema-selection-choices"
 import { recordActivityEvents, type ActivityActor } from "@/lib/activity-log"
-import { projectMembersWithRole } from "@/lib/domain/project/member-role"
+import { namedProjectManager, projectMembersWithRole } from "@/lib/domain/project/member-role"
 import { formatCents } from "@/lib/format"
 import { createNotificationEvent, createSystemNotificationEvent } from "@/lib/notifications/events"
 import type { Db } from "@/lib/server/action-context"
+import { isInternalStaffRole, projectRoleMatches } from "@/lib/user-roles"
 
 import { readProjectSelectionSettings } from "./project-settings"
 
@@ -96,8 +97,16 @@ export async function notifyPriceChangesDuringSignature(
     const { organizationId, settings } = await readProjectSelectionSettings(db, input.projectId)
     if (!organizationId) return
     const actorId = input.actor?.id ?? null
-    const roles: ReadonlySet<string> = new Set(settings.priceChangeNoticeRoles)
-    const recipients = (await projectMembersWithRole(db, input.projectId, (role) => roles.has(role))).filter((recipient) => recipient.userId !== actorId)
+    const roles = settings.priceChangeNoticeRoles
+    // Membership roles are free text ("project-manager"); compare however they're spelled.
+    const members = await projectMembersWithRole(db, input.projectId, (role) => projectRoleMatches(role, roles))
+    // The project manager named on the job counts as one, even without a membership.
+    const named = projectRoleMatches("project_manager", roles) ? await namedProjectManager(db, input.projectId) : null
+    const byUser = new Map([...members, ...(named ? [named] : [])].map((member) => [member.userId, member]))
+    // Only company staff are told, whatever the setting holds.
+    const recipients = [...byUser.values()]
+      .filter((member) => member.userId !== actorId && isInternalStaffRole(member.accountRole))
+      .map((member) => ({ userId: member.userId, email: member.email }))
 
     await recordActivityEvents(
       db,

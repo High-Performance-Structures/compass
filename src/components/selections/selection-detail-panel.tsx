@@ -29,6 +29,7 @@ import { AttachPhotosDialog, FollowUpsDialog, PasteLinkDialog, PickForOwnerDialo
 import { SelectionLinkCard } from "@/components/selections/selection-link-card"
 import { SelectionPriceRequest } from "@/components/selections/selection-price-request"
 import { SelectionReplaceDialog, type SelectionReplaceKind } from "@/components/selections/selection-replace-dialog"
+import { createReplacementChangeOrder } from "@/app/actions/selection-replacements"
 import { SelectionRoundTemplateControls } from "@/components/selections/selection-round-template-controls"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -194,20 +195,37 @@ export function SelectionDetailPanel({
           <span className="text-sm font-medium">Status</span>
           {/* Keyed on the status so an automatic move or another edit shows after refresh. */}
           <ProjectSelectionStatusSelect
-            key={`${row.status}:${detail?.replacedBy ? "replaced" : ""}`}
+            key={`${row.status}:${row.replaced ? "replaced" : ""}`}
             projectId={projectId}
             selectionId={row.id}
             status={row.status}
             labels={statusLabels}
-            replaced={detail?.replacedBy !== null && detail?.replacedBy !== undefined}
+            replaced={row.replaced}
             onChanged={onChanged}
           />
         </div>
+        {row.status === "approved" && (
+          <span className="text-xs text-muted-foreground">{row.signed ? "Signed by the owner" : "Not signed by the owner yet"}</span>
+        )}
         {detail?.replaces && (
-          <p className="text-sm text-muted-foreground">
-            Replaces {detail.replaces.name}
-            {detail.replaces.reason ? ` (${REPLACEMENT_REASON_LABELS[detail.replaces.reason].toLocaleLowerCase()})` : ""}. Its change order is in Change orders.
-          </p>
+          <div className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
+            <span>
+              Replaces {detail.replaces.name}
+              {detail.replaces.reason ? ` (${REPLACEMENT_REASON_LABELS[detail.replaces.reason].toLocaleLowerCase()})` : ""}.
+            </span>
+            {detail.replacementChangeOrder ? (
+              <Link
+                className="text-primary hover:underline"
+                href={`/dashboard/projects/${encodeURIComponent(projectId)}/change-orders/${encodeURIComponent(detail.replacementChangeOrder.id)}`}
+              >
+                Change order {detail.replacementChangeOrder.number}
+              </Link>
+            ) : (
+              <Button type="button" variant="outline" size="sm" disabled={pending} onClick={() => run(() => createReplacementChangeOrder(projectId, row.id))}>
+                Create change order
+              </Button>
+            )}
+          </div>
         )}
         {detail?.lock && (
           <div className="flex flex-col gap-2 rounded-md border p-2 text-sm">

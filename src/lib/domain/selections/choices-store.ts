@@ -39,6 +39,19 @@ type LinkInsert = typeof projectSelectionLinks.$inferInsert
 type PhotoInsert = typeof projectSelectionPhotos.$inferInsert
 type CommentInsert = typeof projectSelectionComments.$inferInsert
 
+// ---- locks (locks.ts), checked inside each write so a stale read can't slip past
+//
+// The outer table is named in full so each subquery reads the choice being written.
+
+/** The choice's selection is ordered or installed. */
+const selectionLocked = sql`EXISTS (SELECT 1 FROM project_finish_selections AS locked WHERE locked.id = project_selection_choices.selection_id AND locked.status IN ('ordered', 'installed'))`
+/** The choice's selection was replaced: all its choices are read-only. */
+const selectionReplaced = sql`EXISTS (SELECT 1 FROM project_finish_selections AS replacement WHERE replacement.replaces_selection_id = project_selection_choices.selection_id)`
+/** The choice may be edited or deleted: not the bought pick of an ordered or installed selection, and not on a replaced one. */
+const choiceWritable = sql`NOT ((project_selection_choices.chosen = 1 AND ${selectionLocked}) OR ${selectionReplaced})`
+/** The selection's pick may change: it is not ordered, installed or replaced. */
+const pickChangeable = sql`NOT (${selectionLocked} OR ${selectionReplaced})`
+
 // ---- choices
 
 export async function insertSelectionChoice(db: Db, row: ChoiceInsert): Promise<void> {
@@ -79,18 +92,23 @@ export async function updateSelectionChoice(
         eq(projectSelectionChoices.id, choiceId),
         eq(projectSelectionChoices.projectId, projectId),
         status && status.expected !== null ? sql`${projectSelectionChoices.status} = ${status.expected}` : undefined,
+        choiceWritable,
       ),
     )
     .run()
   return result.meta.changes > 0
 }
 
-/** Deletes a choice; its links, photo links and dependent rows go with it (cascade). */
-export async function deleteSelectionChoice(db: Db, projectId: string, choiceId: string): Promise<void> {
-  await db
+/**
+ * Deletes a choice; its links, photo links and dependent rows go with it
+ * (cascade). False when it is locked (see choiceWritable) or gone.
+ */
+export async function deleteSelectionChoice(db: Db, projectId: string, choiceId: string): Promise<boolean> {
+  const result = await db
     .delete(projectSelectionChoices)
-    .where(and(eq(projectSelectionChoices.id, choiceId), eq(projectSelectionChoices.projectId, projectId)))
+    .where(and(eq(projectSelectionChoices.id, choiceId), eq(projectSelectionChoices.projectId, projectId), choiceWritable))
     .run()
+  return result.meta.changes > 0
 }
 
 /** Saves a new order: each id gets its index as sort_order, in one batch. */
@@ -114,7 +132,8 @@ export async function reorderSelectionChoices(
 /**
  * Marks one choice chosen and clears the others on the same selection, in one
  * batch (the unique index allows one chosen choice per selection). `chosen`
- * false clears just this one.
+ * false clears just this one. Nothing changes on an ordered, installed or
+ * replaced selection; false then.
  */
 export async function setSelectionChoiceChosen(
   db: Db,
@@ -123,12 +142,12 @@ export async function setSelectionChoiceChosen(
   chosen: boolean,
   now: string,
   pickedBy: { readonly userId: string; readonly audience: SelectionAuthorAudience; readonly note: string | null },
-): Promise<void> {
+): Promise<boolean> {
   const cleared = { chosen: false, chosenByUserId: null, chosenByAudience: null, chosenAt: null, chosenNote: null, updatedAt: now }
   const clearOthers = db
     .update(projectSelectionChoices)
     .set(cleared)
-    .where(and(eq(projectSelectionChoices.selectionId, selectionId), ne(projectSelectionChoices.id, choiceId), eq(projectSelectionChoices.chosen, true)))
+    .where(and(eq(projectSelectionChoices.selectionId, selectionId), ne(projectSelectionChoices.id, choiceId), eq(projectSelectionChoices.chosen, true), pickChangeable))
   const setThis = db
     .update(projectSelectionChoices)
     .set(
@@ -136,26 +155,17 @@ export async function setSelectionChoiceChosen(
         ? { chosen: true, chosenByUserId: pickedBy.userId, chosenByAudience: pickedBy.audience, chosenAt: now, chosenNote: pickedBy.note, updatedAt: now }
         : cleared,
     )
-    .where(and(eq(projectSelectionChoices.id, choiceId), eq(projectSelectionChoices.selectionId, selectionId)))
-  await (chosen ? db.batch([clearOthers, setThis]) : setThis.run())
+    .where(and(eq(projectSelectionChoices.id, choiceId), eq(projectSelectionChoices.selectionId, selectionId), pickChangeable))
+  if (!chosen) return (await setThis.run()).meta.changes > 0
+  const [, set] = await db.batch([clearOthers, setThis])
+  return set.meta.changes > 0
 }
-
-/**
- * True for a choice that is the pick of an ordered, installed or replaced
- * selection (locks.ts): its product and price are fixed. The outer table is
- * named in full so the subquery reads the choice being written.
- */
-const lockedPick = sql`(project_selection_choices.chosen = 1 AND EXISTS (
-  SELECT 1 FROM project_finish_selections AS locked
-  WHERE locked.id = project_selection_choices.selection_id
-    AND (locked.status IN ('ordered', 'installed')
-      OR EXISTS (SELECT 1 FROM project_finish_selections AS replacement WHERE replacement.replaces_selection_id = locked.id))
-))`
 
 /**
  * Supplier prices returned on an RFQ, in one batch. The RFQ's vendor becomes
  * the choice's supplier only where the choice has none. The pick of an
- * ordered or installed selection is left as it was bought.
+ * ordered or installed selection is left as it was bought, and a replaced
+ * selection's choices are left alone.
  */
 export async function setChoicePricesFromRfq(
   db: Db,
@@ -170,7 +180,7 @@ export async function setChoicePricesFromRfq(
       eq(projectSelectionChoices.id, price.choiceId),
       eq(projectSelectionChoices.selectionId, price.selectionId),
       eq(projectSelectionChoices.projectId, projectId),
-      sql`NOT ${lockedPick}`,
+      choiceWritable,
     )
     const ownerPrice = ownerPriceFromMarkup(price.priceCents, ownerMarkupPercent)
     // A blank owner price is filled from the markup; one staff set stays.
@@ -292,8 +302,9 @@ export async function deleteSelectionComment(db: Db, projectId: string, commentI
 // ---- replacement copies
 
 /**
- * Copies a replaced selection's choices, supplier links and photo links onto
- * the selection that replaces it, for the same batch that inserts it. Each
+ * Copies a replaced selection's choices, supplier links, photo links and
+ * follow-up links onto the selection that replaces it, for the same batch
+ * that inserts it. Each
  * statement copies one row from its source and lands only if the new
  * selection exists, so nothing is copied when that insert didn't land. The
  * originals stay with the replaced selection. `pick` is the one copied
@@ -303,6 +314,7 @@ export function copyChoicesToReplacementStatements(
   db: Db,
   input: {
     readonly projectId: string
+    readonly fromSelectionId: string
     readonly toSelectionId: string
     readonly choices: readonly { readonly fromId: string; readonly newId: string }[]
     readonly links: readonly { readonly fromId: string; readonly newId: string; readonly newChoiceId: string | null }[]
@@ -351,5 +363,20 @@ export function copyChoicesToReplacementStatements(
       and(eq(projectSelectionPhotos.id, photo.fromId), eq(projectSelectionPhotos.projectId, input.projectId), landed),
     ),
   )
-  return [...choices, ...links, ...photos]
+  // Follow-ups: what each copied choice opens, and the other choices that opened the replaced selection.
+  const opens = input.choices.map((choice) =>
+    insertCopyStatement(
+      db,
+      projectSelectionChoiceDependents,
+      { choiceId: choice.newId, createdAt: input.now },
+      and(eq(projectSelectionChoiceDependents.choiceId, choice.fromId), landed),
+    ),
+  )
+  const openedBy = insertCopyStatement(
+    db,
+    projectSelectionChoiceDependents,
+    { selectionId: input.toSelectionId, createdAt: input.now },
+    and(eq(projectSelectionChoiceDependents.selectionId, input.fromSelectionId), landed),
+  )
+  return [...choices, ...links, ...photos, ...opens, openedBy]
 }

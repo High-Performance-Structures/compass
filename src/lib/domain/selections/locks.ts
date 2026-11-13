@@ -61,7 +61,11 @@ export function staffStatusChoices(
   return all.filter((to) => staffStatusChangeBlocker(from, to, replaced) === null)
 }
 
-/** The selection fields that describe the product; fixed while it is locked. */
+/**
+ * The fields fixed on an ordered selection: the product, and the cost code
+ * and phase it is bought and billed under. An installed selection keeps
+ * everything but its notes.
+ */
 const LOCKED_PRODUCT_FIELDS = [
   "Category",
   "Selection",
@@ -72,12 +76,15 @@ const LOCKED_PRODUCT_FIELDS = [
   "Color / finish",
   "Supplier",
   "Product link",
+  "Cost code",
+  "Phase",
 ] as const
 
 /**
  * Why a staff edit (the selection edit form) can't save, or null: an ordered
- * or installed selection's product fields are fixed and its status moves only
- * as staffStatusChangeBlocker allows; a replaced selection doesn't change.
+ * selection's product, cost code and phase are fixed; an installed one
+ * changes only its notes; a replaced one doesn't change at all. Status moves
+ * only as staffStatusChangeBlocker allows.
  * `changedFields` are the form's field labels.
  */
 export function staffEditBlocker(input: {
@@ -88,8 +95,14 @@ export function staffEditBlocker(input: {
 }): string | null {
   const lock = selectionLock(input.status, input.replaced)
   if (!lock) return null
-  const product = input.changedFields.some((field) => LOCKED_PRODUCT_FIELDS.some((locked) => locked === field))
-  if (lock.kind === "replaced" ? input.changedFields.length > 0 : product) return lock.message
+  const fields = input.changedFields.filter((field) => field !== "Status")
+  const blocked =
+    lock.kind === "replaced"
+      ? input.changedFields.length > 0
+      : lock.kind === "installed"
+        ? fields.some((field) => field !== "Notes")
+        : fields.some((field) => LOCKED_PRODUCT_FIELDS.some((locked) => locked === field))
+  if (blocked) return lock.message
   return input.statusMove ? staffStatusChangeBlocker(input.statusMove.from, input.statusMove.to, input.replaced) : null
 }
 

@@ -55,6 +55,16 @@ export function selectionProgressLabel(status: string, labels: SelectionStatusLa
   return text.charAt(0).toLocaleUpperCase() + text.slice(1)
 }
 
+/**
+ * A selection's status as shown: "Approved" reads "Approved (signed)" only
+ * when a signature covers it (a staff-set or older click approval stays
+ * plain "Approved").
+ */
+export function selectionStatusDisplay(status: ProjectSelectionStatus, labels: SelectionStatusLabels | undefined, signed: boolean): string {
+  const label = selectionStatusLabel(status, labels)
+  return status === "approved" && signed ? `${label} (signed)` : label
+}
+
 /** Status picker options in workflow order, with the company's labels. */
 export function selectionStatusOptions(
   labels: SelectionStatusLabels = DEFAULT_SELECTION_STATUS_LABELS,

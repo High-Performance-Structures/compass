@@ -277,6 +277,27 @@ export function isProjectLeadRole(role: string | null | undefined): boolean {
   return role === "project_manager" || role === "project_administrator"
 }
 
+// Other spellings of a project role found in project memberships (intake writes "project-manager").
+const PROJECT_ROLE_ALIASES: Readonly<Record<string, string>> = {
+  pm: "project_manager",
+  manager: "project_manager",
+  apm: "assistant_project_manager",
+  assistant_pm: "assistant_project_manager",
+  project_admin: "project_administrator",
+}
+
+/** A role name compared without case or separators ("Project-Manager" = "project_manager"), aliases resolved. */
+function projectRoleKey(role: string): string {
+  const key = role.trim().toLowerCase().replaceAll(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, "")
+  return PROJECT_ROLE_ALIASES[key] ?? key
+}
+
+/** Whether a project membership role is one of `roles` (company setting role keys), however it is spelled. */
+export function projectRoleMatches(projectRole: string, roles: readonly string[]): boolean {
+  const key = projectRoleKey(projectRole)
+  return roles.some((candidate) => projectRoleKey(candidate) === key)
+}
+
 /** The general "office" (Office Staff) role, which covers the office workflow roles. */
 export function isGeneralOfficeRole(role: string | null | undefined): boolean {
   return role === "office"

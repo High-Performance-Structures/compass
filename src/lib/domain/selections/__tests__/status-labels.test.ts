@@ -43,7 +43,7 @@ describe("selection status labels", () => {
   it("names the sheet's filter buttons after the statuses; Open and All stay", () => {
     const filters = selectionListFilters(resolveSelectionStatusLabels({ owner_review: "Client review", installed: "Done" }))
     expect(filters.map((filter) => filter.value)).toEqual(["open", "needed", "with_owner", "approved", "ordered", "installed", "all"])
-    expect(filters.map((filter) => filter.label)).toEqual(["Open", "Needed", "Client review", "Approved (signed)", "Ordered", "Done", "All"])
+    expect(filters.map((filter) => filter.label)).toEqual(["Open", "Needed", "Client review", "Approved", "Ordered", "Done", "All"])
     expect(selectionListFilters().find((filter) => filter.value === "with_owner")?.label).toBe("With owner")
   })
 })
@@ -60,7 +60,7 @@ describe("status name validation", () => {
   })
 
   it("blocks duplicates without case, against renamed and default names", () => {
-    const againstDefault = selectionStatusNameProblems({ owner_review: "approved (signed)" })
+    const againstDefault = selectionStatusNameProblems({ owner_review: "approved" })
     expect(againstDefault.owner_review).toMatch(/already the name of another status/)
     expect(againstDefault.approved).toMatch(/already the name of another status/)
 

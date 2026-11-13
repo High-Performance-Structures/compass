@@ -26,6 +26,8 @@ export type SelectionDecisionItem = {
   readonly scheduleImpact: string | null
   readonly ownerNote: string | null
   readonly requiresChangeOrder: boolean
+  /** A signature covers it (signed Selection Phase or executed replacement change order); the click alone doesn't. */
+  readonly signed: boolean
   readonly changeOrderId: string | null
   readonly approvedAt: string | null
   readonly approvedByName: string | null

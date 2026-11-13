@@ -22,7 +22,9 @@ const mocks = vi.hoisted(() => ({
   notify: vi.fn(),
   notice: vi.fn(),
   systemNotice: vi.fn(),
+  context: vi.fn(),
 }))
+vi.mock("@/lib/server/action-context", async (original) => ({ ...(await original<typeof import("@/lib/server/action-context")>()), projectContext: mocks.context }))
 vi.mock("@/lib/domain/selections/access", () => ({ staffSelectionContext: mocks.staff, selectionAccess: mocks.audience }))
 vi.mock("@/lib/foxit/esign", () => ({ createFoxitPreparedEnvelope: mocks.envelope, downloadFoxitExecutedEnvelope: vi.fn() }))
 vi.mock("@/lib/esign/announce", () => ({ announceEsignOutcome: mocks.announce }))
@@ -120,6 +122,7 @@ beforeEach(async () => {
   } as unknown as CloudflareEnv
   const user = { id: "staff", email: "pm@example.com", displayName: "Pat PM", role: "project_manager", firstName: null, lastName: null }
   mocks.staff.mockResolvedValue({ db, user, organizationId: "org-1", env })
+  mocks.context.mockResolvedValue({ success: true, data: { db, user, organizationId: "org-1", env } })
   mocks.audience.mockResolvedValue({ db, user: { id: "owner" }, staff: false, actorName: "Olive Owner" })
   mocks.envelope.mockResolvedValue({ envelopeId: "env-1", embeddedSessionUrl: "https://foxit.example.com/send/1" })
 })
@@ -235,7 +238,10 @@ describe("replacing a locked selection", () => {
 
     // Once only; and the replaced selection no longer moves or changes.
     expect(await replaceInstalledSelection("p1", "tile", subway, null)).toMatchObject({ success: false, error: expect.stringMatching(/already replaced/) })
-    expect(await saveSelectionChoice("p1", "tile", subway, { title: "Subway", price: "1", ownerPrice: "3300" })).toMatchObject({ success: true })
+    // A replaced selection is read-only: no choice edits, deletes, additions or picks.
+    expect(await saveSelectionChoice("p1", "tile", subway, { title: "Subway", price: "1", ownerPrice: "3300" })).toMatchObject({ success: false, error: expect.stringMatching(/replaced/) })
+    expect(await saveSelectionChoice("p1", "tile", null, { title: "Another", price: "1", ownerPrice: "1" })).toMatchObject({ success: false })
+    expect(await deleteSelectionChoice("p1", subway)).toMatchObject({ success: false })
     const detail = await getSelectionDetail("p1", "tile")
     expect(detail.success && detail.data).toMatchObject({ lock: { kind: "replaced" }, replacedBy: { id: done.data.selectionId, name: "Backsplash" }, replaces: null })
     const newDetail = await getSelectionDetail("p1", done.data.selectionId)

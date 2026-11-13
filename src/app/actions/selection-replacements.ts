@@ -3,8 +3,8 @@
 import { revalidatePath } from "next/cache"
 
 import { actionFailure, errorMessage, type ActionResult } from "@/lib/action-result"
-import { staffSelectionContext } from "@/lib/domain/selections/access"
-import { replaceLockedSelection } from "@/lib/domain/selections/replacement"
+import { replaceLockedSelection, startReplacementChangeOrder } from "@/lib/domain/selections/replacement"
+import { projectContext } from "@/lib/server/action-context"
 import type { SelectionReplacementReason } from "@/lib/domain/selections/statuses"
 
 /*
@@ -22,6 +22,15 @@ export type SelectionReplacementDone = {
   readonly changeOrderError: string | null
 }
 
+/** Staff selections access for a write; refused for the read-only demo account and company. */
+async function writeContext(projectId: string) {
+  const context = await projectContext(projectId, { scope: "organization", feature: "finish-selections", action: "update", mutation: true })
+  if (!context.success) throw new Error(context.error)
+  const { organizationId } = context.data
+  if (!organizationId) throw new Error("No active organization")
+  return { ...context.data, organizationId }
+}
+
 async function replace(
   projectId: string,
   selectionId: string,
@@ -30,7 +39,7 @@ async function replace(
   note: string | null,
 ): Promise<ActionResult<SelectionReplacementDone>> {
   try {
-    const { db, user, organizationId } = await staffSelectionContext(projectId, "update")
+    const { db, user, organizationId } = await writeContext(projectId)
     const result = await replaceLockedSelection(db, {
       projectId,
       organizationId,
@@ -75,4 +84,21 @@ export async function ownerChangedSelectionAfterPurchase(
   note: string | null,
 ): Promise<ActionResult<SelectionReplacementDone>> {
   return replace(projectId, selectionId, "owner_changed_after_purchase", choiceId, note)
+}
+
+/** Starts the draft change order for a replacement that has none. */
+export async function createReplacementChangeOrder(
+  projectId: string,
+  selectionId: string,
+): Promise<ActionResult<{ readonly changeOrderId: string; readonly changeOrderNumber: string }>> {
+  try {
+    const { db, user } = await writeContext(projectId)
+    const result = await startReplacementChangeOrder(db, { projectId, selectionId, actor: { ...user, name: user.displayName ?? user.email } })
+    if (!result.ok) return actionFailure(result.error)
+    revalidatePath(`/dashboard/projects/${projectId}/selections`)
+    revalidatePath(`/dashboard/projects/${projectId}/change-orders`)
+    return { success: true, data: { changeOrderId: result.id, changeOrderNumber: result.number } }
+  } catch (error) {
+    return actionFailure(errorMessage(error, "Unable to create the change order."))
+  }
 }

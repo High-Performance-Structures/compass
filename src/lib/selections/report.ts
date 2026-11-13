@@ -17,10 +17,12 @@ export function selectionReport(
     rows.push({
       title: spec.name,
       status: partner
-        ? `Owner's choice · Revision ${item.revision}`
+        ? `Approved · Revision ${item.revision}`
         : !item.current
           ? "Specification changed — revision pending"
-          : item.approvedAt
+          : item.signed
+            ? `Approved (signed) · Revision ${item.revision}`
+            : item.approvedAt
             ? `Owner's choice · Revision ${item.revision}`
             : `Awaiting decision · Revision ${item.revision}`,
       fields: [

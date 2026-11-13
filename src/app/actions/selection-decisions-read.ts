@@ -26,8 +26,11 @@ import type {
   SelectionDecisionItem,
   SelectionWorkspace,
 } from "@/lib/selections/types"
+import { signedSelectionIds } from "@/lib/domain/selections/lock-read"
 import { readProjectSelectionSettings } from "@/lib/domain/selections/project-settings"
 import { readProjectSelectionStatusLabels } from "@/lib/domain/selections/status-labels-server"
+
+const PARTNER_VISIBLE_STATUSES: ReadonlySet<string> = new Set(["approved", "ordered", "installed"])
 
 export async function getSelectionWorkspace(
   projectId: string,
@@ -113,6 +116,7 @@ export async function getSelectionWorkspace(
     readProjectSelectionStatusLabels(db, projectId),
     readProjectSelectionSettings(db, projectId),
   ])
+  const signed = await signedSelectionIds(db, projectId)
   // Reuse the portal's recipient checks; a link never grants a supplier new access.
   const partnerPreview =
     audience === "sub_vendor"
@@ -136,11 +140,13 @@ export async function getSelectionWorkspace(
     const current =
       !decision || decision.specificationJson === specificationJson(row)
     const ownLinks = links.filter((link) => link.selectionId === row.id)
-    if (
-      audience === "sub_vendor" &&
-      (!decision?.approvedAt || !current)
-    )
-      return []
+    // Partners see a specification once a signature finalizes it (or it is
+    // approved, ordered or installed), never on the owner's click alone.
+    const finalized =
+      signed.has(row.id) ||
+      row.ownerApproved ||
+      PARTNER_VISIBLE_STATUSES.has(row.status)
+    if (audience === "sub_vendor" && (!finalized || !current)) return []
     const itemRequests = requests.filter(
       (request) => request.selectionId === row.id
     )
@@ -163,6 +169,7 @@ export async function getSelectionWorkspace(
         ownerNote: partner ? null : (decision?.ownerNote ?? null),
         requiresChangeOrder:
           !partner && (decision?.requiresChangeOrder ?? false),
+        signed: signed.has(row.id),
         changeOrderId: partner ? null : (change?.id ?? null),
         approvedAt: partner ? null : (decision?.approvedAt ?? null),
         approvedByName: partner ? null : (decision?.approvedByName ?? null),
@@ -184,7 +191,6 @@ export async function getSelectionWorkspace(
               quotedCents: decision?.quotedCents ?? null,
               scheduleImpact: decision?.scheduleImpact ?? null,
               requiresChangeOrder: decision?.requiresChangeOrder ?? false,
-              changeOrderStatus: change?.status ?? null,
               openRequests: itemRequests.filter(
                 (request) => request.status === "open"
               ).length,

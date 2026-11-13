@@ -46,6 +46,7 @@ const item: SelectionDecisionItem = {
   changeOrderId: null,
   approvedAt: null,
   approvedByName: null,
+  signed: false,
   approvalBlocker: partner
     ? "Already approved"
     : params.has("request")

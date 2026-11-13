@@ -36,7 +36,7 @@ export function ProjectSelectionStatusSelect({
   const [saving, setSaving] = React.useState(false)
   const [error, setError] = React.useState<string | null>(null)
   // Ordered moves on only to Installed; installed and replaced selections don't move (locks.ts).
-  const allowed = new Set(staffStatusChoices(status, PROJECT_SELECTION_STATUSES, replaced))
+  const allowed = new Set(staffStatusChoices(currentStatus, PROJECT_SELECTION_STATUSES, replaced))
   const statusOptions = selectionStatusOptions(labels).filter((option) => allowed.has(option.value))
 
   async function changeStatus(value: string): Promise<void> {

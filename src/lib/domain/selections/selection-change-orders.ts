@@ -10,7 +10,7 @@
 import { eq } from "drizzle-orm"
 
 import { projects } from "@/db/schema"
-import { projectChangeOrders } from "@/db/schema-change-orders"
+import { projectChangeOrderLines, projectChangeOrders } from "@/db/schema-change-orders"
 import { changeOrderNumber, changeOrderNumberColumns } from "@/lib/change-orders/numbering"
 import {
   insertChangeOrderHistoryStatement,
@@ -49,12 +49,8 @@ export async function createSelectionChangeOrder(
     readonly now: string
   },
 ): Promise<{ readonly id: string; readonly number: string }> {
-  const [project, existing] = await Promise.all([
-    db.select({ projectNumber: projects.projectNumber }).from(projects).where(eq(projects.id, input.projectId)).get(),
-    db.select(changeOrderNumberColumns).from(projectChangeOrders).where(eq(projectChangeOrders.projectId, input.projectId)),
-  ])
+  const project = await db.select({ projectNumber: projects.projectNumber }).from(projects).where(eq(projects.id, input.projectId)).get()
   const id = crypto.randomUUID()
-  const number = changeOrderNumber(project?.projectNumber ?? null, existing)
   const insurance = await changeOrderInsuranceLines({ db, projectId: input.projectId, lines: input.lines })
   const allLines = [
     ...input.lines.map((line) => ({ ...line, derivedFrom: null })),
@@ -75,6 +71,33 @@ export async function createSelectionChangeOrder(
     createdAt: input.now,
     updatedAt: input.now,
   }))
+  // Two change orders made at once can take the same next number; the unique
+  // index refuses the second, which reads the numbers again and retries.
+  for (let attempt = 1; ; attempt += 1) {
+    const existing = await db.select(changeOrderNumberColumns).from(projectChangeOrders).where(eq(projectChangeOrders.projectId, input.projectId))
+    const number = changeOrderNumber(project?.projectNumber ?? null, existing)
+    try {
+      await insertChangeOrderRows(db, { ...input, id, number, status, amountCents, lineRows })
+      return { id, number }
+    } catch (error) {
+      if (attempt >= NUMBER_ATTEMPTS || !(error instanceof Error && /UNIQUE constraint failed/i.test(error.message))) throw error
+    }
+  }
+}
+
+const NUMBER_ATTEMPTS = 4
+
+async function insertChangeOrderRows(
+  db: Db,
+  input: Parameters<typeof createSelectionChangeOrder>[1] & {
+    readonly id: string
+    readonly number: string
+    readonly status: "signature_pending" | "draft"
+    readonly amountCents: number
+    readonly lineRows: readonly (typeof projectChangeOrderLines.$inferInsert)[]
+  },
+): Promise<void> {
+  const { id, number, status, amountCents, lineRows } = input
   await db.batch([
     insertChangeOrderStatement(db, {
       id,
@@ -117,5 +140,4 @@ export async function createSelectionChangeOrder(
       createdAt: input.now,
     }),
   ])
-  return { id, number }
 }

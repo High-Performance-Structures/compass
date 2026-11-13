@@ -55,6 +55,7 @@ function item(id: string, roomName: string, overrides: Partial<SelectionDecision
     approvedAt: null,
     approvedByName: null,
     approvalBlocker: null,
+    signed: false,
     status: "owner_review",
     selectionUpdatedAt: "2026-11-01T00:00:00Z",
     requests: [],

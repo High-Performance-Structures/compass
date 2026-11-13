@@ -35,25 +35,18 @@ import {
   isExternallyPublishedChangeOrderStatus,
   type ChangeOrderStatus,
 } from "@/lib/change-orders/status"
-import {
-  canViewChangeOrder,
-  changeOrderRequesterType,
-  type ChangeOrderRequesterType,
-} from "@/lib/change-orders/access"
+import { canViewChangeOrder, changeOrderRequesterType, type ChangeOrderRequesterType } from "@/lib/change-orders/access"
 import { displayChangeOrderRequesterType } from "@/lib/change-orders/provenance"
 import { getCloudflareContext } from "@/lib/db"
 import { rebuildProjectContractBudget } from "@/lib/financials/contract-budget-store"
+import { applyExecutedReplacementChangeOrder } from "@/lib/domain/selections/replacement-signing"
 import {
   executeBaselineReplacement,
   rebaselineViewData,
   requireRebaselineSelection,
   type RebaselineViewData,
 } from "@/lib/change-orders/rebaseline-store"
-import {
-  isChangeOrderBudgetTreatment,
-  rebaselineEstimateDocumentLinks,
-  type ChangeOrderBudgetTreatment,
-} from "@/lib/change-orders/rebaseline"
+import { isChangeOrderBudgetTreatment, rebaselineEstimateDocumentLinks, type ChangeOrderBudgetTreatment } from "@/lib/change-orders/rebaseline"
 import {
   canFeature,
   requireFeaturePermission,
@@ -1100,6 +1093,8 @@ export async function updateProjectChangeOrder(
         projectId,
         actorUserId: context.user.id,
       })
+      // A selection replacement's change order approves its selection.
+      await applyExecutedReplacementChangeOrder(context.db, { projectId, changeOrderId, actorId: context.user.id })
     }
     revalidateChangeOrderPaths(projectId)
     return { success: true, id: changeOrderId }
