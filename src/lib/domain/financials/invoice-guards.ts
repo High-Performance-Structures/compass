@@ -22,11 +22,12 @@ import type { Db } from "@/lib/server/action-context"
  *    _by, a lease of EMAIL_CLAIM_LEASE_MS) before making the PDF or sending,
  *    so of a double click or two staff only one sends; another send is also
  *    refused while emailed_at (delivered) is inside the company's re-send
- *    window (Settings > Workflows > Simple invoices). The claim is renewed
- *    right before the hand-off to the mail provider. A definite failure
- *    releases it; an unknown outcome keeps it and marks the invoice
- *    email_unconfirmed_at (reopen and delete stay blocked until staff confirm
- *    it didn't go out); delivery stamps emailed_at and clears both.
+ *    window (Settings > Workflows > Simple invoices). Right before the
+ *    hand-off to the mail provider the claim is renewed and the invoice is
+ *    marked email_unconfirmed_at ("may have gone out") in one write. A
+ *    definite failure clears both; an unknown outcome frees the claim but
+ *    keeps the marker, which blocks a re-send, reopen and delete until staff
+ *    confirm it didn't go out; delivery stamps emailed_at and clears both.
  */
 
 /** The invoice has a payment allocation that still counts (voided payments release theirs). */
@@ -115,7 +116,12 @@ type SimpleInvoiceKey = { readonly invoiceId: string; readonly organizationId: s
 
 export type InvoiceEmailClaim = { readonly claimedAt: string; readonly actorId: string }
 
-export type InvoiceEmailRefusal = InvoiceEmailBlock | { readonly kind: "draft" } | { readonly kind: "void" } | { readonly kind: "missing" }
+export type InvoiceEmailRefusal =
+  | InvoiceEmailBlock
+  | { readonly kind: "unconfirmed" }
+  | { readonly kind: "draft" }
+  | { readonly kind: "void" }
+  | { readonly kind: "missing" }
 
 type ClaimResult =
   | { readonly ok: true; readonly claim: InvoiceEmailClaim }
@@ -136,19 +142,33 @@ function ownClaim(claim: InvoiceEmailClaim): SQL | undefined {
   return and(eq(invoices.emailClaimedAt, claim.claimedAt), eq(invoices.emailClaimedBy, claim.actorId))
 }
 
+/** Clears a column only where this request's own claim still holds (never another send's). */
+function ifOwnClaim(claim: InvoiceEmailClaim, column: typeof invoices.emailClaimedAt | typeof invoices.emailClaimedBy): SQL {
+  return sql`CASE WHEN ${ownClaim(claim)} THEN NULL ELSE ${column} END`
+}
+
+/** Clears the "may have gone out" marker only where this request wrote it (at its hand-off). */
+function ifOwnMarker(claim: InvoiceEmailClaim): SQL {
+  return sql`CASE WHEN ${invoices.emailUnconfirmedAt} = ${claim.claimedAt} THEN NULL ELSE ${invoices.emailUnconfirmedAt} END`
+}
+
 async function refusal(db: Db, key: SimpleInvoiceKey & { readonly now: string; readonly windowMs: number }): Promise<ClaimResult> {
-  const row = await db.select({ status: invoices.status, emailedAt: invoices.emailedAt, emailClaimedAt: invoices.emailClaimedAt }).from(invoices).where(simpleInvoice(key)).get()
+  const row = await db.select({ status: invoices.status, emailedAt: invoices.emailedAt, emailClaimedAt: invoices.emailClaimedAt, emailUnconfirmedAt: invoices.emailUnconfirmedAt })
+    .from(invoices).where(simpleInvoice(key)).get()
   if (!row) return { ok: false, reason: { kind: "missing" } }
   if (row.status === "draft") return { ok: false, reason: { kind: "draft" } }
   if (row.status === "void") return { ok: false, reason: { kind: "void" } }
+  if (row.emailUnconfirmedAt !== null) return { ok: false, reason: { kind: "unconfirmed" } }
   // A claim that just finished leaves nothing to name; treat it as in flight.
   return { ok: false, reason: invoiceEmailBlock({ ...row, now: key.now, windowMs: key.windowMs }) ?? { kind: "sending" } }
 }
 
 /**
- * Claims the send: refused while another send is in flight (a live lease) or
- * the invoice was delivered within `windowMs`, and for a draft or void
- * invoice. The condition is in the write, so of concurrent requests one wins.
+ * Claims the send: refused while another send is in flight (a live lease),
+ * while an earlier send may have gone out (unconfirmed, until staff say it
+ * didn't), when the invoice was delivered within `windowMs`, and for a draft
+ * or void invoice. The condition is in the write, so of concurrent requests
+ * one wins.
  */
 export async function claimSimpleInvoiceEmail(db: Db, key: SimpleInvoiceKey & { readonly actorId: string; readonly now: string; readonly windowMs: number }): Promise<ClaimResult> {
   const windowStart = new Date(Date.parse(key.now) - key.windowMs).toISOString()
@@ -156,39 +176,65 @@ export async function claimSimpleInvoiceEmail(db: Db, key: SimpleInvoiceKey & { 
     simpleInvoice(key),
     notInArray(invoices.status, [...INVOICE_CLOSED_TO_PAYMENTS]),
     noLiveEmailClaim(key.now),
+    isNull(invoices.emailUnconfirmedAt),
     or(isNull(invoices.emailedAt), lt(invoices.emailedAt, windowStart)),
   ), { emailClaimedAt: key.now, emailClaimedBy: key.actorId }).returning({ id: invoices.id })
   if (claimed.length !== 1) return refusal(db, key)
   return { ok: true, claim: { claimedAt: key.now, actorId: key.actorId } }
 }
 
-/** Renews this request's claim right before the hand-off; null when it isn't this request's any more (do not send). */
+/**
+ * The hand-off: right before the provider gets the message, renews this
+ * request's claim and writes the "may have gone out" marker in the same
+ * UPDATE, so an evicted Worker or a lost write afterwards leaves the invoice
+ * unconfirmed, never "not emailed". Null (do not send) when the claim isn't
+ * this request's any more or the invoice went to draft or void meanwhile.
+ */
 export async function renewSimpleInvoiceEmail(db: Db, key: SimpleInvoiceKey & { readonly claim: InvoiceEmailClaim; readonly now: string }): Promise<InvoiceEmailClaim | null> {
-  const renewed = await simpleInvoiceUpdateStatement(db, and(simpleInvoice(key), ownClaim(key.claim)), { emailClaimedAt: key.now }).returning({ id: invoices.id })
+  const renewed = await updateInvoiceRowsWhere(db, and(simpleInvoice(key), ownClaim(key.claim), notInArray(invoices.status, [...INVOICE_CLOSED_TO_PAYMENTS])), {
+    emailClaimedAt: key.now,
+    emailUnconfirmedAt: sql`COALESCE(${invoices.emailUnconfirmedAt}, ${key.now})`,
+  })
   return renewed.length === 1 ? { claimedAt: key.now, actorId: key.claim.actorId } : null
 }
 
-/** The email definitely did not go out: frees the claim (only this request's) so staff can retry at once. */
-export async function releaseSimpleInvoiceEmail(db: Db, key: SimpleInvoiceKey & { readonly claim: InvoiceEmailClaim }): Promise<boolean> {
-  const released = await simpleInvoiceUpdateStatement(db, and(simpleInvoice(key), ownClaim(key.claim)), { emailClaimedAt: null, emailClaimedBy: null }).returning({ id: invoices.id })
+/**
+ * Frees this request's claim (never another send's). "not_sent": the email
+ * definitely did not go out, so the marker this request wrote is cleared too
+ * and staff can retry at once. "unknown": it may have gone out, so the marker
+ * stays and blocks a re-send, reopen and delete until staff confirm.
+ */
+export async function releaseSimpleInvoiceEmail(db: Db, key: SimpleInvoiceKey & { readonly claim: InvoiceEmailClaim; readonly outcome: "not_sent" | "unknown" }): Promise<boolean> {
+  const released = await updateInvoiceRowsWhere(db, and(simpleInvoice(key), ownClaim(key.claim)), {
+    emailClaimedAt: null,
+    emailClaimedBy: null,
+    ...(key.outcome === "not_sent" ? { emailUnconfirmedAt: ifOwnMarker(key.claim) } : {}),
+  })
   return released.length === 1
 }
 
-/** The outcome is unknown (it may have gone out): the claim stays to its lease, and reopen and delete stay blocked until staff confirm. */
-export async function markSimpleInvoiceEmailUnconfirmed(db: Db, key: SimpleInvoiceKey & { readonly now: string }): Promise<void> {
-  await simpleInvoiceUpdateStatement(db, simpleInvoice(key), { emailUnconfirmedAt: key.now })
-}
-
-/** Staff checked the sent mail: the unconfirmed send didn't go out. Frees reopen, delete and an immediate re-send; false when nothing was unconfirmed. */
-export async function clearSimpleInvoiceEmailUnconfirmed(db: Db, key: SimpleInvoiceKey): Promise<boolean> {
-  const cleared = await simpleInvoiceUpdateStatement(db, and(simpleInvoice(key), isNotNull(invoices.emailUnconfirmedAt)), {
+/**
+ * Staff checked the sent mail: the unconfirmed send didn't go out. Frees a
+ * re-send, reopen and delete. Refused while a send is in flight (its claim is
+ * never wiped).
+ */
+export async function clearSimpleInvoiceEmailUnconfirmed(db: Db, key: SimpleInvoiceKey & { readonly now: string }): Promise<"cleared" | "sending" | "none"> {
+  const cleared = await updateInvoiceRowsWhere(db, and(simpleInvoice(key), isNotNull(invoices.emailUnconfirmedAt), noLiveEmailClaim(key.now)), {
     emailUnconfirmedAt: null, emailClaimedAt: null, emailClaimedBy: null,
-  }).returning({ id: invoices.id })
-  return cleared.length === 1
+  })
+  if (cleared.length === 1) return "cleared"
+  const row = await db.select({ unconfirmed: invoices.emailUnconfirmedAt }).from(invoices).where(simpleInvoice(key)).get()
+  return row?.unconfirmed ? "sending" : "none"
 }
 
-/** The email went out: stamps it delivered, clears any unconfirmed mark, then frees this request's claim (never a newer one). */
+/** The email went out: one UPDATE stamps it delivered, clears this request's marker and frees its own claim (never a newer one). */
 export async function completeSimpleInvoiceEmail(db: Db, key: SimpleInvoiceKey & { readonly claim: InvoiceEmailClaim; readonly now: string }): Promise<void> {
-  await simpleInvoiceUpdateStatement(db, simpleInvoice(key), { emailedAt: key.now, emailedByUserId: key.claim.actorId, emailUnconfirmedAt: null, updatedAt: key.now })
-  await releaseSimpleInvoiceEmail(db, key)
+  await updateInvoiceRowsWhere(db, simpleInvoice(key), {
+    emailedAt: key.now,
+    emailedByUserId: key.claim.actorId,
+    emailUnconfirmedAt: ifOwnMarker(key.claim),
+    emailClaimedAt: ifOwnClaim(key.claim, invoices.emailClaimedAt),
+    emailClaimedBy: ifOwnClaim(key.claim, invoices.emailClaimedBy),
+    updatedAt: key.now,
+  })
 }

@@ -14,7 +14,6 @@ import {
   clearSimpleInvoiceEmailUnconfirmed,
   completeSimpleInvoiceEmail,
   emailDefinitelyNotSent,
-  markSimpleInvoiceEmailUnconfirmed,
   releaseSimpleInvoiceEmail,
   renewSimpleInvoiceEmail,
   type InvoiceEmailRefusal,
@@ -56,11 +55,13 @@ import { isInternalStaffRole } from "@/lib/user-roles"
 
 const MAX_CC = 5
 const EMAIL_UNCONFIRMED_PREFIX = "Compass couldn't confirm the email went out"
+const EMAIL_UNCONFIRMED = "An email of this invoice may have gone out (Compass couldn't confirm it). Check the sent mail, then choose \"It didn't go out\" on the invoice before sending it again."
 /** Why the send claim was refused, in staff words. */
 function claimRefusedMessage(reason: InvoiceEmailRefusal): string {
   if (reason.kind === "draft") return "Finalize the invoice before emailing it."
   if (reason.kind === "void") return "This invoice is void."
   if (reason.kind === "missing") return "Invoice not found."
+  if (reason.kind === "unconfirmed") return EMAIL_UNCONFIRMED
   return invoiceEmailBlockMessage(reason)
 }
 
@@ -197,14 +198,14 @@ export async function emailProjectInvoice(projectId: string, invoiceId: string, 
     if (squareJob && !squareJob.ok) return actionFailure(squareJob.error)
 
     // Claim the send before anything is made or sent: of a double click or two
-    // staff sending at once, exactly one request goes on. The claim is released
-    // only when the email definitely did not go out (finally below); an unknown
-    // outcome keeps it and marks the invoice "may have gone out".
+    // staff sending at once, exactly one request goes on. The hand-off marks
+    // the invoice "may have gone out"; only a definite failure clears that mark
+    // (finally below), and delivery replaces it with emailed_at.
     const claimKey = { invoiceId, organizationId, projectId }
     const claimed = await claimSimpleInvoiceEmail(db, { ...claimKey, actorId: user.id, now: new Date().toISOString(), windowMs: settings.emailResendWindowMinutes * 60_000 })
     if (!claimed.ok) return actionFailure(claimRefusedMessage(claimed.reason))
     let claim = claimed.claim
-    // not_started / not_sent release the claim; unknown keeps it and marks the invoice unconfirmed.
+    // not_started / not_sent free the claim and this send's mark; unknown frees the claim but keeps the mark.
     let outcome: "not_started" | "not_sent" | "unknown" | "sent" = "not_started"
     const fence = and(eq(invoices.id, invoiceId), eq(invoices.organizationId, organizationId))
     const from = sender.sender
@@ -287,11 +288,12 @@ export async function emailProjectInvoice(projectId: string, invoiceId: string, 
       const latestStatus = (await loadSimpleInvoice(db, organizationId, projectId, invoiceId))?.status
       if (latestStatus === "void") return actionFailure("This invoice was voided. The email was not sent.")
       if (!latestStatus || latestStatus === "draft") return actionFailure("This invoice was reopened as a draft. The email was not sent.")
-      // Still this request's send? (A claim past its lease may have been taken over.) Renewing it also restarts the lease.
+      // The hand-off, in one write: still this request's claim and still final,
+      // the lease restarts, and the invoice is marked "may have gone out" before
+      // the provider has it (an evicted Worker leaves it unconfirmed, never "not emailed").
       const renewed = await renewSimpleInvoiceEmail(db, { ...claimKey, claim, now: new Date().toISOString() })
-      if (!renewed) return actionFailure("Another send of this invoice started while this one was being prepared. This email was not sent; check the invoice before sending again.")
+      if (!renewed) return actionFailure("The invoice changed while this email was being prepared (voided, reopened, or another send took over). This email was not sent; refresh and check before sending again.")
       claim = renewed
-      // From here the provider may have the message: keep the claim unless the result says it was not sent.
       outcome = "unknown"
       const delivery = await sendTrackedEmail({
         env,
@@ -330,10 +332,12 @@ export async function emailProjectInvoice(projectId: string, invoiceId: string, 
       }
     } finally {
       const after = { ...claimKey, claim, now: new Date().toISOString() }
-      if (outcome === "not_started" || outcome === "not_sent") await releaseSimpleInvoiceEmail(db, after).catch((error: unknown) => console.error("Invoice email claim release failed", error))
-      if (outcome === "unknown") await markSimpleInvoiceEmailUnconfirmed(db, after).catch((error: unknown) => console.error("Invoice email unconfirmed mark failed", error))
+      if (outcome !== "sent") {
+        await releaseSimpleInvoiceEmail(db, { ...after, outcome: outcome === "unknown" ? "unknown" : "not_sent" })
+          .catch((error: unknown) => console.error("Invoice email claim release failed", error))
+      }
     }
-    // The email went out: record it (one retry). If that fails, the claim stays so nobody sends it again soon.
+    // The email went out: record it (one retry). If that fails, the "may have gone out" mark stays, so nobody sends it again.
     const now = new Date().toISOString()
     const complete = (): Promise<boolean> => completeSimpleInvoiceEmail(db, { ...claimKey, claim, now }).then(() => true, () => false)
     if (!(await complete()) && !(await complete())) {
@@ -396,7 +400,9 @@ export async function confirmInvoiceEmailNotSent(projectId: string, invoiceId: s
     const { db, user, organizationId } = context.data
     const invoice = await loadSimpleInvoice(db, organizationId, projectId, invoiceId)
     if (!invoice) return actionFailure("Invoice not found.")
-    if (!(await clearSimpleInvoiceEmailUnconfirmed(db, { invoiceId, organizationId, projectId }))) return actionFailure("No unconfirmed email on this invoice.")
+    const cleared = await clearSimpleInvoiceEmailUnconfirmed(db, { invoiceId, organizationId, projectId, now: new Date().toISOString() })
+    if (cleared === "sending") return actionFailure("This invoice is being emailed right now. Wait for that send to finish, then check again.")
+    if (cleared === "none") return actionFailure("No unconfirmed email on this invoice.")
     await recordActivityEvent({
       db,
       organizationId,

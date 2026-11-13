@@ -16,7 +16,6 @@ import {
   clearSimpleInvoiceEmailUnconfirmed,
   deleteLegacyInvoiceRow,
   emailDefinitelyNotSent,
-  markSimpleInvoiceEmailUnconfirmed,
   releaseSimpleInvoiceEmail,
   renewSimpleInvoiceEmail,
   updateLegacyInvoiceRow,
@@ -239,7 +238,7 @@ describe("simple invoice email: one send per click window", () => {
     const claim = await claimAt("u1", NOW)
     if (!claim) throw new Error("claim")
     expect(await claimAt("u2", LATER(1_000))).toBeNull()
-    expect(await releaseSimpleInvoiceEmail(db, { ...key, claim })).toBe(true)
+    expect(await releaseSimpleInvoiceEmail(db, { ...key, claim, outcome: "not_sent" })).toBe(true)
     expect(claimRow()).toEqual({ email_claimed_at: null, email_claimed_by: null, emailed_at: "2026-11-10T09:00:00.000Z" })
     expect(await claimAt("u2", LATER(2_000))).not.toBeNull()
   })
@@ -254,7 +253,7 @@ describe("simple invoice email: one send per click window", () => {
     if (!first) throw new Error("claim")
     const second = await claimAt("u2", LATER(EMAIL_CLAIM_LEASE_MS + 1))
     expect(second).not.toBeNull()
-    expect(await releaseSimpleInvoiceEmail(db, { ...key, claim: first })).toBe(false)
+    expect(await releaseSimpleInvoiceEmail(db, { ...key, claim: first, outcome: "not_sent" })).toBe(false)
     await completeSimpleInvoiceEmail(db, { ...key, claim: first, now: LATER(EMAIL_CLAIM_LEASE_MS + 2) })
     expect(claimRow()).toMatchObject({ email_claimed_by: "u2" })
   })
@@ -303,34 +302,91 @@ describe("simple invoice email: one send per click window", () => {
   it("renewing before the hand-off: only the request still holding the claim may send", async () => {
     const first = await claimAt("u1", NOW)
     if (!first) throw new Error("claim")
-    const renewed = await renewSimpleInvoiceEmail(db, { ...key, claim: first, now: LATER(60_000) })
-    expect(renewed).toEqual({ claimedAt: LATER(60_000), actorId: "u1" })
-    // The lease restarts from the renewal.
-    expect(await claimAt("u2", LATER(EMAIL_CLAIM_LEASE_MS + 1))).toBeNull()
-    // The first request stalled past its lease and another took over: it must not send.
-    const second = await claimAt("u2", LATER(60_000 + EMAIL_CLAIM_LEASE_MS + 1))
-    expect(second).not.toBeNull()
-    expect(await renewSimpleInvoiceEmail(db, { ...key, claim: renewed ?? first, now: LATER(60_000 + EMAIL_CLAIM_LEASE_MS + 2) })).toBeNull()
+    // The first request stalled before its hand-off, past its lease, and another took over: it must not send.
+    const second = await claimAt("u2", LATER(EMAIL_CLAIM_LEASE_MS + 1))
+    if (!second) throw new Error("takeover")
+    expect(await renewSimpleInvoiceEmail(db, { ...key, claim: first, now: LATER(EMAIL_CLAIM_LEASE_MS + 2) })).toBeNull()
+    // The holder's renewal restarts its lease from the hand-off.
+    const renewed = await renewSimpleInvoiceEmail(db, { ...key, claim: second, now: LATER(EMAIL_CLAIM_LEASE_MS + 60_000) })
+    expect(renewed).toEqual({ claimedAt: LATER(EMAIL_CLAIM_LEASE_MS + 60_000), actorId: "u2" })
   })
 
-  it("an unknown outcome blocks reopen and delete until staff confirm it didn't go out; delivery clears it too", async () => {
+  const unconfirmed = (): unknown => sqlite.prepare("SELECT email_unconfirmed_at AS at FROM invoices WHERE id = 'simple-open'").get()
+
+  it("the hand-off writes the 'may have gone out' mark in the same write as the renewal", async () => {
     const claim = await claimAt("u1", NOW)
     if (!claim) throw new Error("claim")
-    await markSimpleInvoiceEmailUnconfirmed(db, { ...key, now: LATER(1_000) })
-    // Long after the lease ran out, reopen is still refused (it may have gone out).
+    expect(unconfirmed()).toEqual({ at: null })
+    const handedOff = await renewSimpleInvoiceEmail(db, { ...key, claim, now: LATER(1_000) })
+    expect(handedOff).not.toBeNull()
+    expect(unconfirmed()).toEqual({ at: LATER(1_000) })
+    // The Worker is evicted here (no release, no completion): long after the lease, the invoice is
+    // still "may have gone out": no re-send, reopen or delete until staff confirm.
     const muchLater = LATER(EMAIL_CLAIM_LEASE_MS * 10)
+    expect(await claimSimpleInvoiceEmail(db, { ...key, actorId: "u2", now: muchLater, windowMs })).toEqual({ ok: false, reason: { kind: "unconfirmed" } })
     expect(await reopenSimpleInvoice(db, { ...key, now: muchLater })).toBe(false)
-    expect(await clearSimpleInvoiceEmailUnconfirmed(db, key)).toBe(true)
-    expect(await clearSimpleInvoiceEmailUnconfirmed(db, key)).toBe(false)
+  })
+
+  it("a definite failure after the hand-off clears this send's mark and claim; retry at once", async () => {
+    const claim = await claimAt("u1", NOW)
+    if (!claim) throw new Error("claim")
+    const handedOff = await renewSimpleInvoiceEmail(db, { ...key, claim, now: LATER(1_000) })
+    if (!handedOff) throw new Error("renew")
+    expect(await releaseSimpleInvoiceEmail(db, { ...key, claim: handedOff, outcome: "not_sent" })).toBe(true)
+    expect(unconfirmed()).toEqual({ at: null })
+    expect(await claimAt("u2", LATER(2_000))).not.toBeNull()
+  })
+
+  it("a definite failure never clears a mark another send wrote", async () => {
+    sqlite.exec(`UPDATE invoices SET email_unconfirmed_at = '2026-11-01T00:00:00.000Z', email_claimed_at = '${NOW}', email_claimed_by = 'u1' WHERE id = 'simple-open'`)
+    expect(await releaseSimpleInvoiceEmail(db, { ...key, claim: { claimedAt: NOW, actorId: "u1" }, outcome: "not_sent" })).toBe(true)
+    expect(unconfirmed()).toEqual({ at: "2026-11-01T00:00:00.000Z" })
+  })
+
+  it("an unknown outcome frees the claim but keeps the mark; staff confirm, then it can be sent again", async () => {
+    const claim = await claimAt("u1", NOW)
+    if (!claim) throw new Error("claim")
+    const handedOff = await renewSimpleInvoiceEmail(db, { ...key, claim, now: LATER(1_000) })
+    if (!handedOff) throw new Error("renew")
+    expect(await releaseSimpleInvoiceEmail(db, { ...key, claim: handedOff, outcome: "unknown" })).toBe(true)
     expect(claimRow()).toMatchObject({ email_claimed_at: null, emailed_at: null })
-    // Confirmed not sent: it can be sent again at once, and a delivery clears any new mark.
-    const again = await claimAt("u2", LATER(2_000))
-    if (!again) throw new Error("claim")
-    await markSimpleInvoiceEmailUnconfirmed(db, { ...key, now: LATER(3_000) })
-    await completeSimpleInvoiceEmail(db, { ...key, claim: again, now: LATER(4_000) })
-    const after: unknown = sqlite.prepare("SELECT email_unconfirmed_at FROM invoices WHERE id = 'simple-open'").get()
-    expect(after).toEqual({ email_unconfirmed_at: null })
-    expect(await reopenSimpleInvoice(db, { ...key, now: muchLater })).toBe(false)
+    expect(unconfirmed()).toEqual({ at: LATER(1_000) })
+    expect(await claimSimpleInvoiceEmail(db, { ...key, actorId: "u2", now: LATER(EMAIL_CLAIM_LEASE_MS * 10), windowMs })).toEqual({ ok: false, reason: { kind: "unconfirmed" } })
+    expect(await clearSimpleInvoiceEmailUnconfirmed(db, { ...key, now: LATER(2_000) })).toBe("cleared")
+    expect(await clearSimpleInvoiceEmailUnconfirmed(db, { ...key, now: LATER(2_000) })).toBe("none")
+    expect(await claimAt("u2", LATER(3_000))).not.toBeNull()
+  })
+
+  it("'It didn't go out' never wipes a live claim from a send in flight", async () => {
+    // Evicted send: claim still live, mark set.
+    const claim = await claimAt("u1", NOW)
+    if (!claim) throw new Error("claim")
+    await renewSimpleInvoiceEmail(db, { ...key, claim, now: LATER(1_000) })
+    expect(await clearSimpleInvoiceEmailUnconfirmed(db, { ...key, now: LATER(2_000) })).toBe("sending")
+    expect(claimRow()).toMatchObject({ email_claimed_by: "u1" })
+    expect(unconfirmed()).toEqual({ at: LATER(1_000) })
+    // Once the lease ran out, the dead claim can be cleared with the mark.
+    expect(await clearSimpleInvoiceEmailUnconfirmed(db, { ...key, now: LATER(1_000 + EMAIL_CLAIM_LEASE_MS + 1) })).toBe("cleared")
+    expect(claimRow()).toMatchObject({ email_claimed_at: null, email_claimed_by: null })
+  })
+
+  it("delivery is one write: stamps emailed_at, clears this send's mark and frees its claim", async () => {
+    const claim = await claimAt("u1", NOW)
+    if (!claim) throw new Error("claim")
+    const handedOff = await renewSimpleInvoiceEmail(db, { ...key, claim, now: LATER(1_000) })
+    if (!handedOff) throw new Error("renew")
+    await completeSimpleInvoiceEmail(db, { ...key, claim: handedOff, now: LATER(2_000) })
+    expect(claimRow()).toEqual({ email_claimed_at: null, email_claimed_by: null, emailed_at: LATER(2_000) })
+    expect(unconfirmed()).toEqual({ at: null })
+    expect(await reopenSimpleInvoice(db, { ...key, now: LATER(EMAIL_CLAIM_LEASE_MS * 10) })).toBe(false)
+  })
+
+  it("a void (or reopen) that lands mid-send stops the hand-off", async () => {
+    const claim = await claimAt("u1", NOW)
+    if (!claim) throw new Error("claim")
+    expect(await voidSimpleInvoice(db, { ...key, reason: "Wrong customer", actorId: "u2", now: LATER(500) })).toBe(true)
+    expect(await renewSimpleInvoiceEmail(db, { ...key, claim, now: LATER(1_000) })).toBeNull()
+    expect(unconfirmed()).toEqual({ at: null })
   })
 
   it("reopen cancels the queued Sage export only when the reopen itself lands, in one batch with the email fence", async () => {
@@ -355,7 +411,7 @@ describe("simple invoice email: one send per click window", () => {
     expect(await reopenSimpleInvoiceCancellingExport({ ...key, now: LATER(1_000) })).toBe(false)
     expect(exportStatus()).toEqual({ status: "queued" })
     expect(row("simple-open")).toMatchObject({ status: "open" })
-    await releaseSimpleInvoiceEmail(db, { ...key, claim })
+    await releaseSimpleInvoiceEmail(db, { ...key, claim, outcome: "not_sent" })
     // Sage is taking it: no reopen.
     exportRow("running")
     expect(await reopenSimpleInvoiceCancellingExport({ ...key, now: LATER(2_000) })).toBe(false)
@@ -393,8 +449,7 @@ describe("email action wiring", () => {
     expect(handOff).toBeLessThan(source.indexOf("await sendTrackedEmail("))
     expect(source).toMatch(/if \(!renewed\) return actionFailure/)
     expect(source).toMatch(/else if \(emailDefinitelyNotSent\(delivery\.status\)\) \{\s*outcome = "not_sent"/)
-    expect(source).toMatch(/if \(outcome === "not_started" \|\| outcome === "not_sent"\) await releaseSimpleInvoiceEmail/)
-    expect(source).toMatch(/if \(outcome === "unknown"\) await markSimpleInvoiceEmailUnconfirmed/)
+    expect(source).toMatch(/if \(outcome !== "sent"\) \{\s*await releaseSimpleInvoiceEmail\(db, \{ \.\.\.after, outcome: outcome === "unknown" \? "unknown" : "not_sent" \}\)/)
     expect(source).toMatch(/if \(!\(await complete\(\)\) && !\(await complete\(\)\)\)/)
     expect(source).toContain("The email was sent, but Compass couldn't record it. Don't send it again.")
     expect(source).toContain("This invoice was voided. The email was not sent.")

@@ -182,7 +182,7 @@ export function InvoiceSendPanel({ editor }: { readonly editor: ProjectInvoiceEd
               From {editor.email.senderAddress ?? "your own mailbox (set the invoice mailbox in Settings › Workflows › Simple invoices)"}. Replies come back to this invoice in Compass.
             </p>
           </div>
-          {!isVoid && !editor.email.blockedReason && (
+          {!isVoid && !editor.email.blockedReason && !editor.email.unconfirmedAt && (
             <Button type="button" size="sm" disabled={pending || squareWaitingForSage} onClick={() => setEmailOpen(true)} title={squareWaitingForSage ? "Square invoices go out once the invoice is in Sage." : undefined}>
               <IconMail className="size-4" aria-hidden />
               {invoice.squareRequested && !invoice.squarePublicUrl ? "Create Square invoice and email" : invoice.emailedAt ? "Email again" : "Email invoice"}

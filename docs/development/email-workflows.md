@@ -40,10 +40,12 @@ that can be checked automatically. The rest is reviewed with the PR.
 - A record that must not go out twice (an invoice, say) claims the send with a
   compare-and-set before anything is rendered or sent, so a double click or two
   staff at once send it once. The claim is a lease with a hard maximum, kept
-  apart from the "delivered" stamp. Release it only when the delivery result
-  says the message definitely did not go out (`failed`, `pending_provider`,
-  `rate_limited`); on `unknown` or an exception after the hand-off, keep it and
-  tell staff to check the sent mail. Simple invoices use
+  apart from the "delivered" stamp. Write a "may have gone out" mark in the
+  same write that hands the message to the provider, and clear it only when the
+  delivery result says it definitely did not go out (`failed`,
+  `pending_provider`, `rate_limited`) or when it was delivered. On `unknown`,
+  an exception or an evicted Worker the mark stays, blocking a re-send until
+  staff check the sent mail and confirm it didn't go out. Simple invoices use
   `email_claimed_at`/`email_claimed_by` with a per-company re-send window after
   delivery (see `src/lib/domain/financials/invoice-guards.ts`).
 - Record an Activity event once the email is sent (category `email`, an action
