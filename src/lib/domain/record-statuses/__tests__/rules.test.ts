@@ -9,6 +9,7 @@ import {
   parseRecordStatusFilter,
   planRecordStatusDelete,
   planRecordStatusSave,
+  recordStatusExactKey,
   recordStatusFilterOptions,
   recordStatusLabel,
   recordStatusMatchesFilter,
@@ -61,6 +62,11 @@ describe("record status defaults", () => {
     }
     const list = defaultRecordStatusList("purchase_order")
     expect(list.statuses.every((status) => status.builtIn && status.showAsButton && !status.hidden)).toBe(true)
+  })
+
+  it("reads Buildertrend's imported spellings as real statuses, not unknown values", () => {
+    expect(recordStatusExactKey(defaultRecordStatusList("todo"), "incomplete")).toBe("open")
+    expect(recordStatusExactKey(defaultRecordStatusList("rfq"), "open")).toBe("sent")
   })
 
   it("reads stored spellings through aliases and the type's unknown fallback", () => {

@@ -43,6 +43,37 @@ export const KNOWN_MIGRATION_ONLY_SCHEMA: readonly KnownSchemaDifference[] = [
   },
 ]
 
+/**
+ * Tables and columns production has that no merged migration creates: left by
+ * branches that ran against production but never merged, or by the abandoned
+ * Buildertrend 0062 import (still read by the legacy reconciliation in
+ * src/lib/domain/buildertrend/legacy-sources.ts). Nothing in the Drizzle
+ * schema reads them. The drift detector reports them as known; dropping them
+ * needs Martine's OK (production schema change). Frozen: may only shrink.
+ */
+const UNMERGED = "created on production by a branch that never merged; no code reads it."
+const BUILDERTREND_0062 = "abandoned Buildertrend 0062 import table; read only by the legacy reconciliation."
+
+export const KNOWN_PRODUCTION_ONLY_SCHEMA: readonly KnownSchemaDifference[] = [
+  { kind: "table", table: "buildertrend_access_candidates", reason: BUILDERTREND_0062 },
+  { kind: "table", table: "buildertrend_archive_files", reason: BUILDERTREND_0062 },
+  { kind: "table", table: "buildertrend_import_runs", reason: BUILDERTREND_0062 },
+  { kind: "table", table: "buildertrend_source_records", reason: BUILDERTREND_0062 },
+  { kind: "table", table: "project_role_assignments", reason: UNMERGED },
+  { kind: "table", table: "project_vendor_bill_submissions", reason: UNMERGED },
+  { kind: "table", table: "project_vendor_bill_submission_lines", reason: UNMERGED },
+  { kind: "table", table: "project_vendor_bill_submission_attachments", reason: UNMERGED },
+  { kind: "table", table: "user_desk_photos", reason: UNMERGED },
+  ...["source_system", "source_record_id", "source_record_number", "source_metadata", "directory_status", "sync_status", "last_synced_at"].map(
+    (column): KnownSchemaDifference => ({ kind: "column", table: "customers", column, reason: UNMERGED }),
+  ),
+  ...["storage_provider", "drive_file_id", "drive_url", "download_url"].map(
+    (column): KnownSchemaDifference => ({ kind: "column", table: "message_attachments", column, reason: UNMERGED }),
+  ),
+  { kind: "column", table: "project_operations", column: "assignee_user_id", reason: UNMERGED },
+  { kind: "column", table: "users", column: "workos_user_id", reason: UNMERGED },
+]
+
 /** The schema integrity test's wording for a known difference. */
 export function knownSchemaDifferenceText(difference: KnownSchemaDifference): string {
   return difference.kind === "table"

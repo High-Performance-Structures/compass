@@ -84,7 +84,8 @@ export const RECORD_STATUS_REGISTRY: Readonly<Record<RecordStatusType, RecordSta
       status("closed", "Closed", "gray", "closed"),
       status("void", "Void", "red", "void"),
     ],
-    aliases: { completed: "complete", cancelled: "void", canceled: "void", voided: "void" },
+    // Buildertrend imported its out-for-bid RFQs as "open".
+    aliases: { open: "sent", completed: "complete", cancelled: "void", canceled: "void", voided: "void" },
     records: { table: "project_operations", sourceRecordTypes: ["rfq"] },
   },
   rfi: {
@@ -123,6 +124,8 @@ export const RECORD_STATUS_REGISTRY: Readonly<Record<RecordStatusType, RecordSta
       completed: "complete",
       closed: "complete",
       done: "complete",
+      // Imported to-dos (Buildertrend) were stored as "incomplete".
+      incomplete: "open",
       on_hold: "blocked",
     },
     unknownKey: "open",
