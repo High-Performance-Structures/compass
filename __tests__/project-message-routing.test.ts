@@ -1,7 +1,8 @@
 import { afterEach, describe, expect, it, vi } from "vitest"
 import { readFileSync } from "node:fs"
 import { openCorrespondenceTestDatabase, type CorrespondenceTestDatabase, addContactDirectorySchema } from "./helpers/correspondence-core"
-import { routeProjectInboundEmail, routeProjectInboundSms } from "@/lib/email/project-inbound-routing"
+import { routeProjectInboundSms } from "@/lib/email/project-inbound-routing"
+import { routeProjectInboundEmail } from "@/lib/email/project-email-intake"
 import { routeInboundProjectMessage } from "@/lib/email/project-message-routing"
 import type { InboundCandidate } from "@/lib/email/gmail-message-parser"
 
@@ -34,15 +35,15 @@ function input(db: CorrespondenceTestDatabase) {
   return { db: db.db, env: { COMPASS_CORRESPONDENCE_ENABLED: "true" }, organizationId: "org-a", projectId: "project-a", candidate: candidate(), body: "Please check the finish.", now: "2026-09-05T19:00:00.000Z" }
 }
 describe("[MESSAGE] intake", () => {
-  it("uses the shared authenticated sender route for email and holds unknown senders", async () => {
+  it("uses the shared sender route for email and posts unknown senders to a known job", async () => {
     const db = setup()
     db.sqlite.exec("UPDATE projects SET id='proj-project-a' WHERE id='project-b'")
     const known = candidate({ toAddress: "jarvis+project-proj-project-a@hps-colorado.com", fromAddress: "staff-a@example.test" })
     const result = await routeProjectInboundEmail({ ...input(db), candidate: known })
     expect(result.kind).toBe("routed")
     expect(db.sqlite.prepare("SELECT COUNT(*) AS count FROM correspondence_messages").get()).toEqual({ count: 1 })
-    expect(await routeProjectInboundEmail({ ...input(db), candidate: { ...known, gmailMessageId: "unknown-2", fromAddress: "unknown@example.test" } })).toEqual({ kind: "needs_review", projectId: "proj-project-a" })
-    expect(db.sqlite.prepare("SELECT COUNT(*) AS count FROM correspondence_messages").get()).toEqual({ count: 1 })
+    expect((await routeProjectInboundEmail({ ...input(db), candidate: { ...known, gmailMessageId: "unknown-2", fromAddress: "unknown@example.test" } })).kind).toBe("routed")
+    expect(db.sqlite.prepare("SELECT COUNT(*) AS count FROM correspondence_messages").get()).toEqual({ count: 2 })
   })
   it("posts an untagged email to the project inbox as a project message", async () => {
     const db = setup()
