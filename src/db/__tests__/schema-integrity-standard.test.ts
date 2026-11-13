@@ -12,6 +12,7 @@ import {
   idReferenceKey,
   idReferenceTriggerName,
 } from "../id-integrity"
+import { KNOWN_MIGRATION_ONLY_SCHEMA, knownSchemaDifferenceText } from "../known-schema-differences"
 
 /*
  * Enforces the database rules in docs/development/architecture-standards.md:
@@ -288,20 +289,13 @@ function schemaDifferences(
 /**
  * Frozen differences between the migrations and the Drizzle schema. May only
  * shrink. Each one is a column or table that a migration created but no code
- * uses; dropping them needs a table rebuild, which D1 cannot do safely.
+ * uses; dropping them needs a table rebuild, which D1 cannot do safely. The
+ * list lives in src/db/known-schema-differences.ts so the production drift
+ * detector reads the same one.
  */
-const SCHEMA_DIFFERENCE_BASELINE: Readonly<Record<string, string>> = {
-  "column notification_preferences.timezone exists only in migrations":
-    "0041 created `timezone`; the schema and code use `time_zone` (added later). Unused leftover.",
-  "column project_estimate_lines.include_in_contract_budget exists only in migrations":
-    "superseded by contract assemblies; no code reads it.",
-  "column project_estimates.estimate_purpose exists only in migrations":
-    "superseded by estimate kinds; no code reads it.",
-  "table project_agreements exists only in migrations":
-    "replaced by contract packets (schema-contracts.ts); kept for history, never read.",
-  "table project_number_alias_conflicts exists only in migrations":
-    "one-time conflict log from the 0104 alias backfill; never read by the app.",
-}
+const SCHEMA_DIFFERENCE_BASELINE: Readonly<Record<string, string>> = Object.fromEntries(
+  KNOWN_MIGRATION_ONLY_SCHEMA.map((difference) => [knownSchemaDifferenceText(difference), difference.reason]),
+)
 
 /** Audit columns: who did something. Users are deactivated, not deleted. */
 const AUDIT_COLUMN = /(_by|_by_user_id|^actor_user_id|^actor_id|^author_id|^author_user_id|^sender_user_id)$/
@@ -379,7 +373,7 @@ describe("schema integrity standard", () => {
       "Declare these in the src/db/schema*.ts files (or add the missing migration). Expression or COLLATE indexes use a sql`` column.",
     ).toEqual([])
     const stale = Object.keys(SCHEMA_DIFFERENCE_BASELINE).filter((entry) => !differences.includes(entry))
-    expect(stale, "These are fixed; delete them from SCHEMA_DIFFERENCE_BASELINE.").toEqual([])
+    expect(stale, "These are fixed; delete them from src/db/known-schema-differences.ts.").toEqual([])
   })
 
   it("indexes every foreign key column", () => {

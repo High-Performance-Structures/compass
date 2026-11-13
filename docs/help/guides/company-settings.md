@@ -7,12 +7,12 @@
   "summary": "Maintain department identity, follow-up rules, Nu-Tech email settings, travel charges, record statuses, list columns, and the project paper trail.",
   "contextSummary": "Settings changes affect company-wide workflows and future outputs. Review permissions, save deliberately, and verify the actual document, mailbox, or Drive copy.",
   "category": "Start Here",
-  "tags": ["settings", "Company", "email domains", "other email addresses", "Departments", "Workflows", "paper trail", "Drive", "trusted addresses", "project aging", "travel", "zone charges", "statuses", "status filters", "Lists", "columns", "sheets"],
+  "tags": ["settings", "data health", "drift", "Company", "email domains", "other email addresses", "Departments", "Workflows", "paper trail", "Drive", "trusted addresses", "project aging", "travel", "zone charges", "statuses", "status filters", "Lists", "columns", "sheets"],
   "audiences": ["staff"],
   "permissions": ["help:read"],
   "routes": ["/dashboard/settings"],
   "owner": "Compass product team",
-  "lastReviewed": "2026-11-10"
+  "lastReviewed": "2026-11-13"
 }
 ---
 
@@ -69,6 +69,12 @@ Every sheet also has a **Columns** button above it. Anyone can use it to hide or
 **Settings → Statuses** holds each record type's statuses: purchase orders, RFQs, RFIs, and to-dos. Pick a record type on the left. The order of the list is the order of the status filter buttons above that record type's lists and the order a Status column sorts in; drag a row by its handle or use the up and down arrows. For each status you can change its **Name** and **Color**, choose what it **Counts as** (Open, Closed, or Void; the **Open** filter button shows every record whose status counts as Open), and choose whether it shows as a **Filter button**. The preview shows the buttons the lists will show: Open, each shown status, then All.
 
 Statuses marked **Built-in** are the ones Compass relies on, such as a P.O.'s Draft, Approved, Sent, Received, Closed, and Void. You can rename, recolor, reorder, or **Hide** them, but not delete them. A hidden status leaves the filter buttons and status choices; records that already have it keep it and still count by its group. **Add status** creates your company's own status. **Delete** removes one only while no record uses it; otherwise Compass explains how many records use it and offers **Hide** instead. Choose **Save statuses** to apply your changes; **Discard changes** returns to the saved list. Admins can change statuses, and every change is recorded in the company's activity history. Until your company changes a record type's statuses, Compass uses its standard list. The Open group also drives counts such as a job's open P.O.s and RFIs, and an RFI gets its answered date when its status counts as Closed.
+
+## Check Data Health {#data-health}
+
+Every morning Compass runs a read-only **data health** check. It looks for records whose status is one their status list doesn't allow (for example a change order or Sage request in a status Compass never sets, or a to-do, RFQ, or P.O. in a spelling **Settings → Statuses** doesn't recognize), and for tables or columns the database has that Compass doesn't expect, or the reverse. The check never changes any record.
+
+In **Settings → Workflows → Data health**, admins choose whether to **Send Data health notices** and who gets them; with nobody chosen, every administrator does. A notice arrives at the bell only when the check first finds drift, when what it finds changes, and once more when it clears; a count that grows day to day does not send a new notice. **Check now** runs the same check on demand and lists what it found for your company. To fix a status, edit the record or add the spelling to **Settings → Statuses**; schema differences need a developer.
 
 ## Enable the Project Paper Trail {#paper-trail}
 

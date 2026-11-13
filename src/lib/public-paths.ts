@@ -87,6 +87,9 @@ const scheduledMaintenancePaths = [
   "/api/operations/weather/refresh",
   "/api/operations/project-calendars/sync",
   "/api/operations/client-meetings/transcripts",
+  "/api/operations/data-health/run",
+  // Bearer secret for the regression smoke run, or the signed-in admin's session (checked in the route).
+  "/api/operations/data-health/report",
 ]
 
 export function isPublicPath(pathname: string): boolean {
