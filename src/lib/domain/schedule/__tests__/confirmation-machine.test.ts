@@ -7,7 +7,7 @@ import { sqliteDb } from "@/lib/domain/__tests__/sqlite-d1"
 import { confirmationMachine, staffConfirmationEvent } from "@/lib/domain/schedule/confirmation-machine"
 import { SCHEDULE_CONFIRMATION_STATUSES } from "@/lib/domain/schedule/statuses"
 import { d1, migratedSqlite } from "@/lib/daily-logs/__tests__/sqlite-d1"
-import { MAX_DATE_MOVES, dateMovesLimitError } from "@/lib/domain/schedule/date-moves"
+import { MAX_DATE_MOVE_STATEMENTS, dateMoveStatementCount, dateMovesLimitError } from "@/lib/domain/schedule/date-moves"
 import {
   acceptConfirmationProposal,
   persistScheduleDateUpdates,
@@ -278,26 +278,31 @@ describe("date moves ask again", () => {
     expect(confirmations()).toEqual([reasked("confirmed")])
   })
 
-  it("stays within D1's query cap: two statements per item and one per group, and refuses an oversized move whole", async () => {
-    const ids = Array.from({ length: 85 }, (_, index) => `t${index}`)
+  it("moves a 450-item cascade with no linked to-dos in a few statements, well under D1's cap", async () => {
+    const ids = Array.from({ length: 450 }, (_, index) => `t${index}`)
     const { sqlite, database } = scheduled(ids.map((id) => [id, "confirmed", 1, "u1"] as const))
     const sizes: number[] = []
     const counting = { ...database, batch: (statements: D1PreparedStatement[]) => { sizes.push(statements.length); return database.batch(statements) } } as unknown as D1Database
-    await persistScheduleDateUpdates(counting, "p1", new Map(ids.map((id) => [id, MOVED])), "t2", REASK)
-    expect(sizes).toEqual([81, 81, 11]) // groups of 40: 40 to-do shifts + 40 date writes + 1 assignee reset
-    expect(sqlite.prepare("SELECT COUNT(*) AS n FROM schedule_tasks WHERE confirmation_status = 'pending' AND start_date = '2026-09-21'").get()).toEqual({ n: 85 })
-
-    sizes.length = 0
+    const moves = new Map(ids.map((id) => [id, MOVED]))
+    expect(dateMovesLimitError(moves, 1)).toBeNull()
+    expect(dateMoveStatementCount(moves, 1)).toBe(16)
     const leading = database.prepare("UPDATE projects SET name = name WHERE id = 'p1'")
-    await runWithDateUpdates(counting, leading, "p1", new Map(ids.map((id) => [id, SAME])), "t3", "failed", REASK)
-    expect(sizes).toEqual([82, 81, 11]) // the leading change rides with the first group
+    await runWithDateUpdates(counting, leading, "p1", moves, "t2", "failed", REASK)
+    // Groups of 100: linked to-dos, dates with the single re-ask, multi re-ask; the leading change rides with the first.
+    expect(sizes).toEqual([4, 3, 3, 3, 3])
+    expect(sizes.reduce((total, size) => total + size, 0)).toBeLessThan(MAX_DATE_MOVE_STATEMENTS)
+    expect(sqlite.prepare("SELECT COUNT(*) AS n FROM schedule_tasks WHERE confirmation_status = 'pending' AND start_date = '2026-09-21' AND end_date_calculated = '2026-09-23'").get()).toEqual({ n: 450 })
+  })
 
-    const tooMany = new Map(Array.from({ length: MAX_DATE_MOVES + 1 }, (_, index) => [`x${index}`, MOVED]))
-    expect(dateMovesLimitError(tooMany)).toMatch(/moves up to 300 at a time/)
-    expect(dateMovesLimitError(new Map([["t0", MOVED]]))).toBeNull()
-    sizes.length = 0
-    await expect(persistScheduleDateUpdates(counting, "p1", tooMany, "t4", REASK)).rejects.toThrow(/smaller steps/)
-    await expect(runWithDateUpdates(counting, leading, "p1", tooMany, "t4", "failed", REASK)).rejects.toThrow(/smaller steps/)
+  it("refuses a request over the statement cap before writing anything", async () => {
+    const { database } = scheduled([["t0", "confirmed", 1, "u1"]])
+    const sizes: number[] = []
+    const counting = { ...database, batch: (statements: D1PreparedStatement[]) => { sizes.push(statements.length); return database.batch(statements) } } as unknown as D1Database
+    const pathological = new Map(Array.from({ length: 30_001 }, (_, index) => [`x${index}`, MOVED]))
+    expect(dateMovesLimitError(pathological)).toMatch(/more than Compass can save at once \(903 of 900 database writes\)/)
+    await expect(persistScheduleDateUpdates(counting, "p1", pathological, "t4", REASK)).rejects.toThrow(/smaller steps/)
+    const leading = database.prepare("UPDATE projects SET name = 'changed' WHERE id = 'p1'")
+    await expect(runWithDateUpdates(counting, leading, "p1", pathological, "t4", "failed", REASK)).rejects.toThrow(/smaller steps/)
     expect(sizes).toEqual([])
   })
 
@@ -326,7 +331,7 @@ describe("schedule date writes", () => {
     .map((path) => ({ path, text: path === STORE ? storeText.replace(helper, "") : readFileSync(path, "utf8") }))
 
   it("go through the store's date moves only, anywhere in src/ or scripts/", () => {
-    expect(helper).toContain("start_date = ?1, end_date_calculated = ?2, workdays = COALESCE(?3, workdays)")
+    expect(helper).toContain("start_date = ${next(\"start\")}, end_date_calculated = ${next(\"end\")}")
     // Raw SQL setting start_date, workdays or end_date_calculated (not proposed_/source_ columns).
     const raw = /UPDATE\s+schedule_tasks\b[\s\S]{0,800}?\bSET\b[\s\S]{0,800}?(?<![\w.])(start_date|workdays|end_date_calculated)\s*=/i
     expect(code.filter(({ text }) => raw.test(text)).map(({ path }) => path)).toEqual([])

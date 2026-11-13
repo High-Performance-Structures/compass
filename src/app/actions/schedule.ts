@@ -565,7 +565,8 @@ export async function updateTask(
       ? propagateFrom(taskId, allTasks, schedule.dependencies, exceptions)
       : new Map()
     const dateUpdates: DateMoves = new Map([...ownMove, ...successorMoves])
-    const tooMany = dateMovesLimitError(dateUpdates)
+    // The edited item's own move is a separate group of three statements.
+    const tooMany = dateMovesLimitError(successorMoves, ownMove.size > 0 ? 3 : 0)
     if (tooMany) return { success: false, error: tooMany }
     const dateRules = await scheduleDateMoveRules(db, orgId)
     const shiftSummary = summarizeScheduleShift(schedule.tasks, dateUpdates)

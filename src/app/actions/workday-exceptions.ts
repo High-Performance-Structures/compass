@@ -131,7 +131,7 @@ export async function createWorkdayException(
       ...existingExceptions,
       newException,
     ])
-    const tooMany = dateMovesLimitError(updatedTasks)
+    const tooMany = dateMovesLimitError(updatedTasks, 1)
     if (tooMany) return { success: false, error: tooMany }
     const shiftSummary = summarizeScheduleShift(tasksBefore, updatedTasks)
     await runWithDateUpdates(
@@ -232,7 +232,7 @@ export async function updateWorkdayException(
         exception.id === exceptionId ? updatedException : exception
       )
     )
-    const tooMany = dateMovesLimitError(updatedTasks)
+    const tooMany = dateMovesLimitError(updatedTasks, 1)
     if (tooMany) return { success: false, error: tooMany }
     const shiftSummary = summarizeScheduleShift(tasksBefore, updatedTasks)
     await runWithDateUpdates(
@@ -314,7 +314,7 @@ export async function deleteWorkdayException(
       existing.projectId,
       remainingExceptions
     )
-    const tooMany = dateMovesLimitError(updatedTasks)
+    const tooMany = dateMovesLimitError(updatedTasks, 1)
     if (tooMany) return { success: false, error: tooMany }
     const shiftSummary = summarizeScheduleShift(tasksBefore, updatedTasks)
     await runWithDateUpdates(

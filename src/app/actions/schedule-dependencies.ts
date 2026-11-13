@@ -92,7 +92,7 @@ export async function createDependency(data: {
       [...schedule.dependencies, dependency],
       schedule.exceptions
     )
-    const tooMany = dateMovesLimitError(updatedTasks)
+    const tooMany = dateMovesLimitError(updatedTasks, 1)
     if (tooMany) return { success: false, error: tooMany }
     const shiftSummary = summarizeScheduleShift(schedule.tasks, updatedTasks)
     await runWithDateUpdates(
@@ -198,7 +198,7 @@ export async function updateDependency(data: {
       ],
       schedule.exceptions
     )
-    const tooMany = dateMovesLimitError(recalculated)
+    const tooMany = dateMovesLimitError(recalculated, 1)
     if (tooMany) return { success: false, error: tooMany }
     const shiftSummary = summarizeScheduleShift(schedule.tasks, recalculated)
     await runWithDateUpdates(

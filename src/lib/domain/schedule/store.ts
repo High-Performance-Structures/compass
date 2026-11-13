@@ -37,7 +37,7 @@ import { confirmationMachine, confirmationStatusAfter, type ConfirmationAnswerEv
 import { assigneeResponseMachine, assigneeResponseParts, type AssigneeAnswerEvent } from "./assignee-response-machine"
 import { loadProjectScheduleRows } from "./queries"
 import { criticalPathChanges, dependencyData, taskWithStatus } from "./rules"
-import { dateMovesLimitError, type DateMove, type DateMoveRules, type DateMoves } from "./date-moves"
+import { DATE_MOVE_GROUP, dateMovesLimitError, type DateMove, type DateMoveRules, type DateMoves } from "./date-moves"
 import type { ScheduleAssigneeResponseStatus } from "./statuses"
 
 type TaskInsert = typeof scheduleTasks.$inferInsert
@@ -317,31 +317,37 @@ export async function assignProjectTasks(
 // Date moves (date-moves.ts): every start date, workdays and end date write
 // ---------------------------------------------------------------------------
 
+/** ?1 for a group: its items' new dates as JSON keyed by item id. */
+function datesJson(group: readonly (readonly [string, DateMove])[]): string {
+  return JSON.stringify(Object.fromEntries(group.map(([id, dates]) => [id, { start: dates.startDate, end: dates.endDateCalculated, workdays: dates.workdays ?? null }])))
+}
+
 /**
- * One item's new dates. The single-assignee re-ask rides in the same UPDATE:
- * SQLite evaluates SET expressions against the row as it was, so the CASE
- * sees the old dates and status. Numbered parameters keep one set of values.
+ * A group's new dates in one statement. The single-assignee re-ask rides in
+ * the same UPDATE: SQLite evaluates SET expressions against the row as it
+ * was, so the CASE compares the old dates and status with the new ones.
  */
-function dateWriteStatement(database: D1Database, projectId: string, taskId: string, dates: DateMove, now: string, rules: DateMoveRules): D1PreparedStatement {
+function dateWriteStatement(database: D1Database, projectId: string, json: string, now: string, rules: DateMoveRules): D1PreparedStatement {
   const rule = confirmationMachine.transitions.dates_moved
-  const reask = `(?7 = 1 AND confirmation_required = 1 AND assigned_user_id IS NOT NULL
-    AND confirmation_status IN (${rule.from.map((_, index) => `?${index + 8}`).join(", ")})
-    AND (start_date IS NOT ?1 OR end_date_calculated IS NOT ?2 OR workdays IS NOT COALESCE(?3, workdays)))`
+  const next = (field: string): string => `json_extract(?1, '$."' || id || '".${field}')`
+  const reask = `(?4 = 1 AND confirmation_required = 1 AND assigned_user_id IS NOT NULL
+    AND confirmation_status IN (${rule.from.map((_, index) => `?${index + 5}`).join(", ")})
+    AND (start_date IS NOT ${next("start")} OR end_date_calculated IS NOT ${next("end")} OR workdays IS NOT COALESCE(${next("workdays")}, workdays)))`
   const cleared = ["confirmation_responded_at", "reminder_sent_at", "proposed_start_date", "proposed_workdays", "proposal_note", "proposal_submitted_at"]
   return database
     .prepare(
       `UPDATE schedule_tasks
-       SET confirmation_status = CASE WHEN ${reask} THEN ?${rule.from.length + 8} ELSE confirmation_status END,
-           confirmation_requested_at = CASE WHEN ${reask} THEN ?4 ELSE confirmation_requested_at END,
+       SET confirmation_status = CASE WHEN ${reask} THEN ?${rule.from.length + 5} ELSE confirmation_status END,
+           confirmation_requested_at = CASE WHEN ${reask} THEN ?2 ELSE confirmation_requested_at END,
            ${cleared.map((column) => `${column} = CASE WHEN ${reask} THEN NULL ELSE ${column} END`).join(", ")},
-           start_date = ?1, end_date_calculated = ?2, workdays = COALESCE(?3, workdays), updated_at = ?4
-       WHERE id = ?5 AND project_id = ?6`
+           start_date = ${next("start")}, end_date_calculated = ${next("end")}, workdays = COALESCE(${next("workdays")}, workdays), updated_at = ?2
+       WHERE project_id = ?3 AND id IN (SELECT key FROM json_each(?1))`
     )
-    .bind(dates.startDate, dates.endDateCalculated, dates.workdays ?? null, now, taskId, projectId, rules.reaskOnDateMove ? 1 : 0, ...rule.from, rule.to)
+    .bind(json, now, projectId, rules.reaskOnDateMove ? 1 : 0, ...rule.from, rule.to)
 }
 
 /** After a group's dates land: multi-assignee rows answered for other dates than the item now has are asked again. */
-function assigneeResetStatement(database: D1Database, projectId: string, taskIds: readonly string[], now: string): D1PreparedStatement {
+function assigneeResetStatement(database: D1Database, projectId: string, json: string, now: string): D1PreparedStatement {
   const current = (column: string): string => `(SELECT task.${column} FROM schedule_tasks AS task WHERE task.id = schedule_task_assignees.schedule_task_id)`
   return database
     .prepare(
@@ -351,41 +357,49 @@ function assigneeResetStatement(database: D1Database, projectId: string, taskIds
            proposed_start_date = NULL, proposed_workdays = NULL, proposed_end_date = NULL,
            response_message = NULL, responded_at = NULL, responded_by_user_id = NULL, response_source = NULL,
            assigned_at = ?, updated_at = ?
-       WHERE schedule_task_id IN (${taskIds.map(() => "?").join(", ")})
+       WHERE schedule_task_id IN (SELECT key FROM json_each(?))
          AND EXISTS (SELECT 1 FROM schedule_tasks AS task WHERE task.id = schedule_task_assignees.schedule_task_id AND task.project_id = ?
            AND (task.start_date IS NOT source_start_date OR task.workdays IS NOT source_workdays OR task.end_date_calculated IS NOT source_end_date))`
     )
-    .bind(RESET.responseStatus, RESET.dateResponseStatus, RESET.durationResponseStatus, now, now, ...taskIds, projectId)
+    .bind(RESET.responseStatus, RESET.dateResponseStatus, RESET.durationResponseStatus, now, now, json, projectId)
 }
 
-/** One group: linked to-dos first (offsets from the previous dates), then the dates, then the multi-assignee re-ask. */
+/** One group, three statements: linked to-dos first (offsets from the previous dates), then the dates, then the multi-assignee re-ask. */
 function dateMoveStatements(database: D1Database, projectId: string, group: readonly (readonly [string, DateMove])[], now: string, rules: DateMoveRules, linkedTodos: "shift" | "leave"): D1PreparedStatement[] {
+  if (group.length === 0) return []
+  const json = datesJson(group)
+  const todoMoves = group.map(([scheduleTaskId, dates]) => ({ scheduleTaskId, nextStartDate: dates.startDate, nextEndDate: dates.endDateCalculated }))
   return [
-    ...group.flatMap(([taskId, dates]) => [
-      ...(linkedTodos === "shift" ? [linkedTodoDateUpdateStatement(database, { scheduleTaskId: taskId, nextStartDate: dates.startDate, nextEndDate: dates.endDateCalculated, updatedAt: now })] : []),
-      dateWriteStatement(database, projectId, taskId, dates, now, rules),
-    ]),
-    ...(rules.reaskOnDateMove && group.length > 0 ? [assigneeResetStatement(database, projectId, group.map(([taskId]) => taskId), now)] : []),
+    ...(linkedTodos === "shift" ? [linkedTodoDateUpdateStatement(database, todoMoves, now)] : []),
+    dateWriteStatement(database, projectId, json, now, rules),
+    ...(rules.reaskOnDateMove ? [assigneeResetStatement(database, projectId, json, now)] : []),
   ]
 }
 
-function assertDateMovesFit(moves: DateMoves): void {
-  const error = dateMovesLimitError(moves)
+function moveGroups(moves: DateMoves): (readonly [string, DateMove])[][] {
+  const entries = [...moves]
+  const groups: (readonly [string, DateMove])[][] = []
+  for (let index = 0; index < entries.length; index += DATE_MOVE_GROUP) groups.push(entries.slice(index, index + DATE_MOVE_GROUP))
+  return groups
+}
+
+function assertDateMovesFit(moves: DateMoves, leading: number): void {
+  const error = dateMovesLimitError(moves, leading)
   if (error) throw new Error(error)
 }
 
 /** Runs `leading` (a dependency or calendar change) atomically with the first group of the moves it causes; later groups follow. */
 export async function runWithDateUpdates(database: D1Database, leading: D1PreparedStatement, projectId: string, updates: DateMoves, updatedAt: string, failureMessage: string, rules: DateMoveRules): Promise<void> {
-  assertDateMovesFit(updates)
-  const [first = [], ...rest] = itemGroups([...updates])
+  assertDateMovesFit(updates, 1)
+  const [first = [], ...rest] = moveGroups(updates)
   await runD1Batch(database, [leading, ...dateMoveStatements(database, projectId, first, updatedAt, rules, "shift")], failureMessage)
   for (const group of rest) await runD1Batch(database, dateMoveStatements(database, projectId, group, updatedAt, rules, "shift"), failureMessage)
 }
 
 /** Persists moves in order, a group at a time (put the edited item first). The agent API leaves linked to-dos ("leave"). */
 export async function persistScheduleDateUpdates(database: D1Database, projectId: string, updates: DateMoves, updatedAt: string, rules: DateMoveRules, linkedTodos: "shift" | "leave" = "shift"): Promise<void> {
-  assertDateMovesFit(updates)
-  for (const group of itemGroups([...updates])) {
+  assertDateMovesFit(updates, 0)
+  for (const group of moveGroups(updates)) {
     await runD1Batch(database, dateMoveStatements(database, projectId, group, updatedAt, rules, linkedTodos), "Schedule date update batch failed")
   }
 }

@@ -137,15 +137,14 @@ describe("updateTask date moves", () => {
     expect(mocks.resetTaskAssigneesQuery).toHaveBeenCalledTimes(1)
   })
 
-  it("refuses a move too large for one request before writing anything", async () => {
-    const many = Array.from({ length: 301 }, (_, index) => ({ ...plain, id: `s${index}`, startDate: "2026-09-17" }))
+  it("accepts a cascade the size of the largest jobs (418 items)", async () => {
+    const many = Array.from({ length: 418 }, (_, index) => ({ ...plain, id: `s${index}`, startDate: "2026-09-17" }))
     mocks.readWorkingSchedule.mockResolvedValue({
       tasks: [plain, ...many],
       dependencies: many.map((successor) => ({ id: `d-${successor.id}`, predecessorId: "task-1", successorId: successor.id, type: "FS", lagDays: 0 })),
       exceptions: [],
     })
-    const result = await updateTask("task-1", { startDate: "2026-09-28" })
-    expect(result).toMatchObject({ success: false, error: expect.stringMatching(/up to 300 at a time/) })
-    expectNothingSaved()
+    await expect(updateTask("task-1", { startDate: "2026-09-28" })).resolves.toEqual({ success: true })
+    expect(mocks.persistScheduleDateUpdates.mock.calls.map((call) => call[2].size)).toEqual([1, 418])
   })
 })
