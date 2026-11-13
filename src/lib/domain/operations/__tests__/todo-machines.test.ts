@@ -235,5 +235,5 @@ describe("to-do status writes guard", () => {
         .map((call) => `${file}: ${call.slice(0, 80)}`)
     })
     expect(offenders).toEqual([])
-  })
+  }, 30_000) // reads the whole source tree; slow under a full parallel run
 })
