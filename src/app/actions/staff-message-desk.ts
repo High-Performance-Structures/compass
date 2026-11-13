@@ -285,20 +285,6 @@ async function activeAssignees(
     .map((row) => ({ id: row.id, name: displayName(row), email: row.email }))
 }
 
-export async function getStaffMessageAssignees(): Promise<
-  ActionResult<readonly StaffMessageAssigneeDto[]>
-> {
-  try {
-    const { db, organizationId, user } = await staffMessageContext()
-    return {
-      success: true,
-      data: await activeAssignees(db, organizationId, user.id),
-    }
-  } catch (error) {
-    return failure(error)
-  }
-}
-
 async function notifyAssignment(input: {
   readonly organizationId: string
   readonly recordId: string
@@ -585,7 +571,6 @@ async function routeGotoTextToMessageDesk(
       body: draft.body,
     })
     revalidatePath(MESSAGE_DESK_PATH)
-    revalidatePath("/dashboard/office-maintenance/inbound-email")
     return { success: true, data: { id } }
   } catch (error) {
     return failure(error)

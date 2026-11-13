@@ -407,14 +407,14 @@ export async function routeInboundSms(formData: FormData): Promise<void> {
           eq(gotoInboundEvents.id, event.id),
           eq(gotoInboundEvents.status, "routing")
         ))
-    revalidatePath("/dashboard/office-maintenance/inbound-email")
+    revalidatePath("/dashboard/office-maintenance/message-desk")
     revalidatePath(`/dashboard/projects/${project.id}`)
     revalidatePath(`/dashboard/projects/${project.id}/daily-logs`)
     revalidatePath(`/dashboard/projects/${project.id}/photos`)
     throw error
   }
 
-  revalidatePath("/dashboard/office-maintenance/inbound-email")
+  revalidatePath("/dashboard/office-maintenance/message-desk")
   revalidatePath("/dashboard/activity")
   revalidatePath(`/dashboard/projects/${project.id}`)
   revalidatePath(`/dashboard/projects/${project.id}/daily-logs`)
@@ -460,7 +460,7 @@ export async function dismissInboundSms(formData: FormData): Promise<void> {
     metadata: { reviewedBy: user.id },
     createdAt: now,
   })
-  revalidatePath("/dashboard/office-maintenance/inbound-email")
+  revalidatePath("/dashboard/office-maintenance/message-desk")
   revalidatePath("/dashboard/activity")
 }
 
@@ -567,6 +567,6 @@ async function trashInboundSmsOrThrow(eventId: string): Promise<void> {
     metadata: { providerDeleted: true, reviewedBy: user.id },
     createdAt: trashedAt,
   })
-  revalidatePath("/dashboard/office-maintenance/inbound-email")
+  revalidatePath("/dashboard/office-maintenance/message-desk")
   revalidatePath("/dashboard/activity")
 }

@@ -47,7 +47,8 @@ import {
   isYoutubeApiAuditApproved,
   youtubePrivacyForAudience,
 } from "@/lib/videos/youtube-audit"
-import { routeInboundProjectMessage } from "@/lib/email/project-message-routing"
+import { routeInboundProjectMessage, type HeldProjectMessage } from "@/lib/email/project-message-routing"
+import { heldMessageReasonLabel } from "@/lib/email/held-email-reasons"
 import { PROJECT_TODO_RECORD_TYPES } from "@/lib/project-todos"
 import { resolvedContactColumns, withContactDirectory } from "@/lib/domain/contacts/resolved-columns"
 
@@ -103,7 +104,7 @@ export type ProjectInboundRouteResult =
         | "routed_message"
     }
 
-function candidateBody(candidate: InboundCandidate): string {
+export function candidateBody(candidate: InboundCandidate): string {
   const body = (
     candidate.textBody?.trim() ||
     (candidate.htmlBody ? stripHtml(candidate.htmlBody) : "") ||
@@ -689,10 +690,8 @@ async function routeDestination(input: {
     | "routed_change_order"
     | "routed_video"
     | "routed_message"
-} | null> {
-  if (input.destination === "message") {
-    return routeInboundProjectMessage({ ...input, body: candidateBody(input.candidate), source: input.source.kind === "email" ? "email" : "sms" })
-  }
+} | HeldProjectMessage | null> {
+  if (input.destination === "message") return routeInboundProjectMessage({ ...input, body: candidateBody(input.candidate), source: input.source.kind === "email" ? "email" : "sms" })
   if (input.destination === "rfi") return routeRfi(input)
   if (input.destination === "rfq") return routeRfq(input)
   if (input.destination === "change_order") return routeChangeOrder(input)
@@ -763,7 +762,7 @@ async function routeVerifiedProjectInboundMessage(input: {
     now: new Date().toISOString(),
     source: input.source,
   })
-  if (!routed) {
+  if (!routed || routed.status === "held") {
     await recordActivityEvent({
       db: input.db,
       id: `project-${input.source.idPrefix}-review-${input.candidate.gmailMessageId}`,
@@ -774,8 +773,8 @@ async function routeVerifiedProjectInboundMessage(input: {
       action: `project_${input.source.sourceSystem}.needs_review`,
       entityType: `project_${input.source.sourceSystem}`,
       entityId: input.candidate.gmailMessageId,
-      summary: "Project message needs review: check internal @names, assigned project staff, attachment import, and messaging availability.",
-      metadata: { senderAuthorized: true, destination },
+      summary: routed ? `Project message needs review: ${heldMessageReasonLabel(routed.reason)}.` : "Project message needs review: check internal @names, assigned project staff, attachment import, and messaging availability.",
+      metadata: { senderAuthorized: true, destination, heldReason: routed?.reason ?? null },
       createdAt: input.candidate.receivedAt,
     })
     return { kind: "needs_review", projectId }

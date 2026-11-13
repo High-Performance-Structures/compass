@@ -4,7 +4,6 @@ import Link from "next/link"
 import { useState } from "react"
 import {
   IconDatabase,
-  IconMailForward,
   IconPhone,
   IconSettings,
   IconTemplate,
@@ -138,12 +137,6 @@ export function OfficeMaintenanceDrawer({
           </div>
         </DeveloperOnly>
         <div className="space-y-2 px-4">
-          <Button asChild variant="outline" className="w-full justify-start">
-            <Link href="/dashboard/office-maintenance/inbound-email">
-              <IconMailForward className="size-4" />
-              Review inbound messages
-            </Link>
-          </Button>
           <Button asChild variant="outline" className="w-full justify-start">
             <Link href="/dashboard/office-maintenance/message-desk">
               <IconPhone className="size-4" />

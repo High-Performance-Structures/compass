@@ -12,7 +12,7 @@
   "permissions": ["help:read", "channels:read"],
   "routes": ["/dashboard/conversations", "/dashboard/conversations/[channelId]", "/dashboard/projects/[id]/conversations", "/dashboard/projects/[id]/messages", "/dashboard/settings", "/dashboard/office-maintenance/message-desk"],
   "owner": "Compass product team",
-  "lastReviewed": "2026-10-28"
+  "lastReviewed": "2026-11-13"
 }
 ---
 
@@ -77,6 +77,16 @@ Admins can change these in **Settings → Workflows**.
 When a message assigned to you goes **Stale**, three things happen. Your **Staff Message Desk** link in the sidebar turns red with a count, you get an urgent reminder in notifications, and the bell turns red until you read it. Following up on the message clears the reminder. If it later goes stale again, you get one new reminder. Admins can turn these reminders off in Settings.
 
 The towers at the top show how many open messages are in each group. Taller, redder towers mean more messages are waiting, and clicking a tower lists only those messages. To update several messages at once, tick them and use **Set status** or **Reassign to**. Any status change, note, or reassignment counts as follow-up and clears the flag.
+
+### Held job emails
+
+Sometimes an email sent to a job's Compass inbox can't be posted on its own. For example, the sender isn't a contact on the job, an @name couldn't be matched, no one on the job can be notified, or an attachment couldn't be saved. Compass holds these emails under **Held job emails** on the Staff Message Desk. Admins, project managers, and project administrators can see them, and held emails count toward the red number on the **Staff Message Desk** sidebar link.
+
+Each held email shows when it arrived, who sent it, the job, the subject, a short preview, and why it was held. Open it to read the whole email, then:
+
+- **Post to job messages**: choose the job (Compass suggests one) and post the email to that job's Messages, as if it had come through normally. Attached files come along when Compass can still get them from Gmail. Because you're vouching for the email, it doesn't matter if the sender isn't a contact. The job's assigned staff are notified, or you are if no one on the job can be.
+- **Make RFI**: for emails with an RFI tag in the subject, create an RFI on the chosen job.
+- **Dismiss**: take the email off the list without posting it.
 
 ## Notification Preferences {#notification-preferences}
 
