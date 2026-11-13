@@ -1,7 +1,7 @@
 import { and, eq, inArray, sql } from "drizzle-orm"
 
 import { getDb } from "@/db"
-import { channelMembers, channelReadState, channels, messages } from "@/db/schema-conversations"
+import { channelMembers, channelReadState, channelThreadUserState, channels, messages } from "@/db/schema-conversations"
 import { getCurrentUser } from "@/lib/auth"
 import { conversationRequestViewer } from "@/lib/conversations/preview-viewer"
 import { getCloudflareContext } from "@/lib/db"
@@ -187,8 +187,37 @@ export async function readProjectConversations(input: {
   }
 }
 
-/** How many of the job's conversations the viewer is in have unread messages, for the Messages badge. */
-export async function readProjectConversationUnreadCount(projectId: string): Promise<number> {
-  const result = await readProjectConversations({ projectId, scope: "mine", filter: "unread", search: "", page: 1 })
-  return result.success ? result.data.total : 0
+/**
+ * How many of the job's conversations the viewer is in have unread messages,
+ * for the Messages badge: one COUNT, with the conversation list's visibility
+ * rules, leaving out conversations the viewer archived in the inbox.
+ */
+export async function countProjectConversationsUnread(input: {
+  readonly db: ReturnType<typeof getDb>
+  readonly organizationId: string
+  readonly projectId: string
+  readonly userId: string
+  readonly viewerIsInternal: boolean
+}): Promise<number> {
+  const row = await input.db
+    .select({ count: sql<number>`count(*)` })
+    .from(channels)
+    .innerJoin(channelMembers, and(eq(channelMembers.channelId, channels.id), eq(channelMembers.userId, input.userId)))
+    .innerJoin(channelReadState, and(eq(channelReadState.channelId, channels.id), eq(channelReadState.userId, input.userId)))
+    .leftJoin(channelThreadUserState, and(eq(channelThreadUserState.channelId, channels.id), eq(channelThreadUserState.userId, input.userId)))
+    .where(and(
+      eq(channels.organizationId, input.organizationId),
+      eq(channels.projectId, input.projectId),
+      sql`${channels.archivedAt} IS NULL`,
+      sql`${channelReadState.unreadCount} > 0`,
+      sql`${channelThreadUserState.archivedAt} IS NULL`,
+      input.viewerIsInternal
+        ? undefined
+        : and(
+            sql`${channels.id} NOT LIKE 'bt-message-archive-%'`,
+            sql`NOT (${channels.sourceSystem} IS NOT NULL AND EXISTS (SELECT 1 FROM projects p WHERE p.id = ${channels.projectId} AND p.imported_conversations_staff_only = 1))`
+          ),
+    ))
+    .get()
+  return row?.count ?? 0
 }

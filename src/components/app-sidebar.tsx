@@ -664,7 +664,7 @@ function SidebarNav({
     canPrepareGreetingCards,
     canViewProjectArchive,
   })
-  const unreadMessageCount = useProjectMessagesUnread(activeProjectId, pathname)
+  const unreadMessageCount = useProjectMessagesUnread(activeProjectId, projectConversationReturnHref)
   const staleMessageCount = useAlertCount("/api/staff-message-desk/stale-count", canViewActivity, pathname)
   const overdueFollowUpCount = useAlertCount("/api/client-follow-up/overdue-count", canViewActivity, pathname)
   const staffMessageDeskNav: ReadonlyArray<NavLinkItem> = canViewActivity

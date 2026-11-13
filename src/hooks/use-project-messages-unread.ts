@@ -3,12 +3,19 @@
 import { useAlertCount } from "@/hooks/use-alert-count"
 import type { NavItem } from "@/components/nav-main"
 
-/** Unread emails and conversations on the active job, for its Messages link. */
-export function useProjectMessagesUnread(projectId: string | null, pathname: string): number {
+// Reading on the Messages page changes only the query string; recount soon after.
+const MESSAGES_NAVIGATION_MIN_MS = 10 * 1000
+
+/**
+ * Unread emails and conversations on a job, for its Messages link. `location`
+ * is the path plus query string, so opening a conversation recounts.
+ */
+export function useProjectMessagesUnread(projectId: string | null, location: string): number {
   return useAlertCount(
     projectId ? `/api/projects/${encodeURIComponent(projectId)}/messages/unread-count` : "",
     projectId !== null,
-    pathname,
+    location,
+    MESSAGES_NAVIGATION_MIN_MS,
   )
 }
 
@@ -16,12 +23,12 @@ export function useProjectMessagesUnread(projectId: string | null, pathname: str
 export function withMessagesUnread(items: ReadonlyArray<NavItem>, count: number): ReadonlyArray<NavItem> {
   if (count === 0) return items
   return items.map((item) =>
-    item.kind === "group" && item.title === "Projects"
+    item.kind === "group"
       ? {
           ...item,
           items: item.items.map((child) =>
-            child.kind === "link" && child.title === "Messages"
-              ? { ...child, alert: { count, label: `${count} unread ${count === 1 ? "conversation" : "conversations"}`, tone: "unread" as const } }
+            child.kind === "link" && child.url.endsWith("/messages")
+              ? { ...child, alert: { count, label: `${count} unread`, tone: "unread" as const } }
               : child,
           ),
         }
