@@ -59,13 +59,14 @@ describe("daily log follow-ups on the server", () => {
   let db: ReturnType<typeof getDb>
 
   beforeEach(() => {
-    // Pin the clock to the log's day so the 30-day backdating limit never ages the fixture out.
+    // The log is dated 2026-10-14 and contacts may be backdated at most 30 days, so pin the clock to that day.
     vi.useFakeTimers({ toFake: ["Date"] })
     vi.setSystemTime(new Date(NOW))
     sqlite = migratedSqlite()
     seed(sqlite)
     db = getDb(d1(sqlite))
   })
+
   afterEach(() => {
     vi.useRealTimers()
   })
