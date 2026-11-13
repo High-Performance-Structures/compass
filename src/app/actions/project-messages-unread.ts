@@ -2,18 +2,22 @@
 
 import { correspondenceContext } from "@/lib/correspondence/access"
 import { countUnreadCorrespondence } from "@/lib/correspondence/read"
-import { countProjectConversationsUnread } from "@/lib/domain/conversations/project-conversations"
+import { countProjectConversationsUnread, readProjectConversationsUnreadForViewer } from "@/lib/domain/conversations/project-conversations"
 import { isInternalStaffRole } from "@/lib/user-roles"
 
 /**
  * The job's Messages badge: unread email conversations in the viewer's inbox
  * plus unread job conversations they are in (imported threads count once, as
  * conversations). correspondenceContext checks the viewer may open the job and
- * supplies the job's own organization for both counts.
+ * supplies the job's own organization for both counts. Where project email is
+ * off (or unavailable to the viewer) only conversations are counted. The email
+ * count checks the viewer's participant row, not every inbox visibility rule,
+ * so in rare role-change cases it can be one higher than the inbox.
  */
 export async function getProjectMessagesUnreadCount(projectId: string): Promise<number> {
   try {
-    const ctx = await correspondenceContext(projectId, "read")
+    const ctx = await correspondenceContext(projectId, "read").catch(() => null)
+    if (ctx === null) return await readProjectConversationsUnreadForViewer(projectId)
     const [emails, conversations] = await Promise.all([
       countUnreadCorrespondence(ctx),
       countProjectConversationsUnread({

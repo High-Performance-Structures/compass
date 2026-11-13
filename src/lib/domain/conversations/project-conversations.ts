@@ -221,3 +221,21 @@ export async function countProjectConversationsUnread(input: {
     .get()
   return row?.count ?? 0
 }
+
+/**
+ * The conversation half of the Messages badge when project email is off for
+ * the job (or the viewer has no email inbox there, such as a demo user): the
+ * signed-in viewer's own unread conversations on the job.
+ */
+export async function readProjectConversationsUnreadForViewer(projectId: string): Promise<number> {
+  const user = await conversationRequestViewer(await getCurrentUser())
+  if (!user || !user.isActive) return 0
+  const { env } = await getCloudflareContext()
+  return countProjectConversationsUnread({
+    db: getDb(env.DB),
+    organizationId: requireOrg(user),
+    projectId,
+    userId: user.id,
+    viewerIsInternal: isInternalStaffRole(user.role),
+  })
+}

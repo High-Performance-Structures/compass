@@ -719,7 +719,7 @@ function SidebarNav({
       )}
       {mode === "main" && (
         <NavMain
-          items={withMessagesUnread(navMain, unreadMessageCount)}
+          items={withMessagesUnread(navMain, activeProjectId, unreadMessageCount)}
           groupHeaders={{
             Projects: (
               <div className="px-2 py-1">
