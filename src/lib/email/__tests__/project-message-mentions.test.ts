@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import { inboundProjectMessageRecipients, type InboundMessagePerson } from "../project-message-mentions"
+import { inboundMessageMentionsSomeone, inboundProjectMessageRecipients, type InboundMessagePerson } from "../project-message-mentions"
 
 const staff: readonly InboundMessagePerson[] = [
   { id: "a", name: "Alex Stone", firstName: "Alex", lastName: "Stone", email: "alex.stone@example.test", assigned: true, inApp: true },
@@ -25,5 +25,19 @@ describe("incoming project message @names", () => {
   it("holds a malformed quoted mention and a missing default recipient", () => {
     expect(inboundProjectMessageRecipients('@"Alex Stone', staff)).toBeNull()
     expect(inboundProjectMessageRecipients("No mentions", [])).toBeNull()
+  })
+  it("reads an @ before a space or number as 'at', not a mention", () => {
+    expect(inboundProjectMessageRecipients('Joists 14" deep @ 16" o.c. and rafters @24 in', staff)?.map((p) => p.id)).toEqual(["a"])
+    expect(inboundMessageMentionsSomeone('14" deep @ 16" o.c.')).toBe(false)
+  })
+  it("ignores mentions in quoted earlier messages", () => {
+    const reply = "Thanks, got it.\n\nOn Wed, Nov 11, 2026 at 12:52 PM Martine wrote:\n> @Nobody please look\n> @Morgan too"
+    expect(inboundProjectMessageRecipients(reply, staff)?.map((p) => p.id)).toEqual(["a"])
+    expect(inboundProjectMessageRecipients("Thanks\n> @Nobody earlier", staff)?.map((p) => p.id)).toEqual(["a"])
+    expect(inboundMessageMentionsSomeone("Thanks\n> @Morgan earlier")).toBe(false)
+  })
+  it("keeps mentions written below a quote and reads curly-quoted names", () => {
+    expect(inboundProjectMessageRecipients("On Wed, X wrote:\n> question?\nYes, @Morgan please check", staff)?.map((p) => p.id)).toEqual(["b"])
+    expect(inboundProjectMessageRecipients("Please look @\u201CMorgan Reed\u201D", staff)?.map((p) => p.id)).toEqual(["b"])
   })
 })
