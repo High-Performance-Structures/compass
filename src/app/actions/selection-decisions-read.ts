@@ -140,10 +140,12 @@ export async function getSelectionWorkspace(
   const items = selections.flatMap((row): SelectionDecisionItem[] => {
     const decision = decisions.find((item) => item.selectionId === row.id)
     if (audience !== "staff" && !decision?.published) return []
-    const spec = decision
+    const published = decision
       ? parseSpecification(decision.specificationJson)
       : selectionSpecification(row)
-    if (!spec) return []
+    if (!published) return []
+    // A locked selection moved to another room is shown where it is now.
+    const spec = decision && LOCKED_STATUSES.has(row.status) ? { ...published, roomName: row.roomName } : published
     const current =
       !decision || specificationCurrent(decision.specificationJson, row, LOCKED_STATUSES.has(row.status))
     const ownLinks = links.filter((link) => link.selectionId === row.id)

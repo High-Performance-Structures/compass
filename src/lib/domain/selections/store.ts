@@ -278,6 +278,7 @@ export function insertReplacementSelectionStatement(
       lastSyncedAt: null,
       replacesSelectionId: input.replacesSelectionId,
       replacementReason: input.reason,
+      replacementPricedChoiceId: null,
       createdAt: input.now,
       updatedAt: input.now,
     },
@@ -318,6 +319,18 @@ export async function updateLockedSelection(
     )
     .run()
   return result.meta.changes > 0
+}
+
+/** Records the choice a replacement's change order is priced for (null: none yet). */
+export async function setReplacementPricedChoice(
+  db: Db,
+  input: { readonly projectId: string; readonly selectionId: string; readonly choiceId: string | null },
+): Promise<void> {
+  await db
+    .update(projectFinishSelections)
+    .set({ replacementPricedChoiceId: input.choiceId })
+    .where(and(eq(projectFinishSelections.id, input.selectionId), eq(projectFinishSelections.projectId, input.projectId)))
+    .run()
 }
 
 /** The ids of the rows the delete removed. */

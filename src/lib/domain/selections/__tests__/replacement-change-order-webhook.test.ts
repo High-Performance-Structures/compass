@@ -83,6 +83,8 @@ beforeEach(() => {
       ('tile', 'p1', 'Kitchen', 'Backsplash', 'installed', '${NOW}', '${NOW}');
     INSERT INTO project_finish_selections (id, project_id, room_name, name, status, replaces_selection_id, replacement_reason, created_at, updated_at) VALUES
       ('new-tile', 'p1', 'Kitchen', 'Backsplash', 'proposed', 'tile', 'installed_replaced', '${NOW}', '${NOW}');
+    INSERT INTO project_selection_choices (id, project_id, selection_id, title, chosen, created_at, updated_at) VALUES ('subway', 'p1', 'new-tile', 'Subway', 1, '${NOW}', '${NOW}');
+    UPDATE project_finish_selections SET replacement_priced_choice_id = 'subway' WHERE id = 'new-tile';
     INSERT INTO project_change_orders (id, project_id, change_order_number, title, scope, status, audience, requester_type, requester_name, source_type, source_record_id, created_at, updated_at)
       VALUES ('co-r', 'p1', 'O-1-CO1', 'Installed item replaced', 'Replace', 'signature_pending', 'owner', 'internal', 'Pat PM', 'selection_replacement', 'new-tile', '${NOW}', '${NOW}');
   `)

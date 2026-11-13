@@ -23,7 +23,9 @@
  * never a price, budget, variance or change order change.
  *
  * Ordered and installed selections are locked (locks.ts): nothing here moves
- * them back, and staff may only move an ordered one on to Installed. A
+ * them back, and staff may only move an ordered one on to Installed, or to
+ * Unavailable when the supplier can't fill it (a staff-only move; no
+ * automation makes it). A
  * change after purchase or installation is a new selection that replaces it
  * (replacement.ts), with a change order.
  *

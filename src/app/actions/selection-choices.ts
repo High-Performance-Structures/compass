@@ -33,6 +33,7 @@ import {
   selectionChoiceIds,
   selectionInProject,
   selectionApprovedByOwner,
+  selectionOwnerApproved,
   selectionPublishedToOwner,
   type SelectionChoicesPanel,
 } from "@/lib/domain/selections/choices-read"
@@ -42,6 +43,7 @@ import { loadSelectionLock, loadSelectionReplacement, replacementChangeOrderFor,
 import type { SelectionLock } from "@/lib/domain/selections/locks"
 import { loadOwnerChoiceBoard, type OwnerBoardSelection } from "@/lib/domain/selections/owner-board-read"
 import { notifyPriceChangesDuringSignature } from "@/lib/domain/selections/price-change-notice"
+import { repriceReplacementDraft } from "@/lib/domain/selections/replacement"
 import { selectionPickIsSigned } from "@/lib/domain/selections/round-signing"
 import { checkRoundsReady, loadRoundCards, type RoundCard } from "@/lib/domain/selections/rounds-server"
 import { updateFinishSelectionsWithEvent } from "@/lib/domain/selections/store"
@@ -259,7 +261,10 @@ export async function saveSelectionChoice(
       )
       if (!saved) {
         const lockedNow = await choiceLockMessage(db, projectId, selectionId, existing.chosen)
-        return { success: false, error: lockedNow ?? "Someone changed this choice's status while you were editing. Refresh and try again." }
+        const fallback = existing.chosen
+          ? "This pick is covered by a signature or priced on a replacement change order, so it can't be edited. Pick a different choice to change it."
+          : "Someone changed this choice's status while you were editing. Refresh and try again."
+        return { success: false, error: lockedNow ?? fallback }
       }
       // Allowed while the selection is out for the owner's signature, but the job's managers are told.
       await notifyPriceChangesDuringSignature(db, {
@@ -309,7 +314,9 @@ export async function deleteSelectionChoice(projectId: string, choiceId: string)
     const locked = await choiceLockMessage(db, projectId, choice.selectionId, choice.chosen)
     if (locked) return { success: false, error: locked }
     // The write re-checks the lock, so a selection ordered meanwhile keeps its pick.
-    if (!(await deleteChoiceRow(db, projectId, choiceId))) return { success: false, error: "This choice can't be deleted now. Refresh and try again." }
+    if (!(await deleteChoiceRow(db, projectId, choiceId))) {
+      return { success: false, error: "This choice can't be deleted now: it is a signed or priced pick, or it changed. Refresh and try again." }
+    }
     await checkRoundsReady(db, projectId, user.id)
     refresh(projectId)
     return { success: true, data: { id: choiceId } }
@@ -367,6 +374,7 @@ export async function setSelectionChoiceChosen(
       if (!(await setChosenRow(access.db, choice.selectionId, choiceId, chosen, new Date().toISOString(), { userId: access.user.id, audience: "owner", note: null }))) {
         return { success: false, error: "This selection can't be changed here any more. Ask your builder." }
       }
+      await repriceReplacementDraft(access.db, { projectId, selectionId: choice.selectionId, actor: { ...access.user, name: access.user.displayName ?? access.user.email } })
       await checkRoundsReady(access.db, projectId, access.user.id)
       refresh(projectId)
       return { success: true, data: { id: choiceId } }
@@ -376,7 +384,10 @@ export async function setSelectionChoiceChosen(
     const locked = await pickLockMessage(db, projectId, choice.selectionId)
     if (locked) return { success: false, error: locked }
     const before = await currentPickId(db, choice.selectionId)
-    const wasSigned = await selectionPickIsSigned(db, choice.selectionId, before)
+    // Approved before this change: signed for the current pick, or an older
+    // approval (e.g. imported) that no signature covers. Either way a new
+    // pick goes back through signing.
+    const wasApproved = (await selectionPickIsSigned(db, choice.selectionId, before)) || (await selectionOwnerApproved(db, projectId, choice.selectionId))
     const now = new Date().toISOString()
     // The write re-checks the lock (a selection ordered meanwhile keeps its pick).
     const picked = await setChosenRow(db, choice.selectionId, choiceId, chosen, now, {
@@ -388,8 +399,8 @@ export async function setSelectionChoiceChosen(
       const locked = await pickLockMessage(db, projectId, choice.selectionId)
       return { success: false, error: locked ?? "The pick can't change now: its replacement change order is out for signature or executed." }
     }
-    // Changing a signed pick reopens just this selection (never an ordered or installed one); the next round signature covers it.
-    if (wasSigned && (!chosen || before !== choiceId)) {
+    // Changing an approved pick reopens just this selection (never an ordered or installed one); the next signature covers it.
+    if (wasApproved && (!chosen || before !== choiceId)) {
       await updateFinishSelectionsWithEvent(
         db,
         and(eq(projectFinishSelections.id, choice.selectionId), eq(projectFinishSelections.projectId, projectId)),
@@ -397,6 +408,8 @@ export async function setSelectionChoiceChosen(
         { ownerApproved: false, approvedBy: null, approvedAt: null, updatedAt: now },
       )
     }
+    // A replacement's draft change order follows its pick.
+    await repriceReplacementDraft(db, { projectId, selectionId: choice.selectionId, actor: { ...user, name: user.displayName ?? user.email } })
     await checkRoundsReady(db, projectId, user.id)
     refresh(projectId)
     return { success: true, data: { id: choiceId } }

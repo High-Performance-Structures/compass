@@ -15,6 +15,7 @@ import {
 
 import { PROJECT_SELECTION_STATUSES, SELECTION_REPLACEMENT_REASONS } from "../lib/domain/selections/statuses"
 import { projectOperations } from "./schema-operations"
+import { projectSelectionChoices } from "./schema-selection-choices"
 import { projects } from "./schema-projects"
 
 export const projectFinishSelections = sqliteTable("project_finish_selections", {
@@ -66,6 +67,8 @@ export const projectFinishSelections = sqliteTable("project_finish_selections", 
   // The ordered or installed selection this one replaces; that one stays on record, locked. One replacement each. (0321)
   replacesSelectionId: text("replaces_selection_id").references((): AnySQLiteColumn => projectFinishSelections.id, { onDelete: "set null" }),
   replacementReason: text("replacement_reason", { enum: SELECTION_REPLACEMENT_REASONS }),
+  // The choice its replacement change order is priced for; signed only while it is still the pick. (0321)
+  replacementPricedChoiceId: text("replacement_priced_choice_id").references((): AnySQLiteColumn => projectSelectionChoices.id, { onDelete: "set null" }),
   syncStatus: text("sync_status").notNull().default("manual"),
   lastSyncedAt: text("last_synced_at"),
   createdAt: text("created_at").notNull(),
@@ -88,6 +91,7 @@ export const projectFinishSelections = sqliteTable("project_finish_selections", 
     index("project_finish_selections_rfq_operation_id_idx").on(table.rfqOperationId),
     index("project_finish_selections_round_idx").on(table.projectId, table.roundKey),
     uniqueIndex("project_finish_selections_replaces_unique").on(table.replacesSelectionId),
+    index("project_finish_selections_replacement_priced_choice_idx").on(table.replacementPricedChoiceId),
   ])
 
 export const projectFinishSelectionRooms = sqliteTable("project_finish_selection_rooms", {

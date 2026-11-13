@@ -91,6 +91,13 @@ function seed(db: Sqlite): void {
       ('crew', 'crew@example.com', 'Cy Crew', 'field_crew', 1, '${NOW}', '${NOW}'),
       ('owner', 'owner@example.com', 'Olive Owner', 'client', 1, '${NOW}', '${NOW}');
     INSERT INTO projects (id, name, organization_id, project_number, contract_type, created_at) VALUES ('p1', 'Job', 'org-1', 'O-1', 'fixed_price', '${NOW}');
+    INSERT INTO organization_members (id, organization_id, user_id, role, joined_at) VALUES
+      ('om-staff', 'org-1', 'staff', 'project_manager', '${NOW}'),
+      ('om-apm', 'org-1', 'apm', 'assistant_project_manager', '${NOW}'),
+      ('om-pa', 'org-1', 'admin-pa', 'project_administrator', '${NOW}'),
+      ('om-gone', 'org-1', 'gone', 'project_administrator', '${NOW}'),
+      ('om-crew', 'org-1', 'crew', 'field_crew', '${NOW}'),
+      ('om-owner', 'org-1', 'owner', 'client', '${NOW}');
     INSERT INTO project_members (id, project_id, user_id, role, assigned_at) VALUES
       ('m1', 'p1', 'staff', 'project_manager', '${NOW}'),
       ('m2', 'p1', 'apm', 'assistant_project_manager', '${NOW}'),
@@ -376,7 +383,12 @@ describe("review follow-ups", () => {
     const copies = sqlite.prepare("SELECT id, title FROM project_selection_choices WHERE selection_id = ?").all(done.data.selectionId) as { id: string; title: string }[]
     const copiedHex = copies.find((copy) => copy.title === "Hex")?.id ?? ""
     expect(await setSelectionChoiceChosen("p1", copiedHex, true)).toMatchObject({ success: true })
-    sqlite.exec(`UPDATE project_change_orders SET status = 'signature_pending' WHERE id = '${done.data.changeOrderId}'`)
+    // The draft followed the new pick: the first one is void, a new draft is priced for Hex.
+    expect(sqlite.prepare("SELECT status, amount_cents FROM project_change_orders ORDER BY created_at, status").all()).toEqual([
+      { status: "void", amount_cents: 320000 },
+      { status: "draft", amount_cents: 418500 },
+    ])
+    sqlite.exec(`UPDATE project_change_orders SET status = 'signature_pending' WHERE status = 'draft'`)
     const copiedSubway = copies.find((copy) => copy.title === "Subway")?.id ?? ""
     expect(await setSelectionChoiceChosen("p1", copiedSubway, true)).toMatchObject({ success: false, error: expect.stringMatching(/change order/) })
   })
@@ -460,5 +472,105 @@ describe("review follow-ups", () => {
     expect(await saveSelectionChoice("p1", "tile", hex, { title: "Hex", price: "1", ownerPrice: "4500" })).toMatchObject({ success: true })
     const recipients = mocks.notice.mock.calls[0]?.[0].recipients.map((recipient: { userId: string }) => recipient.userId)
     expect(recipients).not.toContain("named")
+  })
+
+  it("R3-1: changing the pick of an older (imported) approval reopens it for signing", async () => {
+    const hex = await choice("tile", "Hex", "4185")
+    const subway = await choice("tile", "Subway", "3200")
+    await setSelectionChoiceChosen("p1", hex, true)
+    sqlite.exec("UPDATE project_finish_selections SET status = 'approved', owner_approved = 1, approved_at = '2026-01-01', source_system = 'buildertrend' WHERE id = 'tile'")
+    // Outside the phase while approved...
+    const view = await getRoundSigning("p1", "rough-in")
+    expect(view.success && view.data.document.lines.map((line) => line.selectionId)).not.toContain("tile")
+    // ...and back in it once its pick changes.
+    expect(await setSelectionChoiceChosen("p1", subway, true)).toMatchObject({ success: true })
+    expect(sqlite.prepare("SELECT status, owner_approved, approved_at FROM project_finish_selections WHERE id = 'tile'").get()).toEqual({ status: "owner_review", owner_approved: 0, approved_at: null })
+    const again = await getRoundSigning("p1", "rough-in")
+    expect(again.success && again.data.document.lines.map((line) => line.selectionId)).toContain("tile")
+  })
+
+  it("R3-2 + R3-3: a replacement change order is tied to its priced pick", async () => {
+    const { replacementId, changeOrderId } = await installedTileReplacedBySubway()
+    if (!changeOrderId) throw new Error("no change order")
+    const copies = sqlite.prepare("SELECT id, title, chosen FROM project_selection_choices WHERE selection_id = ?").all(replacementId) as { id: string; title: string; chosen: number }[]
+    const subwayCopy = copies.find((copy) => copy.title === "Subway")?.id ?? ""
+    const hexCopy = copies.find((copy) => copy.title === "Hex")?.id ?? ""
+    expect(sqlite.prepare("SELECT replacement_priced_choice_id AS priced FROM project_finish_selections WHERE id = ?").get(replacementId)).toEqual({ priced: subwayCopy })
+    // While a change order prices it, the pick's product and price are read-only.
+    expect(await saveSelectionChoice("p1", replacementId, subwayCopy, { title: "Subway", price: "1", ownerPrice: "1" })).toMatchObject({ success: false })
+    expect(await saveSelectionChoice("p1", replacementId, hexCopy, { title: "Hex tile", price: "1", ownerPrice: "4185" })).toMatchObject({ success: true })
+    // The change order can't leave draft without a pick, or for a pick it wasn't priced for.
+    const { replacementChangeOrderMoveBlocker } = await import("@/lib/domain/selections/replacement-signing")
+    const db = drizzleOverSqlite(sqlite)
+    expect(await replacementChangeOrderMoveBlocker(db, { projectId: "p1", changeOrderId, to: "signature_pending" })).toBeNull()
+    sqlite.exec(`UPDATE project_selection_choices SET chosen = 0 WHERE selection_id = '${replacementId}'`)
+    expect(await replacementChangeOrderMoveBlocker(db, { projectId: "p1", changeOrderId, to: "signature_pending" })).toMatch(/Pick the replacement product/)
+    sqlite.exec(`UPDATE project_selection_choices SET chosen = 1 WHERE id = '${hexCopy}'`)
+    expect(await replacementChangeOrderMoveBlocker(db, { projectId: "p1", changeOrderId, to: "executed" })).toMatch(/pick changed/)
+    expect(await replacementChangeOrderMoveBlocker(db, { projectId: "p1", changeOrderId, to: "void" })).toBeNull()
+    // Executed for Subway while Hex is picked: not signed, not approved.
+    sqlite.exec(`UPDATE project_change_orders SET status = 'executed' WHERE id = '${changeOrderId}'`)
+    expect(await applyExecutedReplacementChangeOrder(db, { projectId: "p1", changeOrderId, actorId: "staff" })).toBe(false)
+    expect((await getSelectionSheet("p1")).rows.find((row) => row.id === replacementId)?.signed).toBe(false)
+    sqlite.exec(`UPDATE project_selection_choices SET chosen = 0 WHERE selection_id = '${replacementId}'; UPDATE project_selection_choices SET chosen = 1 WHERE id = '${subwayCopy}'`)
+    expect((await getSelectionSheet("p1")).rows.find((row) => row.id === replacementId)?.signed).toBe(true)
+  })
+
+  it("R3-2: a phase-signed pick is read-only before it is ordered", async () => {
+    const hex = await choice("tile", "Hex", "4185")
+    await choice("tile", "Subway", "3200")
+    await setSelectionChoiceChosen("p1", hex, true)
+    sqlite.exec(`
+      INSERT INTO project_selection_round_signatures (id, project_id, round_key, round_name_snapshot, status, signers_json_snapshot, allowance_cents, owner_total_cents, delta_cents, treatment, signed_at, created_at, updated_at)
+        VALUES ('sig', 'p1', 'rough-in', 'Rough-in', 'signed', '[]', 0, 0, 0, 'none', '${NOW}', '${NOW}', '${NOW}');
+      INSERT INTO project_selection_round_signature_items (signature_id, selection_id, choice_id, choice_title_snapshot) VALUES ('sig', 'tile', '${hex}', 'Hex');
+      UPDATE project_finish_selections SET status = 'approved', owner_approved = 1 WHERE id = 'tile';
+    `)
+    expect(await saveSelectionChoice("p1", "tile", hex, { title: "Hex", price: "1", ownerPrice: "1" })).toMatchObject({ success: false, error: expect.stringMatching(/signature/) })
+    expect(sqlite.prepare("SELECT owner_price_cents FROM project_selection_choices WHERE id = ?").get(hex)).toEqual({ owner_price_cents: 418500 })
+  })
+
+  it("R3-4: a price change while a replacement change order is with the owner tells the managers", async () => {
+    const { replacementId, changeOrderId } = await installedTileReplacedBySubway()
+    sqlite.exec(`UPDATE project_change_orders SET status = 'signature_pending' WHERE id = '${changeOrderId}'`)
+    const hexCopy = (sqlite.prepare("SELECT id FROM project_selection_choices WHERE selection_id = ? AND title = 'Hex'").get(replacementId) as { id: string }).id
+    expect(await saveSelectionChoice("p1", replacementId, hexCopy, { title: "Hex", price: "1", ownerPrice: "4300" })).toMatchObject({ success: true })
+    const notice = mocks.notice.mock.calls[0]?.[0]
+    expect(notice.body).toMatch(/Replacement change order .* is with the owner, not signed yet \(this is not the choice on the document\)/)
+  })
+
+  it("R3-5: a locked selection moved to another room shows its new room to partners and owners", async () => {
+    const db = drizzleOverSqlite(sqlite)
+    const row = await db.select().from(projectFinishSelections).where(eq(projectFinishSelections.id, "tile")).get()
+    if (!row) throw new Error("no row")
+    sqlite.prepare("UPDATE project_selection_decisions SET specification_json = ? WHERE selection_id = 'tile'").run(specificationJson(row))
+    sqlite.exec("UPDATE project_finish_selections SET status = 'ordered', owner_approved = 1, room_name = 'Pantry' WHERE id = 'tile'")
+    mocks.audience.mockResolvedValueOnce({ db, user: { id: "vendor" }, staff: false, actorName: "Vendor" })
+    expect((await getSelectionWorkspace("p1", "sub_vendor")).items.find((item) => item.id === "tile")?.spec.roomName).toBe("Pantry")
+    mocks.audience.mockResolvedValueOnce({ db, user: { id: "owner" }, staff: false, actorName: "Olive Owner" })
+    expect((await getSelectionWorkspace("p1", "owner")).items.find((item) => item.id === "tile")?.spec.roomName).toBe("Pantry")
+  })
+
+  it("R3-6: an edit never writes the approval columns from its read unless it clears them", async () => {
+    sqlite.exec("UPDATE project_finish_selections SET owner_approved = 0 WHERE id = 'tile'")
+    // The owner's signature lands between the edit's read and its write.
+    sqlite.exec(`
+      CREATE TRIGGER sign_between BEFORE UPDATE OF notes ON project_finish_selections
+      WHEN OLD.id = 'tile' AND OLD.owner_approved = 0
+      BEGIN UPDATE project_finish_selections SET owner_approved = 1, approved_at = '${NOW}' WHERE id = 'tile'; END;
+    `)
+    expect(await updateProjectSelection("p1", "tile", { ...base, status: "needed", notes: "Grout sealed" })).toMatchObject({ success: true })
+    expect(sqlite.prepare("SELECT notes, owner_approved, approved_at FROM project_finish_selections WHERE id = 'tile'").get()).toEqual({ notes: "Grout sealed", owner_approved: 1, approved_at: NOW })
+  })
+
+  it("R3-8: notice roles are checked against the job company's membership, not the account role", async () => {
+    sqlite.exec("UPDATE organization_members SET role = 'client' WHERE user_id = 'apm'")
+    const hex = await choice("tile", "Hex", "4185")
+    const brass = await choice("faucet", "Brass", "380")
+    await setSelectionChoiceChosen("p1", hex, true)
+    await setSelectionChoiceChosen("p1", brass, true)
+    expect(await sendRoundForSignature("p1", "rough-in", ["owner@example.com"])).toMatchObject({ success: true })
+    expect(await saveSelectionChoice("p1", "tile", hex, { title: "Hex", price: "1", ownerPrice: "4500" })).toMatchObject({ success: true })
+    expect(mocks.notice.mock.calls[0]?.[0].recipients.map((recipient: { userId: string }) => recipient.userId)).toEqual(["admin-pa"])
   })
 })

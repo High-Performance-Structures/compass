@@ -94,8 +94,7 @@ export const EXECUTED_CHANGE_ORDER_STATUSES = ["executed", "sage_pending", "sync
 /**
  * The job's selections a signature covers for their CURRENT pick: the pick
  * is the choice the latest signed Selection Phase covered, or the selection
- * is a replacement whose change order was executed (its pick can't change
- * while that change order is out or executed). "Approved" without one (set
+ * is a replacement whose executed change order was priced for its pick. "Approved" without one (set
  * by hand, an older click approval, or a pick changed since) isn't signed.
  */
 export async function signedSelectionIds(db: Db, projectId: string): Promise<ReadonlySet<string>> {
@@ -110,9 +109,15 @@ export async function signedSelectionIds(db: Db, projectId: string): Promise<Rea
       .select({ selectionId: projectSelectionChoices.selectionId, choiceId: projectSelectionChoices.id })
       .from(projectSelectionChoices)
       .where(and(eq(projectSelectionChoices.projectId, projectId), eq(projectSelectionChoices.chosen, true))),
+    // A replacement's executed change order covers the pick it was priced for.
     db
       .selectDistinct({ id: projectChangeOrders.sourceRecordId })
       .from(projectChangeOrders)
+      .innerJoin(projectFinishSelections, eq(projectFinishSelections.id, projectChangeOrders.sourceRecordId))
+      .innerJoin(
+        projectSelectionChoices,
+        and(eq(projectSelectionChoices.id, projectFinishSelections.replacementPricedChoiceId), eq(projectSelectionChoices.chosen, true)),
+      )
       .where(
         and(
           eq(projectChangeOrders.projectId, projectId),

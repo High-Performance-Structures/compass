@@ -47,8 +47,16 @@ type CommentInsert = typeof projectSelectionComments.$inferInsert
 const selectionLocked = sql`EXISTS (SELECT 1 FROM project_finish_selections AS locked WHERE locked.id = project_selection_choices.selection_id AND locked.status IN ('ordered', 'installed'))`
 /** The choice's selection was replaced: all its choices are read-only. */
 const selectionReplaced = sql`EXISTS (SELECT 1 FROM project_finish_selections AS replacement WHERE replacement.replaces_selection_id = project_selection_choices.selection_id)`
-/** The choice may be edited or deleted: not the bought pick of an ordered or installed selection, and not on a replaced one. */
-const choiceWritable = sql`NOT ((project_selection_choices.chosen = 1 AND ${selectionLocked}) OR ${selectionReplaced})`
+/** A signed Selection Phase covered this choice (as the pick). */
+const choiceSigned = sql`EXISTS (SELECT 1 FROM project_selection_round_signature_items AS signed_item INNER JOIN project_selection_round_signatures AS signed_round ON signed_round.id = signed_item.signature_id WHERE signed_item.choice_id = project_selection_choices.id AND signed_round.status = 'signed')`
+/** A replacement change order (draft, out or executed) prices the choice's selection. */
+const replacementOrderOpen = sql`EXISTS (SELECT 1 FROM project_change_orders AS replacement_change WHERE replacement_change.source_type = 'selection_replacement' AND replacement_change.source_record_id = project_selection_choices.selection_id AND replacement_change.status NOT IN ('void', 'declined'))`
+/**
+ * The choice may be edited or deleted. Not the pick when its selection is
+ * ordered or installed, a signature covers it, or a replacement change
+ * order prices it (change the pick instead); nothing on a replaced selection.
+ */
+const choiceWritable = sql`NOT ((project_selection_choices.chosen = 1 AND (${selectionLocked} OR ${choiceSigned} OR ${replacementOrderOpen})) OR ${selectionReplaced})`
 /**
  * A replacement's change order is out for signature or executed: the pick
  * it prices is fixed (a draft change order can still follow a new pick).

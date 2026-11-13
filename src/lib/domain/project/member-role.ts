@@ -53,10 +53,14 @@ export async function projectMembersWithRole(
   matches: (role: string) => boolean
 ): Promise<readonly { readonly userId: string; readonly email: string; readonly accountRole: string }[]> {
   const people = peopleView()
+  const memberships = membershipsView()
+  // accountRole: the role the person holds in the job's company (whether they are its staff).
   const rows = await db
-    .select({ userId: projectMembers.userId, role: projectMembers.role, email: people.email, googleEmail: people.googleEmail, accountRole: people.role })
+    .select({ userId: projectMembers.userId, role: projectMembers.role, email: people.email, googleEmail: people.googleEmail, accountRole: memberships.role })
     .from(projectMembers)
+    .innerJoin(projects, eq(projects.id, projectMembers.projectId))
     .innerJoin(people, eq(people.id, projectMembers.userId))
+    .innerJoin(memberships, and(eq(memberships.userId, people.id), eq(memberships.organizationId, projects.organizationId)))
     .where(and(eq(projectMembers.projectId, projectId), eq(people.isActive, true)))
   return rows
     .filter((row) => matches(row.role))

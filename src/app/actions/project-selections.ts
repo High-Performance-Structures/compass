@@ -383,10 +383,9 @@ export async function updateProjectSelection(
       productUrl,
       costCode,
       phaseCode,
-      // Staff workflow status is not an owner signature. Material edits invalidate it.
-      ownerApproved: clearsApproval ? false : existing.ownerApproved,
-      approvedBy: clearsApproval ? null : existing.approvedBy,
-      approvedAt: clearsApproval ? null : existing.approvedAt,
+      // Staff workflow status is not an owner signature. Material edits clear it;
+      // otherwise the approval columns aren't written (never from this stale read).
+      ...(clearsApproval ? { ownerApproved: false, approvedBy: null, approvedAt: null } : {}),
       notes,
       syncStatus:
         existing.status === "approved" && changes.length > 0

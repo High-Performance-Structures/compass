@@ -39,7 +39,7 @@ import { canViewChangeOrder, changeOrderRequesterType, type ChangeOrderRequester
 import { displayChangeOrderRequesterType } from "@/lib/change-orders/provenance"
 import { getCloudflareContext } from "@/lib/db"
 import { rebuildProjectContractBudget } from "@/lib/financials/contract-budget-store"
-import { afterChangeOrdersExecuted } from "@/lib/change-orders/executed-follow-ups"
+import { afterChangeOrdersExecuted, changeOrderMoveBlocker } from "@/lib/change-orders/executed-follow-ups"
 import {
   executeBaselineReplacement,
   rebaselineViewData,
@@ -47,10 +47,7 @@ import {
   type RebaselineViewData,
 } from "@/lib/change-orders/rebaseline-store"
 import { isChangeOrderBudgetTreatment, rebaselineEstimateDocumentLinks, type ChangeOrderBudgetTreatment } from "@/lib/change-orders/rebaseline"
-import {
-  canFeature,
-  requireFeaturePermission,
-} from "@/lib/permission-enforcement"
+import { canFeature, requireFeaturePermission } from "@/lib/permission-enforcement"
 import { assertProjectAccess } from "@/lib/domain/project/access"
 import { projectMemberRole } from "@/lib/domain/project/member-role"
 import type { ProjectAudience } from "@/lib/project-audience-access"
@@ -820,6 +817,8 @@ export async function updateProjectChangeOrder(
     ) {
       return { success: false, error: "That status transition is not allowed." }
     }
+    const moveBlocked = statusChanged ? await changeOrderMoveBlocker(context.db, { projectId, changeOrderId, to: input.status }) : null
+    if (moveBlocked) return { success: false, error: moveBlocked }
     if (input.status === "synced") {
       return {
         success: false,

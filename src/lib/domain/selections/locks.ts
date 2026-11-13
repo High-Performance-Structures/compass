@@ -6,8 +6,11 @@
  *   must be replaced with a different product, staff use "Replace installed
  *   item", which makes a new selection (replacement.ts).
  * - Ordered: the same, except staff (and the daily log) may move it on to
- *   Installed. When the owner changes their mind after purchase, staff use
- *   "Owner changed selection after purchase", which makes a new selection.
+ *   Installed, and staff (only) may mark it Unavailable when the supplier
+ *   can't fill it (not an owner change of mind; owner decision 2026-11-12),
+ *   which unlocks it to be chosen again. When the owner changes their mind
+ *   after purchase, staff use "Owner changed selection after purchase",
+ *   which makes a new selection.
  * - Replaced: a selection another one replaces stays on record exactly as it
  *   was, whatever its status.
  *
@@ -25,6 +28,9 @@ export type SelectionLock = {
   readonly message: string
 }
 
+// Staff-only moves out of Ordered: installed, or the supplier can't fill it.
+const STAFF_MOVES_FROM_ORDERED: ReadonlySet<ProjectSelectionStatus> = new Set(["installed", "unavailable"])
+
 const ORDERED_MESSAGE =
   "This selection is ordered, so its pick and product are locked. If the owner changed their mind, use \"Owner changed selection after purchase\" to make a new selection."
 const INSTALLED_MESSAGE =
@@ -41,14 +47,14 @@ export function selectionLock(status: string, replaced: boolean): SelectionLock 
 
 /**
  * Why staff may not move a selection from `from` to `to` by hand, or null.
- * An ordered selection may only go on to Installed; an installed or replaced
- * one does not move.
+ * An ordered selection may only go on to Installed, or to Unavailable (the
+ * supplier can't fill it); an installed or replaced one does not move.
  */
 export function staffStatusChangeBlocker(from: string, to: ProjectSelectionStatus, replaced: boolean): string | null {
   if (from === to) return null
   const lock = selectionLock(from, replaced)
   if (!lock) return null
-  if (lock.kind === "ordered" && to === "installed") return null
+  if (lock.kind === "ordered" && STAFF_MOVES_FROM_ORDERED.has(to)) return null
   return lock.message
 }
 
@@ -135,6 +141,12 @@ export const REPLACEMENT_REASON_LABELS: Readonly<Record<SelectionReplacementReas
  * without a signature on its current pick (an older approval). Those are
  * left out of the phase document, its progress and its change order, so
  * nothing is billed twice and a phase never waits on them.
+ *
+ * Older approvals are selections imported already approved (Buildertrend):
+ * the owner agreed to them and they were billed there, so a Selection Phase
+ * must not sign or bill them again. Changing such a pick in Compass reopens
+ * the selection (owner_approved cleared), which brings it back into the
+ * phase to be signed like any other.
  */
 export function outsidePhaseWork(row: {
   readonly status: string

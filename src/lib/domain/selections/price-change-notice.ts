@@ -1,6 +1,7 @@
 /**
  * A choice's price may change while its selection is out for the owner's
- * signature (a Selection Phase signature being prepared or sent), but the
+ * signature (a Selection Phase signature being prepared or sent, or its
+ * replacement change order with the owner and unsigned), but the
  * job's members in the company's chosen project roles are told (Settings ›
  * Selections; by default project managers, assistant project managers and
  * project administrators): product, old price, new price, and that it is out
@@ -13,7 +14,7 @@
  */
 import { and, eq, inArray } from "drizzle-orm"
 
-import { projectFinishSelections } from "@/db/schema"
+import { projectChangeOrders, projectFinishSelections } from "@/db/schema"
 import { projectSelectionRoundSignatureItems, projectSelectionRoundSignatures } from "@/db/schema-selection-choices"
 import { recordActivityEvents, type ActivityActor } from "@/lib/activity-log"
 import { namedProjectManager, projectMembersWithRole } from "@/lib/domain/project/member-role"
@@ -26,6 +27,19 @@ import { readProjectSelectionSettings } from "./project-settings"
 
 /** Round signature statuses that mean the owner's document is out for signature. */
 const OUT_FOR_SIGNATURE = ["preparing", "sent"] as const
+/** A replacement change order with the owner and not signed yet. */
+const REPLACEMENT_WITH_OWNER = ["submitted", "approved_for_owner", "signature_pending"] as const
+
+/** A document out for the owner's signature that covers a selection. */
+type SigningDocument = {
+  readonly selectionId: string
+  readonly selectionName: string
+  /** The choice the document prices for the selection. */
+  readonly signedChoiceId: string | null
+  /** "the Rough-in Selection Phase", "replacement change order CO-3". */
+  readonly name: string
+  readonly state: string
+}
 
 export type ChoicePriceChange = {
   readonly choiceId: string
@@ -86,8 +100,43 @@ export async function notifyPriceChangesDuringSignature(
           inArray(projectSelectionRoundSignatureItems.selectionId, [...new Set(changes.map((change) => change.selectionId))]),
         ),
       )
-    if (out.length === 0) return
-    const signing = new Map(out.map((row) => [row.selectionId, row]))
+    // A replacement's change order with the owner, not yet signed, is out for signature too.
+    const replacementOut = await db
+      .select({
+        selectionId: projectFinishSelections.id,
+        signedChoiceId: projectFinishSelections.replacementPricedChoiceId,
+        status: projectChangeOrders.status,
+        number: projectChangeOrders.changeOrderNumber,
+        selectionName: projectFinishSelections.name,
+      })
+      .from(projectChangeOrders)
+      .innerJoin(projectFinishSelections, eq(projectFinishSelections.id, projectChangeOrders.sourceRecordId))
+      .where(
+        and(
+          eq(projectChangeOrders.projectId, input.projectId),
+          eq(projectChangeOrders.sourceType, "selection_replacement"),
+          inArray(projectChangeOrders.status, [...REPLACEMENT_WITH_OWNER]),
+          inArray(projectFinishSelections.id, [...new Set(changes.map((change) => change.selectionId))]),
+        ),
+      )
+    const documents: readonly SigningDocument[] = [
+      ...out.map((row) => ({
+        selectionId: row.selectionId,
+        selectionName: row.selectionName,
+        signedChoiceId: row.signedChoiceId,
+        name: `the ${row.roundName} Selection Phase`,
+        state: row.status === "sent" ? "out for the owner's signature" : "being prepared for the owner's signature",
+      })),
+      ...replacementOut.map((row) => ({
+        selectionId: row.selectionId,
+        selectionName: row.selectionName,
+        signedChoiceId: row.signedChoiceId,
+        name: `replacement change order ${row.number}`,
+        state: "with the owner, not signed yet",
+      })),
+    ]
+    if (documents.length === 0) return
+    const signing = new Map(documents.map((row) => [row.selectionId, row]))
     const affected = changes.flatMap((change) => {
       const row = signing.get(change.selectionId)
       return row ? [{ change, row }] : []
@@ -118,8 +167,8 @@ export async function notifyPriceChangesDuringSignature(
         action: "selection_price_changed_during_signature",
         entityType: "project_selection_choice",
         entityId: change.choiceId,
-        summary: `${row.selectionName} · ${change.title}: ${priceChangeText(change)}, while the ${row.roundName} Selection Phase is out for the owner's signature.`,
-        metadata: { selectionId: change.selectionId, before: change.before, after: change.after, signatureStatus: row.status },
+        summary: `${row.selectionName} · ${change.title}: ${priceChangeText(change)}, while ${row.name} is ${row.state}.`,
+        metadata: { selectionId: change.selectionId, before: change.before, after: change.after, document: row.name },
         createdAt: input.now,
       })),
     )
@@ -135,7 +184,7 @@ export async function notifyPriceChangesDuringSignature(
         title: `Price changed while out for signature: ${change.title}`,
         body:
           `${row.selectionName}: ${change.title} ${priceChangeText(change)}. ` +
-          `The ${row.roundName} Selection Phase is ${row.status === "sent" ? "out for the owner's signature" : "being prepared for the owner's signature"}` +
+          `${row.name.charAt(0).toLocaleUpperCase()}${row.name.slice(1)} is ${row.state}` +
           (onDocument ? " with the old price on the document." : " (this is not the choice on the document)."),
         href: `/dashboard/projects/${encodeURIComponent(input.projectId)}/selections`,
         priority: "high",

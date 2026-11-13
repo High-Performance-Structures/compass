@@ -19,7 +19,7 @@ import { insertChangeOrderHistoryStatement, updateChangeOrdersStatement } from "
 import { DEFAULT_CHANGE_ORDER_ACCEPTANCE_SETTINGS } from "@/lib/feature-settings/contract-settings"
 import { readFeatureSettings } from "@/lib/feature-settings/server"
 import { rebuildProjectContractBudget } from "@/lib/financials/contract-budget-store"
-import { afterChangeOrdersExecuted } from "@/lib/change-orders/executed-follow-ups"
+import { afterChangeOrdersExecuted, changeOrderMoveBlocker } from "@/lib/change-orders/executed-follow-ups"
 import type { Db } from "@/lib/server/action-context"
 import { canManageUserAccessRole } from "@/lib/user-roles"
 import { resolvedContactColumns, withContactDirectory } from "@/lib/domain/contacts/resolved-columns"
@@ -174,6 +174,8 @@ export async function recordChangeOrderManualAcceptance(input: {
     .get()
   if (!row || !isChangeOrderStatus(row.status)) return { success: false, error: "Change order not found." }
   const fromStatus = row.status
+  const moveBlocked = await changeOrderMoveBlocker(db, { projectId, changeOrderId, to: "executed" })
+  if (moveBlocked) return { success: false, error: moveBlocked }
   const availability = await availabilityFor({ db, row, user, internal: true, canApprove: input.canApprove })
   if (!availability) {
     return { success: false, error: "This change order's acceptance can't be recorded here." }

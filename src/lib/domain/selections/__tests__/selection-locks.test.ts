@@ -77,6 +77,13 @@ function seed(db: Sqlite): void {
       ('crew', 'crew@example.com', 'Cy Crew', 'field_crew', 1, '${NOW}', '${NOW}'),
       ('owner', 'owner@example.com', 'Olive Owner', 'client', 1, '${NOW}', '${NOW}');
     INSERT INTO projects (id, name, organization_id, project_number, contract_type, created_at) VALUES ('p1', 'Job', 'org-1', 'O-1', 'fixed_price', '${NOW}');
+    INSERT INTO organization_members (id, organization_id, user_id, role, joined_at) VALUES
+      ('om-staff', 'org-1', 'staff', 'project_manager', '${NOW}'),
+      ('om-apm', 'org-1', 'apm', 'assistant_project_manager', '${NOW}'),
+      ('om-pa', 'org-1', 'admin-pa', 'project_administrator', '${NOW}'),
+      ('om-gone', 'org-1', 'gone', 'project_administrator', '${NOW}'),
+      ('om-crew', 'org-1', 'crew', 'field_crew', '${NOW}'),
+      ('om-owner', 'org-1', 'owner', 'client', '${NOW}');
     INSERT INTO project_members (id, project_id, user_id, role, assigned_at) VALUES
       ('m1', 'p1', 'staff', 'project_manager', '${NOW}'),
       ('m2', 'p1', 'apm', 'assistant_project_manager', '${NOW}'),
@@ -138,7 +145,10 @@ describe("lock rules", () => {
     expect(selectionLock("ordered", false)?.kind).toBe("ordered")
     expect(selectionLock("needed", true)?.kind).toBe("replaced")
     expect(staffStatusChoices("installed", PROJECT_SELECTION_STATUSES, false)).toEqual(["installed"])
-    expect(staffStatusChoices("ordered", PROJECT_SELECTION_STATUSES, false)).toEqual(["ordered", "installed"])
+    // Owner decision 2026-11-12: a supplier that can't fill an order makes it Unavailable (staff only).
+    expect(staffStatusChoices("ordered", PROJECT_SELECTION_STATUSES, false)).toEqual(["ordered", "installed", "unavailable"])
+    expect(staffStatusChangeBlocker("ordered", "unavailable", false)).toBeNull()
+    expect(staffStatusChangeBlocker("ordered", "unavailable", true)).toMatch(/replaced/)
     expect(staffStatusChoices("approved", PROJECT_SELECTION_STATUSES, true)).toEqual(["approved"])
     expect(staffStatusChoices("approved", PROJECT_SELECTION_STATUSES, false)).toEqual(PROJECT_SELECTION_STATUSES)
     expect(staffStatusChangeBlocker("ordered", "owner_review", false)).toMatch(/Owner changed selection after purchase/)
@@ -179,6 +189,10 @@ describe("locked selections", () => {
   it("staff can't move an installed selection, edit its product or delete it; ordered goes on to Installed", async () => {
     sqlite.exec("UPDATE project_finish_selections SET status = 'ordered' WHERE id = 'tile'")
     expect(await updateProjectSelectionStatus("p1", "tile", "owner_review", "ordered")).toMatchObject({ success: false })
+    // The supplier can't fill it: staff mark it Unavailable, which unlocks it to be chosen again.
+    expect(await updateProjectSelectionStatus("p1", "tile", "unavailable", "ordered")).toMatchObject({ success: true })
+    expect(statusOf("tile")).toEqual({ status: "unavailable" })
+    sqlite.exec("UPDATE project_finish_selections SET status = 'ordered' WHERE id = 'tile'")
     expect(await updateProjectSelectionStatus("p1", "tile", "installed", "ordered")).toMatchObject({ success: true })
     expect(await updateProjectSelectionStatus("p1", "tile", "approved", "installed")).toMatchObject({ success: false, error: expect.stringMatching(/Replace installed item/) })
     expect(statusOf("tile")).toEqual({ status: "installed" })
