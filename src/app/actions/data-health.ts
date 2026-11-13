@@ -1,8 +1,8 @@
 "use server"
 
 import { actionFailure, type ActionFailure } from "@/lib/action-result"
-import { findingsByValue, isHealthy, reportForOrganization, type SchemaDrift, type StatusFinding } from "@/lib/domain/data-health/rules"
-import { runDataHealthCheck } from "@/lib/domain/data-health/run"
+import { findingsByValue, isHealthy, reportForOrganization, seesDeploymentDrift, type SchemaDrift, type StatusFinding } from "@/lib/domain/data-health/rules"
+import { dataHealthOperatorOrganizationId, onDemandDataHealthCheck } from "@/lib/domain/data-health/run"
 import { activeStaff } from "@/lib/domain/identity/reads"
 import { orgContext } from "@/lib/server/action-context"
 import { isAdminRole, isInternalStaffRole } from "@/lib/user-roles"
@@ -25,13 +25,20 @@ export type DataHealthView = {
   readonly schema: SchemaDrift
 }
 
-/** Runs the read-only drift check now for the admin's company. Sends no notice. */
+/** Runs the read-only drift check for the admin's company (a recent result within a few minutes is reused). Sends no notice. */
 export async function checkDataHealthNow(): Promise<{ readonly success: true; readonly data: DataHealthView } | ActionFailure> {
   const context = await orgContext()
   if (!context.success) return context
-  if (!isAdminRole(context.data.user.role)) return actionFailure("Only administrators can run the data health check.")
+  const { user, db, env, organizationId } = context.data
+  if (!isAdminRole(user.role) || user.organizationType !== "internal") {
+    return actionFailure("Only administrators can run the data health check.")
+  }
   try {
-    const report = reportForOrganization(await runDataHealthCheck(context.data.db), context.data.organizationId)
+    const report = reportForOrganization(
+      await onDemandDataHealthCheck(db, organizationId),
+      organizationId,
+      seesDeploymentDrift(organizationId, dataHealthOperatorOrganizationId(env)),
+    )
     return {
       success: true,
       data: {

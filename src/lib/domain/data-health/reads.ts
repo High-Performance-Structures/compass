@@ -12,7 +12,7 @@ import { projects } from "@/db/schema-projects"
 import { scheduleTasks } from "@/db/schema-schedule"
 import { chunkD1Values } from "@/lib/d1-query"
 import { loadAllRecordStatusLists } from "@/lib/domain/record-statuses/store"
-import { recordStatusExactKey } from "@/lib/domain/record-statuses/rules"
+import { defaultRecordStatusList, recordStatusExactKey, type RecordStatusList } from "@/lib/domain/record-statuses/rules"
 import { RECORD_STATUS_TYPES } from "@/lib/domain/record-statuses/statuses"
 import type { Db } from "@/lib/server/action-context"
 import { cleanText, field, finiteNumber } from "@/lib/shared/guards"
@@ -24,6 +24,11 @@ import { isInternalTable, type StatusFinding, type StatusValueCount } from "./ru
 const PARALLEL_READS = 4
 /** Distinct (company, value) pairs read per status column; far above anything real. */
 const MAX_VALUES_PER_CHECK = 500
+/** The value reported when a column had more distinct values than the check reads. */
+const TRUNCATED_VALUE = `(more than ${MAX_VALUES_PER_CHECK} distinct values; not all were read)`
+
+/** Each company's status lists, loaded once per run. */
+type StatusListCache = Map<string, Promise<readonly RecordStatusList[]>>
 
 /** Runs `read` over `items`, a few at a time (the reads are independent). */
 async function inSmallBatches<T, R>(items: readonly T[], read: (item: T) => Promise<readonly R[]>): Promise<R[]> {
@@ -86,32 +91,43 @@ async function readValueCounts(
     WHERE ${scopeCondition(input.scope)} AND ${outside}
     GROUP BY 1, 2
     LIMIT ${MAX_VALUES_PER_CHECK}`)
-  return valueCounts(rows)
+  const counts = valueCounts(rows)
+  // Never silently short: say so when the cap cut the list.
+  return rows.length >= MAX_VALUES_PER_CHECK ? [...counts, { organizationId: null, value: TRUNCATED_VALUE, rows: 0 }] : counts
 }
 
-/** Values a company's status list doesn't read as one of its statuses (or empty ones). */
+/**
+ * Values a company's status list doesn't read as one of its statuses (or
+ * empty ones). A row with no company (its project is gone) is read against
+ * the built-in list.
+ */
 async function companyStatusDrift(
   db: Db,
   recordType: (typeof RECORD_STATUS_TYPES)[number],
   counts: readonly StatusValueCount[],
+  cache: StatusListCache,
 ): Promise<StatusValueCount[]> {
-  const organizationIds = [...new Set(counts.flatMap((count) => (count.organizationId ? [count.organizationId] : [])))]
-  const lists = new Map(
-    await Promise.all(
-      organizationIds.map(async (organizationId) => {
-        const all = await loadAllRecordStatusLists(db, organizationId)
-        return [organizationId, all.find((list) => list.type === recordType) ?? null] as const
-      }),
-    ),
-  )
+  const listFor = async (organizationId: string | null): Promise<RecordStatusList> => {
+    if (organizationId === null) return defaultRecordStatusList(recordType)
+    let lists = cache.get(organizationId)
+    if (!lists) {
+      lists = loadAllRecordStatusLists(db, organizationId)
+      cache.set(organizationId, lists)
+    }
+    return (await lists).find((list) => list.type === recordType) ?? defaultRecordStatusList(recordType)
+  }
+  const organizationIds = [...new Set(counts.map((count) => count.organizationId))]
+  // Sequential: one company's lists at a time (cached for the run's other checks).
+  const lists = new Map<string | null, RecordStatusList>()
+  for (const organizationId of organizationIds) lists.set(organizationId, await listFor(organizationId))
   return counts.filter((count) => {
-    if (count.value === null || count.organizationId === null) return true
-    const list = lists.get(count.organizationId) ?? null
-    return list === null || recordStatusExactKey(list, count.value) === null
+    if (count.value === null || count.value === TRUNCATED_VALUE) return true
+    const list = lists.get(count.organizationId)
+    return list === undefined || recordStatusExactKey(list, count.value) === null
   })
 }
 
-async function checkFindings(db: Db, check: StatusCheck): Promise<StatusFinding[]> {
+async function checkFindings(db: Db, check: StatusCheck, cache: StatusListCache): Promise<StatusFinding[]> {
   if (check.kind === "not_stored") return []
   const where = { check: check.machine.name, table: getTableName(check.column.table), column: check.column.name }
   if (check.kind === "machine") {
@@ -119,13 +135,14 @@ async function checkFindings(db: Db, check: StatusCheck): Promise<StatusFinding[
     return counts.map((count) => ({ ...where, ...count }))
   }
   const counts = await readValueCounts(db, { column: check.column, owner: check.owner, scope: check.scope })
-  const drift = await companyStatusDrift(db, check.recordType, counts)
+  const drift = await companyStatusDrift(db, check.recordType, counts, cache)
   return drift.map((count) => ({ ...where, ...count }))
 }
 
 /** Every status finding, for every registered check. */
 export async function readStatusFindings(db: Db, checks: readonly StatusCheck[]): Promise<StatusFinding[]> {
-  return inSmallBatches(checks, (check) => checkFindings(db, check))
+  const cache: StatusListCache = new Map()
+  return inSmallBatches(checks, (check) => checkFindings(db, check, cache))
 }
 
 /** The live database's tables and their columns (D1's own tables left out). */

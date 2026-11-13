@@ -18,8 +18,15 @@ function sourceFiles(dir: string): string[] {
 /** Every `export const name = defineMachine(` in src, as [file, export name]. */
 function declaredMachines(): readonly (readonly [string, string])[] {
   return sourceFiles(join(ROOT, "src")).flatMap((path) => {
-    const text = readFileSync(path, "utf8")
-    return [...text.matchAll(/export const (\w+) = defineMachine\(/g)].map((match) => [path, match[1]] as const)
+    // Comments may mention defineMachine(); only code counts.
+    const text = readFileSync(path, "utf8").replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "")
+    const exported = [...text.matchAll(/export const (\w+)(?::[^=]+)?\s*=\s*defineMachine\s*\(/g)].map((match) => [path, match[1]] as const)
+    // The state machine helper itself declares defineMachine; every other call must be an export we can find.
+    const calls = path.endsWith(join("shared", "state-machine.ts")) ? 0 : [...text.matchAll(/\bdefineMachine\s*\(/g)].length
+    if (calls !== exported.length) {
+      throw new Error(`${relative(ROOT, path)}: declare each machine as \`export const name = defineMachine(...)\` so the data health registry test can find it`)
+    }
+    return exported
   })
 }
 

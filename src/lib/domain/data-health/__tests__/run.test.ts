@@ -28,7 +28,9 @@ describe("runDataHealthCheck", () => {
       VALUES ('co1', 'p1', 'CO-1', 'CO', 'Scope', 'staff', 'Staff', 'manual', 'approved', '${now}', '${now}')`)
     // A to-do in a status the company's list doesn't know, and one in a known spelling.
     sqlite.exec(`INSERT INTO project_operations (id, project_id, source_record_type, title, status, created_at, updated_at)
-      VALUES ('t1', 'p1', 'todo', 'A', 'incomplete', '${now}', '${now}'), ('t2', 'p1', 'todo', 'B', 'Completed', '${now}', '${now}')`)
+      VALUES ('t1', 'p1', 'todo', 'A', 'incomplete', '${now}', '${now}'), ('t2', 'p1', 'todo', 'B', 'Completed', '${now}', '${now}'),
+      ('t3', 'gone', 'todo', 'Orphan', 'open', '${now}', '${now}')`)
+    // (t3's project is gone: it is read against the built-in list, where "open" is fine.)
     // A Square webhook event belongs to no company.
     sqlite.exec(`INSERT INTO sage_square_webhook_events (event_id, event_type, square_created_at, status, received_at, updated_at)
       VALUES ('e1', 'payment.updated', '${now}', 'stuck', '${now}', '${now}')`)

@@ -2,6 +2,8 @@
  * The "Data health" notice (issue #1329): tells each company's chosen staff
  * (its administrators unless Settings › Workflows › Data health names other
  * people) what the daily drift check found. Staff-only and in-app.
+ * Deployment-wide drift (the schema, rows with no company) goes only to the
+ * operating company when DATA_HEALTH_OPERATOR_ORGANIZATION_ID names one.
  *
  * No daily spam: a company gets a notice only when the drift it sees
  * changes (which values or schema differences, not their row counts), and
@@ -20,7 +22,7 @@ import { createSystemNotificationEvent } from "@/lib/notifications/events"
 import type { Db } from "@/lib/server/action-context"
 import { isAdminRole } from "@/lib/user-roles"
 
-import { HEALTHY_FINGERPRINT, driftFingerprint, driftNotice, reportForOrganization, shouldNotify, type DataHealthReport } from "./rules"
+import { HEALTHY_FINGERPRINT, driftFingerprint, driftNotice, reportForOrganization, seesDeploymentDrift, shouldNotify, type DataHealthReport } from "./rules"
 
 const SOURCE_TYPE = "data_health"
 const EVENT_TYPE = "data_health.drift"
@@ -31,6 +33,8 @@ export type DataHealthNoticeSummary = {
   readonly notified: number
   readonly unchanged: number
   readonly turnedOff: number
+  /** Companies with drift to report but no active administrator or chosen person. */
+  readonly withoutRecipients: number
 }
 
 type Recipient = { readonly userId: string; readonly email: string }
@@ -64,7 +68,12 @@ async function dismissEarlierNotices(db: Db, organizationIds: readonly string[],
 }
 
 /** Sends each company the notice its part of the report calls for, if any. */
-export async function sendDataHealthNotices(db: Db, report: DataHealthReport, now: Date = new Date()): Promise<DataHealthNoticeSummary> {
+export async function sendDataHealthNotices(
+  db: Db,
+  report: DataHealthReport,
+  operatorOrganizationId: string | null,
+  now: Date = new Date(),
+): Promise<DataHealthNoticeSummary> {
   const staff = await activeInternalCompanyStaff(db)
   const organizationIds = [...new Set(staff.map((person) => person.organizationId))].filter((id) => !isDemoOrg(id))
   const [settings, latest] = await Promise.all([
@@ -74,25 +83,29 @@ export async function sendDataHealthNotices(db: Db, report: DataHealthReport, no
 
   let unchanged = 0
   let turnedOff = 0
+  let withoutRecipients = 0
   const due: { readonly organizationId: string; readonly fingerprint: string; readonly report: DataHealthReport; readonly recipients: readonly Recipient[] }[] = []
   for (const [organizationId, setting] of settings) {
     if (!setting.notices) {
       turnedOff += 1
       continue
     }
-    const companyReport = reportForOrganization(report, organizationId)
+    const companyReport = reportForOrganization(report, organizationId, seesDeploymentDrift(organizationId, operatorOrganizationId))
     const fingerprint = driftFingerprint(companyReport)
     const previous = latest.get(organizationId) ?? null
     if (!shouldNotify(previous, fingerprint)) {
       unchanged += 1
       continue
     }
-    const chosen = new Set(setting.recipientUserIds)
-    const recipients = staff
-      .filter((person) => person.organizationId === organizationId)
-      .filter((person) => (chosen.size > 0 ? chosen.has(person.userId) : isAdminRole(person.role)))
-      .map((person) => ({ userId: person.userId, email: person.email }))
+    const companyStaff = staff.filter((person) => person.organizationId === organizationId)
+    const chosen = companyStaff.filter((person) => setting.recipientUserIds.includes(person.userId))
+    // Nobody chosen, or everyone chosen has left: the administrators.
+    const recipients = (chosen.length > 0 ? chosen : companyStaff.filter((person) => isAdminRole(person.role))).map((person) => ({
+      userId: person.userId,
+      email: person.email,
+    }))
     if (recipients.length > 0) due.push({ organizationId, fingerprint, report: companyReport, recipients })
+    else withoutRecipients += 1
   }
 
   await dismissEarlierNotices(db, due.map((item) => item.organizationId), now.toISOString())
@@ -114,5 +127,5 @@ export async function sendDataHealthNotices(db: Db, report: DataHealthReport, no
       delivery: { inApp: true, email: false, push: false },
     })
   }
-  return { companies: organizationIds.length, notified: due.length, unchanged, turnedOff }
+  return { companies: organizationIds.length, notified: due.length, unchanged, turnedOff, withoutRecipients }
 }

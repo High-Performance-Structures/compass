@@ -5,7 +5,9 @@ import {
   driftFingerprint,
   driftNotice,
   findingsByValue,
+  reportForOrganization,
   schemaDrift,
+  seesDeploymentDrift,
   shouldNotify,
   type DataHealthReport,
   type SchemaDrift,
@@ -88,5 +90,18 @@ describe("driftNotice", () => {
 
   it("merges one value across companies", () => {
     expect(findingsByValue([finding(), finding({ organizationId: "org-b", rows: 2 })])).toEqual([finding({ organizationId: null, rows: 5 })])
+  })
+})
+
+describe("reportForOrganization", () => {
+  it("leaves deployment-wide drift to the operating company when one is named", () => {
+    const schema: SchemaDrift = { ...NO_SCHEMA_DRIFT, extraTables: ["old"] }
+    const full = report([finding(), finding({ organizationId: null, table: "sage_square_webhook_events" }), finding({ organizationId: "org-b" })], schema)
+    expect(seesDeploymentDrift("org-a", null)).toBe(true)
+    expect(seesDeploymentDrift("org-a", "org-b")).toBe(false)
+    const own = reportForOrganization(full, "org-a", false)
+    expect(own.statusFindings).toEqual([finding()])
+    expect(own.schema.extraTables).toEqual([])
+    expect(reportForOrganization(full, "org-a", true).statusFindings).toHaveLength(2)
   })
 })

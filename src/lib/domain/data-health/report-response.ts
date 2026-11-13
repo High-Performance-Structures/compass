@@ -6,7 +6,8 @@
  * Who may ask:
  *   - a caller with `Authorization: Bearer <DATA_HEALTH_REPORT_SECRET>` (the
  *     smoke run) gets the whole deployment's report, merged across companies;
- *   - a signed-in company administrator gets their company's part.
+ *   - a signed-in administrator of an internal company gets their company's
+ *     part (at most one fresh check per company every few minutes).
  */
 import { getDb } from "@/db"
 import { getCloudflareContext } from "@/lib/db"
@@ -15,8 +16,8 @@ import { orgContext } from "@/lib/server/action-context"
 import { envString } from "@/lib/shared/env"
 import { isAdminRole } from "@/lib/user-roles"
 
-import { findingsByValue, isHealthy, reportForOrganization, type DataHealthReport } from "./rules"
-import { runDataHealthCheck } from "./run"
+import { findingsByValue, isHealthy, reportForOrganization, seesDeploymentDrift, type DataHealthReport } from "./rules"
+import { dataHealthOperatorOrganizationId, onDemandDataHealthCheck, runDataHealthCheck } from "./run"
 
 function bearerToken(request: Request): string | null {
   const match = /^Bearer\s+(.+)$/i.exec(request.headers.get("authorization") ?? "")
@@ -59,7 +60,14 @@ async function respond(request: Request): Promise<Response> {
 
   const context = await orgContext()
   if (!context.success) return Response.json({ error: context.error }, { status: 401, headers: NO_STORE })
-  if (!isAdminRole(context.data.user.role)) return Response.json({ error: "Forbidden" }, { status: 403, headers: NO_STORE })
-  const report = reportForOrganization(await runDataHealthCheck(context.data.db), context.data.organizationId)
+  const { user, db, env, organizationId } = context.data
+  if (!isAdminRole(user.role) || user.organizationType !== "internal") {
+    return Response.json({ error: "Forbidden" }, { status: 403, headers: NO_STORE })
+  }
+  const report = reportForOrganization(
+    await onDemandDataHealthCheck(db, organizationId),
+    organizationId,
+    seesDeploymentDrift(organizationId, dataHealthOperatorOrganizationId(env)),
+  )
   return Response.json(reportBody(report, false), { headers: NO_STORE })
 }

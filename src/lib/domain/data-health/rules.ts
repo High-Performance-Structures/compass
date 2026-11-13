@@ -106,16 +106,30 @@ export function isHealthy(report: DataHealthReport): boolean {
   return report.statusFindings.length === 0 && schemaDriftCount(report.schema) === 0
 }
 
+const NO_SCHEMA_DRIFT: SchemaDrift = { extraTables: [], extraColumns: [], missingTables: [], missingColumns: [], known: [] }
+
 /**
- * The part of the report one company sees: its own status findings plus the
- * ones no company owns, and the schema (it is the whole deployment's).
+ * Whether a company sees deployment-wide drift (the schema, and rows that
+ * belong to no company): the operating company named by
+ * DATA_HEALTH_OPERATOR_ORGANIZATION_ID, or every company when none is named
+ * (a deployment run by a single company).
  */
-export function reportForOrganization(report: DataHealthReport, organizationId: string): DataHealthReport {
+export function seesDeploymentDrift(organizationId: string, operatorOrganizationId: string | null): boolean {
+  return operatorOrganizationId === null || operatorOrganizationId === organizationId
+}
+
+/**
+ * The part of the report one company sees: its own status findings, plus
+ * the deployment-wide ones (rows with no company, and the schema) when it
+ * sees those (seesDeploymentDrift).
+ */
+export function reportForOrganization(report: DataHealthReport, organizationId: string, includeDeployment = true): DataHealthReport {
   return {
     ...report,
     statusFindings: report.statusFindings.filter(
-      (finding) => finding.organizationId === null || finding.organizationId === organizationId,
+      (finding) => finding.organizationId === organizationId || (includeDeployment && finding.organizationId === null),
     ),
+    schema: includeDeployment ? report.schema : NO_SCHEMA_DRIFT,
   }
 }
 
