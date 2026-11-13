@@ -5,6 +5,7 @@ import {
   activePublishedScheduleSnapshot,
   hasScheduleDraftChanges,
   parsePublishedScheduleSnapshot,
+  reaskedSincePublication,
 } from "@/lib/schedule/publications"
 
 describe("schedule publications", () => {
@@ -162,5 +163,21 @@ describe("schedule publications", () => {
     expect(published && responseOnly && hasScheduleDraftChanges(published, responseOnly)).toBe(false)
     expect(published && visibilityChanged && hasScheduleDraftChanges(published, visibilityChanged)).toBe(true)
     expect(published && dateChanged && hasScheduleDraftChanges(published, dateChanged)).toBe(true)
+  })
+})
+
+describe("reaskedSincePublication", () => {
+  const rows = [
+    { scheduleTaskId: "moved", assignedAt: "2026-11-12T10:00:00.000Z", respondedAt: null },
+    { scheduleTaskId: "answered", assignedAt: "2026-11-12T10:00:00.000Z", respondedAt: "2026-11-12T11:00:00.000Z" },
+    { scheduleTaskId: "old", assignedAt: "2026-11-01T10:00:00.000Z", respondedAt: null },
+  ]
+
+  it("finds items asked again after the last publication that still wait for an answer", () => {
+    expect([...reaskedSincePublication(rows, "2026-11-10T00:00:00.000Z")]).toEqual(["moved"])
+  })
+
+  it("is empty for a first publication, which tells everyone anyway", () => {
+    expect(reaskedSincePublication(rows, null).size).toBe(0)
   })
 })

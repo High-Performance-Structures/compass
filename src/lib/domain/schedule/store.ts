@@ -36,18 +36,20 @@ import { namedAssignee } from "@/lib/schedule/assignees"
 import { confirmationMachine, confirmationStatusAfter, type ConfirmationAnswerEvent } from "./confirmation-machine"
 import { assigneeResponseMachine, assigneeResponseParts, type AssigneeAnswerEvent } from "./assignee-response-machine"
 import { loadProjectScheduleRows } from "./queries"
-import { criticalPathChanges, dependencyData, taskWithStatus, type DateUpdates } from "./rules"
+import { criticalPathChanges, dependencyData, taskWithStatus } from "./rules"
+import { DATE_MOVE_GROUP, dateMovesLimitError, type DateMove, type DateMoveRules, type DateMoves } from "./date-moves"
 import type { ScheduleAssigneeResponseStatus } from "./statuses"
 
 type TaskInsert = typeof scheduleTasks.$inferInsert
 
 /** Assignee answers once staff move an item or re-ask (the machine's reset). */
 const RESET = assigneeResponseParts("reset")
-type TaskUpdate = Partial<TaskInsert>
+/** Dates are written only by the date moves (below). */
+type TaskUpdate = Omit<Partial<TaskInsert>, "startDate" | "workdays" | "endDateCalculated">
 
 /*
  * D1 caps the statements in one batch. These groups bound the number of
- * schedule items per batch (each item needs two or three statements); it is
+ * schedule items per batch (each item needs up to three statements); it is
  * a statement limit, not the bound-parameter limit chunkD1Values covers.
  */
 const ITEMS_PER_BATCH = 40
@@ -60,11 +62,8 @@ function itemGroups<T>(values: readonly T[]): T[][] {
   return groups
 }
 
-async function runD1Batch(
-  database: D1Database,
-  statements: D1PreparedStatement[],
-  failureMessage: string
-): Promise<void> {
+async function runD1Batch(database: D1Database, statements: D1PreparedStatement[], failureMessage: string): Promise<void> {
+  if (statements.length === 0) return
   const results = await database.batch(statements)
   if (results.some((result) => !result.success)) throw new Error(failureMessage)
 }
@@ -165,6 +164,77 @@ export async function rejectConfirmationProposal(db: Db, taskId: string, now: st
   return result.meta.changes > 0
 }
 
+/**
+ * Staff accept the proposal they reviewed (submitted at `seenSubmittedAt`):
+ * it lands only while that proposal still waits, so an answer the assignee
+ * gave meanwhile stands. `event` is accept_proposal (asked again on the new
+ * dates) or stop (no answer needed any more). The item's other edits and the
+ * new dates are written after this lands. False when the assignee answered.
+ */
+export async function acceptConfirmationProposal(
+  db: Db,
+  taskId: string,
+  seenSubmittedAt: string,
+  event: "accept_proposal" | "stop",
+  now: string
+): Promise<boolean> {
+  const rule = confirmationMachine.transitions.accept_proposal
+  const result = await db
+    .update(scheduleTasks)
+    .set({
+      confirmationStatus: confirmationStatusAfter(event),
+      confirmationRequestedAt: event === "stop" ? null : now,
+      confirmationRespondedAt: null,
+      reminderSentAt: null,
+      proposedStartDate: null,
+      proposedWorkdays: null,
+      proposalNote: null,
+      proposalSubmittedAt: null,
+      updatedAt: now,
+    })
+    .where(
+      and(
+        eq(scheduleTasks.id, taskId),
+        inArray(scheduleTasks.confirmationStatus, [...rule.from]),
+        eq(scheduleTasks.proposalSubmittedAt, seenSubmittedAt)
+      )
+    )
+    .run()
+  return result.meta.changes > 0
+}
+
+/**
+ * Puts back the proposal acceptConfirmationProposal took when the item edit
+ * it belonged to failed: only while nothing else touched the item since (its
+ * updated_at is still the save's `now`, no answer came in) and the same
+ * account is assigned. updated_at stays `now`.
+ */
+export async function restoreConfirmationProposal(
+  db: Db,
+  before: Pick<
+    typeof scheduleTasks.$inferSelect,
+    | "id" | "assignedUserId" | "confirmationRequestedAt" | "confirmationRespondedAt" | "reminderSentAt"
+    | "proposedStartDate" | "proposedWorkdays" | "proposalNote" | "proposalSubmittedAt"
+  >,
+  now: string
+): Promise<boolean> {
+  const { id, assignedUserId, ...proposal } = before
+  const result = await db
+    .update(scheduleTasks)
+    .set({ ...proposal, confirmationStatus: confirmationMachine.transitions.propose.to, updatedAt: now })
+    .where(
+      and(
+        eq(scheduleTasks.id, id),
+        eq(scheduleTasks.updatedAt, now),
+        isNull(scheduleTasks.proposalSubmittedAt),
+        isNull(scheduleTasks.confirmationRespondedAt),
+        sameText(scheduleTasks.assignedUserId, assignedUserId)
+      )
+    )
+    .run()
+  return result.meta.changes > 0
+}
+
 function sameText(column: SQLiteColumn, value: string | null): SQL | undefined {
   return value === null ? isNull(column) : eq(column, value)
 }
@@ -243,110 +313,94 @@ export async function assignProjectTasks(
   }
 }
 
-/** Moves tasks to new dates by id (no linked to-do or assignee changes). */
-export async function updateTaskDates(db: Db, updates: DateUpdates, now: string): Promise<void> {
-  for (const group of itemGroups([...updates])) {
-    const [first, ...rest] = group.map(
-      ([taskId, dates]): BatchItem<"sqlite"> =>
-        db
-          .update(scheduleTasks)
-          .set({ startDate: dates.startDate, endDateCalculated: dates.endDateCalculated, updatedAt: now })
-          .where(eq(scheduleTasks.id, taskId))
+// ---------------------------------------------------------------------------
+// Date moves (date-moves.ts): every start date, workdays and end date write
+// ---------------------------------------------------------------------------
+
+/** ?1 for a group: its items' new dates as JSON keyed by item id. */
+function datesJson(group: readonly (readonly [string, DateMove])[]): string {
+  return JSON.stringify(Object.fromEntries(group.map(([id, dates]) => [id, { start: dates.startDate, end: dates.endDateCalculated, workdays: dates.workdays ?? null }])))
+}
+
+/**
+ * A group's new dates in one statement. The single-assignee re-ask rides in
+ * the same UPDATE: SQLite evaluates SET expressions against the row as it
+ * was, so the CASE compares the old dates and status with the new ones.
+ */
+function dateWriteStatement(database: D1Database, projectId: string, json: string, now: string, rules: DateMoveRules): D1PreparedStatement {
+  const rule = confirmationMachine.transitions.dates_moved
+  const next = (field: string): string => `json_extract(?1, '$."' || id || '".${field}')`
+  const reask = `(?4 = 1 AND confirmation_required = 1 AND assigned_user_id IS NOT NULL
+    AND confirmation_status IN (${rule.from.map((_, index) => `?${index + 5}`).join(", ")})
+    AND (start_date IS NOT ${next("start")} OR end_date_calculated IS NOT ${next("end")} OR workdays IS NOT COALESCE(${next("workdays")}, workdays)))`
+  const cleared = ["confirmation_responded_at", "reminder_sent_at", "proposed_start_date", "proposed_workdays", "proposal_note", "proposal_submitted_at"]
+  return database
+    .prepare(
+      `UPDATE schedule_tasks
+       SET confirmation_status = CASE WHEN ${reask} THEN ?${rule.from.length + 5} ELSE confirmation_status END,
+           confirmation_requested_at = CASE WHEN ${reask} THEN ?2 ELSE confirmation_requested_at END,
+           ${cleared.map((column) => `${column} = CASE WHEN ${reask} THEN NULL ELSE ${column} END`).join(", ")},
+           start_date = ${next("start")}, end_date_calculated = ${next("end")}, workdays = COALESCE(${next("workdays")}, workdays), updated_at = ?2
+       WHERE project_id = ?3 AND id IN (SELECT key FROM json_each(?1))`
     )
-    if (!first) continue
-    await db.batch([first, ...rest])
-  }
+    .bind(json, now, projectId, rules.reaskOnDateMove ? 1 : 0, ...rule.from, rule.to)
 }
 
-/** The linked to-do shift and the task date change for each moved task. */
-function dateUpdateStatements(
-  database: D1Database,
-  projectId: string,
-  updates: DateUpdates,
-  updatedAt: string
-): D1PreparedStatement[] {
-  return [...updates].flatMap(([taskId, dates]) => [
-    // The to-do statement runs first so its offsets use the previous dates.
-    linkedTodoDateUpdateStatement(database, {
-      scheduleTaskId: taskId,
-      nextStartDate: dates.startDate,
-      nextEndDate: dates.endDateCalculated,
-      updatedAt,
-    }),
-    database
-      .prepare(
-        `UPDATE schedule_tasks
-         SET start_date = ?, end_date_calculated = ?, updated_at = ?
-         WHERE id = ? AND project_id = ?`
-      )
-      .bind(dates.startDate, dates.endDateCalculated, updatedAt, taskId, projectId),
-  ])
+/** After a group's dates land: multi-assignee rows answered for other dates than the item now has are asked again. */
+function assigneeResetStatement(database: D1Database, projectId: string, json: string, now: string): D1PreparedStatement {
+  const current = (column: string): string => `(SELECT task.${column} FROM schedule_tasks AS task WHERE task.id = schedule_task_assignees.schedule_task_id)`
+  return database
+    .prepare(
+      `UPDATE schedule_task_assignees
+       SET source_start_date = ${current("start_date")}, source_workdays = ${current("workdays")}, source_end_date = ${current("end_date_calculated")},
+           response_status = ?, date_response_status = ?, duration_response_status = ?,
+           proposed_start_date = NULL, proposed_workdays = NULL, proposed_end_date = NULL,
+           response_message = NULL, responded_at = NULL, responded_by_user_id = NULL, response_source = NULL,
+           assigned_at = ?, updated_at = ?
+       WHERE schedule_task_id IN (SELECT key FROM json_each(?))
+         AND EXISTS (SELECT 1 FROM schedule_tasks AS task WHERE task.id = schedule_task_assignees.schedule_task_id AND task.project_id = ?
+           AND (task.start_date IS NOT source_start_date OR task.workdays IS NOT source_workdays OR task.end_date_calculated IS NOT source_end_date))`
+    )
+    .bind(RESET.responseStatus, RESET.dateResponseStatus, RESET.durationResponseStatus, now, now, json, projectId)
 }
 
-/**
- * Runs `leading` (a dependency or workday-exception change) and the date
- * moves it causes, with their linked to-dos, in one atomic batch.
- */
-export async function runWithDateUpdates(
-  database: D1Database,
-  leading: D1PreparedStatement,
-  projectId: string,
-  updates: DateUpdates,
-  updatedAt: string,
-  failureMessage: string
-): Promise<void> {
-  await runD1Batch(
-    database,
-    [leading, ...dateUpdateStatements(database, projectId, updates, updatedAt)],
-    failureMessage
-  )
+/** One group, three statements: linked to-dos first (offsets from the previous dates), then the dates, then the multi-assignee re-ask. */
+function dateMoveStatements(database: D1Database, projectId: string, group: readonly (readonly [string, DateMove])[], now: string, rules: DateMoveRules, linkedTodos: "shift" | "leave"): D1PreparedStatement[] {
+  if (group.length === 0) return []
+  const json = datesJson(group)
+  const todoMoves = group.map(([scheduleTaskId, dates]) => ({ scheduleTaskId, nextStartDate: dates.startDate, nextEndDate: dates.endDateCalculated }))
+  return [
+    ...(linkedTodos === "shift" ? [linkedTodoDateUpdateStatement(database, projectId, todoMoves, now)] : []),
+    dateWriteStatement(database, projectId, json, now, rules),
+    ...(rules.reaskOnDateMove ? [assigneeResetStatement(database, projectId, json, now)] : []),
+  ]
 }
 
-/**
- * Persists propagated dates. Each moved task also shifts its linked to-dos
- * and resets its assignees' responses, which were given against the old
- * dates.
- */
-export async function persistScheduleDateUpdates(
-  database: D1Database,
-  projectId: string,
-  updates: DateUpdates,
-  updatedAt: string
-): Promise<void> {
-  for (const group of itemGroups([...updates])) {
-    const statements = group.flatMap(([taskId, dates]) => [
-      ...dateUpdateStatements(database, projectId, new Map([[taskId, dates]]), updatedAt),
-      database
-        .prepare(
-          `UPDATE schedule_task_assignees
-           SET source_start_date = ?,
-               source_end_date = ?,
-               response_status = ?,
-               date_response_status = ?,
-               duration_response_status = ?,
-               proposed_start_date = NULL,
-               proposed_workdays = NULL,
-               proposed_end_date = NULL,
-               response_message = NULL,
-               responded_at = NULL,
-               responded_by_user_id = NULL,
-               response_source = NULL,
-               assigned_at = ?,
-               updated_at = ?
-           WHERE schedule_task_id = ?`
-        )
-        .bind(
-          dates.startDate,
-          dates.endDateCalculated,
-          RESET.responseStatus,
-          RESET.dateResponseStatus,
-          RESET.durationResponseStatus,
-          updatedAt,
-          updatedAt,
-          taskId
-        ),
-    ])
-    await runD1Batch(database, statements, "Schedule date update batch failed")
+function moveGroups(moves: DateMoves): (readonly [string, DateMove])[][] {
+  const entries = [...moves]
+  const groups: (readonly [string, DateMove])[][] = []
+  for (let index = 0; index < entries.length; index += DATE_MOVE_GROUP) groups.push(entries.slice(index, index + DATE_MOVE_GROUP))
+  return groups
+}
+
+function assertDateMovesFit(moves: DateMoves, leading: number): void {
+  const error = dateMovesLimitError(moves, leading)
+  if (error) throw new Error(error)
+}
+
+/** Runs `leading` (a dependency or calendar change) atomically with the first group of the moves it causes; later groups follow. */
+export async function runWithDateUpdates(database: D1Database, leading: D1PreparedStatement, projectId: string, updates: DateMoves, updatedAt: string, failureMessage: string, rules: DateMoveRules): Promise<void> {
+  assertDateMovesFit(updates, 1)
+  const [first = [], ...rest] = moveGroups(updates)
+  await runD1Batch(database, [leading, ...dateMoveStatements(database, projectId, first, updatedAt, rules, "shift")], failureMessage)
+  for (const group of rest) await runD1Batch(database, dateMoveStatements(database, projectId, group, updatedAt, rules, "shift"), failureMessage)
+}
+
+/** Persists moves in order, a group at a time (put the edited item first). The agent API leaves linked to-dos ("leave"). */
+export async function persistScheduleDateUpdates(database: D1Database, projectId: string, updates: DateMoves, updatedAt: string, rules: DateMoveRules, linkedTodos: "shift" | "leave" = "shift"): Promise<void> {
+  assertDateMovesFit(updates, 0)
+  for (const group of moveGroups(updates)) {
+    await runD1Batch(database, dateMoveStatements(database, projectId, group, updatedAt, rules, linkedTodos), "Schedule date update batch failed")
   }
 }
 

@@ -18,6 +18,8 @@ export const dailyLogFollowUpSettingsSchema = z.object({
   workedMovesToInProgress: z.boolean(),
   /** The crew can mark a to-do Completed on a log; it moves to the company's done status when the log saves. */
   todosCanComplete: z.boolean(),
+  /** A Completed sign-off finishes a Blocked to-do too, recording the block cleared; off, it stays Blocked. */
+  completeClearsBlock: z.boolean(),
   /** Blocked to-dos ask "still blocked?" on the next log. */
   carryBlocked: z.boolean(),
   /** To-dos carry a cost code. */
@@ -41,6 +43,7 @@ const DEFAULT_DAILY_LOG_FOLLOW_UP_SETTINGS: DailyLogFollowUpSettings = {
   todoTypes: [...DAILY_LOG_TODO_TYPES],
   workedMovesToInProgress: true,
   todosCanComplete: true,
+  completeClearsBlock: true,
   carryBlocked: true,
   todoCostCodes: true,
   tickAddsLine: true,

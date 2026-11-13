@@ -26,6 +26,8 @@ function eventLabel(event: ProjectTodoHistoryItem, statuses: RecordStatusList): 
       return `Completed on a daily log · ${label(event.fromStatus ?? "open")} → ${label(event.toStatus ?? "complete")}`
     case "status":
       if (event.toStatus === "complete") return "Marked finished"
+      // Archiving: the company's name for it (Settings › Statuses).
+      if (event.toStatus === "archived") return label(event.toStatus)
       return `Status · ${label(event.fromStatus ?? "open")} → ${label(event.toStatus ?? "open")}`
     default:
       return event.kind

@@ -36,19 +36,22 @@ import {
   schedulePaths,
   taskEditValues,
   taskWithProgress,
-  type TaskDates,
 } from "@/lib/domain/schedule/rules"
 import {
+  acceptConfirmationProposal,
   clearTaskAssigneesQuery,
+  persistScheduleDateUpdates,
+  restoreConfirmationProposal,
   deleteTask as deleteTaskRow,
   insertTask,
-  persistScheduleDateUpdates,
   recalcCriticalPath,
   replaceTaskPeopleQueries,
   resetTaskAssigneesQuery,
   taskInsertQuery,
   taskUpdateQuery,
 } from "@/lib/domain/schedule/store"
+import { scheduleDateMoveRules } from "@/lib/domain/schedule/date-move-rules"
+import { dateMovesLimitError, type DateMoves } from "@/lib/domain/schedule/date-moves"
 import { updateProjects } from "@/lib/domain/project/store"
 import { loadScheduleTemplateItemImport } from "@/lib/domain/schedule/template-items"
 import { operationInsertQuery } from "@/lib/domain/operations/store"
@@ -67,6 +70,8 @@ import { resolveScheduleShiftReason, summarizeScheduleShift } from "@/lib/schedu
 import type { ScheduleData, ScopedScheduleData, TaskStatus } from "@/lib/schedule/types"
 import { selectTemplateTodos } from "@/lib/templates/template-todo-selection"
 import { isInternalStaffRole } from "@/lib/user-roles"
+
+const SUB_ANSWERED = "The sub just answered. Review their answer and try again."
 
 function emptyScopedSchedule(): ScopedScheduleData {
   return { projects: [], tasks: [], dependencies: [], exceptions: [] }
@@ -464,10 +469,12 @@ export async function updateTask(
     /** Department code or "outside" doing the work; null clears it. */
     doneBy?: string | null
     acceptChangeProposal?: boolean
+    /** When accepting: the submittedAt of the proposal staff reviewed. */
+    expectedProposalSubmittedAt?: string
     shiftReason?: string
     notes?: string | null
   }
-): Promise<{ success: boolean; error?: string }> {
+): Promise<{ success: boolean; error?: string; subAnswered?: true }> {
   try {
     const context = await scheduleWriteContext()
     if (!context.success) return context
@@ -518,10 +525,18 @@ export async function updateTask(
         data.confirmationRequired !== task.confirmationRequired)
     const scheduleDatesChanged =
       startDate !== task.startDate || workdays !== task.workdays
-    const acceptChangeProposal =
-      data.acceptChangeProposal === true &&
-      task.proposedStartDate !== null &&
-      task.proposedWorkdays !== null
+    // Accepting lands only on the proposal staff reviewed, still waiting:
+    // an answer the assignee gave meanwhile stands and nothing is saved.
+    const acceptChangeProposal = data.acceptChangeProposal === true
+    if (
+      acceptChangeProposal &&
+      (!data.expectedProposalSubmittedAt ||
+        task.proposalSubmittedAt !== data.expectedProposalSubmittedAt ||
+        task.proposedStartDate === null ||
+        task.proposedWorkdays === null)
+    ) {
+      return { success: false, error: SUB_ANSWERED, subAnswered: true }
+    }
     const now = new Date().toISOString()
     const confirmation = newScheduleConfirmationState({
       required: confirmationRequired,
@@ -542,18 +557,18 @@ export async function updateTask(
       endDateCalculated: endDate
     }
     const allTasks = schedule.tasks.map((t) => (t.id === taskId ? updatedTask : t))
-    const dateUpdates = new Map<string, TaskDates>()
-    if (scheduleDatesChanged) {
-      for (const [updatedTaskId, dates] of propagateFrom(
-        taskId,
-        allTasks,
-        schedule.dependencies,
-        exceptions
-      )) {
-        dateUpdates.set(updatedTaskId, dates)
-      }
-      dateUpdates.set(taskId, { startDate, endDateCalculated: endDate })
-    }
+    // The edited item moves first, on its own, then the items that follow it.
+    const ownMove: DateMoves = scheduleDatesChanged
+      ? new Map([[taskId, { startDate, endDateCalculated: endDate, workdays }]])
+      : new Map()
+    const successorMoves: DateMoves = scheduleDatesChanged
+      ? propagateFrom(taskId, allTasks, schedule.dependencies, exceptions)
+      : new Map()
+    const dateUpdates: DateMoves = new Map([...ownMove, ...successorMoves])
+    // The edited item's own move is a separate group of three statements.
+    const tooMany = dateMovesLimitError(successorMoves, ownMove.size > 0 ? 3 : 0)
+    if (tooMany) return { success: false, error: tooMany }
+    const dateRules = await scheduleDateMoveRules(db, orgId)
     const shiftSummary = summarizeScheduleShift(schedule.tasks, dateUpdates)
     const shiftReasonResult = resolveScheduleShiftReason(
       shiftSummary.affectedItemCount > 0 &&
@@ -572,6 +587,20 @@ export async function updateTask(
       return { success: false, error: times.error }
     }
 
+    if (
+      acceptChangeProposal &&
+      data.expectedProposalSubmittedAt &&
+      !(await acceptConfirmationProposal(
+        db,
+        taskId,
+        data.expectedProposalSubmittedAt,
+        confirmationRequired ? "accept_proposal" : "stop",
+        now
+      ))
+    ) {
+      return { success: false, error: SUB_ANSWERED, subAnswered: true }
+    }
+
     // Leave dates untouched until the paired D1 batch below. Linked to-dos
     // must calculate their offsets from the previous schedule dates.
     const taskUpdate = taskUpdateQuery(
@@ -579,7 +608,6 @@ export async function updateTask(
       taskId,
       taskEditValues({
         data: editData,
-        workdays,
         status: progress.status,
         percentComplete: progress.percentComplete,
         times: timesChanged && times.success ? times : null,
@@ -590,21 +618,45 @@ export async function updateTask(
         now
       })
     )
-    if (assignmentChanged) {
-      // Legacy scalar assignment changes invalidate normalized assignees. The
-      // child rows carry independent response authority and cannot be left
-      // attached to a newly assigned scalar task.
-      await db.batch([taskUpdate, clearTaskAssigneesQuery(db, taskId), ...peopleQueries])
-    } else if (scheduleDatesChanged || resetConfirmation) {
-      await db.batch([
-        taskUpdate,
-        resetTaskAssigneesQuery(db, taskId, { startDate, workdays, endDate }, now),
-        ...peopleQueries,
-      ])
-    } else {
-      await db.batch([taskUpdate, ...peopleQueries])
+    let itemSaved = false
+    try {
+      if (assignmentChanged) {
+        // Legacy scalar assignment changes invalidate normalized assignees. The
+        // child rows carry independent response authority and cannot be left
+        // attached to a newly assigned scalar task.
+        await db.batch([taskUpdate, clearTaskAssigneesQuery(db, taskId), ...peopleQueries])
+      } else if (resetConfirmation || (scheduleDatesChanged && dateRules.reaskOnDateMove)) {
+        await db.batch([
+          taskUpdate,
+          resetTaskAssigneesQuery(db, taskId, { startDate, workdays, endDate }, now),
+          ...peopleQueries,
+        ])
+      } else {
+        await db.batch([taskUpdate, ...peopleQueries])
+      }
+      itemSaved = true
+      await persistScheduleDateUpdates(env.DB, task.projectId, ownMove, now, dateRules)
+    } catch (error) {
+      // The accepted proposal goes back when the item's edit didn't land;
+      // a failed restore never hides the original error.
+      if (acceptChangeProposal && !itemSaved) {
+        await restoreConfirmationProposal(db, task, now).catch((restoreError: unknown) =>
+          console.error("Unable to restore the schedule proposal:", restoreError)
+        )
+      }
+      throw error
     }
-    await persistScheduleDateUpdates(env.DB, task.projectId, dateUpdates, now)
+    // The items after it move in later batches. If one fails, the item and
+    // the groups before it are saved: the shift and Activity still record
+    // that, noting the partial move.
+    let successorsMoved = true
+    try {
+      await persistScheduleDateUpdates(env.DB, task.projectId, successorMoves, now, dateRules)
+    } catch (error) {
+      successorsMoved = false
+      console.error("Unable to move every schedule item after the edited one:", error)
+    }
+    const partialNote = successorsMoved ? "" : " Some items after it could not be moved."
     if (shiftReasonResult?.success) {
       await recordScheduleShift({
         db,
@@ -628,7 +680,8 @@ export async function updateTask(
       action: "schedule.item_updated",
       entityType: "schedule_item",
       entityId: taskId,
-      summary: `Updated schedule item “${data.title ?? task.title}”.`
+      summary: `Updated schedule item “${data.title ?? task.title}”.${partialNote}`,
+      ...(successorsMoved ? {} : { metadata: { partialMove: true } }),
     })
 
     if (acceptChangeProposal) {
@@ -655,6 +708,9 @@ export async function updateTask(
 
     if (scheduleDatesChanged) await recalcCriticalPath(db, task.projectId)
     for (const path of schedulePaths(task.projectId)) revalidatePath(path)
+    if (!successorsMoved) {
+      return { success: false, error: `Saved “${data.title ?? task.title}”, but some items after it could not be moved. Make the change again to move them.` }
+    }
     return { success: true }
   } catch (error) {
     console.error("Failed to update task:", error)

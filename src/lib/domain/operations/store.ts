@@ -319,47 +319,36 @@ export function templateBidPackageInsertStatement(
 }
 
 /**
- * Moves a schedule item's linked to-dos by the same number of days as the
- * item. Run before the schedule_tasks update so offsets come from the item's
- * previous dates.
+ * Moves the linked to-dos of several schedule items by the same number of
+ * days as each item, in one statement. ?1 is a JSON object keyed by schedule
+ * item id with its new [start, end] dates; ?3 the project (uses its index).
+ * Run before the schedule_tasks
+ * update so offsets come from the items' previous dates.
  */
 export const LINKED_TODO_DATE_UPDATE_SQL = `UPDATE project_operations
 SET start_date = CASE
   WHEN start_date IS NULL OR julianday(start_date) IS NULL THEN start_date
   ELSE date(
-    ?,
-    printf(
-      '%+d days',
-      CAST(
-        julianday(start_date) - julianday((
-          SELECT start_date
-          FROM schedule_tasks
-          WHERE id = ?
-        )) AS INTEGER
-      )
-    )
+    json_extract(?1, '$."' || source_record_id || '"[0]'),
+    printf('%+d days', CAST(julianday(start_date) - julianday((
+      SELECT start_date FROM schedule_tasks WHERE id = project_operations.source_record_id
+    )) AS INTEGER))
   )
 END,
 due_date = CASE
   WHEN due_date IS NULL OR julianday(due_date) IS NULL THEN due_date
   ELSE date(
-    ?,
-    printf(
-      '%+d days',
-      CAST(
-        julianday(due_date) - julianday((
-          SELECT end_date_calculated
-          FROM schedule_tasks
-          WHERE id = ?
-        )) AS INTEGER
-      )
-    )
+    json_extract(?1, '$."' || source_record_id || '"[1]'),
+    printf('%+d days', CAST(julianday(due_date) - julianday((
+      SELECT end_date_calculated FROM schedule_tasks WHERE id = project_operations.source_record_id
+    )) AS INTEGER))
   )
 END,
-updated_at = ?
-WHERE source_record_id = ?
+updated_at = ?2
+WHERE project_id = ?3
+  AND source_record_id IN (SELECT key FROM json_each(?1))
   AND project_id = (
-    SELECT project_id FROM schedule_tasks WHERE id = ?
+    SELECT project_id FROM schedule_tasks WHERE id = project_operations.source_record_id
   )
   AND source_record_type IN (
     'staff_task',
@@ -372,24 +361,12 @@ WHERE source_record_id = ?
 
 export function linkedTodoDateUpdateStatement(
   database: D1Database,
-  input: {
-    readonly scheduleTaskId: string
-    readonly nextStartDate: string
-    readonly nextEndDate: string
-    readonly updatedAt: string
-  },
+  projectId: string,
+  moves: readonly { readonly scheduleTaskId: string; readonly nextStartDate: string; readonly nextEndDate: string }[],
+  updatedAt: string,
 ): D1PreparedStatement {
-  return database
-    .prepare(LINKED_TODO_DATE_UPDATE_SQL)
-    .bind(
-      input.nextStartDate,
-      input.scheduleTaskId,
-      input.nextEndDate,
-      input.scheduleTaskId,
-      input.updatedAt,
-      input.scheduleTaskId,
-      input.scheduleTaskId,
-    )
+  const dates = Object.fromEntries(moves.map((move) => [move.scheduleTaskId, [move.nextStartDate, move.nextEndDate]]))
+  return database.prepare(LINKED_TODO_DATE_UPDATE_SQL).bind(JSON.stringify(dates), updatedAt, projectId)
 }
 
 type SquareReceivableOperation = {
@@ -553,9 +530,9 @@ export function purchaseOrderLinesUpdateQuery(
 // To-do statuses and history (project_todo_events)
 // ---------------------------------------------------------------------------
 // Staff set any company status; a daily log's moves follow todo-machines.ts.
-// All are compare-and-set, with the change's history rows inserted first in
-// the same batch under the same condition: a to-do changed meanwhile gets
-// neither the new status nor history for it.
+// All are compare-and-set, with the change's history rows (archive and
+// restore included) inserted first in the same batch under the same
+// condition: a to-do changed meanwhile gets neither the new status nor history.
 
 /** Batch guarded writes: concurrent edits are left untouched and reported. */
 export async function changeTodosReturning(
@@ -566,6 +543,7 @@ export async function changeTodosReturning(
   updatedAt: string,
   actor: { readonly organizationId: string; readonly userId: string },
 ): Promise<string[]> {
+  const toStatus = mode === "archive" ? "archived" : "open"
   const queries = rows.flatMap((row) => {
     const where = and(
       eq(projectOperations.projectId, projectId),
@@ -576,13 +554,11 @@ export async function changeTodosReturning(
     )
     const change = mode === "delete"
       ? db.delete(projectOperations).where(where).returning({ id: projectOperations.id })
-      : db.update(projectOperations)
-          .set({ status: mode === "archive" ? "archived" : "open", updatedAt })
-          .where(where).returning({ id: projectOperations.id })
-    if (mode !== "restore") return [change]
+      : db.update(projectOperations).set({ status: toStatus, updatedAt }).where(where).returning({ id: projectOperations.id })
+    if (mode === "delete") return [change]
     const history = guardedTodoEventInsert(db, {
       organizationId: actor.organizationId, projectId, todoId: row.id, kind: "status", dailyLogId: null,
-      fromStatus: row.status, toStatus: "open", note: null, actorId: actor.userId, createdAt: updatedAt,
+      fromStatus: row.status, toStatus, note: null, actorId: actor.userId, createdAt: updatedAt,
     }, where).returning({ id: projectTodoEvents.todoId })
     return [history, change]
   })

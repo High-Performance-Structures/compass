@@ -23,6 +23,8 @@ export interface ChangeProposalState {
   readonly rejectProposedDates: () => Promise<void>
   readonly sendingReminder: boolean
   readonly handleSendReminder: () => Promise<void>
+  /** The sub answered while staff reviewed: drop the accept and load their latest answer. */
+  readonly subAnswered: () => void
 }
 
 /**
@@ -42,6 +44,7 @@ export function useChangeProposal(
   const [proposalActionPending, setProposalActionPending] = useState(false)
   const [acceptProposalOnSave, setAcceptProposalOnSave] = useState(false)
   const [sendingReminder, setSendingReminder] = useState(false)
+  const [reloads, setReloads] = useState(0)
 
   useEffect(() => {
     let cancelled = false
@@ -69,7 +72,7 @@ export function useChangeProposal(
     return () => {
       cancelled = true
     }
-  }, [editingTask, open])
+  }, [editingTask, open, reloads])
 
   function useProposedDates(): void {
     if (!changeProposal) return
@@ -113,6 +116,12 @@ export function useChangeProposal(
     router.refresh()
   }
 
+  function subAnswered(): void {
+    setAcceptProposalOnSave(false)
+    setReloads((count) => count + 1)
+    router.refresh()
+  }
+
   return {
     changeProposal,
     proposalLoading,
@@ -123,5 +132,6 @@ export function useChangeProposal(
     rejectProposedDates,
     sendingReminder,
     handleSendReminder,
+    subAnswered,
   }
 }

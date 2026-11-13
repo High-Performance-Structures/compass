@@ -29,9 +29,11 @@ import {
   insertTask,
   recalcCriticalPath,
   setTaskAssignedTo,
+  persistScheduleDateUpdates,
   updateTask,
-  updateTaskDates,
 } from "@/lib/domain/schedule/store"
+import { dateMovesLimitError, type DateMove } from "@/lib/domain/schedule/date-moves"
+import { scheduleDateMoveRules } from "@/lib/domain/schedule/date-move-rules"
 import { calculateEndDate } from "@/lib/schedule/business-days"
 import { normalizeScheduleProgress } from "@/lib/schedule/progress"
 import type { TaskStatus } from "@/lib/schedule/types"
@@ -42,7 +44,8 @@ import type { Db } from "@/lib/server/action-context"
  * The agent's schedule API. It authenticates with the agent token, then
  * calls the same schedule domain module (store, queries, rules) as the
  * server actions. It keeps its own narrower behavior: it does not shift
- * linked to-dos or reset assignee responses when dates move.
+ * linked to-dos when dates move. Moved items ask their assignees again, as
+ * every date move does (persistScheduleDateUpdates).
  */
 
 type ScheduleAction =
@@ -143,7 +146,7 @@ async function organizationTask(db: Db, orgId: string, taskId: string) {
   return task
 }
 
-async function updateTaskAction(db: Db, orgId: string, body: Body): Promise<Response> {
+async function updateTaskAction(db: Db, database: D1Database, orgId: string, body: Body): Promise<Response> {
   const taskId = body.taskId as string
   if (!taskId) return json({ error: "taskId required" }, 400)
   const task = await organizationTask(db, orgId, taskId)
@@ -170,12 +173,24 @@ async function updateTaskAction(db: Db, orgId: string, body: Body): Promise<Resp
     const startDate = (fields.startDate as string) ?? task.startDate
     const workdays = (fields.workdays as number) ?? task.workdays
     const endDate = calculateEndDate(startDate, workdays, exceptions)
+    // The moves, decided first so a change too large to apply is refused
+    // whole. The item itself moves only when its dates really change.
+    const { tasks, dependencies } = await loadProjectScheduleRows(db, task.projectId)
+    const updatedTask = { ...task, status: progress.status, percentComplete: progress.percentComplete, startDate, workdays, endDateCalculated: endDate }
+    const datesChanged = startDate !== task.startDate || workdays !== task.workdays || endDate !== task.endDateCalculated
+    const updates = new Map<string, DateMove>(datesChanged ? [[taskId, { startDate, endDateCalculated: endDate, workdays }]] : [])
+    const successors = propagateFrom(
+      taskId,
+      tasks.map((row) => (row.id === taskId ? updatedTask : taskWithStatus(row))),
+      dependencies.map(dependencyData),
+      exceptions
+    )
+    for (const [id, dates] of successors) updates.set(id, dates)
+    const tooMany = dateMovesLimitError(updates)
+    if (tooMany) return json({ error: tooMany }, 400)
 
     await updateTask(db, taskId, {
       ...(fields.title ? { title: fields.title as string } : {}),
-      startDate,
-      workdays,
-      endDateCalculated: endDate,
       ...(fields.phase ? { phase: fields.phase as string } : {}),
       status: progress.status,
       ...(fields.isMilestone !== undefined ? { isMilestone: fields.isMilestone as boolean } : {}),
@@ -188,23 +203,7 @@ async function updateTaskAction(db: Db, orgId: string, body: Body): Promise<Resp
       await setTaskAssignedTo(db, taskId, assignedTo || null, new Date().toISOString())
     }
 
-    // propagate date changes
-    const { tasks, dependencies } = await loadProjectScheduleRows(db, task.projectId)
-    const updatedTask = {
-      ...task,
-      status: progress.status,
-      percentComplete: progress.percentComplete,
-      startDate,
-      workdays,
-      endDateCalculated: endDate,
-    }
-    const updates = propagateFrom(
-      taskId,
-      tasks.map((row) => (row.id === taskId ? updatedTask : taskWithStatus(row))),
-      dependencies.map(dependencyData),
-      exceptions
-    )
-    await updateTaskDates(db, updates, new Date().toISOString())
+    await persistScheduleDateUpdates(database, task.projectId, updates, new Date().toISOString(), await scheduleDateMoveRules(db, orgId), "leave")
   }
 
   if (status) {
@@ -236,7 +235,7 @@ async function deleteTaskAction(db: Db, orgId: string, body: Body): Promise<Resp
   return json({ success: true, message: "Task deleted" })
 }
 
-async function createDependency(db: Db, orgId: string, body: Body): Promise<Response> {
+async function createDependency(db: Db, database: D1Database, orgId: string, body: Body): Promise<Response> {
   const projectId = body.projectId as string
   const predecessorId = body.predecessorId as string
   const successorId = body.successorId as string
@@ -260,12 +259,12 @@ async function createDependency(db: Db, orgId: string, body: Body): Promise<Resp
   if (invalid) return json({ error: invalid }, 400)
 
   const dependency = { id: crypto.randomUUID(), predecessorId, successorId, type, lagDays }
-  await insertDependency(db, dependency)
-
   const exceptions = await loadProjectExceptions(db, projectId)
-  const { tasks } = await projectSchedule(db, projectId)
-  const updates = propagateFrom(predecessorId, tasks, [...existingDeps, dependency], exceptions)
-  await updateTaskDates(db, updates, new Date().toISOString())
+  const updates = propagateFrom(predecessorId, projectTasks, [...existingDeps, dependency], exceptions)
+  const tooMany = dateMovesLimitError(updates)
+  if (tooMany) return json({ error: tooMany }, 400)
+  await insertDependency(db, dependency)
+  await persistScheduleDateUpdates(database, projectId, updates, new Date().toISOString(), await scheduleDateMoveRules(db, orgId), "leave")
 
   await recalcCriticalPath(db, projectId)
   revalidateSchedule(projectId)
@@ -321,11 +320,11 @@ export async function POST(req: Request): Promise<Response> {
       case "createTask":
         return auth.isDemoUser ? DEMO_READ_ONLY() : await createTask(db, auth.orgId, body)
       case "updateTask":
-        return auth.isDemoUser ? DEMO_READ_ONLY() : await updateTaskAction(db, auth.orgId, body)
+        return auth.isDemoUser ? DEMO_READ_ONLY() : await updateTaskAction(db, env.DB, auth.orgId, body)
       case "deleteTask":
         return auth.isDemoUser ? DEMO_READ_ONLY() : await deleteTaskAction(db, auth.orgId, body)
       case "createDependency":
-        return auth.isDemoUser ? DEMO_READ_ONLY() : await createDependency(db, auth.orgId, body)
+        return auth.isDemoUser ? DEMO_READ_ONLY() : await createDependency(db, env.DB, auth.orgId, body)
       case "deleteDependency":
         return auth.isDemoUser ? DEMO_READ_ONLY() : await deleteDependencyAction(db, auth.orgId, body)
       default:

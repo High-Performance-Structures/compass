@@ -10,6 +10,8 @@
  *   blocked ──unblock──▶ in_progress     the log says the block is cleared
  *   open | in_progress | blocked ──complete──▶ complete
  *                                        the log's explicit Completed sign-off
+ *                                        (a blocked to-do is unblocked first, so
+ *                                        its history records the block cleared)
  *
  * Done stays a person's decision: "complete" is only reached through the
  * sign-off someone ticks on the log, never from plain "worked on". Archived,

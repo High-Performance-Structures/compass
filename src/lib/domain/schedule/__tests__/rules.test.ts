@@ -231,7 +231,6 @@ describe("scheduleSummary", () => {
 
 describe("taskEditValues", () => {
   const base = {
-    workdays: 3,
     status: "PENDING" as const,
     percentComplete: 0,
     times: null,
@@ -246,7 +245,6 @@ describe("taskEditValues", () => {
     expect(taskEditValues({ ...base, data: { title: "Frame walls", notes: "  " } })).toEqual({
       title: "Frame walls",
       notes: null,
-      workdays: 3,
       status: "PENDING",
       percentComplete: 0,
       updatedAt: base.now,
@@ -275,6 +273,18 @@ describe("taskEditValues", () => {
       proposedStartDate: null,
       proposalSubmittedAt: null,
     })
+  })
+
+  it("lets a reassignment in the same save decide the confirmation over an accepted proposal", () => {
+    expect(
+      taskEditValues({
+        ...base,
+        data: { assignedTo: "New Sub" },
+        confirmationRequired: true,
+        acceptChangeProposal: true,
+        restartConfirmation: { status: "unavailable", requestedAt: base.now },
+      })
+    ).toMatchObject({ confirmationStatus: "unavailable", proposalSubmittedAt: null })
   })
 
   it("turns an accepted proposal into a draft awaiting confirmation", () => {
