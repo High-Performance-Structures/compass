@@ -241,6 +241,33 @@ export async function deleteSelectionRoom(db: Db, projectId: string, roomName: s
   return { ok: true }
 }
 
+/**
+ * Statements that number `roomNames` 1..n (top to bottom) and mark them
+ * staff-edited, so a workbook re-import keeps the order. A room with no row
+ * of its own gets one.
+ */
+async function orderStatements(
+  db: Db,
+  projectId: string,
+  roomNames: readonly string[],
+  rooms: readonly { readonly roomName: string; readonly roomType: string | null }[],
+  now: string,
+): Promise<Statement[]> {
+  const rows = await db
+    .select({ roomName: projectFinishSelectionRooms.roomName })
+    .from(projectFinishSelectionRooms)
+    .where(and(eq(projectFinishSelectionRooms.projectId, projectId), eq(projectFinishSelectionRooms.active, true)))
+  const withRow = new Set(rows.map((row) => row.roomName))
+  return roomNames.map((roomName, index) => {
+    const sortOrder = index + 1
+    if (withRow.has(roomName)) {
+      return updateSelectionRoomsStatement(db, roomRowsWhere(projectId, roomName), { sortOrder, staffEditedAt: now, updatedAt: now })
+    }
+    const room = rooms.find((candidate) => candidate.roomName === roomName)
+    return newRoomRow(db, { projectId, roomName, roomType: room?.roomType ?? null, sortOrder, now })
+  })
+}
+
 /** Puts the job's rooms in `roomNames` order (every room, top to bottom). */
 export async function reorderSelectionRooms(db: Db, projectId: string, roomNames: readonly string[]): Promise<RoomEditResult> {
   const rooms = await currentRooms(db, projectId)
@@ -249,20 +276,7 @@ export async function reorderSelectionRooms(db: Db, projectId: string, roomNames
     new Set(roomNames).size === roomNames.length &&
     roomNames.every((name) => rooms.some((room) => room.roomName === name))
   if (!sameRooms) return { ok: false, error: "The rooms changed since this page loaded. Refresh the page and try again." }
-  const rows = await db
-    .select({ roomName: projectFinishSelectionRooms.roomName })
-    .from(projectFinishSelectionRooms)
-    .where(and(eq(projectFinishSelectionRooms.projectId, projectId), eq(projectFinishSelectionRooms.active, true)))
-  const withRow = new Set(rows.map((row) => row.roomName))
-  const now = new Date().toISOString()
-  const statements = roomNames.map((roomName, index) => {
-    const sortOrder = index + 1
-    if (withRow.has(roomName)) {
-      return updateSelectionRoomsStatement(db, roomRowsWhere(projectId, roomName), { sortOrder, staffEditedAt: now, updatedAt: now })
-    }
-    const room = rooms.find((candidate) => candidate.roomName === roomName)
-    return newRoomRow(db, { projectId, roomName, roomType: room?.roomType ?? null, sortOrder, now })
-  })
+  const statements = await orderStatements(db, projectId, roomNames, rooms, new Date().toISOString())
   await runBatch(db, statements)
   return { ok: true }
 }
@@ -410,16 +424,12 @@ export async function duplicateSelectionRoom(
   if (copy.statements.length > MAX_COPY_STATEMENTS) {
     return { ok: false, error: `${input.fromName} is too large to duplicate in one step. Add a new room and duplicate its selections in smaller groups instead.` }
   }
-  // The copy sits right after the original: later rooms move down one place.
-  await runBatch(db, [
-    updateSelectionRoomsStatement(
-      db,
-      and(eq(projectFinishSelectionRooms.projectId, projectId), eq(projectFinishSelectionRooms.active, true), sql`${projectFinishSelectionRooms.sortOrder} > ${source.sortOrder}`),
-      { sortOrder: sql`${projectFinishSelectionRooms.sortOrder} + 1` },
-    ),
-    newRoomRow(db, { projectId, roomName, roomType, sortOrder: source.sortOrder + 1, now }),
-    ...copy.statements,
-  ])
+  // The copy sits right after the original: the rooms are numbered again with it in place.
+  const names = rooms.map((room) => room.roomName)
+  names.splice(names.indexOf(source.roomName) + 1, 0, roomName)
+  // The copy has no row yet, so orderStatements adds it at its place.
+  const order = await orderStatements(db, projectId, names, [...rooms, { roomName, roomType }], now)
+  await runBatch(db, [...order, ...copy.statements])
   return { ok: true, copied: copy.copied }
 }
 

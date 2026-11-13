@@ -199,9 +199,14 @@ describe("duplicate", () => {
     expect(rows("SELECT choice_id FROM project_selection_choice_dependents WHERE selection_id = ?", drainCopy?.id)).toEqual([{ choice_id: "c-black" }])
   })
 
-  it("puts a duplicated room right after the original, whatever its name", async () => {
+  it("puts a duplicated room right after the original, whatever its name or order ties", async () => {
     await duplicateSelectionRoom(db, "p1", { fromName: "Kitchen", roomName: "A Kitchenette", roomType: null })
     expect(await roomOrder()).toEqual(["Kitchen", "A Kitchenette", "Bath 1"])
+    // Template rooms all share one order number.
+    sqlite.exec("UPDATE project_finish_selection_rooms SET sort_order = 1000")
+    expect(await roomOrder()).toEqual(["A Kitchenette", "Bath 1", "Kitchen"])
+    await duplicateSelectionRoom(db, "p1", { fromName: "A Kitchenette", roomName: "Zed Room", roomType: null })
+    expect(await roomOrder()).toEqual(["A Kitchenette", "Zed Room", "Bath 1", "Kitchen"])
   })
 })
 
