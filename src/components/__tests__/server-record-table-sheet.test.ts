@@ -48,7 +48,7 @@ describe("a server-paged sheet with a company sort", () => {
       useServerRecordTable({ columns, getRowId: (row) => row.id, load, initialPage: page, initialQuery, sheetId: "customers" })
       return React.createElement("div")
     }
-    await act(async () => root.render(React.createElement(ListSheetProvider, { preferences, savePersonal: vi.fn() }, React.createElement(Sheet))))
+    await act(async () => root.render(React.createElement(ListSheetProvider, { preferences, savePersonal: vi.fn(), children: React.createElement(Sheet) })))
     return load
   }
 

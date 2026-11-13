@@ -11,14 +11,14 @@ import type { CompositionContent } from "@/lib/correspondence/types"
 const message: CompositionContent = { kind: "message", subject: "Permit", body: "Draft text", recipientUserIds: ["staff-a"], attachmentIds: [], requestId: null }
 describe("private project Drafts and Sent", () => {
   let database: CorrespondenceTestDatabase
-  beforeEach(() => { database = openCorrespondenceTestDatabase(); addContactDirectorySchema(database.sqlite); mocks.context.mockImplementation(async (projectId: string) => context(database, "owner-a", projectId)) })
+  beforeEach(() => { database = openCorrespondenceTestDatabase(); addContactDirectorySchema(database.sqlite); mocks.context.mockImplementation(async (projectId: Parameters<typeof context>[2]) => context(database, "owner-a", projectId)) })
   afterEach(() => { database.close(); vi.clearAllMocks() })
   it("stores multiple drafts, preserves Bcc and separates author and project", async () => {
     expect((await saveProjectComposition("project-a", "draft-1", 0, message)).success).toBe(true)
     expect((await saveProjectComposition("project-a", "draft-2", 0, { ...message, subject: "Second" })).success).toBe(true)
     expect((await getProjectDrafts("project-a"))).toMatchObject({ success: true, data: [expect.anything(), expect.anything()] })
     expect(await getProjectDrafts("project-b")).toEqual({ success: true, data: [] })
-    mocks.context.mockImplementation(async (id: string) => context(database, "staff-a", id))
+    mocks.context.mockImplementation(async (id: Parameters<typeof context>[2]) => context(database, "staff-a", id))
     expect(await getProjectDrafts("project-a")).toEqual({ success: true, data: [] })
     expect((await saveProjectComposition("project-a", "draft-1", 1, { ...message, body: "Other user" })).success).toBe(false)
     const email: CompositionContent = { kind: "email", subject: "Private", body: "Email draft", to: [], cc: [], bcc: ["hidden@example.test"], attachmentIds: [], requestId: null }

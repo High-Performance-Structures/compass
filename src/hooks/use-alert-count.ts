@@ -9,13 +9,32 @@ const STALE_MESSAGE_REFRESH_MS = 5 * 60 * 1000
 // on every page.
 const ALERT_COUNT_NAVIGATION_MIN_MS = 60 * 1000
 
+// Two badges for one count (an owner's desktop and phone menus) share one request.
+const inFlight = new Map<string, Promise<unknown>>()
+
+function fetchCount(endpoint: string): Promise<unknown> {
+  const pending = inFlight.get(endpoint)
+  if (pending) return pending
+  const request = fetch(endpoint, { cache: "no-store" })
+    .then((response) => (response.ok ? response.json() : null))
+    .finally(() => inFlight.delete(endpoint))
+  inFlight.set(endpoint, request)
+  return request
+}
+
 /**
  * A red-alert count for a sidebar link (stale messages, overdue follow-ups)
  * from a GET endpoint. Refreshes on page changes (at most once a minute) and
  * every few minutes while the tab is visible, so the red link appears
  * without a reload; a plain GET never blocks navigation.
  */
-export function useAlertCount(endpoint: string, enabled: boolean, pathname: string): number {
+export function useAlertCount(
+  endpoint: string,
+  enabled: boolean,
+  pathname: string,
+  /** Shorter navigation throttle for counts the user clears on the page itself (unread messages). */
+  navigationMinMs: number = ALERT_COUNT_NAVIGATION_MIN_MS,
+): number {
   const [count, setCount] = React.useState(0)
   const lastLoadedAt = React.useRef(0)
   // Bumped when the endpoint or enabled state changes so a late answer is dropped.
@@ -23,8 +42,7 @@ export function useAlertCount(endpoint: string, enabled: boolean, pathname: stri
   const load = React.useCallback((): void => {
     const request = generation.current
     lastLoadedAt.current = Date.now()
-    void fetch(endpoint, { cache: "no-store" })
-      .then((response) => (response.ok ? response.json() : null))
+    void fetchCount(endpoint)
       .then((body: unknown) => {
         const next = typeof body === "object" && body !== null ? Reflect.get(body, "count") : null
         if (request === generation.current && typeof next === "number") setCount(next)
@@ -32,14 +50,13 @@ export function useAlertCount(endpoint: string, enabled: boolean, pathname: stri
       .catch(() => undefined)
   }, [endpoint])
   const loadIfStale = React.useCallback((): void => {
-    if (Date.now() - lastLoadedAt.current >= ALERT_COUNT_NAVIGATION_MIN_MS) load()
-  }, [load])
+    if (Date.now() - lastLoadedAt.current >= navigationMinMs) load()
+  }, [load, navigationMinMs])
   React.useEffect(() => {
     generation.current += 1
-    if (!enabled) {
-      setCount(0)
-      lastLoadedAt.current = 0
-    }
+    // A new endpoint (another job) starts from nothing, so the last job's count never shows.
+    setCount(0)
+    lastLoadedAt.current = 0
     return () => {
       generation.current += 1
     }

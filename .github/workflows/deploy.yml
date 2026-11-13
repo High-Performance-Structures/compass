@@ -60,3 +60,5 @@ jobs:
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: 8716137c706ea3d5c209b330084fa9e2
+          # The production build peaks near Node's default ~4 GB heap; give it room.
+          NODE_OPTIONS: --max-old-space-size=6144

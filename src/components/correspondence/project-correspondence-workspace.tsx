@@ -17,7 +17,7 @@ import {
 import { getProjectDrafts, saveProjectComposition, setProjectDraftDiscarded } from "@/app/actions/correspondence-saved-drafts"
 import type { CompositionDraftHandle } from "./use-composition-draft"
 import { Button } from "@/components/ui/button"
-import { CorrespondenceInboxPanel } from "./correspondence-inbox-panel"
+import { CorrespondenceInboxPanel, InboxSplitDivider } from "./correspondence-inbox-panel"
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog"
 import { cn } from "@/lib/utils"
 import {
@@ -887,10 +887,10 @@ export function ProjectCorrespondenceWorkspace({ projectId, initialInbox, initia
   const composingNew = compose?.kind === "new"
   const composingEmail = compose?.kind === "email"
   return (
-    // Wide screens (xl and up): the sheet on the left, the open conversation beside it.
-    // Narrower screens: the conversation opens below the sheet and the page scrolls.
+    // Wide screens (xl+): sheet left, conversation right, draggable divider; narrower: stacked.
     <section className="flex min-h-0 flex-1 flex-col overflow-y-auto bg-background xl:flex-row xl:overflow-hidden" aria-label="Project messages">
-      <CorrespondenceInboxPanel className="shrink-0 xl:w-[45%] xl:max-w-[56rem] xl:overflow-y-auto xl:border-r" projectId={projectId} inbox={inbox} activeId={activeId} filter={filter} query={query} hits={searchHits} hasMore={searchHasMore} busy={isSending || isNavigating || hasPendingSend} onQuery={setQuery} drafts={drafts} onOpenDraft={openDraft} onFilter={(next) => { void (async () => { if (blockComposerTransition("changing folders") || !await flushComposerBeforeNavigation()) return; setFilter(next); if (next === "drafts") void refreshDrafts() })() }} onNewMessage={startNewMessage} onNewEmail={startProjectEmail} onOpen={openConversation} onRefresh={refreshInbox} />
+      <CorrespondenceInboxPanel className="shrink-0 xl:w-[var(--split-list,45%)] xl:overflow-y-auto" projectId={projectId} inbox={inbox} activeId={activeId} filter={filter} query={query} hits={searchHits} hasMore={searchHasMore} busy={isSending || isNavigating || hasPendingSend} onQuery={setQuery} drafts={drafts} onOpenDraft={openDraft} onFilter={(next) => { void (async () => { if (blockComposerTransition("changing folders") || !await flushComposerBeforeNavigation()) return; setFilter(next); if (next === "drafts") void refreshDrafts() })() }} onNewMessage={startNewMessage} onNewEmail={startProjectEmail} onOpen={openConversation} onRefresh={refreshInbox} />
+      <InboxSplitDivider />
       <main ref={detailPaneRef} className={cn("min-w-0 shrink-0 scroll-mt-2 border-t xl:min-h-0 xl:flex-1 xl:shrink xl:border-t-0", !composingEmail && !composingNew && activeSummary !== null ? "h-[85svh] min-h-[28rem] overflow-hidden xl:h-auto xl:min-h-0" : "xl:overflow-y-auto", !mobileDetail && "hidden xl:block")}>
         {composingEmail ? (
           <ProjectEmailComposer key={emailKey} ref={emailHandle} initialDraft={emailDraft} prefill={emailDraft ? null : emailPrefill} onDraftSaved={() => { void refreshDrafts() }} projectId={projectId} onBack={() => { void backFromEmailCompose() }} onBusyChange={(busy) => { sendInProgress.current = busy; setIsSending(busy) }} onSent={projectEmailSent} />

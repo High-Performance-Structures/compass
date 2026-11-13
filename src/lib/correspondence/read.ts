@@ -170,3 +170,24 @@ export async function readCorrespondence(ctx: CorrespondenceContext, conversatio
   const replyAudience = privacy?.blindUserIds.has(ctx.user.id) ? "private_staff" : privacy && ctx.workspace === "staff" ? "shared_email" : null
   return { replyAudience, conversation: summary, participantVersion: conversation.participantVersion, messages, hasEarlier: rows.length > 50, draft: draft ? { body: draft.body, version: draft.version, attachments: await draftAttachments(ctx, draft.attachmentIds) } : null }
 }
+
+/**
+ * How many of the viewer's job email conversations have an unread message, in
+ * one query (the Messages badge polls this). Unread follows listCorrespondence:
+ * a message to the viewer, not by them, not retracted, not opened, not a
+ * baseline row; archived conversations don't count.
+ */
+export async function countUnreadCorrespondence(ctx: CorrespondenceContext): Promise<number> {
+  const row = await ctx.db.select({ count: sql<number>`count(DISTINCT ${correspondence.id})` }).from(correspondence)
+    .innerJoin(correspondenceMessages, eq(correspondenceMessages.conversationId, correspondence.id))
+    .innerJoin(correspondenceRecipients, and(eq(correspondenceRecipients.messageId, correspondenceMessages.id), eq(correspondenceRecipients.userId, ctx.user.id)))
+    .leftJoin(correspondenceState, and(eq(correspondenceState.conversationId, correspondence.id), eq(correspondenceState.userId, ctx.user.id)))
+    .where(and(
+      eq(correspondence.projectId, ctx.projectId), eq(correspondence.organizationId, ctx.organizationId),
+      sql`EXISTS (SELECT 1 FROM correspondence_participants p WHERE p.conversation_id=${correspondence.id} AND p.user_id=${ctx.user.id} AND p.revoked_at IS NULL)`,
+      or(isNull(correspondenceMessages.authorUserId), ne(correspondenceMessages.authorUserId, ctx.user.id)),
+      isNull(correspondenceMessages.retractedAt), eq(correspondenceRecipients.baseline, false), isNull(correspondenceRecipients.openedAt),
+      sql`coalesce(${correspondenceState.archived}, 0) = 0`,
+    )).get()
+  return row?.count ?? 0
+}

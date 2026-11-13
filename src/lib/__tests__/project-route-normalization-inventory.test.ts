@@ -1,6 +1,6 @@
-import { readdirSync, readFileSync } from "node:fs"
-import { join } from "node:path"
 import { describe, expect, it } from "vitest"
+
+import { readSource, sourceFiles } from "@/test/source-tree"
 
 const routeRoots = [
   "src/app/dashboard/projects/[id]",
@@ -11,20 +11,16 @@ const routeRoots = [
 ] as const
 
 function routeFiles(root: string): readonly string[] {
-  return readdirSync(root, { withFileTypes: true }).flatMap((entry) => {
-    const path = join(root, entry.name)
-    if (entry.isDirectory()) return routeFiles(path)
-    return /(?:page|route|layout)\.(?:tsx|ts)$/.test(entry.name) ? [path] : []
-  })
+  return sourceFiles(root, { include: /(?:page|route|layout)\.(?:tsx|ts)$/ })
 }
 
 describe("project route ID normalization inventory", () => {
   it("normalizes every project page, API, print, and preview boundary", () => {
     const files = routeRoots.flatMap(routeFiles).sort()
-    expect(files).toHaveLength(101)
+    expect(files).toHaveLength(102)
 
     const missing = files.filter((file) => {
-      const source = readFileSync(file, "utf8")
+      const source = readSource(file)
       return (
         !source.includes('from "@/lib/project-route-id"') ||
         !(source.includes("decodeProjectRouteId(") ||

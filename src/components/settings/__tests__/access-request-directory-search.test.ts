@@ -49,7 +49,7 @@ describe("access request directory search", () => {
     mocks.directory.mockImplementation(async (_id: string, search: string) =>
       ({ success: true, data: search ? [option("Rockstar Marble & Granite")] : [option("Aardvark Plumbing")] }))
     container = document.createElement("div")
-    document.body.append(container)
+    document.body.appendChild(container)
     const root = createRoot(container)
     await act(async () => {
       root.render(React.createElement(AccessRequestReviewDialog, { request, onOpenChange: vi.fn(), onDecided: vi.fn() }))

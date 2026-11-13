@@ -36,6 +36,7 @@
 		"cap:ios": "cap open ios",
 		"cap:android": "cap open android",
 		"desktop:compile": "tsc -p electron/tsconfig.json",
+		"typecheck": "tsc --noEmit -p .",
 		"desktop:dev": "bun run desktop:compile && sh -c 'bun dev & next_pid=$!; wait-on http://localhost:3000; ELECTRON_DEV_SERVER_URL=http://localhost:3000 electron dist-electron/electron/main.js; status=$?; kill $next_pid 2>/dev/null; exit $status'",
 		"desktop:build": "bun run build && bun run desktop:compile",
 		"desktop:pack": "bun run desktop:build && electron-builder --dir",

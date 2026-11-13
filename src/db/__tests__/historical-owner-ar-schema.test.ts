@@ -2,7 +2,13 @@ import { readFileSync } from "node:fs"
 import { resolve } from "node:path"
 import { describe, expect, it, vi } from "vitest"
 
-const actionState = vi.hoisted(() => ({ database: null, inserted: [], updates: [], selectResults: [] }))
+type ActionState = {
+  database: unknown
+  inserted: Readonly<Record<string, unknown>>[]
+  updates: Readonly<Record<string, unknown>>[]
+  selectResults: { readonly projectId: string }[][]
+}
+const actionState = vi.hoisted((): ActionState => ({ database: null, inserted: [], updates: [], selectResults: [] }))
 
 vi.mock("@/lib/server/action-context", () => ({
   orgContext: vi.fn(async () => ({
@@ -135,7 +141,7 @@ const creditInsert = (database: TestDatabase, id = "credit-a", organizationId = 
 describe("historical owner AR schema", () => {
   it("strips forged owner AR identity fields at financial action boundaries", async () => {
     actionState.database = {
-      insert: () => ({ values: async (value: unknown) => { actionState.inserted.push(value) } }),
+      insert: () => ({ values: async (value: Readonly<Record<string, unknown>>) => { actionState.inserted.push(value) } }),
       select: () => ({
         from: () => {
           const where = () => ({ limit: async () => actionState.selectResults.shift() ?? [{ projectId: "project-a" }] })
@@ -143,7 +149,7 @@ describe("historical owner AR schema", () => {
         },
       }),
       update: () => ({
-        set: (value: unknown) => ({ where: async () => { actionState.updates.push(value) } }),
+        set: (value: Readonly<Record<string, unknown>>) => ({ where: async () => { actionState.updates.push(value) } }),
       }),
     }
     const invoiceActions = await import("@/app/actions/invoices")

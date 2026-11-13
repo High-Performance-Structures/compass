@@ -1,7 +1,6 @@
 import Database from "better-sqlite3"
-import { readdirSync, readFileSync } from "node:fs"
-import { join } from "node:path"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
+import { applyMigrations } from "@/test/migrated-database"
 
 import { d1Over } from "@/lib/domain/__tests__/sqlite-d1"
 
@@ -40,10 +39,7 @@ let migratedImage: Buffer | null = null
 function migrated(): InstanceType<typeof Database> {
   if (!migratedImage) {
     const image = new Database(":memory:")
-    const dir = join(process.cwd(), "drizzle")
-    for (const file of readdirSync(dir).filter((name) => /^\d{4}_.*\.sql$/.test(name)).sort()) {
-      image.exec(readFileSync(join(dir, file), "utf8").replaceAll("--> statement-breakpoint", ""))
-    }
+    applyMigrations((sql) => image.exec(sql))
     migratedImage = image.serialize()
     image.close()
   }

@@ -13,6 +13,7 @@ import {
 import { updateCorrespondenceInbox } from "@/app/actions/correspondence-inbox"
 import { RecordSearchInput, RecordTable, useRecordTable } from "@/components/record-table"
 import { Button } from "@/components/ui/button"
+import { SplitDivider } from "@/components/ui/split-divider"
 import { cn } from "@/lib/utils"
 import type {
   CorrespondenceInbox,
@@ -42,6 +43,11 @@ type BulkAction = "read" | "archive" | "restore" | "follow-up" | "clear-follow-u
  * A project's Messages inbox: filter buttons, search (including message
  * text) and the conversations on the shared sortable sheet ("messages.job").
  */
+/** The draggable line between this sheet and the open conversation, side by side on wide screens. */
+export function InboxSplitDivider() {
+  return <SplitDivider storageKey="compass.messages.email-split" defaultPercent={45} label="Resize the message list" className="hidden xl:block" />
+}
+
 export function CorrespondenceInboxPanel(props: {
   readonly drafts: readonly ProjectDraft[]
   readonly onOpenDraft: (draft: ProjectDraft) => Promise<void>

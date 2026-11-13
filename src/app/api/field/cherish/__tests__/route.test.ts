@@ -114,7 +114,7 @@ describe("GET /api/field/cherish", () => {
       ],
     })
 
-    const body = await (await GET()).json()
+    const body = await (await GET()).json<{ readonly items: readonly { readonly id: string; readonly isNew: boolean }[] }>()
 
     expect(
       body.items.map((item: { id: string; isNew: boolean }) => [item.id, item.isNew]),

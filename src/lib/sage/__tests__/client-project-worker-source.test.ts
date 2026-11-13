@@ -63,16 +63,49 @@ describe("Sage client/project worker source boundary", () => {
 
   it("refuses to add a job when Sage already has one with the same project number", () => {
     const guard = source.slice(
-      source.indexOf("private static void RefuseJobWithSameProjectNumber"),
-      source.indexOf("private static SageRecord FindJobByNumber")
+      source.indexOf("private static SageRecord RefuseJobWithSameProjectNumber"),
+      source.indexOf("private static bool AddedRecently")
     )
     expect(guard).toContain('@"^([A-Za-z]+-[0-9]+)(?:-|$)"')
     expect(guard).toContain('prefix + "-%"')
     expect(guard).toContain("link that job in Compass instead of adding another. No write was attempted.")
     // The guard runs before any client or job add is submitted.
-    expect(source.indexOf("RefuseJobWithSameProjectNumber(request.payload.job)")).toBeLessThan(
+    expect(source.indexOf("RefuseJobWithSameProjectNumber(request.payload.job, clientRecord, retry)")).toBeLessThan(
       source.indexOf('RunStage("submit Sage client add"')
     )
+  })
+
+  it("on a retried claim, takes its own earlier add instead of failing", () => {
+    // A poll over 10 minutes is claimed again. The first attempt's add is in
+    // Sage; refusing it would show "failed" although Sage has the record.
+    // Only Compass's automatic reclaim of a stale claim counts; a staff
+    // "Send to Sage" resend keeps every refusal.
+    expect(source).toContain("bool retry = request.reclaimed;")
+    expect(source).not.toContain("request.attempt > 1")
+    const route = readFileSync(
+      new URL("../../../app/api/integrations/sage/client-project-writes/requests/route.ts", import.meta.url),
+      "utf8"
+    )
+    expect(route).toContain('reclaimed: candidate.status === "running",')
+    const guard = source.slice(
+      source.indexOf("private static SageRecord RefuseJobWithSameProjectNumber"),
+      source.indexOf("private static bool AddedRecently")
+    )
+    expect(guard).toContain("if (retry && client != null && numbers.Count == 1 && clients[0] == client.Number)")
+    expect(guard).toContain('AddedRecently("actrec", own.Id)')
+    expect(guard.indexOf("return own;")).toBeLessThan(guard.indexOf("link that job in Compass instead"))
+    const findClient = source.slice(
+      source.indexOf("private static SageRecord FindClient(ClientPayload client, bool retry)"),
+      source.indexOf("private static SageRecord FindClientAfterAdd")
+    )
+    expect(findClient).toContain('retry && AddedRecently("reccln", nameMatch.Id)')
+    expect(findClient).toContain("matches the requested name but has no email")
+    const recent = source.slice(
+      source.indexOf("private static bool AddedRecently"),
+      source.indexOf("private static SageRecord FindJobByNumber")
+    )
+    expect(recent).toContain("SELECT COL_LENGTH(@table, 'insdte')")
+    expect(recent).toContain("DateTime.Now.AddDays(-2)")
   })
 
   it("only adds a contact line to the matched client, and skips a person already listed", () => {

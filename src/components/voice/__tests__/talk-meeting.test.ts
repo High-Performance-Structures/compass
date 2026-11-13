@@ -140,13 +140,23 @@ vi.mock("@cloudflare/realtimekit-virtual-background", () => ({
   }
 }))
 
+// \`window\`'s timers also carry Node's overloads (which return a Timeout);
+// spy on the DOM signature the component uses, on the same window object.
+type DomTimers = {
+  setTimeout: (handler: TimerHandler, timeout?: number) => number
+  setInterval: (handler: TimerHandler, timeout?: number) => number
+}
+function domTimers(): DomTimers {
+  return window
+}
+
 describe("Talk joining workflow", () => {
   let root: Root
   let container: HTMLDivElement
   beforeEach(() => {
     vi.clearAllMocks()
     vi.spyOn(window, "close").mockImplementation(() => {})
-    vi.spyOn(window, "setTimeout").mockImplementation(() => 0)
+    vi.spyOn(domTimers(), "setTimeout").mockImplementation(() => 0)
     mocks.self.permissions.canProduceAudio = "ALLOWED"
     mocks.self.permissions.kickParticipant = false
     mocks.meeting.participants.pip.isActive = false
@@ -224,7 +234,7 @@ describe("Talk joining workflow", () => {
       createMediaStreamSource = createSource
       createAnalyser = (): typeof analyser => analyser
     })
-    const meterTimer = vi.spyOn(window, "setInterval").mockImplementation(() => 0)
+    const meterTimer = vi.spyOn(domTimers(), "setInterval").mockImplementation(() => 0)
     mocks.meeting.participants.audioSubscribed.set("existing-speaker", {
       audioEnabled: true, audioTrack: undefined
     })

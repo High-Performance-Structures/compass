@@ -1,3 +1,4 @@
+import type * as React from "react"
 import Link from "next/link"
 
 import { getChannel } from "@/app/actions/conversations"
@@ -6,6 +7,7 @@ import { ChannelView } from "@/components/conversations/channel-view"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { SplitDivider } from "@/components/ui/split-divider"
 import { ConversationsProvider } from "@/contexts/conversations-context"
 import type { AuthUser } from "@/lib/auth"
 import {
@@ -95,7 +97,7 @@ export async function ProjectConversationsTab({
   baseParams = {},
   query,
   currentUser,
-  channelHref,
+  renderChannel,
 }: {
   readonly projectId: string
   /** The Messages page this tab sits on. */
@@ -104,8 +106,11 @@ export async function ProjectConversationsTab({
   readonly baseParams?: Readonly<Record<string, string>>
   readonly query: ProjectConversationsQuery
   readonly currentUser: AuthUser | null
-  /** Open conversations on their own page (owner and vendor workspaces) instead of beside the list. */
-  readonly channelHref?: (channelId: string) => string
+  /**
+   * Renders the open conversation beside the list in an owner's or vendor's
+   * workspace, which has its own access checks; staff get ChannelView.
+   */
+  readonly renderChannel?: (channelId: string) => React.ReactNode
 }) {
   const result = await getProjectConversations(projectId, {
     scope: query.scope,
@@ -113,7 +118,7 @@ export async function ProjectConversationsTab({
     search: query.search,
     page: query.page,
   })
-  const selected = query.channelId && !channelHref && currentUser ? await getChannel(query.channelId) : null
+  const selected = query.channelId && !renderChannel && currentUser ? await getChannel(query.channelId) : null
   const channel =
     selected?.success && selected.data && selected.data.projectId === projectId
       ? selected.data
@@ -132,9 +137,8 @@ export async function ProjectConversationsTab({
       <aside
         aria-label="Job conversations"
         className={cn(
-          "flex w-full shrink-0 flex-col overflow-y-auto",
-          !channelHref && "border-r md:w-[26rem]",
-          channel && "hidden md:flex",
+          "flex w-full shrink-0 flex-col overflow-y-auto lg:w-[var(--split-list,32%)]",
+          (channel || (renderChannel && query.channelId)) && "hidden lg:flex",
         )}
       >
         <div className="space-y-3 border-b p-4">
@@ -192,7 +196,7 @@ export async function ProjectConversationsTab({
           <ul className="divide-y">
             {data.rows.map((row) => (
               <li key={row.id}>
-                <ConversationRow row={row} isStaff={isStaff} selected={row.id === channel?.id} href={channelHref ? channelHref(row.id) : href({ channelId: row.id })} />
+                <ConversationRow row={row} isStaff={isStaff} selected={row.id === (channel?.id ?? (renderChannel ? query.channelId : null))} href={href({ channelId: row.id })} />
               </li>
             ))}
           </ul>
@@ -208,17 +212,22 @@ export async function ProjectConversationsTab({
           )}
         </div>
       </aside>
-      {!channelHref && <section aria-label="Open conversation" className={cn("min-w-0 flex-1", !channel && "hidden md:flex")}>
-        {channel && currentUser ? (
+      <SplitDivider storageKey="compass.messages.conversation-split" defaultPercent={32} label="Resize the conversation list" className="hidden lg:block" />
+      <section aria-label="Open conversation" className={cn("min-w-0 flex-1", !(channel || (renderChannel && query.channelId)) && "hidden lg:flex")}>
+        {channel || (renderChannel && query.channelId) ? (
           <div className="flex h-full min-h-0 w-full flex-col">
-            <div className="border-b px-4 py-2 md:hidden">
+            <div className="border-b px-4 py-2 lg:hidden">
               <Link className="text-sm underline" href={href({ channelId: null })}>Back to conversations</Link>
             </div>
             <div className="min-h-0 flex-1">
-              {/* The conversation's list, composer and threads read the same context as /dashboard/conversations. */}
-              <ConversationsProvider>
-                <ChannelView channel={channel} currentUser={currentUser} />
-              </ConversationsProvider>
+              {renderChannel && query.channelId
+                ? renderChannel(query.channelId)
+                : channel && currentUser && (
+                  // The conversation's list, composer and threads read the same context as /dashboard/conversations.
+                  <ConversationsProvider key={channel.id}>
+                    <ChannelView channel={channel} currentUser={currentUser} />
+                  </ConversationsProvider>
+                )}
             </div>
           </div>
         ) : (
@@ -229,7 +238,7 @@ export async function ProjectConversationsTab({
             </div>
           </div>
         )}
-      </section>}
+      </section>
     </div>
   )
 }

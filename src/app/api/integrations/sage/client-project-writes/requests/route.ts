@@ -84,7 +84,7 @@ export async function GET(request: Request): Promise<Response> {
     ? undefined
     : ne(sageClientProjectWriteOperations.operationType, "ensure_vendor")
   const candidates = await db
-    .select({ id: sageClientProjectWriteOperations.id })
+    .select({ id: sageClientProjectWriteOperations.id, status: sageClientProjectWriteOperations.status })
     .from(sageClientProjectWriteOperations)
     .where(
       and(
@@ -142,6 +142,9 @@ export async function GET(request: Request): Promise<Response> {
       id: claimed.id,
       claimToken,
       attempt: claimed.attemptCount,
+      // Only an automatic reclaim of a claim that went stale mid-write; a
+      // staff "Send to Sage" requeue arrives as queued and is never a retry.
+      reclaimed: candidate.status === "running",
       requestedAt: claimed.requestedAt,
       payload: validated.data,
     })

@@ -1,7 +1,8 @@
 import Database from "better-sqlite3"
-import { readdirSync, readFileSync, statSync } from "node:fs"
-import { join } from "node:path"
-import { afterEach, beforeEach, describe, expect, it } from "vitest"
+import { afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest"
+import { migratedDatabase } from "@/test/migrated-database"
+
+import { preloadSources, readSource, SOURCE_SCAN_TIMEOUT_MS, sourceFiles as sharedSourceFiles } from "@/test/source-tree"
 
 import { eq } from "drizzle-orm"
 
@@ -95,20 +96,10 @@ describe("round signature and owner request lifecycles", () => {
 type Sqlite = InstanceType<typeof Database>
 const NOW = "2026-11-12T12:00:00.000Z"
 let sqlite: Sqlite
-let migratedImage: Buffer | null = null
 const actor = { id: "staff", email: "pm@example.com", displayName: "Pat PM", firstName: null, lastName: null, role: "project_manager" }
 
 function migrated(): Sqlite {
-  if (!migratedImage) {
-    const db = new Database(":memory:")
-    const dir = join(process.cwd(), "drizzle")
-    for (const file of readdirSync(dir).filter((name) => /^\d{4}_.*\.sql$/.test(name)).sort()) {
-      db.exec(readFileSync(join(dir, file), "utf8").replaceAll("--> statement-breakpoint", ""))
-    }
-    migratedImage = db.serialize()
-    db.close()
-  }
-  return new Database(migratedImage)
+  return migratedDatabase()
 }
 
 function statusOf(id: string): unknown {
@@ -173,18 +164,19 @@ describe("selection status writes", () => {
 // Guard: selection and round signature status writes go through their stores.
 // ---------------------------------------------------------------------------
 
-function sourceFiles(dir: string): string[] {
-  return readdirSync(dir).flatMap((name) => {
-    const path = join(dir, name)
-    if (statSync(path).isDirectory()) return name === "__tests__" ? [] : sourceFiles(path)
-    return /\.(ts|tsx)$/.test(name) ? [path] : []
-  })
+const SOURCE_OPTIONS = { skipDirectories: ["__tests__"], include: /\.(ts|tsx)$/ }
+
+function sourceFiles(dir: string): readonly string[] {
+  return sharedSourceFiles(dir, SOURCE_OPTIONS)
 }
+
+// Read the tree once for this file, as setup (see @/test/source-tree).
+beforeAll(() => preloadSources("src", SOURCE_OPTIONS), SOURCE_SCAN_TIMEOUT_MS)
 
 // Read once: the whole tree is scanned by several checks, under full-suite load.
 let sources: ReadonlyMap<string, string> | null = null
 function sourceTree(): ReadonlyMap<string, string> {
-  sources ??= new Map(sourceFiles("src").map((file) => [file, readFileSync(file, "utf8")]))
+  sources ??= new Map(sourceFiles("src").map((file) => [file, readSource(file)]))
   return sources
 }
 
@@ -212,7 +204,7 @@ describe("selection status write guard", { timeout: 30_000 }, () => {
   })
 
   it("the store's status writes are compare-and-set and read the machine", () => {
-    const store = readFileSync("src/lib/domain/selections/store.ts", "utf8")
+    const store = readSource("src/lib/domain/selections/store.ts")
     const staff = store.slice(store.indexOf("export async function setSelectionStatusByStaff"))
     expect(staff.slice(0, staff.indexOf("\n}\n"))).toContain("sql`${projectFinishSelections.status} = ${input.expected}`")
     const automatic = store.slice(store.indexOf("export function automaticSelectionStatusStatement"))

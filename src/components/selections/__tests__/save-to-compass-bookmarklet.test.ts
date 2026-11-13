@@ -22,7 +22,7 @@ afterEach(() => {
 describe("SaveToCompassBookmarklet", () => {
   it("renders a draggable javascript: link built from this page's origin", () => {
     container = document.createElement("div")
-    document.body.append(container)
+    document.body.appendChild(container)
     const mounted = createRoot(container)
     root = mounted
     act(() => mounted.render(React.createElement(SaveToCompassBookmarklet)))
@@ -37,10 +37,10 @@ describe("SaveToCompassBookmarklet", () => {
 
   it("compact: just the draggable button, with the instruction as its tooltip", () => {
     container = document.createElement("div")
-    document.body.append(container)
+    document.body.appendChild(container)
     const mounted = createRoot(container)
     root = mounted
-    act(() => mounted.render(React.createElement(SaveToCompassBookmarklet, { variant: "compact" })))
+    act(() => mounted.render(React.createElement<NonNullable<Parameters<typeof SaveToCompassBookmarklet>[0]>>(SaveToCompassBookmarklet, { variant: "compact" })))
     const link = container.querySelector("a")
     expect(link?.getAttribute("draggable")).toBe("true")
     expect(link?.getAttribute("href")?.startsWith("javascript:")).toBe(true)

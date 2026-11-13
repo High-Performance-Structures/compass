@@ -24,16 +24,59 @@ describe("Sage contact writer: company name, email and phone", () => {
     const client = block("ClientCompanyExtendedFields = {")
     const vendor = block("VendorCompanyExtendedFields = {")
     expect(client).toContain('new ExtendedContactField("name", "reccln", "clnnme"')
-    expect(client).toContain('new ExtendedContactField("email", "reccln", "e_mail"')
-    expect(client).toContain('new ExtendedContactField("phone", "reccln", "phnnum"')
     expect(vendor).toContain('new ExtendedContactField("name", "actpay", "vndnme"')
     expect(vendor).toContain('new ExtendedContactField("email", "actpay", "e_mail"')
     expect(vendor).toContain('new ExtendedContactField("phone", "actpay", "phnnum"')
-    expect(client.match(/new ExtendedContactField\(/g)).toHaveLength(3)
+    expect(client.match(/new ExtendedContactField\(/g)).toHaveLength(1)
     expect(vendor.match(/new ExtendedContactField\(/g)).toHaveLength(3)
     // Client primary email stays out: its Sage binding is unverified.
     expect(client).not.toContain("stmeml")
     expect(client).not.toContain("primaryEmail")
+  })
+
+  it("keeps a client company's email and phone on its first Sage contact line", () => {
+    // Sage accepts ClientModRq Email1/Phone1 but stores nothing; reccln.e_mail
+    // and phnnum stay blank. Email and phone live on clncnt contact lines.
+    const line = block("ClientLineFields = {")
+    expect(line).toContain('new ContactField("phone", "phnnum", "Phone")')
+    expect(line).toContain('new ContactField("email", "e_mail", "Email")')
+    expect(line.indexOf('"Phone"')).toBeLessThan(line.indexOf('"Email"'))
+    const first = block("private static ClientLine ReadClientFirstLine", "return line;")
+    expect(first).toContain('" FROM dbo.clncnt WHERE _idref = @client ORDER BY linnum"')
+    expect(first).toContain('"SELECT TOP (1) linnum"')
+    const query = block("private static ContactSnapshot QueryContact", "private static string ContactRevision")
+    expect(query).toContain("ReadClientFirstLine(connection, snapshot.sageRecordId)")
+    expect(query.indexOf("ReadClientFirstLine(")).toBeLessThan(query.indexOf("snapshot.revision = ContactRevision(snapshot);"))
+    const append = block("private static void AppendClientLineChanges", "private static void PostContactResult")
+    expect(append).toContain('clientLine.LineId > 0 ? "ClientContactMod" : "ClientContactAdd"')
+    expect(append).toContain("<ObjectRef><LineID>")
+    expect(append).toContain("<ContactName>")
+    expect(append).toContain("Sage client contact line is unknown; no write attempted.")
+    const target = block("private static ClientLineTarget ClientLineTargetFor", "private static ContactField[] FieldsFor")
+    expect(target).toContain("if (line != null) return new ClientLineTarget { LineId = line.Number };")
+    expect(writer).not.toContain('"Email1"')
+  })
+
+  it("adds the contact line element after every top-level client field", () => {
+    const build = block("private static string BuildContactXml", "private static void AppendClientLineChanges")
+    expect(build).toContain("if (!IsClientLineField(kind, field.Key)) topLevel.Add(field);")
+    expect(build.indexOf("OrderedForSchema(kind, topLevel.ToArray())"))
+      .toBeLessThan(build.indexOf("AppendClientLineChanges(body, kind, proposed, clientLine);"))
+    const prepare = block("private static PendingContactWrite PrepareContactWrite", "private static PendingContactWrite PrepareContactCreate")
+    expect(prepare).toContain("clientLine = ClientLineTargetFor(TargetCompany, before);")
+  })
+
+  it("never shares a session between a client line write and a person under that client", () => {
+    // Two Adds under one client would break the person Add's "exactly one new
+    // line" read-back, and a create that fails after an attempt is never retried.
+    const defer = block("private static void DeferClientLineWritesBesidePeople", "private static void RequireContactClaim")
+    expect(defer).toContain('item.Task.kind == "client_person"')
+    expect(defer).toContain("people.Contains(item.ClientLineParent)")
+    expect(defer).toContain("item.Xml = null;")
+    const run = block("private static int RunContactBridge()", "private static void ProcessClientDirectoryRefresh")
+    expect(run.indexOf("PrepareContactCreate(create)")).toBeLessThan(run.indexOf("DeferClientLineWritesBesidePeople(pending)"))
+    expect(run.indexOf("DeferClientLineWritesBesidePeople(pending)")).toBeLessThan(run.indexOf("SubmitContactWrites(pending)"))
+    expect(run).toContain("if (item.Deferred) continue;")
   })
 
   it("never writes Sage tables with SQL; changes go through the Sage API", () => {
@@ -92,7 +135,10 @@ describe("Sage contact writer: company name, email and phone", () => {
   })
 
   it("validates the extended fields' XML in the schema self-test", () => {
-    const schemaTest = block("private static void ValidateContactSchema()", "ValidateContactXml(kind, 1, 1, changes, ContactTestCompany);")
+    const schemaTest = block("private static void ValidateContactSchema()", "BuildVendorPrimaryEmailTestXml(")
     expect(schemaTest).toContain("ContactField[] fields = WritableFieldsFor(kind);")
+    // Both contact-line forms: change line 1, and add a first line.
+    expect(schemaTest).toContain("new ClientLineTarget { LineId = 1 }")
+    expect(schemaTest).toContain('new ClientLineTarget { AddName = "Test" }')
   })
 })

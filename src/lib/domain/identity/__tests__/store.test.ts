@@ -1,24 +1,22 @@
 import { afterEach, describe, expect, it } from "vitest"
 
-import { sqliteDb } from "@/lib/domain/__tests__/sqlite-d1"
+import { migratedDb } from "@/lib/domain/__tests__/sqlite-d1"
+import { insertRow } from "@/test/migrated-database"
 
 import { ensureExternalOrganizationMembership, finishInvitationEmail } from "../store"
 
-const SCHEMA = `
-  CREATE TABLE organization_members (id TEXT PRIMARY KEY, organization_id TEXT NOT NULL, user_id TEXT NOT NULL,
-    role TEXT NOT NULL, joined_at TEXT NOT NULL, UNIQUE (organization_id, user_id));
-  CREATE TABLE project_access_invitations (id TEXT PRIMARY KEY, organization_id TEXT NOT NULL, project_id TEXT NOT NULL,
-    project_contact_id TEXT, email TEXT NOT NULL, role TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'sent',
-    workos_invitation_id TEXT, workos_expires_at TEXT, email_provider TEXT, email_provider_message_id TEXT,
-    email_error TEXT, email_status TEXT NOT NULL DEFAULT 'unknown', email_subject TEXT, email_message TEXT,
-    email_attempts INTEGER NOT NULL DEFAULT 0, email_next_attempt_at TEXT, email_claim_token TEXT,
-    email_claimed_at TEXT, email_sent_at TEXT, invited_by TEXT NOT NULL, invited_at TEXT NOT NULL,
-    accepted_by TEXT, accepted_at TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL);
-`
+// Production's schema (every migration), with the parents its keys need.
+function seed(sqlite: ReturnType<typeof migratedDb>["sqlite"]): void {
+  insertRow(sqlite, "organizations", { id: "org", type: "internal" })
+  insertRow(sqlite, "users", { id: "u" })
+  insertRow(sqlite, "users", { id: "staff" })
+  insertRow(sqlite, "projects", { id: "p", organization_id: "org" })
+}
 
-let current: ReturnType<typeof sqliteDb> | null = null
-function open(): ReturnType<typeof sqliteDb> {
-  current = sqliteDb(SCHEMA)
+let current: ReturnType<typeof migratedDb> | null = null
+function open(): ReturnType<typeof migratedDb> {
+  current = migratedDb()
+  seed(current.sqlite)
   return current
 }
 afterEach(() => {

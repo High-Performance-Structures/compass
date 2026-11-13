@@ -1,9 +1,8 @@
-import { readdirSync, readFileSync, statSync } from "node:fs"
-import { join } from "node:path"
+import { afterEach, beforeAll, describe, expect, it } from "vitest"
 
-import { afterEach, describe, expect, it } from "vitest"
-
-import { sqliteDb } from "@/lib/domain/__tests__/sqlite-d1"
+import { migratedDb } from "@/lib/domain/__tests__/sqlite-d1"
+import { insertRow } from "@/test/migrated-database"
+import { preloadSources, readSource, SOURCE_SCAN_TIMEOUT_MS, sourceFiles as sharedSourceFiles } from "@/test/source-tree"
 import { confirmationMachine, staffConfirmationEvent } from "@/lib/domain/schedule/confirmation-machine"
 import { SCHEDULE_CONFIRMATION_STATUSES } from "@/lib/domain/schedule/statuses"
 import { d1, migratedSqlite } from "@/lib/daily-logs/__tests__/sqlite-d1"
@@ -62,25 +61,31 @@ function includes(list: readonly string[], value: string): boolean {
   return list.includes(value)
 }
 
-let current: ReturnType<typeof sqliteDb> | null = null
+let current: ReturnType<typeof migratedDb> | null = null
 afterEach(() => {
   current?.sqlite.close()
   current = null
 })
 
-function seed(status = "pending"): ReturnType<typeof sqliteDb> {
-  current = sqliteDb(`CREATE TABLE schedule_tasks (id text PRIMARY KEY, assigned_user_id text, start_date text NOT NULL,
-    workdays integer NOT NULL, confirmation_required integer NOT NULL, confirmation_status text NOT NULL,
-    confirmation_requested_at text, confirmation_responded_at text, proposed_start_date text, proposed_workdays integer,
-    proposal_note text, proposal_submitted_at text, reminder_sent_at text, updated_at text NOT NULL)`)
-  current.sqlite.prepare(`INSERT INTO schedule_tasks VALUES ('t1', 'u1', '2026-09-14', 3, 1, ?, 'r0', NULL, NULL, NULL, NULL, NULL, NULL, 't0')`).run(status)
+// Production's schedule_tasks (every migration), with the parents its keys need.
+function seed(status = "pending"): ReturnType<typeof migratedDb> {
+  current = migratedDb()
+  insertRow(current.sqlite, "organizations", { id: "org", type: "internal" })
+  insertRow(current.sqlite, "users", { id: "u1", role: "subcontractor" })
+  insertRow(current.sqlite, "users", { id: "u2", role: "subcontractor" })
+  insertRow(current.sqlite, "projects", { id: "p1", organization_id: "org" })
+  insertRow(current.sqlite, "schedule_tasks", {
+    id: "t1", project_id: "p1", title: "Framing", phase: "framing", assigned_user_id: "u1", start_date: "2026-09-14",
+    workdays: 3, end_date_calculated: "2026-09-16", confirmation_required: 1, confirmation_status: status,
+    confirmation_requested_at: "r0", created_at: "t0", updated_at: "t0",
+  })
   return current
 }
 
 const SEEN = { id: "t1", assignedUserId: "u1", startDate: "2026-09-14", workdays: 3, confirmationRequestedAt: "r0", confirmationRespondedAt: null }
 const NOTE = { proposedStartDate: null, proposedWorkdays: null, proposalNote: null, proposalSubmittedAt: null }
 
-function row(sqlite: ReturnType<typeof sqliteDb>["sqlite"]): unknown {
+function row(sqlite: ReturnType<typeof migratedDb>["sqlite"]): unknown {
   return sqlite.prepare("SELECT confirmation_status, confirmation_responded_at FROM schedule_tasks WHERE id = 't1'").get()
 }
 
@@ -127,13 +132,13 @@ describe("rejectConfirmationProposal", () => {
 })
 
 describe("acceptConfirmationProposal", () => {
-  function proposed(): ReturnType<typeof sqliteDb> {
+  function proposed(): ReturnType<typeof migratedDb> {
     const seeded = seed("proposed")
     seeded.sqlite.exec(`UPDATE schedule_tasks SET confirmation_responded_at = 's1', proposal_submitted_at = 's1',
       proposed_start_date = '2026-09-21', proposed_workdays = 4`)
     return seeded
   }
-  const state = (sqlite: ReturnType<typeof sqliteDb>["sqlite"]): unknown =>
+  const state = (sqlite: ReturnType<typeof migratedDb>["sqlite"]): unknown =>
     sqlite.prepare("SELECT confirmation_status, confirmation_requested_at, proposal_submitted_at, proposed_start_date FROM schedule_tasks").get()
 
   it("takes the proposal staff reviewed and asks the assignee to confirm it", async () => {
@@ -169,7 +174,7 @@ describe("restoreConfirmationProposal", () => {
     id: "t1", assignedUserId: "u1", confirmationRequestedAt: "r0", confirmationRespondedAt: "s1", reminderSentAt: null,
     proposedStartDate: "2026-09-21", proposedWorkdays: 4, proposalNote: "Crew free then", proposalSubmittedAt: "s1",
   }
-  const state = (sqlite: ReturnType<typeof sqliteDb>["sqlite"]): unknown =>
+  const state = (sqlite: ReturnType<typeof migratedDb>["sqlite"]): unknown =>
     sqlite.prepare("SELECT confirmation_status, confirmation_responded_at, proposal_submitted_at, proposed_start_date, updated_at FROM schedule_tasks").get()
 
   it("puts back the proposal a failed save took", async () => {
@@ -329,14 +334,20 @@ describe("schedule date writes", () => {
     "scripts/seed-e2e-local.mjs",
   ])
   const STORE = "src/lib/domain/schedule/store.ts"
-  const storeText = readFileSync(STORE, "utf8")
-  const helperStart = storeText.indexOf("function dateWriteStatement(")
-  const helper = storeText.slice(helperStart, storeText.indexOf("\n}\n", helperStart))
-  const code = [...sourceFiles("src"), ...scriptFiles("scripts")]
-    .filter((path) => !EXEMPT.has(path))
-    .map((path) => ({ path, text: path === STORE ? storeText.replace(helper, "") : readFileSync(path, "utf8") }))
+
+  // Read src/ and scripts/ once, as setup (see @/test/source-tree).
+  beforeAll(() => {
+    preloadSources("src", SOURCE_OPTIONS)
+    preloadSources("scripts", SCRIPT_OPTIONS)
+  }, SOURCE_SCAN_TIMEOUT_MS)
 
   it("go through the store's date moves only, anywhere in src/ or scripts/", () => {
+    const storeText = readSource(STORE)
+    const helperStart = storeText.indexOf("function dateWriteStatement(")
+    const helper = storeText.slice(helperStart, storeText.indexOf("\n}\n", helperStart))
+    const code = [...sourceFiles("src"), ...scriptFiles("scripts")]
+      .filter((path) => !EXEMPT.has(path))
+      .map((path) => ({ path, text: path === STORE ? storeText.replace(helper, "") : readSource(path) }))
     expect(helper).toContain("start_date = ${next(\"start\")}, end_date_calculated = ${next(\"end\")}")
     // Raw SQL setting start_date, workdays or end_date_calculated (not proposed_/source_ columns).
     const dateColumn = String.raw`(?<![\w.])(start_date|workdays|end_date_calculated)\s*=`
@@ -362,26 +373,23 @@ describe("schedule date writes", () => {
   }, 30_000)
 })
 
-function scriptFiles(dir: string): string[] {
-  return readdirSync(dir).flatMap((name) => {
-    const path = join(dir, name)
-    if (statSync(path).isDirectory()) return name === "node_modules" ? [] : scriptFiles(path)
-    return /\.(mjs|ts|js)$/.test(name) && !/\.test\.(mjs|ts|js)$/.test(name) ? [path] : []
-  })
+const SCRIPT_OPTIONS = { skipDirectories: ["node_modules"], include: /^(?!.*\.test\.(mjs|ts|js)$).*\.(mjs|ts|js)$/ }
+const SOURCE_OPTIONS = { skipDirectories: ["__tests__"], include: /^(?!.*\.test\.tsx?$).*\.(ts|tsx)$/ }
+
+function scriptFiles(dir: string): readonly string[] {
+  return sharedSourceFiles(dir, SCRIPT_OPTIONS)
 }
 
-function sourceFiles(dir: string): string[] {
-  return readdirSync(dir).flatMap((name) => {
-    const path = join(dir, name)
-    if (statSync(path).isDirectory()) return name === "__tests__" ? [] : sourceFiles(path)
-    return /\.(ts|tsx)$/.test(name) && !/\.test\.tsx?$/.test(name) ? [path] : []
-  })
+function sourceFiles(dir: string): readonly string[] {
+  return sharedSourceFiles(dir, SOURCE_OPTIONS)
 }
 
 describe("confirmation status writes", () => {
-  const files = sourceFiles("src").map((path) => ({ path, text: readFileSync(path, "utf8") }))
+  // Read the tree once for this file, as setup (see @/test/source-tree).
+  beforeAll(() => preloadSources("src", SOURCE_OPTIONS), SOURCE_SCAN_TIMEOUT_MS)
 
   it("only schedule/store.ts writes schedule_tasks", () => {
+    const files = sourceFiles("src").map((path) => ({ path, text: readSource(path) }))
     const writers = files.filter(({ text }) => /\.(update|insert)\(scheduleTasks\)|(UPDATE|INSERT INTO)\s+schedule_tasks/i.test(text))
     expect(writers.map(({ path }) => path)).toEqual(["src/lib/domain/schedule/store.ts"])
   })
@@ -398,6 +406,6 @@ describe("confirmation status writes", () => {
       "src/app/api/compass/schedule/route.ts",
     ]
     const literal = /confirmationStatus:\s*["'`]|confirmation_status\s*=\s*'|'(not_requested|unavailable)'/
-    expect(writers.filter((path) => literal.test(readFileSync(path, "utf8")))).toEqual([])
+    expect(writers.filter((path) => literal.test(readSource(path)))).toEqual([])
   })
 })
