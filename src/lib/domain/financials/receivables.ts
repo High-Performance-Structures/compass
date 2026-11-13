@@ -27,6 +27,7 @@ import {
   type ReceivableItem,
   type ReceivableStaffStatus,
 } from "@/lib/domain/financials/rules"
+import { receivablesOncePerBill, receivablesShownAs, type BillRef } from "@/lib/domain/financials/bill-matching"
 import { INVOICE_CLOSED_TO_PAYMENTS } from "@/lib/domain/financials/invoice-machines"
 import type { ReceivableItemKind, ReceivablePaidState } from "@/lib/domain/financials/statuses"
 import { isListValue } from "@/lib/shared/statuses"
@@ -60,6 +61,8 @@ export type ReceivableRow = ReceivableItem & {
   readonly staffStatus: ReceivableStaffStatus
   /** A billed item of the other kind with the same Sage invoice number (may be the same billing), or null. */
   readonly sharedSageInvoiceWith: string | null
+  /** An imported copy of this same bill that is not listed (rules: receivablesOncePerBill), or null. */
+  readonly sameBillAs: string | null
 }
 
 export type ProjectReceivableScope = {
@@ -91,7 +94,7 @@ export async function readProjectClient(db: Db, scope: ProjectReceivableScope): 
 }
 
 function row(
-  base: Omit<ReceivableRow, "openCents" | "paidState" | "staffStatus" | "sharedSageInvoiceWith">,
+  base: Omit<ReceivableRow, "openCents" | "paidState" | "staffStatus" | "sharedSageInvoiceWith" | "sameBillAs">,
 ): ReceivableRow {
   // A draw marked paid before Compass is paid; it and an item that can't take
   // payments have nothing open to apply a payment to.
@@ -102,6 +105,7 @@ function row(
     paidState,
     staffStatus: receivableStaffStatus({ ...base, paidState }),
     sharedSageInvoiceWith: null,
+    sameBillAs: null,
   }
 }
 
@@ -142,6 +146,11 @@ function billedDrawCondition(): SQL | undefined {
   )
 }
 
+/** SQL condition: no active (unreleased) payment is applied to the draw; for writes that need it at write time. */
+export function drawHasNoActivePayments(applicationId: string): SQL {
+  return sql`NOT EXISTS (SELECT 1 FROM ${payApplicationPaymentAllocations} WHERE ${and(eq(payApplicationPaymentAllocations.applicationId, applicationId), isNull(payApplicationPaymentAllocations.releasedAt))})`
+}
+
 /**
  * Billed pay applications (Compass draws approved for billing and imported
  * Sage/Drive draws) and payable invoices on the project, with billed, paid
@@ -154,6 +163,66 @@ export async function readProjectReceivables(
   scope: ProjectReceivableScope,
   options: { readonly customerId?: string | null } = {},
 ): Promise<ReceivableRow[]> {
+  const kept = receivablesOncePerBill(await listedReceivables(db, scope, options))
+  const rows = kept.map(({ row: listed, sameBillAs }) => ({ ...listed.item, sameBillAs }))
+  const shared = sharedSageInvoiceLinks(rows)
+  return rows.map((item) => ({ ...item, sharedSageInvoiceWith: shared.get(`${item.kind}:${item.id}`) ?? null }))
+}
+
+/** The bills listed with received payments on the project, as bill references (for matching imported copies). */
+export async function readListedBills(db: Db, scope: ProjectReceivableScope): Promise<readonly (BillRef & { readonly label: string })[]> {
+  const [rows, drawSources, invoiceSources] = await Promise.all([
+    listedReceivables(db, scope, {}),
+    db
+      .select({ id: projectBudgetApplications.id, source: projectBudgetApplications.sourceRecordId, earned: projectBudgetApplications.totalEarnedLessRetainage })
+      .from(projectBudgetApplications)
+      .where(eq(projectBudgetApplications.projectId, scope.projectId)),
+    db
+      .select({ id: invoices.id, source: invoices.sourceExternalId, sourceSystem: invoices.sourceSystem, invoiceKind: invoices.invoiceKind })
+      .from(invoices)
+      .where(and(eq(invoices.organizationId, scope.organizationId), eq(invoices.projectId, scope.projectId))),
+  ])
+  // A cutover row may name the bill by its source record (a Drive file, a Buildertrend id).
+  const sourceIds = new Map([...drawSources, ...invoiceSources].map((row) => [row.id, row.source]))
+  // An imported G702 copy may carry the draw's total earned instead of its amount due.
+  const earnedCents = new Map(drawSources.map((row) => [row.id, storedDollarsToCents(row.earned)]))
+  // Invoices that came over with the cutover: imported, or recorded before Compass
+  // built its own (every invoice built in Compass has a kind).
+  const importedInvoices = new Set(
+    invoiceSources.filter((row) => row.sourceSystem !== "compass" || Boolean(row.source) || row.invoiceKind === null).map((row) => row.id)
+  )
+  // Every listed bill, labelled as received payments shows it (a copy left out names the kept row).
+  return receivablesShownAs(rows).map(({ row: { bill }, shownAs: label }) => {
+    const earned = bill.kind === "draw" ? bill.ids.flatMap((id) => (id && earnedCents.has(id) ? [earnedCents.get(id) ?? 0] : [])) : []
+    const importedRecord = bill.kind === "invoice" && bill.ids.some((id) => id !== null && importedInvoices.has(id))
+    return { ...bill, ids: [...bill.ids, ...bill.ids.map((id) => (id ? sourceIds.get(id) ?? null : null))], otherCents: earned, importedRecord, label }
+  })
+}
+
+type ListedReceivableRow = {
+  readonly item: ReceivableRow
+  readonly bill: BillRef
+  readonly label: string
+  readonly sourceSystem: string
+  readonly paidCents: number
+  readonly prepaid: PrepaidMark | null
+  readonly billDate: string | null
+  readonly legacyInvoice: boolean
+}
+
+function listed(
+  item: ReceivableRow,
+  bill: Omit<BillRef, "cents" | "number">,
+  dates: { readonly billDate: string | null; readonly legacyInvoice: boolean },
+): ListedReceivableRow {
+  return { item, bill: { ...bill, number: item.number, cents: item.billedCents }, label: item.label, sourceSystem: item.sourceSystem, paidCents: item.paidCents, prepaid: item.prepaid, ...dates }
+}
+
+async function listedReceivables(
+  db: Db,
+  scope: ProjectReceivableScope,
+  options: { readonly customerId?: string | null },
+): Promise<ListedReceivableRow[]> {
   const [applications, invoiceRows, prepaidMarks] = await Promise.all([
     db
       .select({
@@ -203,11 +272,11 @@ export async function readProjectReceivables(
       .orderBy(asc(invoices.issueDate)),
     readActivePrepaidMarks(db, scope),
   ])
-  const rows: ReceivableRow[] = []
+  const rows: ListedReceivableRow[] = []
   for (const application of applications) {
     const target = drawPaymentTarget(application)
     if (!target.listed) continue
-    rows.push(row({
+    rows.push(listed(row({
       kind: "pay_application",
       id: application.id,
       label: `Pay application ${application.applicationNumber}`,
@@ -223,13 +292,13 @@ export async function readProjectReceivables(
       sourceLabel: importedDrawSourceLabel(application.sourceSystem),
       imported: isImportedDraw(application),
       prepaid: isImportedDraw(application) ? (prepaidMarks.get(application.id) ?? null) : null,
-    }))
+    }), { kind: "draw", ids: [application.id] }, { billDate: application.periodTo, legacyInvoice: false }))
   }
   for (const invoice of invoiceRows) {
     // A credit memo gives money back; it never takes a payment.
     if (!invoiceAcceptsPayments(invoice.status) || invoice.invoiceKind === "credit_memo") continue
     const number = invoice.invoiceNumber?.trim() || invoice.id.slice(0, 8)
-    rows.push(row({
+    rows.push(listed(row({
       kind: "invoice",
       id: invoice.id,
       label: `Invoice ${number}`,
@@ -245,10 +314,9 @@ export async function readProjectReceivables(
       sourceLabel: null,
       imported: false,
       prepaid: null,
-    }))
+    }), { kind: "invoice", ids: [invoice.id] }, { billDate: invoice.issueDate, legacyInvoice: invoice.invoiceKind === null }))
   }
-  const shared = sharedSageInvoiceLinks(rows)
-  return rows.map((item) => ({ ...item, sharedSageInvoiceWith: shared.get(`${item.kind}:${item.id}`) ?? null }))
+  return rows
 }
 
 type PaymentAllocationView = {

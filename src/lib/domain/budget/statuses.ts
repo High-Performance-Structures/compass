@@ -31,3 +31,10 @@ export type PayApplicationSageSyncEvent = (typeof PAY_APPLICATION_SAGE_SYNC_EVEN
 export const PAY_APPLICATION_SAGE_CHECK_STATUSES = ["matches", "needs_attention", "not_posted", "unavailable"] as const
 
 export type PayApplicationSageCheckStatus = (typeof PAY_APPLICATION_SAGE_CHECK_STATUSES)[number]
+
+/**
+ * Where an owner pay application built in Compass stands (see
+ * pay-application-machine.ts): being written, editable draft, frozen for
+ * review, approved for billing (owner-visible).
+ */
+export const PAY_APPLICATION_STATUSES = ["building", "draft", "internal_review", "billed"] as const

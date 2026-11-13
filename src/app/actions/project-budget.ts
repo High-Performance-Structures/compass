@@ -2,7 +2,8 @@
 
 import { requireProjectAudienceReadUser } from "@/lib/project-audience-request-server"
 
-import { and, asc, desc, eq, ne, sql } from "drizzle-orm"
+import { and, asc, desc, eq, ne, notInArray, sql } from "drizzle-orm"
+import { OWNER_HIDDEN_APPLICATION_STATUSES, ownerPayApplicationsOnce } from "@/lib/domain/financials/bill-matching"
 
 import { getDb } from "@/db"
 import {
@@ -551,7 +552,8 @@ export async function getProjectBudgetSummary(
   )
   const applications =
     effectiveAudience === "owner"
-      ? (
+      ? // An imported copy of a draw shows once (rules: ownerPayApplicationsOnce).
+        ownerPayApplicationsOnce(
           await access.db
             .select({
               id: projectBudgetApplications.id,
@@ -588,7 +590,10 @@ export async function getProjectBudgetSummary(
               and(
                 eq(projectBudgetApplications.projectId, projectId),
                 eq(projectBudgetApplications.ownerVisible, true),
-                ne(projectBudgetApplications.status, "building")
+                // A replaced contract budget revision isn't billing history (owners
+                // saw every old revision as another pay application), nor is a
+                // voided or replaced imported draw.
+                notInArray(projectBudgetApplications.status, [...OWNER_HIDDEN_APPLICATION_STATUSES])
               )
             )
             .orderBy(

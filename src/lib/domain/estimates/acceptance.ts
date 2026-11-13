@@ -11,6 +11,7 @@ import {
   versionChangeOrderStatements,
   type ContractVersionTreatment,
 } from "@/lib/change-orders/contract-version-acceptance"
+import { isBatchGuardFailure } from "@/lib/d1-query"
 import { changeOrderExecutionFromEstimate, estimateSupersedeConditions } from "@/lib/change-orders/estimate-execution"
 import { executeBaselineReplacement, rebaselineBlockers } from "@/lib/change-orders/rebaseline-store"
 import { revalidateEstimate, type EstimateAccess } from "@/lib/domain/estimates/access"
@@ -76,29 +77,36 @@ async function acceptProjectEstimate(input: {
         now,
       })
     : []
-  await input.access.db.batch([
-    updateEstimatesStatement(input.access.db, and(...estimateSupersedeConditions(input.estimate, mode)), {
-      status: "superseded",
-      updatedAt: now,
-    }),
-    updateEstimatesStatement(input.access.db, eq(projectEstimates.id, input.estimate.id), {
-      status: "accepted",
-      foxitStatus: input.foxitStatus,
-      foxitEnvelopeId: input.foxitEnvelopeId,
-      signaturePackageUrl: input.evidenceUrl,
-      signedAt: input.signedAt,
-      acceptanceMethod: input.acceptanceMethod,
-      acceptanceNote: input.acceptanceNote,
-      acceptanceEvidenceLabel: input.evidenceLabel,
-      acceptanceRecordedByName: recordedByName,
-      acceptedAt: now,
-      acceptedBy: input.access.user.id,
-      sageStatus: "ready",
-      updatedAt: now,
-    }),
-    ...changeOrderExecution,
-    ...(input.versionChangeOrder?.statements ?? []),
-  ])
+  try {
+    await input.access.db.batch([
+      updateEstimatesStatement(input.access.db, and(...estimateSupersedeConditions(input.estimate, mode)), {
+        status: "superseded",
+        updatedAt: now,
+      }),
+      // Before the acceptance below: its guard checks the estimate as read.
+      ...changeOrderExecution,
+      updateEstimatesStatement(input.access.db, eq(projectEstimates.id, input.estimate.id), {
+        status: "accepted",
+        foxitStatus: input.foxitStatus,
+        foxitEnvelopeId: input.foxitEnvelopeId,
+        signaturePackageUrl: input.evidenceUrl,
+        signedAt: input.signedAt,
+        acceptanceMethod: input.acceptanceMethod,
+        acceptanceNote: input.acceptanceNote,
+        acceptanceEvidenceLabel: input.evidenceLabel,
+        acceptanceRecordedByName: recordedByName,
+        acceptedAt: now,
+        acceptedBy: input.access.user.id,
+        sageStatus: "ready",
+        updatedAt: now,
+      }),
+      ...(input.versionChangeOrder?.statements ?? []),
+    ])
+  } catch (error) {
+    // The change order or estimate changed after it was read (voided, or accepted twice).
+    if (isBatchGuardFailure(error)) return { success: false, error: "This estimate or its change order changed meanwhile. Refresh to see where it stands." }
+    throw error
+  }
 
   // A phase estimate creates its family phase and takes its assembly out of
   // the contract estimate; it never builds this job's contract budget.

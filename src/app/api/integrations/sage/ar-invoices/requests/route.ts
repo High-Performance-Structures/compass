@@ -2,6 +2,7 @@ import { and, asc, eq, lt, or } from "drizzle-orm"
 
 import { sageArInvoiceExports, sageInvoiceArExports } from "@/db/schema-sage"
 import {
+  AR_EXPORT_CLAIM_RETRY_MILLISECONDS,
   claimSageArInvoiceExport,
   claimSageInvoiceArExport,
   sageArExportSourceNotVoid,
@@ -15,7 +16,7 @@ import { buildArInvoiceWriterRequest } from "@/lib/sage/ar-invoice-sync"
 import { AR_INVOICE_WRITER, authorizeSageChangeOrderBridge } from "@/lib/sage/change-order-bridge"
 
 const MAX_BATCH = 5
-const CLAIM_RETRY_MILLISECONDS = 10 * 60 * 1000
+const CLAIM_RETRY_MILLISECONDS = AR_EXPORT_CLAIM_RETRY_MILLISECONDS
 
 /**
  * The Sage writer's poll for billed pay requests, simple Compass invoices

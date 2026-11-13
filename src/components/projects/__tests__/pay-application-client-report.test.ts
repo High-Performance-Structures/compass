@@ -54,6 +54,7 @@ function report(
       periodTo: "2026-10-23",
       status: "draft",
       billedAt: null,
+      updatedAt: "2026-10-23T00:00:00.000Z",
       sageInvoiceNumber: null,
       billingSource: "compass",
       budgetRevisionId: "rev-2",

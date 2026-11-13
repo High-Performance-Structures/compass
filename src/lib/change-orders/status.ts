@@ -1,38 +1,11 @@
 import { CHANGE_ORDER_STATUSES, type ChangeOrderStatus } from "@/lib/domain/estimates/statuses"
+import { staffTargetsFrom } from "@/lib/domain/estimates/change-order-machine"
 import { isListValue } from "@/lib/shared/statuses"
 
 export type { ChangeOrderStatus }
 
-const TRANSITIONS: Readonly<
-  Record<ChangeOrderStatus, readonly ChangeOrderStatus[]>
-> = {
-  draft: ["submitted", "void"],
-  submitted: ["triage", "needs_information", "declined", "void"],
-  triage: ["needs_information", "pricing", "internal_review", "declined", "void"],
-  needs_information: ["submitted", "triage", "pricing", "declined", "void"],
-  pricing: ["needs_information", "internal_review", "declined", "void"],
-  internal_review: [
-    "needs_information",
-    "pricing",
-    "approved_for_owner",
-    "declined",
-    "void",
-  ],
-  approved_for_owner: [
-    "internal_review",
-    "signature_pending",
-    "declined",
-    "void",
-  ],
-  signature_pending: ["approved_for_owner", "executed", "declined", "void"],
-  executed: ["sage_pending", "closed"],
-  sage_pending: ["executed", "synced"],
-  synced: ["closed"],
-  closed: [],
-  declined: [],
-  void: [],
-}
-
+// Which statuses staff may pick from each one comes from the change order
+// machine (src/lib/domain/estimates/change-order-machine.ts).
 const APPROVAL_STATUSES = new Set<ChangeOrderStatus>([
   "approved_for_owner",
   "signature_pending",
@@ -71,7 +44,7 @@ export function changeOrderDisplayStatus(
 export function allowedChangeOrderTransitions(
   status: ChangeOrderStatus
 ): readonly ChangeOrderStatus[] {
-  return TRANSITIONS[status]
+  return staffTargetsFrom(status)
 }
 
 export function canTransitionChangeOrder(input: {
@@ -80,7 +53,7 @@ export function canTransitionChangeOrder(input: {
   readonly internal: boolean
   readonly canApprove: boolean
 }): boolean {
-  if (!TRANSITIONS[input.from].includes(input.to)) return false
+  if (!staffTargetsFrom(input.from).includes(input.to)) return false
   if (!input.internal) {
     return input.from === "needs_information" && input.to === "submitted"
   }

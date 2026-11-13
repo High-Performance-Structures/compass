@@ -374,3 +374,24 @@ describe("credit memos", () => {
     expect(items.some((item) => item.id === "inv-1")).toBe(true)
   })
 })
+
+describe("a legacy invoice and the imported draw it billed (Loomis shape)", () => {
+  it("lists them once on the same job, and never pairs across jobs", async () => {
+    sqlite.exec(`
+      INSERT INTO projects VALUES ('p2', 'org-1', 'Other House', NULL, 'client-1');
+      INSERT INTO project_budget_applications VALUES
+        ('drive-1', 'p1', 'google_drive_g702_g703', '1', '2026-04-29', 'current', 18460.77, NULL, NULL, '2026-05-01', 1),
+        ('drive-other', 'p2', 'google_drive_g702_g703', '1', '2026-06-30', 'current', 109097.63, NULL, NULL, '2026-07-01', 1);
+      INSERT INTO invoices VALUES
+        ('inv-002', 'org-1', 'client-1', 'p1', 'compass', 'O-170-002', 'paid', '2026-05-07', 18460.77, 18460.77, 0, 'construction', NULL, 'x', 'x'),
+        ('inv-004', 'org-1', 'client-1', 'p1', 'compass', 'O-170-004', 'paid', '2026-07-10', 109097.63, 109097.63, 0, 'construction', NULL, 'x', 'x');`)
+    const items = await readProjectReceivables(db, scope)
+    expect(items.some((item) => item.id === "drive-1")).toBe(false)
+    expect(items.find((item) => item.id === "inv-002")?.sameBillAs).toBe("Pay application 1")
+    // The $109,097.63 draw is on another job: the invoice stays as it is.
+    expect(items.find((item) => item.id === "inv-004")?.sameBillAs).toBeNull()
+    const other = await readProjectReceivables(db, { organizationId: "org-1", projectId: "p2" })
+    expect(other.some((item) => item.id === "drive-other")).toBe(true)
+  })
+})
+

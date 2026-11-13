@@ -2,12 +2,7 @@ import { and, eq, ne, type SQL } from "drizzle-orm"
 import type { BatchItem } from "drizzle-orm/batch"
 import type { SQLiteUpdateSetSource } from "drizzle-orm/sqlite-core"
 
-import {
-  projectChangeOrderDocuments,
-  projectChangeOrderHistory,
-  projectChangeOrderLines,
-  projectChangeOrders,
-} from "@/db/schema"
+import { projectChangeOrderDocuments, projectChangeOrderHistory, projectChangeOrderLines, projectChangeOrders } from "@/db/schema"
 import {
   projectEstimateAcknowledgements,
   projectEstimateAssemblies,
@@ -210,7 +205,7 @@ export function deletePhaseProposalsStatement(db: Db, where: SQL | undefined): S
 // ---- projectChangeOrders
 
 type ChangeOrderInsert = typeof projectChangeOrders.$inferInsert
-type ChangeOrderPatch = SQLiteUpdateSetSource<typeof projectChangeOrders>
+export type ChangeOrderPatch = Omit<SQLiteUpdateSetSource<typeof projectChangeOrders>, "status">
 
 export function insertChangeOrderStatement(db: Db, values: ChangeOrderInsert | readonly ChangeOrderInsert[]): Statement {
   assertListFields("project_change_orders", values, CHANGE_ORDER_LISTS)
@@ -218,8 +213,14 @@ export function insertChangeOrderStatement(db: Db, values: ChangeOrderInsert | r
 }
 
 export function updateChangeOrdersStatement(db: Db, where: SQL | undefined, patch: ChangeOrderPatch): Statement {
-  assertListFields("project_change_orders", patch, CHANGE_ORDER_LISTS)
-  return db.update(projectChangeOrders).set(patch).where(where)
+  if ("status" in patch) throw new Error("project_change_orders.status changes only through changeOrderMoveStatements.")
+  return changeOrderWriteStatement(db, where, patch)
+}
+
+/** Any columns, status included: only ./change-order-status-store.ts passes a status. */
+export function changeOrderWriteStatement(db: Db, where: SQL | undefined, values: SQLiteUpdateSetSource<typeof projectChangeOrders>): Statement {
+  assertListFields("project_change_orders", values, CHANGE_ORDER_LISTS)
+  return db.update(projectChangeOrders).set(values).where(where)
 }
 
 // ---- projectChangeOrderLines

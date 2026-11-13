@@ -14,6 +14,7 @@ import {
 
 import { getProjectDepositRequests } from "@/app/actions/project-contract-deposits"
 import { getOwnerPayApplicationBalances } from "@/app/actions/received-payments"
+import { ownerPayApplicationHistory } from "@/lib/domain/financials/bill-matching"
 import { formatCents } from "@/lib/format"
 import type { DepositRequestSummary } from "@/lib/deposits/deposit-requests"
 import { printPreviewHref } from "@/lib/print/print-documents"
@@ -40,6 +41,7 @@ import { projectAudienceMessageShortcut } from "@/lib/project-audience-direct-me
 import { projectBrandFor } from "@/lib/project-branding"
 import { budgetPaymentBreakdown } from "@/lib/project-budget-snapshot"
 import { PageHeader } from "@/components/page-header"
+import { SourceTag } from "@/components/shared/source-tag"
 
 function hasDigest(error: unknown): error is { readonly digest: string } {
   return typeof error === "object" && error !== null && "digest" in error
@@ -109,6 +111,8 @@ export default async function OwnerBudgetPage({
     projectId: preview.project.id,
     projectNumber: preview.project.projectNumber,
   })
+  // The contract budget is stored like a pay application but isn't one.
+  const payApplications = ownerPayApplicationHistory(budget.applications)
   const reconciliation = budget.reconciliation
   const { reconciliationRequired } = reconciliation
   const messageShortcut = projectAudienceMessageShortcut({
@@ -178,7 +182,7 @@ export default async function OwnerBudgetPage({
             </section>
           )}
 
-          {budget.applications.length > 0 && (
+          {payApplications.length > 0 && (
             <section className="mt-5 border bg-background p-4">
               <div className="flex flex-wrap items-end justify-between gap-3">
                 <div>
@@ -188,11 +192,11 @@ export default async function OwnerBudgetPage({
                   </p>
                 </div>
                 <Badge variant="outline">
-                  {budget.applications.length} published
+                  {payApplications.length} published
                 </Badge>
               </div>
               <div className="mt-4 divide-y border">
-                {budget.applications.map((application, index) => {
+                {payApplications.map((application, index) => {
                   const payment = budgetPaymentBreakdown(application)
                   const balance = balances.get(application.id)
                   const paidLabel = balance && balance.paidState !== "open"
@@ -208,6 +212,7 @@ export default async function OwnerBudgetPage({
                         <div className="flex flex-wrap items-center gap-2">
                           <p className="font-medium">
                             Pay application {application.applicationNumber}
+                            {application.sourceSystem.startsWith("buildertrend") && <SourceTag source="buildertrend" className="ml-1" />}
                           </p>
                           {index === 0 && <Badge>{application.status === "paid_in_full" ? "Final" : "Current"}</Badge>}
                           <Badge variant="outline">

@@ -15,7 +15,8 @@ import {
 import { isChangeOrderStatus } from "@/lib/change-orders/status"
 import type { ChangeOrderAcceptanceView, ChangeOrderManualAcceptanceOptions } from "@/lib/change-orders/types"
 import { executedDocumentSource } from "@/lib/contracts/executed-document-source"
-import { insertChangeOrderHistoryStatement, updateChangeOrdersStatement } from "@/lib/domain/estimates/store"
+import { insertChangeOrderHistoryStatement } from "@/lib/domain/estimates/store"
+import { changeOrderMoveStatements, runGuardedChangeOrderBatch } from "@/lib/domain/estimates/change-order-status-store"
 import { DEFAULT_CHANGE_ORDER_ACCEPTANCE_SETTINGS } from "@/lib/feature-settings/contract-settings"
 import { readFeatureSettings } from "@/lib/feature-settings/server"
 import { rebuildProjectContractBudget } from "@/lib/financials/contract-budget-store"
@@ -219,17 +220,15 @@ export async function recordChangeOrderManualAcceptance(input: {
     acceptedOn: accepted.acceptedOn,
     recordedByName: recorderName,
   })
-  await db.batch([
-    updateChangeOrdersStatement(
-      db,
-      // Guarded on the status read above so two people can't execute it twice.
-      and(
-        eq(projectChangeOrders.id, changeOrderId),
-        eq(projectChangeOrders.projectId, projectId),
-        eq(projectChangeOrders.status, fromStatus)
-      ),
-      {
-        status: "executed",
+  const executed = await runGuardedChangeOrderBatch(db, [
+    // Compare-and-set on the status read above, so two people can't execute
+    // it twice: the second batch (with its history entry) is refused.
+    ...changeOrderMoveStatements(db, {
+      changeOrderId,
+      projectId,
+      event: "record_acceptance",
+      expected: fromStatus,
+      values: {
         // Noon UTC reads as the approval date in every US time zone.
         executedAt: `${accepted.acceptedOn}T12:00:00.000Z`,
         ...(evidence ? { executedDocumentUrl: evidence.url, executedDocumentLabel: evidence.label } : {}),
@@ -240,8 +239,8 @@ export async function recordChangeOrderManualAcceptance(input: {
         acceptanceRecordedBy: user.id,
         acceptanceNote: accepted.note,
         updatedAt: now,
-      }
-    ),
+      },
+    }),
     insertChangeOrderHistoryStatement(db, {
       id: crypto.randomUUID(),
       projectId,
@@ -262,6 +261,7 @@ export async function recordChangeOrderManualAcceptance(input: {
       createdAt: now,
     }),
   ])
+  if (!executed) return { success: false, error: "This change order was already executed or changed meanwhile. Refresh to see where it stands." }
 
   const budget = await rebuildProjectContractBudget({ db, projectId, actorUserId: user.id })
   if (input.organizationId) {
