@@ -6,8 +6,8 @@ import { sageArInvoiceExports } from "@/db/schema-sage"
 import { recordActivityEvent } from "@/lib/activity-log"
 import { updateBudgetApplicationsStatement } from "@/lib/domain/budget/store"
 import { operationUpdateQuery } from "@/lib/domain/operations/store"
-import { updateSageArInvoiceExportsStatement } from "@/lib/domain/sage-bridge/ar-invoice-store"
-import { releaseSageResultLease, sageResultAlreadyRecorded, takeSageResultLease } from "@/lib/domain/sage-bridge/store"
+import { recordLateResultOnVoided, updateSageArInvoiceExportsStatement } from "@/lib/domain/sage-bridge/ar-invoice-store"
+import { releaseSageResultLease, sageResultAlreadyRecorded, sageResultLeaseToken, takeSageResultLease } from "@/lib/domain/sage-bridge/store"
 import { applyDepositSageResult } from "@/lib/financials/deposit-sage-result"
 import { applySimpleInvoiceSageResult } from "@/lib/financials/simple-invoice-sage-result"
 import { formatCents } from "@/lib/format"
@@ -81,6 +81,14 @@ export async function POST(request: Request): Promise<Response> {
     for (const table of ["sage_ar_invoice_exports", "sage_invoice_ar_exports", "sage_deposit_ar_exports"] as const) {
       const recorded = await sageResultAlreadyRecorded(db, table, { id: result.id, organizationId, claimToken: result.claimToken, ...repeat })
       if (recorded) return Response.json({ success: true, status: recorded, alreadyRecorded: true })
+    }
+    // The record was voided while the writer ran (flagged for staff): keep Sage's record id, answer 2xx.
+    for (const kind of ["pay", "invoice", "deposit"] as const) {
+      const late = await recordLateResultOnVoided(db, {
+        kind, id: result.id, organizationId, claimToken: result.claimToken, leaseToken: sageResultLeaseToken(result.claimToken),
+        sageRecordId: result.outcome === "succeeded" ? result.sageRecordId : null, now: new Date().toISOString(),
+      })
+      if (late) return Response.json({ success: true, status: "needs_attention", voidedWhileSending: true }, { status: 202 })
     }
     return Response.json({ error: "AR invoice claim changed" }, { status: 409 })
   }

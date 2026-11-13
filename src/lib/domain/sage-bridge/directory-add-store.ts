@@ -57,8 +57,13 @@ export async function moveSageDirectoryAddRequest(
  */
 export async function relinkSageDirectoryAddOperation(
   db: Db,
-  input: { readonly id: string; readonly organizationId: string; readonly fromOperationId: string; readonly toOperationId: string; readonly now: string }
+  input: {
+    readonly id: string; readonly organizationId: string; readonly fromOperationId: string; readonly toOperationId: string; readonly now: string
+    /** The writer request's states it may be linked in (default: queued, running or succeeded). */
+    readonly operationStatuses?: readonly ("queued" | "running" | "succeeded" | "failed")[]
+  }
 ): Promise<boolean> {
+  const statuses = input.operationStatuses ?? ["queued", "running", "succeeded"]
   const result = await db.update(sageDirectoryAddRequests)
     .set({ writeOperationId: input.toOperationId, errorMessage: null, updatedAt: input.now })
     .where(and(
@@ -67,7 +72,7 @@ export async function relinkSageDirectoryAddOperation(
       eq(sageDirectoryAddRequests.status, directoryAddMachine.transitions.send.to),
       eq(sageDirectoryAddRequests.writeOperationId, input.fromOperationId),
       sql`EXISTS (SELECT 1 FROM sage_client_project_write_operations op
-        WHERE op.id = ${input.toOperationId} AND op.status IN ('queued', 'running', 'succeeded'))`
+        WHERE op.id = ${input.toOperationId} AND op.status IN (${sql.join(statuses.map((status) => sql`${status}`), sql`, `)}))`
     ))
     .run()
   return result.meta.changes === 1

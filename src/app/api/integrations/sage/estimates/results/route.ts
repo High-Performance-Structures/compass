@@ -4,12 +4,12 @@ import { projectEstimates } from "@/db/schema-estimates"
 import { sageEstimateExports } from "@/db/schema-sage"
 import { recordActivityEvent } from "@/lib/activity-log"
 import { updateEstimatesStatement } from "@/lib/domain/estimates/store"
-import { updateSageEstimateExportsStatement } from "@/lib/domain/sage-bridge/estimate-store"
+import { finishEstimateExportSucceededStatement, updateSageEstimateExportsStatement } from "@/lib/domain/sage-bridge/estimate-store"
 import { releaseSageResultLease, sageResultAlreadyRecorded, takeSageResultLease } from "@/lib/domain/sage-bridge/store"
 import { readBoundedSageBridgeBody } from "@/lib/sage/bridge-auth"
 import { authorizeSageChangeOrderBridge, ESTIMATE_WRITER } from "@/lib/sage/change-order-bridge"
 import { sageExportActor } from "@/lib/sage/estimate-sync"
-import { EDITED_WHILE_SENDING, estimateEditedAfterClaim } from "@/lib/domain/sage-bridge/estimate-proposal-rules"
+import { EDITED_WHILE_SENDING } from "@/lib/domain/sage-bridge/estimate-proposal-rules"
 import { sageEstimateWriteResultSchema } from "@/lib/sage/estimate-write"
 import { queueSageJobTaxDistrict } from "@/lib/sage/job-tax-district"
 
@@ -82,28 +82,29 @@ export async function POST(request: Request): Promise<Response> {
     )
     const now = new Date().toISOString()
     const estimateWhere = and(eq(projectEstimates.id, row.estimateId), eq(projectEstimates.projectId, row.projectId))
-    // Sage has the proposal as it was when claimed; an estimate edited since is flagged for staff, never re-sent.
-    const edited = result.outcome === "succeeded" && estimateEditedAfterClaim(
-      (await db.select({ updatedAt: projectEstimates.updatedAt }).from(projectEstimates).where(estimateWhere).get())?.updatedAt ?? null,
-      row.claimedAt,
-    )
-    const status = result.outcome === "succeeded" ? (edited ? "needs_attention" : "succeeded") : result.needsAttention ? "needs_attention" : "failed"
+    // A success lands as needs attention when the estimate was edited after the
+    // claim (decided inside the write: Sage has the older version; staff check
+    // it, nothing re-sends it). A failure lands as reported.
+    const exportWrite = result.outcome === "succeeded"
+      ? finishEstimateExportSucceededStatement(db, {
+        id: result.id, organizationId, leaseToken, claimedAt: row.claimedAt, editedMessage: EDITED_WHILE_SENDING, now,
+      })
+      : updateSageEstimateExportsStatement(db, leased, {
+        status: result.needsAttention ? "needs_attention" : "failed", errorMessage: result.error, completedAt: now, updatedAt: now,
+      }).returning({ id: sageEstimateExports.id, status: sageEstimateExports.status })
     const [updated] = await db.batch([
-      updateSageEstimateExportsStatement(db, leased, {
-        status,
-        errorMessage: result.outcome === "failed" ? result.error : edited ? EDITED_WHILE_SENDING : null,
-        completedAt: now,
-        updatedAt: now,
-      }).returning({ id: sageEstimateExports.id }),
-      // Only when the export update above landed under this lease.
+      exportWrite,
+      // Only when the export update above landed under this lease; the estimate shows its outcome.
       updateEstimatesStatement(db, and(estimateWhere, sql`EXISTS (SELECT 1 FROM sage_estimate_exports
-        WHERE id = ${result.id} AND claim_token = ${leaseToken} AND status = ${status} AND completed_at = ${now})`), {
-        sageStatus: status === "succeeded" ? "sent" : status,
+        WHERE id = ${result.id} AND claim_token = ${leaseToken} AND completed_at = ${now})`), {
+        sageStatus: sql`(SELECT CASE status WHEN 'succeeded' THEN 'sent' ELSE status END FROM sage_estimate_exports WHERE id = ${result.id})`,
         ...(result.outcome === "succeeded" ? { lastSageSyncAt: now } : {}),
         updatedAt: now,
       }),
     ])
     if (updated.length !== 1) return Response.json({ error: "Estimate claim changed" }, { status: 409 })
+    const status = updated[0]?.status ?? "succeeded"
+    const edited = result.outcome === "succeeded" && status === "needs_attention"
 
     if (result.outcome === "succeeded") {
       // The job now carries the accepted estimate, so give it the estimate's tax

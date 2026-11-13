@@ -5,7 +5,7 @@ import { customers, vendors } from "@/db/schema"
 import { sageClientProjectWriteOperations } from "@/db/schema-sage"
 import { recordActivityEvent } from "@/lib/activity-log"
 import { getCloudflareContext } from "@/lib/db"
-import { sageClientWriteResultCustomerStatement, sageIdentityLinkStatement } from "@/lib/domain/contacts/store"
+import { sageClientWriteResultCustomerStatement, sageIdentityLinkStatement, updateVendorById } from "@/lib/domain/contacts/store"
 import { sageJobResultStatement } from "@/lib/domain/project/store"
 import { sageDirectoryAddOutcomeStatement } from "@/lib/domain/sage-bridge/directory-add-store"
 import {
@@ -232,31 +232,48 @@ async function recordVendorAdded(
       or(eq(vendors.sageVendorNumber, vendor.number), sql`upper(${vendors.sageVendorId}) = upper(${vendor.id})`),
     )).get()
     : undefined
+  const own = operation.vendorId
+    ? await db.select({ sageVendorId: vendors.sageVendorId, sageVendorNumber: vendors.sageVendorNumber }).from(vendors)
+      .where(eq(vendors.id, operation.vendorId)).get()
+    : undefined
+  // The requested vendor got linked to another Sage vendor meanwhile: the link can't land, so the request fails with why.
+  const linkedElsewhere = own?.sageVendorId?.trim() && own.sageVendorId.toUpperCase() !== vendor.id.toUpperCase()
+    ? `Sage added vendor #${vendor.number}, but this vendor is already linked to Sage vendor #${own.sageVendorNumber ?? own.sageVendorId}; check Sage for a duplicate.`
+    : null
   const linkError = holder && holder.id !== operation.vendorId
     ? `Sage vendor #${vendor.number} already belongs to ${holder.name} in Compass; merge the two vendors.`
     : null
   const outcome = {
-    outcome: "succeeded" as const, sageRecordId: vendor.id, sageRecordNumber: vendor.number, now,
-    error: linkError ?? (vendor.print1099Applied ? null : "Sage added the vendor, but its 1099 box must be set in Sage by hand."),
+    outcome: linkedElsewhere ? "failed" as const : "succeeded" as const, sageRecordId: vendor.id, sageRecordNumber: vendor.number, now,
+    error: linkedElsewhere ?? linkError ?? (vendor.print1099Applied ? null : "Sage added the vendor, but its 1099 box must be set in Sage by hand."),
   }
   const request = await findSentSageAddRequest(db, { operationId: operation.id, organizationId: operation.organizationId })
   // One batch: the success, the vendor's Sage link and the add request's
   // outcome, the last two only if the success landed under this lease.
   const guard = sageWriteSucceededUnderLease({ operationId: operation.id, leaseToken, now })
   const statements = [sageVendorWriteSucceededStatement(database, { operationId: operation.id, leaseToken, vendorId: vendor.id, vendorNumber: vendor.number, now })]
-  if (operation.vendorId && !holder) {
+  const linkIndex = operation.vendorId && !holder && !linkedElsewhere ? statements.length : null
+  if (operation.vendorId && linkIndex !== null) {
     statements.push(sageIdentityLinkStatement(database, "vendor_company", guard.sql,
       [vendor.id, vendor.number, operation.vendorId, operation.organizationId, vendor.number, ...guard.binds]))
   }
   if (request) {
     statements.push(sageDirectoryAddOutcomeStatement(database, {
-      requestId: request.id, organizationId: request.organizationId, operationId: operation.id, event: "succeed",
+      requestId: request.id, organizationId: request.organizationId, operationId: operation.id, event: linkedElsewhere ? "fail" : "succeed",
       sageRecordId: outcome.sageRecordId, sageRecordNumber: outcome.sageRecordNumber, errorMessage: outcome.error?.slice(0, 1000) ?? null, now, guard,
     }))
   }
   const results = await database.batch(statements)
   if (results[0]?.meta.changes !== 1) {
     return Response.json({ error: "Sage write claim is missing, stale, or already completed" }, { status: 409 })
+  }
+  if (operation.vendorId && linkIndex !== null && results[linkIndex]?.meta.changes === 1) {
+    // The link statement doesn't stamp the vendor; this keeps its updated time right.
+    try {
+      await updateVendorById(db, { vendorId: operation.vendorId, values: { updatedAt: now } })
+    } catch (error) {
+      console.error("Sage vendor link time could not be recorded", error)
+    }
   }
   if (request && results.at(-1)?.meta.changes === 1) await announceSageAddOutcome(db, request, outcome)
   return Response.json({ success: true, status: "succeeded" })

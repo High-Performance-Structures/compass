@@ -256,7 +256,7 @@ export type SageResultLeaseTable =
  * random, so once the result has landed an exact repeat of it can still be
  * recognised (sageResultAlreadyRecorded) after the row's token changed.
  */
-function sageResultLeaseToken(claimToken: string): string {
+export function sageResultLeaseToken(claimToken: string): string {
   return `${claimToken}:result`
 }
 

@@ -128,6 +128,35 @@ export function updateSageEstimateExportsStatement(
   return exportUpdate(db, where, patch)
 }
 
+/**
+ * succeed, or flag when the estimate was edited after the writer claimed the
+ * export (`claimedAt`): decided in the same statement, so an edit landing
+ * while the result is applied still counts. Sage then has the older version;
+ * staff check it (owner rule 2026-11-12), nothing re-sends it. Fenced on the
+ * result's lease and the running state both events leave from.
+ */
+export function finishEstimateExportSucceededStatement(
+  db: Db,
+  input: { readonly id: string; readonly organizationId: string; readonly leaseToken: string; readonly claimedAt: string | null; readonly editedMessage: string; readonly now: string }
+) {
+  const { succeed, flag } = estimateExportMachine.transitions
+  const edited = sql`coalesce((SELECT updated_at FROM project_estimates WHERE id = ${sageEstimateExports.estimateId}) > ${input.claimedAt}, 0)`
+  return db.update(sageEstimateExports)
+    .set({
+      status: sql`CASE WHEN ${edited} THEN ${flag.to} ELSE ${succeed.to} END`,
+      errorMessage: sql`CASE WHEN ${edited} THEN ${input.editedMessage} ELSE NULL END`,
+      completedAt: input.now,
+      updatedAt: input.now,
+    })
+    .where(and(
+      eq(sageEstimateExports.id, input.id),
+      eq(sageEstimateExports.organizationId, input.organizationId),
+      eq(sageEstimateExports.claimToken, input.leaseToken),
+      inArray(sageEstimateExports.status, [...succeed.from.filter((state) => flag.from.includes(state))])
+    ))
+    .returning({ id: sageEstimateExports.id, status: sageEstimateExports.status })
+}
+
 /** The project's exports stopped only because Sage didn't have the job yet (`reasons` is that text). */
 export function exportsStoppedForJobWhere(input: {
   readonly organizationId: string; readonly projectId: string; readonly reasons: readonly string[]

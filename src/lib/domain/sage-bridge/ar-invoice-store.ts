@@ -32,11 +32,57 @@ const SOURCE_IS_VOID = {
     WHERE src.id = sage_deposit_ar_exports.deposit_id AND src.status = 'void')`),
 } as const
 
-const VOIDED_WHILE_SENDING = "Voided while Sage was adding it; check Sage."
+export const VOIDED_WHILE_SENDING = "Voided while Sage was adding it; check Sage."
 
 /** The export's record isn't void, for the writer polls' candidate lists (same SQL as the claim's). */
 export function sageArExportSourceNotVoid(kind: keyof typeof SOURCE_IS_VOID): SQL {
   return sql`NOT ${SOURCE_IS_VOID[kind]}`
+}
+
+/** The AR export tables and the column naming their record. */
+const AR_EXPORT_TABLES = {
+  pay: { table: "sage_ar_invoice_exports", source: "application_id" },
+  invoice: { table: "sage_invoice_ar_exports", source: "invoice_id" },
+  deposit: { table: "sage_deposit_ar_exports", source: "deposit_id" },
+} as const
+
+/**
+ * Sage may have this export's invoice: the writer is running it, finished it,
+ * read back Sage's record, or was ever handed its payload. The writer can
+ * report "failed" (or "accepted but doesn't read back") for an invoice Sage
+ * did take, so anything it ran counts. A row a guard stopped before it was
+ * ever sent (no payload) does not.
+ */
+export const POSSIBLY_IN_SAGE_SQL = "(status IN ('running', 'succeeded') OR sage_record_id IS NOT NULL OR payload_json IS NOT NULL)"
+
+/** Whether Sage may have the invoice of `sourceId`'s export (see POSSIBLY_IN_SAGE_SQL); false with no export. */
+export async function arExportPossiblyInSage(
+  db: Db,
+  input: { readonly kind: keyof typeof AR_EXPORT_TABLES; readonly organizationId: string; readonly sourceId: string }
+): Promise<boolean> {
+  const { table, source } = AR_EXPORT_TABLES[input.kind]
+  const rows = await db.all<{ readonly n: number }>(sql`SELECT count(*) AS n FROM ${sql.identifier(table)}
+    WHERE ${sql.identifier(source)} = ${input.sourceId} AND organization_id = ${input.organizationId} AND ${sql.raw(POSSIBLY_IN_SAGE_SQL)}`)
+  return Number(rows[0]?.n ?? 0) > 0
+}
+
+/**
+ * The writer's late result for a claim whose record was voided while it ran
+ * (flagged "voided while sending"): Sage's record id is kept for staff, the
+ * row stays needs attention, and the claim is used up (its lease token), so
+ * the result answers 2xx instead of a 409 that would end the writer's run.
+ * True when it was that row.
+ */
+export async function recordLateResultOnVoided(
+  db: Db,
+  input: { readonly kind: keyof typeof AR_EXPORT_TABLES; readonly id: string; readonly organizationId: string; readonly claimToken: string; readonly leaseToken: string; readonly sageRecordId: string | null; readonly now: string }
+): Promise<boolean> {
+  const { table } = AR_EXPORT_TABLES[input.kind]
+  const result = await db.run(sql`UPDATE ${sql.identifier(table)}
+    SET claim_token = ${input.leaseToken}, sage_record_id = coalesce(${input.sageRecordId}, sage_record_id), updated_at = ${input.now}
+    WHERE id = ${input.id} AND organization_id = ${input.organizationId} AND claim_token = ${input.claimToken}
+      AND status = 'needs_attention' AND error_message = ${VOIDED_WHILE_SENDING}`)
+  return result.meta.changes === 1
 }
 
 /**
@@ -98,7 +144,7 @@ export async function upsertSageArInvoiceExport(db: Db, row: SageArInvoiceExport
         requestedAt: row.now,
         claimToken: null,
         claimedAt: null,
-        payloadJson: null,
+        // payload_json stays: it shows the writer was handed this invoice before (it may be in Sage).
         errorMessage: row.errorMessage,
         completedAt: null,
         updatedAt: row.now,
@@ -153,7 +199,8 @@ export async function claimSageArInvoiceExport(
     ))
   // Running for a record voided since, and stale: never offered again; staff check Sage.
   await db.update(sageArInvoiceExports)
-    .set({ status: arInvoiceExportMachine.transitions.flag.to, claimToken: null, errorMessage: VOIDED_WHILE_SENDING, completedAt: input.now, updatedAt: input.now })
+    // The claim token stays, so the writer's late result for it still lands (recordLateResultOnVoided).
+    .set({ status: arInvoiceExportMachine.transitions.flag.to, errorMessage: VOIDED_WHILE_SENDING, completedAt: input.now, updatedAt: input.now })
     .where(and(
       eq(sageArInvoiceExports.id, input.id),
       eq(sageArInvoiceExports.organizationId, input.organizationId),
@@ -256,7 +303,7 @@ export async function upsertSageInvoiceArExport(db: Db, row: SageInvoiceArExport
         requestedAt: row.now,
         claimToken: null,
         claimedAt: null,
-        payloadJson: null,
+        // payload_json stays: it shows the writer was handed this invoice before (it may be in Sage).
         errorMessage: row.errorMessage,
         completedAt: null,
         updatedAt: row.now,
@@ -311,7 +358,8 @@ export async function claimSageInvoiceArExport(
     ))
   // Running for a record voided since, and stale: never offered again; staff check Sage.
   await db.update(sageInvoiceArExports)
-    .set({ status: arInvoiceExportMachine.transitions.flag.to, claimToken: null, errorMessage: VOIDED_WHILE_SENDING, completedAt: input.now, updatedAt: input.now })
+    // The claim token stays, so the writer's late result for it still lands (recordLateResultOnVoided).
+    .set({ status: arInvoiceExportMachine.transitions.flag.to, errorMessage: VOIDED_WHILE_SENDING, completedAt: input.now, updatedAt: input.now })
     .where(and(
       eq(sageInvoiceArExports.id, input.id),
       eq(sageInvoiceArExports.organizationId, input.organizationId),
@@ -416,7 +464,7 @@ export async function upsertSageDepositArExport(db: Db, row: SageDepositArExport
         requestedAt: row.now,
         claimToken: null,
         claimedAt: null,
-        payloadJson: null,
+        // payload_json stays: it shows the writer was handed this invoice before (it may be in Sage).
         errorMessage: row.errorMessage,
         completedAt: null,
         updatedAt: row.now,
@@ -471,7 +519,8 @@ export async function claimSageDepositArExport(
     ))
   // Running for a record voided since, and stale: never offered again; staff check Sage.
   await db.update(sageDepositArExports)
-    .set({ status: arInvoiceExportMachine.transitions.flag.to, claimToken: null, errorMessage: VOIDED_WHILE_SENDING, completedAt: input.now, updatedAt: input.now })
+    // The claim token stays, so the writer's late result for it still lands (recordLateResultOnVoided).
+    .set({ status: arInvoiceExportMachine.transitions.flag.to, errorMessage: VOIDED_WHILE_SENDING, completedAt: input.now, updatedAt: input.now })
     .where(and(
       eq(sageDepositArExports.id, input.id),
       eq(sageDepositArExports.organizationId, input.organizationId),

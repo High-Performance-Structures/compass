@@ -36,7 +36,7 @@ import { getCloudflareContext } from "@/lib/db"
 import { readFeatureSettings } from "@/lib/feature-settings/server"
 import { refreshAutoDepositPayApplications } from "@/lib/financials/owner-pay-application-refresh"
 import { depositSageExportStatus } from "@/lib/financials/deposit-sage"
-import { cancelSageDepositArExport } from "@/lib/domain/sage-bridge/ar-invoice-store"
+import { arExportPossiblyInSage, cancelSageDepositArExport } from "@/lib/domain/sage-bridge/ar-invoice-store"
 import { requireOrg } from "@/lib/org-scope"
 import { projectDepositRequests, type DepositRequestSummary } from "@/lib/deposits/deposit-requests"
 import { assertProjectAccess } from "@/lib/domain/project/access"
@@ -589,14 +589,27 @@ export async function voidProjectContractDeposit(projectId: string, depositId: s
     // Void first, fenced on the status it was read in. From then on the Sage
     // writer can't claim its AR invoice (the claim checks for void in the same
     // statement); a queued one is withdrawn next.
+    const reductionCents = existing.status === "received" ? existing.receivedAmountCents ?? 0 : 0
     const voided = await db.update(projectContractDeposits).set({ status: "void", updatedAt: now })
-      .where(and(eq(projectContractDeposits.id, depositId), eq(projectContractDeposits.status, existing.status)))
+      .where(and(
+        eq(projectContractDeposits.id, depositId), eq(projectContractDeposits.status, existing.status),
+        // The applied-deposit check again, in the same statement: a pay application submitted meanwhile still counts.
+        reductionCents > 0 ? stillCoversAppliedSql(projectId, reductionCents) : undefined,
+      ))
       .returning({ id: projectContractDeposits.id })
-    if (voided.length !== 1) throw new Error("This deposit changed while you were voiding it. Refresh and try again.")
+    if (voided.length !== 1) {
+      await assertStillCoversApplied(db, projectId, reductionCents)
+      throw new Error("This deposit changed while you were voiding it. Refresh and try again.")
+    }
     let note: string | null = null
-    if ((await depositSageExportStatus(db, depositId)) && !(await cancelSageDepositArExport(db, { organizationId, depositId, now }))) {
-      // Running (Sage may be adding it now) or already in Sage: it stays; staff void it in Sage.
-      note = "Its Sage AR invoice is in Sage or being added right now; void it in Sage too."
+    if (await depositSageExportStatus(db, depositId)) {
+      // A queued export is withdrawn. Whether or not that lands, one the writer
+      // ran or is running may be in Sage (the writer can report a failure for
+      // an invoice Sage took), so staff are told to check.
+      const cancelled = await cancelSageDepositArExport(db, { organizationId, depositId, now })
+      if (!cancelled || (await arExportPossiblyInSage(db, { kind: "deposit", organizationId, sourceId: depositId }))) {
+        note = "Its Sage AR invoice may be in Sage (or being added); check Sage and void it there too."
+      }
     }
     await refreshAutoDepositPayApplications(db, projectId, now)
     revalidateDeposits(projectId)
@@ -604,6 +617,14 @@ export async function voidProjectContractDeposit(projectId: string, depositId: s
   } catch (error) {
     return { success: false, error: error instanceof Error ? error.message : "Unable to void the deposit." }
   }
+}
+
+/** assertStillCoversApplied as a WHERE condition, for the void's own statement. */
+function stillCoversAppliedSql(projectId: string, reductionCents: number): SQL {
+  return sql`(SELECT coalesce(sum(received_amount_cents), 0) FROM project_contract_deposits
+      WHERE project_id = ${projectId} AND status = 'received') - ${reductionCents}
+    >= (SELECT round(coalesce(sum(deposit_applied), 0) * 100) FROM project_budget_applications
+      WHERE project_id = ${projectId} AND status NOT IN ('budget_current', 'budget_superseded', 'void', 'draft', 'building'))`
 }
 
 /**

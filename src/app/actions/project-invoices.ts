@@ -37,7 +37,12 @@ import {
   simpleInvoiceUpdateStatement,
   voidSimpleInvoice,
 } from "@/lib/domain/financials/store"
-import { cancelSageInvoiceArExport, cancelSageInvoiceArExportStatement } from "@/lib/domain/sage-bridge/ar-invoice-store"
+import {
+  arExportPossiblyInSage,
+  cancelSageInvoiceArExport,
+  cancelSageInvoiceArExportStatement,
+  POSSIBLY_IN_SAGE_SQL,
+} from "@/lib/domain/sage-bridge/ar-invoice-store"
 import { addDays } from "@/lib/domain/sage-bridge/ar-invoice-rules"
 import { readFeatureSettings } from "@/lib/feature-settings/server"
 import { formatSageInvoiceNumber, simpleInvoiceNumberFormat } from "@/lib/financials/sage-invoice-number"
@@ -366,10 +371,7 @@ export async function finalizeProjectInvoice(projectId: string, invoiceId: strin
   }
 }
 
-/** Sage has the invoice, or is adding it: its export is running or succeeded, or carries Sage's record id (needs attention after a total that read back differently). */
-function sageHasInvoice(exported: { readonly status: string; readonly sageRecordId: string | null }): boolean {
-  return exported.status === "running" || exported.status === "succeeded" || exported.sageRecordId !== null
-}
+const SAGE_MAY_HAVE_IT = "Sage may already have this invoice; check Sage first, or void it instead."
 
 /** Takes a final invoice back to draft, while nothing has gone out (Sage, email, Square) and nothing is paid. */
 export async function reopenProjectInvoice(projectId: string, invoiceId: string): Promise<ActionDone> {
@@ -379,21 +381,20 @@ export async function reopenProjectInvoice(projectId: string, invoiceId: string)
     const { db, user, organizationId } = context.data
     const invoice = await loadSimpleInvoice(db, organizationId, projectId, invoiceId)
     if (!invoice) return actionFailure("Invoice not found.")
-    const exported = await loadSimpleInvoiceExport(db, organizationId, invoiceId)
     if (invoice.emailedAt || invoice.squareState === "published" || invoice.amountPaidCents > 0) {
       return actionFailure("This invoice has gone out or been paid; void it instead.")
     }
-    if (exported && sageHasInvoice(exported)) return actionFailure("This invoice is in Sage; void it instead.")
+    const mayBeInSage = () => arExportPossiblyInSage(db, { kind: "invoice", organizationId, sourceId: invoiceId })
+    if (await mayBeInSage()) return actionFailure(SAGE_MAY_HAVE_IT)
     const now = new Date().toISOString()
     // One batch: the invoice goes back to draft (machine fence, nothing paid)
-    // only while Sage doesn't have or isn't taking it (no export running,
-    // succeeded or carrying Sage's record), and its queued export is cancelled
-    // only if that reopen landed. Neither can happen without the other.
+    // only while Sage can't have it (no export the writer ran or is running,
+    // see POSSIBLY_IN_SAGE_SQL), and its queued export is cancelled only if
+    // that reopen landed. Neither can happen without the other.
     const [reopened] = await db.batch([
       simpleInvoiceMoveStatement(db, { invoiceId, organizationId, projectId }, "reopen", { updatedAt: now }, and(
         eq(invoices.amountPaid, 0),
-        sql`NOT EXISTS (SELECT 1 FROM sage_invoice_ar_exports e WHERE e.invoice_id = ${invoiceId}
-          AND (e.status IN ('running', 'succeeded') OR e.sage_record_id IS NOT NULL))`,
+        sql`NOT EXISTS (SELECT 1 FROM sage_invoice_ar_exports WHERE invoice_id = ${invoiceId} AND ${sql.raw(POSSIBLY_IN_SAGE_SQL)})`,
       )),
       cancelSageInvoiceArExportStatement(db, {
         organizationId, invoiceId, now,
@@ -401,10 +402,7 @@ export async function reopenProjectInvoice(projectId: string, invoiceId: string)
       }),
     ])
     if (reopened.length !== 1) {
-      const current = await loadSimpleInvoiceExport(db, organizationId, invoiceId)
-      return actionFailure(current && sageHasInvoice(current)
-        ? "Sage has this invoice or is taking it right now; void it instead."
-        : "Only a final, unpaid invoice can be reopened.")
+      return actionFailure((await mayBeInSage()) ? SAGE_MAY_HAVE_IT : "Only a final, unpaid invoice can be reopened.")
     }
     await recordActivityEvent({
       db,
@@ -483,13 +481,13 @@ export async function voidProjectInvoice(projectId: string, invoiceId: string, r
       return actionFailure("Someone else changed this invoice (or a payment was applied). Refresh and try again.")
     }
     const notes: string[] = []
-    const exported = await loadSimpleInvoiceExport(db, organizationId, invoiceId)
-    if (exported) {
-      // Sage has it (or is adding it): an export carrying Sage's record id counts, whatever its status.
-      if (sageHasInvoice(exported)) {
-        notes.push(`Invoice ${invoice.invoiceNumber ?? ""} is in Sage (or being added): void it in Sage too.`)
-      } else if (!(await cancelSageInvoiceArExport(db, { organizationId, invoiceId, now }))) {
-        notes.push(`Sage started adding invoice ${invoice.invoiceNumber ?? ""}: check Sage and void it there too.`)
+    if (await loadSimpleInvoiceExport(db, organizationId, invoiceId)) {
+      // A queued export is withdrawn. Whether or not that lands, an export the
+      // writer ran or is running may be in Sage (the writer can report a
+      // failure for an invoice Sage took), so staff are told to check.
+      const cancelled = await cancelSageInvoiceArExport(db, { organizationId, invoiceId, now })
+      if (!cancelled || (await arExportPossiblyInSage(db, { kind: "invoice", organizationId, sourceId: invoiceId }))) {
+        notes.push(`Invoice ${invoice.invoiceNumber ?? ""} may be in Sage (or being added): check Sage and void it there too.`)
       }
     }
     // The stored Square id, read again: a Square invoice created while this void ran is cancelled too.
