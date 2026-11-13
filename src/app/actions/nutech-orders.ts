@@ -7,7 +7,7 @@ import { revalidatePath } from "next/cache"
 import { projectOperations, projects } from "@/db/schema"
 import { projectEstimates, sageTaxEntities } from "@/db/schema-estimates"
 import { readFeatureSettings } from "@/lib/feature-settings/server"
-import { operationUpdateQuery } from "@/lib/domain/operations/store"
+import { automaticStatusQuery, operationUpdateQuery } from "@/lib/domain/operations/store"
 import { isNuTechFreight } from "@/lib/nutech/freight"
 import {
   nuTechCatalogPrices,
@@ -693,13 +693,12 @@ export async function releaseNuTechAirlitePurchaseOrder(
       .get()
     if (!purchaseOrder) throw new Error("The linked Airlite purchase order was not found.")
     const now = new Date().toISOString()
-    const purchaseOrderStatus =
-      purchaseOrder.status === "draft" || purchaseOrder.status === "approved"
-        ? "sent"
-        : purchaseOrder.status
+    // Releasing sends a draft or approved PO; any later status stays as it is.
+    const markSent = automaticStatusQuery(access.db, { projectId, operationId: purchaseOrderId,
+      automation: { kind: "purchase_order", event: "send" }, stored: purchaseOrder.status, updatedAt: now })
     await access.db.batch([
       releaseNuTechOrderPurchaseOrderStatement(access.db, { orderId: order.id, userId: access.user.id, now }),
-      operationUpdateQuery(access.db, eq(projectOperations.id, purchaseOrderId), { status: purchaseOrderStatus, updatedAt: now }),
+      markSent ?? operationUpdateQuery(access.db, eq(projectOperations.id, purchaseOrderId), { updatedAt: now }),
     ])
     await syncProjectWithOrder(access, { jobStatusId: jobStatusForNuTechOrderStatus("po_released"), deliveryMethod: null, now })
     revalidateNuTechPaths(projectId)

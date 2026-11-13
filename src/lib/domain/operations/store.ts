@@ -34,6 +34,7 @@ import { companyMoveGuard, type CompanyReferenceMove } from "@/lib/domain/contac
 import type { Db } from "@/lib/server/action-context"
 import { assertListFields } from "@/lib/shared/statuses"
 
+import { automaticSourceSpellings, automaticStatusAfter, type ProcurementAutomation } from "./procurement-machines"
 import { todoEventRow, type TodoEventInput } from "./rules"
 import { SHOP_TICKET_STATUSES } from "./statuses"
 
@@ -170,6 +171,89 @@ export async function deleteOperationsReturning(
   where: SQL | undefined,
 ): Promise<{ id: string }[]> {
   return db.delete(projectOperations).where(where).returning({ id: projectOperations.id })
+}
+
+// RFQ and purchase order statuses. Staff set any of their company's statuses
+// (setProcurementStatusByStaff); automatic moves follow procurement-machines.ts.
+// Both are compare-and-set, so a stale read never overwrites a newer status.
+// Everything else that updates an RFQ or PO leaves status out of its values.
+
+type ProcurementRow = {
+  readonly projectId: string
+  readonly operationId: string
+}
+
+function procurementRow(kind: ProcurementAutomation["kind"], row: ProcurementRow): SQL | undefined {
+  return and(
+    eq(projectOperations.id, row.operationId),
+    eq(projectOperations.projectId, row.projectId),
+    eq(projectOperations.sourceRecordType, kind),
+  )
+}
+
+/**
+ * A staff status change: lands only while the record still has `expected`,
+ * the status the person saw. False when it changed meanwhile.
+ */
+export async function setProcurementStatusByStaff(
+  db: Db,
+  input: ProcurementRow & {
+    readonly kind: ProcurementAutomation["kind"]
+    readonly expected: string
+    readonly status: string
+    readonly updatedAt: string
+  },
+): Promise<boolean> {
+  const result = await db
+    .update(projectOperations)
+    .set({ status: input.status, updatedAt: input.updatedAt })
+    .where(and(procurementRow(input.kind, input), eq(projectOperations.status, input.expected)))
+    .run()
+  return result.meta.changes > 0
+}
+
+type AutomaticStatusMove = ProcurementRow & {
+  readonly automation: ProcurementAutomation
+  /** The status the caller read; the move is decided from it. */
+  readonly stored: string
+  /** The caller's own guard (an `updatedAt` check, an approval that must exist). */
+  readonly where?: SQL
+  /** Other columns written with the status. */
+  readonly values?: Omit<OperationUpdate, "status">
+  readonly updatedAt: string
+}
+
+// Return type left to Drizzle: run() and the batch both need the builder.
+function automaticStatusUpdate(db: Db, move: AutomaticStatusMove) {
+  const to = automaticStatusAfter(move.automation, move.stored)
+  if (to === null) return null
+  return db
+    .update(projectOperations)
+    .set({ ...move.values, status: to, updatedAt: move.updatedAt })
+    .where(
+      and(
+        procurementRow(move.automation.kind, move),
+        inArray(projectOperations.status, [...automaticSourceSpellings(move.automation, move.stored)]),
+        move.where,
+      ),
+    )
+}
+
+/**
+ * An automatic status move as a statement for the caller's batch: it lands
+ * only while the record is still in one of the event's source statuses.
+ * Null when the machine doesn't move a record from `stored` at all.
+ */
+export function automaticStatusQuery(db: Db, move: AutomaticStatusMove): BatchItem<"sqlite"> | null {
+  return automaticStatusUpdate(db, move)
+}
+
+/** Applies an automatic status move. True when it landed. */
+export async function moveStatusAutomatically(db: Db, move: AutomaticStatusMove): Promise<boolean> {
+  const update = automaticStatusUpdate(db, move)
+  if (update === null) return false
+  const result = await update.run()
+  return result.meta.changes > 0
 }
 
 /**

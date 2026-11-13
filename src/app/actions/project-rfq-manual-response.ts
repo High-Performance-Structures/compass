@@ -9,7 +9,7 @@ import {
   projectRfqBidApprovals,
   projectRfqManualResponseEvents,
 } from "@/db/schema-rfqs"
-import { operationUpdateQuery, rfqManualResponseEventFromSelectStatement } from "@/lib/domain/operations/store"
+import { automaticStatusQuery, rfqManualResponseEventFromSelectStatement } from "@/lib/domain/operations/store"
 import { orgContext } from "@/lib/server/action-context"
 import { rfqResponseCoversScope } from "@/lib/rfqs/bid-workflow"
 import {
@@ -181,7 +181,6 @@ export async function saveManualProjectRfqResponse(
     const sourceReference = clean(input.sourceReference, 2_000)
     const previousResponseJson = payload.vendorResponse ? JSON.stringify(payload.vendorResponse) : null
     const responseJson = JSON.stringify(response)
-    const responseStatus = input.decision === "quote" ? "response_received" : "declined"
     const insertEvent = rfqManualResponseEventFromSelectStatement(db, sql`SELECT
       ${eventId}, ${projectId}, ${rfqId}, ${receivedVia}, ${sourceReference},
       ${previousResponseJson}, ${responseJson}, ${user.id}, ${actorName}, ${now}
@@ -194,21 +193,24 @@ export async function saveManualProjectRfqResponse(
           SELECT 1 FROM ${projectRfqBidApprovals}
           WHERE ${projectRfqBidApprovals.rfqOperationId} = ${rfqId}
         )`)
-    await db.batch([
-      insertEvent,
-      operationUpdateQuery(db, and(
-        eq(projectOperations.id, rfqId),
-        eq(projectOperations.projectId, projectId),
+    const recordResponse = automaticStatusQuery(db, {
+      projectId,
+      operationId: rfqId,
+      automation: { kind: "rfq", event: input.decision === "quote" ? "staff_quote" : "staff_decline" },
+      stored: rfq.status,
+      where: and(
         eq(projectOperations.updatedAt, rfq.updatedAt),
         sql`EXISTS (SELECT 1 FROM ${projectRfqManualResponseEvents}
           WHERE ${projectRfqManualResponseEvents.id} = ${eventId})`
-      ), {
-        status: responseStatus,
+      ),
+      values: {
         amount,
         sagePayloadJson: withPortalRfqVendorResponse(rfq.sagePayloadJson, response),
-        updatedAt: now,
-      }),
-    ])
+      },
+      updatedAt: now,
+    })
+    if (recordResponse === null) return { success: false, error: "This RFQ no longer accepts response changes." }
+    await db.batch([insertEvent, recordResponse])
     const saved = await db.select({ id: projectRfqManualResponseEvents.id, updatedAt: projectOperations.updatedAt })
       .from(projectRfqManualResponseEvents)
       .innerJoin(projectOperations, eq(projectOperations.id, projectRfqManualResponseEvents.rfqOperationId))

@@ -33,6 +33,7 @@ import {
 import {
   deleteOperations,
   deletePurchaseOrderLines,
+  moveStatusAutomatically,
   operationInsertQuery,
   operationUpdateQuery,
   purchaseOrderLineInsertQuery,
@@ -53,7 +54,7 @@ import { sendTrackedEmail } from "@/lib/email/tracked-send"
 import { releaseNuTechAirlitePoNumber } from "@/lib/nutech/airlite-po-number"
 import { nuTechOrderFormAttachments } from "@/lib/nutech/order-form-attachment"
 import { markPaperTrailDue, markPaperTrailRemoved } from "@/lib/paper-trail/enqueue"
-import { purchaseOrderStatusAfterEmail } from "@/lib/project-operations/status"
+import { automaticStatusAfter, type ProcurementAutomation } from "@/lib/domain/operations/procurement-machines"
 import { projectBrandFor } from "@/lib/project-branding"
 import { canEditPurchaseOrderDraft } from "@/lib/purchase-orders/draft-edit"
 import {
@@ -430,12 +431,25 @@ export async function sendPurchaseOrderEmail(
       }
     }
 
-    const sentStatus = purchaseOrderStatusAfterEmail(operation.status)
+    // A draft or approved PO becomes sent; any later status (ordered, void,
+    // or one staff set while the email went out) stays as it is.
+    const sentAt = new Date().toISOString()
     await updateOperationById(db, purchaseOrderId, {
-      status: sentStatus,
       sagePayloadJson: withPortalPurchaseOrderRecipients(operation.sagePayloadJson, [...to, ...cc]),
-      updatedAt: new Date().toISOString(),
+      updatedAt: sentAt,
     })
+    const emailed: ProcurementAutomation = { kind: "purchase_order", event: "send" }
+    const sentStatus = automaticStatusAfter(emailed, operation.status) ?? operation.status
+    const markedSent = await moveStatusAutomatically(db, {
+      projectId,
+      operationId: purchaseOrderId,
+      automation: emailed,
+      stored: operation.status,
+      updatedAt: sentAt,
+    })
+    if (!markedSent && sentStatus !== operation.status) {
+      console.warn("[purchase-order-email] PO changed while emailing; status left as is", purchaseOrderId)
+    }
     // Freeze a dated copy of exactly what the vendor received.
     await markPaperTrailDue(db, { projectId, recordType: "purchase_order", recordId: purchaseOrderId, milestone: "sent" })
     // The vendor has the PO: its selections move to Ordered.

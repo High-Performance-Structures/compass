@@ -1,12 +1,12 @@
 "use server"
 
-import { and, eq, inArray } from "drizzle-orm"
+import { eq } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 
 import { projectOperations } from "@/db/schema"
 import { recordActivityEvent } from "@/lib/activity-log"
 import { fillSelectionChoicePrices } from "@/lib/domain/selections/choice-rfq-server"
-import { updateOperations, updateRfqQuoteLinkById } from "@/lib/domain/operations/store"
+import { moveStatusAutomatically, updateRfqQuoteLinkById } from "@/lib/domain/operations/store"
 import { getCloudflareContext } from "@/lib/db"
 import { notifyRfqResponseReceivedByLink } from "@/lib/notifications/events"
 import { parsePortalRfqPayload, withPortalRfqVendorResponse } from "@/lib/rfqs/portal-response"
@@ -45,17 +45,14 @@ export async function submitRfqQuoteByLink(token: string, input: SubmitQuoteByLi
 
     const { db, rfq, link } = context
     const now = new Date().toISOString()
-    const status = input.decision === "decline" ? "declined" : "response_received"
-    // Only write while the RFQ is still open and unchanged since we read it.
-    await updateOperations(
-      db,
-      and(
-        eq(projectOperations.id, rfq.id),
-        eq(projectOperations.updatedAt, rfq.updatedAt),
-        inArray(projectOperations.status, ["sent", "response_received"]),
-      ),
-      {
-        status,
+    // Only lands while the RFQ is still sent or answered and unchanged since we read it.
+    const saved = await moveStatusAutomatically(db, {
+      projectId: rfq.projectId,
+      operationId: rfq.id,
+      automation: { kind: "rfq", event: input.decision === "decline" ? "vendor_decline" : "vendor_quote" },
+      stored: rfq.status,
+      where: eq(projectOperations.updatedAt, rfq.updatedAt),
+      values: {
         amount: answer.amount,
         sagePayloadJson: withPortalRfqVendorResponse(rfq.sagePayloadJson, {
           ...answer.response,
@@ -65,11 +62,10 @@ export async function submitRfqQuoteByLink(token: string, input: SubmitQuoteByLi
           responderCompany: responderCompany ?? null,
           submittedAt: now,
         }),
-        updatedAt: now,
       },
-    )
-    const [saved] = await db.select({ status: projectOperations.status, updatedAt: projectOperations.updatedAt }).from(projectOperations).where(eq(projectOperations.id, rfq.id)).limit(1)
-    if (saved?.updatedAt !== now) return { success: false, error: "This RFQ just changed. Reload the page and try again." }
+      updatedAt: now,
+    })
+    if (!saved) return { success: false, error: "This RFQ just changed. Reload the page and try again." }
     await updateRfqQuoteLinkById(db, link.id, { submittedAt: now })
 
     const who = responderCompany ? `${responderName} at ${responderCompany}` : responderName

@@ -4,9 +4,9 @@ import { checkRfqVendorAnswer } from "@/lib/rfqs/vendor-response"
 import { insertSourceRecordParticipantStatement } from "@/lib/domain/documents/store"
 import { assertAudiencePreviewWriteAllowed } from "@/lib/project-audience-request-server"
 
-import { and, eq, inArray } from "drizzle-orm"
+import { and, eq } from "drizzle-orm"
 import { activityActorName, recordActivityEvent } from "@/lib/activity-log"
-import { updateOperations } from "@/lib/domain/operations/store"
+import { moveStatusAutomatically, updateOperations } from "@/lib/domain/operations/store"
 import { revalidatePath } from "next/cache"
 
 import { getDb } from "@/db"
@@ -584,17 +584,15 @@ export async function submitSubVendorRfqResponse(
     const amount = answer.amount
 
     const now = new Date().toISOString()
-    const responseStatus =
-      input.decision === "decline" ? "declined" : "response_received"
-    await updateOperations(
-      context.db,
-      and(
-        eq(projectOperations.id, rfqId),
-        eq(projectOperations.projectId, projectId),
-        inArray(projectOperations.status, ["sent", "response_received"])
-      ),
-      {
-        status: responseStatus,
+    const saved = await moveStatusAutomatically(context.db, {
+      projectId,
+      operationId: rfqId,
+      automation: {
+        kind: "rfq",
+        event: input.decision === "decline" ? "vendor_decline" : "vendor_quote",
+      },
+      stored: rfq.status,
+      values: {
         amount: input.decision === "quote" ? amount : null,
         sagePayloadJson: withPortalRfqVendorResponse(rfq.sagePayloadJson, {
           ...answer.response,
@@ -603,21 +601,10 @@ export async function submitSubVendorRfqResponse(
           responderCompany: context.viewerContact.companyName,
           submittedAt: now,
         }),
-        updatedAt: now,
-      }
-    )
-    const updatedRfq = await context.db
-      .select({ status: projectOperations.status })
-      .from(projectOperations)
-      .where(
-        and(
-          eq(projectOperations.id, rfqId),
-          eq(projectOperations.projectId, projectId)
-        )
-      )
-      .limit(1)
-      .then((rows) => rows[0] ?? null)
-    if (updatedRfq?.status !== responseStatus) {
+      },
+      updatedAt: now,
+    })
+    if (!saved) {
       return {
         success: false,
         error: "The RFQ status changed. Refresh the page before responding.",

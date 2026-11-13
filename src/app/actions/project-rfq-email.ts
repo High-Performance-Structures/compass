@@ -14,7 +14,7 @@ import { orgContext, type Db } from "@/lib/server/action-context"
 import {
   insertRfqEmailDelivery,
   insertRfqQuoteLink,
-  updateOperations,
+  moveStatusAutomatically,
   updateRfqEmailDelivery,
   updateRfqQuoteLinkById,
   updateRfqQuoteLinks,
@@ -315,15 +315,17 @@ export async function sendProjectRfqEmail(
       await updateRfqQuoteLinkById(access.db, quoteLinkId, { revokedAt: new Date().toISOString() })
       return { success: false, error: deliveryError ?? "RFQ email was not sent. Check the email provider and Drive sharing settings." }
     }
-    await updateOperations(access.db, and(
-      eq(projectOperations.id, rfqId),
-      eq(projectOperations.projectId, projectId),
-      eq(projectOperations.updatedAt, rfq.updatedAt)
-    ), {
-      status: "sent",
-      sagePayloadJson: withPortalRfqRecipientEmail(rfq.sagePayloadJson, to),
+    const markedSent = await moveStatusAutomatically(access.db, {
+      projectId,
+      operationId: rfqId,
+      automation: { kind: "rfq", event: "send" },
+      stored: rfq.status,
+      where: eq(projectOperations.updatedAt, rfq.updatedAt),
+      values: { sagePayloadJson: withPortalRfqRecipientEmail(rfq.sagePayloadJson, to) },
       updatedAt: sentAt ?? new Date().toISOString(),
     })
+    // The email went out either way; a change made while it sent stays.
+    if (!markedSent) console.warn("[rfq-email] RFQ changed while emailing; status left as is", rfqId)
     await recordActivityEvent({
       db: access.db,
       organizationId: access.organizationId,

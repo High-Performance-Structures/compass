@@ -26,6 +26,8 @@ export function ProjectOperationStatusSelect({
   const { developerModeEnabled } = useDeveloperMode()
   const router = useRouter()
   const [selectedStatus, setSelectedStatus] = React.useState(status)
+  // A refresh brings the saved status (possibly someone else's change).
+  React.useEffect(() => setSelectedStatus(status), [status])
   const [error, setError] = React.useState<string | null>(null)
   const [isPending, startTransition] = React.useTransition()
   // The company's visible statuses, plus this record's own if it is hidden.
@@ -43,7 +45,9 @@ export function ProjectOperationStatusSelect({
         projectId,
         operationId,
         operationKind,
-        nextStatus
+        nextStatus,
+        // Saved only if nobody changed it since this page showed it.
+        previousStatus
       )
       if (!result.success) {
         setSelectedStatus(previousStatus)
