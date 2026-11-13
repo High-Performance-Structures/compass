@@ -551,25 +551,35 @@ describe("review follow-ups", () => {
     expect(await saveSelectionChoice("p1", "tile", hex, { title: "Hex", price: "1", ownerPrice: "5000" })).toMatchObject({ success: false })
   })
 
-  it("R5-1: a material edit on a signed pick clears its approval (back to the owner)", async () => {
+  it("R7: a material edit on a signed selection keeps its approval: never back into a Selection Phase; staff review the change order impact", async () => {
     const hex = await choice("tile", "Hex", "4185")
+    const brass = await choice("faucet", "Brass", "380")
     await setSelectionChoiceChosen("p1", hex, true)
+    await setSelectionChoiceChosen("p1", brass, true)
     sqlite.exec(`
       INSERT INTO project_selection_round_signatures (id, project_id, round_key, round_name_snapshot, status, signers_json_snapshot, allowance_cents, owner_total_cents, delta_cents, treatment, signed_at, created_at, updated_at)
         VALUES ('sig', 'p1', 'rough-in', 'Rough-in', 'signed', '[]', 0, 0, 0, 'none', '${NOW}', '${NOW}', '${NOW}');
       INSERT INTO project_selection_round_signature_items (signature_id, selection_id, choice_id, choice_title_snapshot) VALUES ('sig', 'tile', '${hex}', 'Hex');
-      UPDATE project_finish_selections SET status = 'approved', owner_approved = 1 WHERE id = 'tile';
+      UPDATE project_finish_selections SET status = 'approved', owner_approved = 1, approved_at = '${NOW}' WHERE id = 'tile';
     `)
     expect(await updateProjectSelection("p1", "tile", { ...base, status: "approved", model: "HX-2" })).toMatchObject({ success: true })
-    expect(sqlite.prepare("SELECT owner_approved AS a FROM project_finish_selections WHERE id = 'tile'").get()).toEqual({ a: 0 })
+    expect(sqlite.prepare("SELECT status, owner_approved AS a, approved_at AS at, model FROM project_finish_selections WHERE id = 'tile'").get()).toEqual({ status: "approved", a: 1, at: NOW, model: "HX-2" })
+    // Not signed or billed again by the next Selection Phase document.
+    const view = await getRoundSigning("p1", "rough-in")
+    if (!view.success) throw new Error(view.error)
+    expect(view.data.document.toSign.map((line) => line.selectionId)).toEqual(["faucet"])
+    // Staff get the change order review instead.
+    expect(
+      sqlite.prepare("SELECT source_record_type AS kind FROM project_operations WHERE source_record_id = 'tile' AND source_record_type = 'selection_change_order_review'").all(),
+    ).toEqual([{ kind: "selection_change_order_review" }])
   })
 
   it("R5-1: the workbook leaves an imported approval alone (a conflict for staff)", async () => {
     const { applyFinishScheduleImport } = await import("@/lib/domain/selections/finish-schedule-import")
     expect(applyFinishScheduleImport).toBeTypeOf("function")
-    // The import reopens only through clearApprovalPatch / approvalClearOutcome (shared helper).
+    // The import goes through the shared helper, and counts a change to an approved row as a conflict.
     const source = readFileSync("src/lib/domain/selections/finish-schedule-import.ts", "utf8")
-    expect(source).toContain("approvalClearOutcome(")
+    expect(source).toContain("approvalNeedsReview && existing.ownerApproved")
     expect(source).toContain("clearApprovalPatch(")
     for (const file of ["src/app/actions/project-selections.ts", "src/app/actions/selection-decisions.ts", "src/lib/domain/selections/finish-schedule-import.ts"]) {
       expect(readFileSync(file, "utf8"), file).not.toMatch(/ownerApproved: false,\s*approvedBy: null/)

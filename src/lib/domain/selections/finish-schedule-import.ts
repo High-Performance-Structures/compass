@@ -14,7 +14,7 @@ import { getGoogleConfig, getGoogleCryptoSalt, parseServiceAccountKey } from "@/
 import { parseFinishScheduleWorkbook } from "@/lib/selections/google-finish-schedule-import"
 import type { Db, ProjectContext } from "@/lib/server/action-context"
 
-import { approvalClearOutcome, clearApprovalPatch } from "./approval-clear"
+import { clearApprovalPatch } from "./approval-clear"
 import { LOCKED_SELECTION_STATUSES } from "./locks"
 import {
   importedSelectionIdentity,
@@ -312,8 +312,8 @@ export async function applyFinishScheduleImport(
     const approvalNeedsReview =
       (existing.ownerApproved || existing.status === "approved") &&
       importedSourceChanged(existing, sourceValues)
-    // An imported (unsigned) approval isn't reopened by the workbook: a conflict for staff.
-    if (approvalNeedsReview && existing.ownerApproved && (await approvalClearOutcome(db, { projectId, selectionId: existing.id })) === "keep") {
+    // An owner approval (signed or imported) isn't reopened by the workbook: a conflict for staff.
+    if (approvalNeedsReview && existing.ownerApproved) {
       conflictCount += 1
       continue
     }
