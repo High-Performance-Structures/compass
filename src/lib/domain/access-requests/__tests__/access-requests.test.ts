@@ -297,6 +297,42 @@ describe("deciding a request", () => {
     expect(row("SELECT user_id FROM vendor_contacts WHERE id = 'vc-1'")).toEqual({ user_id: "user_vic" })
   })
 
+  it("still approves and opens the other jobs when one job's grant fails", async () => {
+    sqlite.exec(`
+      INSERT INTO projects (id, organization_id, name, project_number, created_at) VALUES ('p4', 'org-a', 'Second Vendor Job', 'O-4', '${NOW}');
+      INSERT INTO project_contacts (id, project_id, contact_type, display_name, vendor_id, vendor_contact_id, created_at, updated_at) VALUES
+        ('pc-4', 'p4', 'subcontractor', 'Vic Vendor', 'ven-1', 'vc-1', '${NOW}', '${NOW}');
+      CREATE TRIGGER fail_p3_invitation BEFORE INSERT ON project_access_invitations WHEN NEW.project_id = 'p3'
+      BEGIN SELECT RAISE(ABORT, 'simulated D1 failure'); END;
+    `)
+    const submitted = await submit(vic, "vendor")
+    if (!submitted.success) throw new Error(submitted.error)
+    const result = await approveAccessRequest(db, d1, adminA, { kind: "vendor", requestId: submitted.data.requestId, vendorContactId: "vc-1", role: "supplier" }, NOW)
+    if (!result.success) throw new Error(result.error)
+    expect(result.data.projects).toEqual(["O-4 - Second Vendor Job"])
+    expect(result.data.skippedProjects).toEqual(["O-3 - Vendor Job"])
+    expect(row("SELECT status, vendor_contact_id, granted_project_count FROM organization_access_requests WHERE id = ?", submitted.data.requestId))
+      .toEqual({ status: "approved", vendor_contact_id: "vc-1", granted_project_count: 1 })
+    expect(row("SELECT user_id FROM vendor_contacts WHERE id = 'vc-1'")).toEqual({ user_id: "user_vic" })
+  })
+
+  it("opens a job even when moving the person's imported messages onto their account fails", async () => {
+    sqlite.exec(`
+      INSERT INTO channels (id, name, type, organization_id, project_id, is_private, audience, created_by, source_system, source_thread_id, created_at, updated_at)
+        VALUES ('bt-thread-1', 'Old thread', 'text', 'org-a', 'p3', 1, 'sub_vendors', 'admin-a', 'buildertrend', 't1', '${NOW}', '${NOW}');
+      INSERT INTO messages (id, channel_id, user_id, content, source_system, source_message_id, imported_sender_contact_id, created_at)
+        VALUES ('bt-msg-1', 'bt-thread-1', 'admin-a', 'Hello', 'buildertrend', 'm1', 'pc-3', '${NOW}');
+      CREATE TRIGGER fail_message_adoption BEFORE UPDATE OF user_id ON messages
+      BEGIN SELECT RAISE(ABORT, 'simulated D1 failure'); END;
+    `)
+    const submitted = await submit(vic, "vendor")
+    if (!submitted.success) throw new Error(submitted.error)
+    const result = await approveAccessRequest(db, d1, adminA, { kind: "vendor", requestId: submitted.data.requestId, vendorContactId: "vc-1", role: "supplier" }, NOW)
+    if (!result.success) throw new Error(result.error)
+    expect(result.data.projects).toEqual(["O-3 - Vendor Job"])
+    expect(row("SELECT status FROM project_access_invitations WHERE project_id = 'p3'")).toEqual({ status: "accepted" })
+  })
+
   it("won't link a directory person who belongs to another login", async () => {
     sqlite.exec(`INSERT INTO organization_members (id, organization_id, user_id, role, joined_at) VALUES ('m5', 'org-a', 'user_ed', 'client', '${NOW}')`)
     sqlite.exec("UPDATE customer_contacts SET user_id = 'user_ed' WHERE id = 'cc-1'")

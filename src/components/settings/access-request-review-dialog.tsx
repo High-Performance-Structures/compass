@@ -147,7 +147,7 @@ function decisionToast(result: AccessRequestDecisionResult, approved: boolean): 
   if (approved) {
     toast.success(projects > 0 ? `Approved. ${projects} job${projects === 1 ? "" : "s"} shared.` : "Approved.")
     if (skippedProjects.length > 0) {
-      toast.info(`Not shared (staff-only jobs): ${skippedProjects.join(", ")}. Invite them from the job if they should see it.`)
+      toast.info(`Not opened: ${skippedProjects.join(", ")}. Staff-only jobs stay closed; for any other, use Grant project access on that job.`)
     }
   } else {
     toast.success("Declined. Nothing was shared.")

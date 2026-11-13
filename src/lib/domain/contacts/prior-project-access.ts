@@ -4,6 +4,7 @@ import type { getDb } from "@/db"
 import { buildertrendAccessCandidates } from "@/db/schema-buildertrend"
 import { projectContacts, projects } from "@/db/schema"
 import { invitationsView } from "@/lib/domain/identity/views"
+import { errorWithCauses } from "@/lib/action-result"
 import { recordActivityEvent, type ActivityActor } from "@/lib/activity-log"
 import { insertProjectContact, updateProjectContactById } from "@/lib/domain/contacts/store"
 import { resolvedContactColumns, withContactDirectory } from "@/lib/domain/contacts/resolved-columns"
@@ -308,40 +309,45 @@ export async function grantPriorProjectAccess(db: Db, input: {
 
   let granted = 0
   for (const project of allowed) {
-    const contactId = await contactOnProject(db, {
-      projectId: project.projectId,
-      matchedContactId: project.projectContactId,
-      source: input.source,
-      email: input.email,
-      now: input.now,
-    })
-    const opened = await grantProjectContactAccess(db, {
-      organizationId: input.organizationId,
-      projectId: project.projectId,
-      projectContactId: contactId,
-      email: input.email,
-      role: input.role,
-      activeUserId: input.activeUserId,
-      workosInvitationId: input.workosInvitationId,
-      workosExpiresAt: input.workosExpiresAt,
-      invitedBy: input.invitedBy,
-      now: input.now,
-    })
-    if (!opened) continue
-    await recordActivityEvent({
-      db,
-      organizationId: input.organizationId,
-      projectId: project.projectId,
-      actor: input.actor,
-      category: "access",
-      action: input.activeUserId ? "project.access_granted" : "project.invitation_prepared",
-      entityType: "project_access_invitation",
-      entityId: contactId,
-      summary: input.activeUserId
-        ? `Granted ${input.source.displayName} access to ${project.label} with the invitation from ${input.sourceProjectLabel}.`
-        : `Added ${project.label} to ${input.source.displayName}'s Compass invitation from ${input.sourceProjectLabel}.`,
-    })
-    granted++
+    // One job failing must not undo or block the others (each job is its own writes).
+    try {
+      const contactId = await contactOnProject(db, {
+        projectId: project.projectId,
+        matchedContactId: project.projectContactId,
+        source: input.source,
+        email: input.email,
+        now: input.now,
+      })
+      const opened = await grantProjectContactAccess(db, {
+        organizationId: input.organizationId,
+        projectId: project.projectId,
+        projectContactId: contactId,
+        email: input.email,
+        role: input.role,
+        activeUserId: input.activeUserId,
+        workosInvitationId: input.workosInvitationId,
+        workosExpiresAt: input.workosExpiresAt,
+        invitedBy: input.invitedBy,
+        now: input.now,
+      })
+      if (!opened) continue
+      await recordActivityEvent({
+        db,
+        organizationId: input.organizationId,
+        projectId: project.projectId,
+        actor: input.actor,
+        category: "access",
+        action: input.activeUserId ? "project.access_granted" : "project.invitation_prepared",
+        entityType: "project_access_invitation",
+        entityId: contactId,
+        summary: input.activeUserId
+          ? `Granted ${input.source.displayName} access to ${project.label} with the invitation from ${input.sourceProjectLabel}.`
+          : `Added ${project.label} to ${input.source.displayName}'s Compass invitation from ${input.sourceProjectLabel}.`,
+      })
+      granted++
+    } catch (error) {
+      console.error("[project-access] extra project not opened", project.projectId, errorWithCauses(error))
+    }
   }
   return granted
 }

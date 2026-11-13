@@ -25,6 +25,7 @@ import {
   vendorContacts,
   vendors,
 } from "@/db/schema"
+import { errorWithCauses } from "@/lib/action-result"
 import { membershipsView } from "@/lib/domain/identity/views"
 import { organizationAccessRequests } from "@/db/schema-access-requests"
 import { recordActivityEvent, type ActivityActor } from "@/lib/activity-log"
@@ -666,36 +667,42 @@ async function grantApprovedRequest(
       skipped.push(label)
       continue
     }
-    const granted = await grantProjectContactAccess(db, {
-      organizationId,
-      projectId: job.projectId,
-      projectContactId: job.contactId,
-      email,
-      role: projectRole,
-      activeUserId: input.userId,
-      workosInvitationId: null,
-      workosExpiresAt: null,
-      invitedBy: actor.id,
-      now,
-    })
-    // Staff took the contact off this job while the request was approved.
-    if (!granted) {
+    // A job that fails is listed as not opened; the others and the approval stand.
+    try {
+      const granted = await grantProjectContactAccess(db, {
+        organizationId,
+        projectId: job.projectId,
+        projectContactId: job.contactId,
+        email,
+        role: projectRole,
+        activeUserId: input.userId,
+        workosInvitationId: null,
+        workosExpiresAt: null,
+        invitedBy: actor.id,
+        now,
+      })
+      // Staff took the contact off this job while the request was approved.
+      if (!granted) {
+        skipped.push(label)
+        continue
+      }
+      await recordActivityEvent({
+        db,
+        organizationId,
+        projectId: job.projectId,
+        actor,
+        category: "access",
+        action: "project.access_granted",
+        entityType: "project_access_invitation",
+        entityId: job.contactId,
+        summary: `Granted ${input.requester.name} access to ${label} by approving their access request.`,
+        createdAt: now,
+      })
+      opened.push(label)
+    } catch (error) {
+      console.error("[access-requests] job not opened", job.projectId, errorWithCauses(error))
       skipped.push(label)
-      continue
     }
-    await recordActivityEvent({
-      db,
-      organizationId,
-      projectId: job.projectId,
-      actor,
-      category: "access",
-      action: "project.access_granted",
-      entityType: "project_access_invitation",
-      entityId: job.contactId,
-      summary: `Granted ${input.requester.name} access to ${label} by approving their access request.`,
-      createdAt: now,
-    })
-    opened.push(label)
   }
   await recordAccessRequestGrant(db, input.requestId, {
     customerContactId: choice.kind === "client" ? person.id : null,

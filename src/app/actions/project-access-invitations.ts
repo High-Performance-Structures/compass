@@ -14,6 +14,7 @@ import {
   vendorContacts,
   vendors,
 } from "@/db/schema"
+import { errorWithCauses } from "@/lib/action-result"
 import { requireAuth } from "@/lib/auth"
 import { getCloudflareContext } from "@/lib/db"
 import { isDemoUser } from "@/lib/demo"
@@ -579,13 +580,11 @@ export async function sendProjectAccessInvitation(
       ...(additionalProjects > 0 ? { additionalProjects } : {}),
     }
   } catch (error) {
-    console.error("Project access invitation failed", error)
+    console.error("Project access invitation failed", errorWithCauses(error))
+    // Never show raw SQL; part of the grant may already be saved, so send them to check.
     return {
       success: false,
-      error:
-        error instanceof Error
-          ? error.message
-          : "Unable to send the project invitation.",
+      error: "Compass couldn't finish granting access. Refresh the page to see what was saved, then try again.",
     }
   }
 }
