@@ -18,8 +18,6 @@ import {
   importedDrawSourceLabel,
   invoiceAcceptsPayments,
   isImportedDraw,
-  receivablesOncePerBill,
-  type BillRef,
   receivableOpenCents,
   receivablePaidState,
   receivableStaffStatus,
@@ -29,6 +27,7 @@ import {
   type ReceivableItem,
   type ReceivableStaffStatus,
 } from "@/lib/domain/financials/rules"
+import { receivablesOncePerBill, type BillRef } from "@/lib/domain/financials/bill-matching"
 import { INVOICE_CLOSED_TO_PAYMENTS } from "@/lib/domain/financials/invoice-machines"
 import type { ReceivableItemKind, ReceivablePaidState } from "@/lib/domain/financials/statuses"
 import { isListValue } from "@/lib/shared/statuses"
@@ -179,7 +178,7 @@ export async function readListedBills(db: Db, scope: ProjectReceivableScope): Pr
       .from(projectBudgetApplications)
       .where(eq(projectBudgetApplications.projectId, scope.projectId)),
     db
-      .select({ id: invoices.id, source: invoices.sourceExternalId })
+      .select({ id: invoices.id, source: invoices.sourceExternalId, sourceSystem: invoices.sourceSystem, invoiceKind: invoices.invoiceKind })
       .from(invoices)
       .where(and(eq(invoices.organizationId, scope.organizationId), eq(invoices.projectId, scope.projectId))),
   ])
@@ -187,10 +186,16 @@ export async function readListedBills(db: Db, scope: ProjectReceivableScope): Pr
   const sourceIds = new Map([...drawSources, ...invoiceSources].map((row) => [row.id, row.source]))
   // An imported G702 copy may carry the draw's total earned instead of its amount due.
   const earnedCents = new Map(drawSources.map((row) => [row.id, storedDollarsToCents(row.earned)]))
+  // Invoices that came over with the cutover: imported, or recorded before Compass
+  // built its own (every invoice built in Compass has a kind).
+  const importedInvoices = new Set(
+    invoiceSources.filter((row) => row.sourceSystem !== "compass" || Boolean(row.source) || row.invoiceKind === null).map((row) => row.id)
+  )
   // The list as received payments shows it (each bill once), so the label names a row staff can find.
   return receivablesOncePerBill(rows).map(({ row: { bill, label } }) => {
     const earned = bill.kind === "draw" ? bill.ids.flatMap((id) => (id && earnedCents.has(id) ? [earnedCents.get(id) ?? 0] : [])) : []
-    return { ...bill, ids: [...bill.ids, ...bill.ids.map((id) => (id ? sourceIds.get(id) ?? null : null))], otherCents: earned, label }
+    const importedRecord = bill.kind === "invoice" && bill.ids.some((id) => id !== null && importedInvoices.has(id))
+    return { ...bill, ids: [...bill.ids, ...bill.ids.map((id) => (id ? sourceIds.get(id) ?? null : null))], otherCents: earned, importedRecord, label }
   })
 }
 

@@ -14,7 +14,7 @@ import {
 
 import { getProjectDepositRequests } from "@/app/actions/project-contract-deposits"
 import { getOwnerPayApplicationBalances } from "@/app/actions/received-payments"
-import { ownerPayApplicationHistory } from "@/lib/domain/financials/rules"
+import { ownerPayApplicationHistory } from "@/lib/domain/financials/bill-matching"
 import { formatCents } from "@/lib/format"
 import type { DepositRequestSummary } from "@/lib/deposits/deposit-requests"
 import { printPreviewHref } from "@/lib/print/print-documents"

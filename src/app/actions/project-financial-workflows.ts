@@ -32,7 +32,7 @@ import { insertOperations, operationDeleteQuery } from "@/lib/domain/operations/
 import { readListedBills } from "@/lib/domain/financials/receivables"
 import { formatCents } from "@/lib/format"
 import { returnPayApplicationToDraft, sendPayApplicationForReview } from "@/lib/domain/budget/pay-application-review"
-import { listedBillFor, type BillRef } from "@/lib/domain/financials/rules"
+import { listedBillFor, type BillRef } from "@/lib/domain/financials/bill-matching"
 import {
   deleteBudgetApplicationsStatement,
   deleteBudgetLinesStatement,
@@ -261,6 +261,7 @@ async function billedAmountsAccess(projectId: string, applicationId: string): Pr
 async function verifyProjectReadAccess(projectId: string): Promise<{
   readonly db: ReturnType<typeof getDb>
   readonly organizationId: string
+  readonly projectNumber: string | null
 }> {
   const user = await requireProjectAudienceReadUser(projectId)
   if (!isInternalStaffRole(user.role)) throw new Error("Project not found")
@@ -270,13 +271,13 @@ async function verifyProjectReadAccess(projectId: string): Promise<{
   const db = getDb(env.DB)
 
   const [project] = await db
-    .select({ id: projects.id })
+    .select({ id: projects.id, projectNumber: projects.projectNumber })
     .from(projects)
     .where(and(eq(projects.id, projectId), eq(projects.organizationId, orgId)))
     .limit(1)
 
   if (!project) throw new Error("Project not found")
-  return { db, organizationId: orgId }
+  return { db, organizationId: orgId, projectNumber: project.projectNumber }
 }
 
 /**
@@ -395,25 +396,29 @@ function revalidateFinancialPaths(projectId: string): void {
 
 /**
  * Where an imported copy of a bill is listed with received payments, and
- * what the import recorded when its amount differs (another stage of the bill).
+ * what the import recorded when its amount differs.
  */
 function shownUnder(
   row: typeof projectOperations.$inferSelect,
-  listedBills: readonly (BillRef & { readonly label: string })[]
+  listedBills: readonly (BillRef & { readonly label: string })[],
+  job: Parameters<typeof listedBillFor>[2]
 ): Pick<ProjectFinancialWorkflowItem, "shownUnder" | "shownUnderNote"> {
-  const match = listedBillFor(row, listedBills)
+  const match = listedBillFor(row, listedBills, job)
   if (!match) return { shownUnder: null, shownUnderNote: null }
   const source = row.sourceSystem.startsWith("buildertrend") ? "Buildertrend" : row.sourceSystem.startsWith("sage") ? "Sage" : "The Drive import"
-  return {
-    shownUnder: match.bill.label,
-    shownUnderNote: match.recordedCents === match.bill.cents ? null : `${match.bill.label}: ${source} recorded ${formatCents(match.recordedCents)}`,
-  }
+  const note =
+    match.how === "number"
+      ? `${match.bill.label}: ${source} recorded ${formatCents(match.recordedCents)}`
+      : match.how === "total_earned"
+        ? `${match.bill.label}: ${source} recorded total earned less retainage ${formatCents(match.recordedCents)}`
+        : null
+  return { shownUnder: match.bill.label, shownUnderNote: note }
 }
 
 export async function getProjectFinancialWorkflowItems(
   projectId: string
 ): Promise<readonly ProjectFinancialWorkflowItem[]> {
-  const { db, organizationId } = await verifyProjectReadAccess(projectId)
+  const { db, organizationId, projectNumber } = await verifyProjectReadAccess(projectId)
   const [rows, applications, listedBills] = await Promise.all([
     db
       .select()
@@ -469,6 +474,13 @@ export async function getProjectFinancialWorkflowItems(
     })
   )
 
+  // Imported workflow invoices per number: a number carried by two copies matches neither by number alone.
+  const numberKey = (value: string | null): string => value?.trim().toLowerCase() ?? ""
+  const copiesByNumber = new Map<string, number>()
+  for (const row of rows) {
+    if (row.sourceSystem === "compass" || row.sourceRecordType !== "owner_invoice" || !row.sourceRecordNumber) continue
+    copiesByNumber.set(numberKey(row.sourceRecordNumber), (copiesByNumber.get(numberKey(row.sourceRecordNumber)) ?? 0) + 1)
+  }
   return rows.map((row) => {
     const isReadOnlyImportedFinancial =
       ["buildertrend", "sage"].includes(row.sourceSystem) &&
@@ -506,7 +518,7 @@ export async function getProjectFinancialWorkflowItems(
       readOnly: isReadOnlyImportedFinancial,
       sourceLabel: row.sourceSystem === "sage" ? "Sage / Square" : null,
       importedFrom: row.sourceSystem.startsWith("buildertrend") ? "buildertrend" : null,
-      ...shownUnder(row, listedBills),
+      ...shownUnder(row, listedBills, { projectNumber, sameNumberCopies: copiesByNumber.get(numberKey(row.sourceRecordNumber)) ?? 0 }),
       updatedAt: row.updatedAt,
     }
   })

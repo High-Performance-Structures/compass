@@ -301,7 +301,8 @@ async function replaceWithSageStatements(
     ? {
         sagePayloadJson: payApplicationReviewPayload(
           { ...header, id: application.id, applicationNumber: application.applicationNumber, budgetRevisionId: revision?.id ?? null },
-          [...rows].sort((left, right) => left.csiDivision.localeCompare(right.csiDivision) || left.sortOrder - right.sortOrder)
+          // The order Ready for review reads them in (SQLite's binary text order, then sort order).
+          [...rows].sort((left, right) => binaryCompare(left.csiDivision, right.csiDivision) || left.sortOrder - right.sortOrder)
         ),
       }
     : {}
@@ -335,6 +336,10 @@ async function replaceWithSageStatements(
       createdAt: now,
     }),
   ]
+}
+
+function binaryCompare(left: string, right: string): number {
+  return left < right ? -1 : left > right ? 1 : 0
 }
 
 function operationFor(projectId: string, applicationId: string) {

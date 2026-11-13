@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest"
 
-import { billSequence, listedBillFor, ownerPayApplicationHistory, ownerPayApplicationsOnce, receivablesOncePerBill, type BillRef } from "@/lib/domain/financials/rules"
+import { billSequence, listedBillFor, ownerPayApplicationHistory, ownerPayApplicationsOnce, receivablesOncePerBill, type BillRef } from "@/lib/domain/financials/bill-matching"
 
 /*
  * A job brought over from another system has bills twice: once as an
@@ -12,6 +12,11 @@ import { billSequence, listedBillFor, ownerPayApplicationHistory, ownerPayApplic
  */
 
 type Listed = BillRef & { readonly label: string }
+
+/** listedBillFor on a job (default: one with no number, each copy's number unique). */
+function match(row: Parameters<typeof listedBillFor>[0], listed: readonly Listed[], job: Partial<Parameters<typeof listedBillFor>[2]> = {}) {
+  return listedBillFor(row, listed, { projectNumber: null, sameNumberCopies: 1, ...job })
+}
 
 const workflow = (overrides: Partial<Parameters<typeof listedBillFor>[0]>) => ({
   sourceSystem: "buildertrend",
@@ -30,29 +35,29 @@ describe("imported workflow copies of listed bills", () => {
     ]
     const payRequest = (number: string, amount: number) =>
       workflow({ sourceSystem: "buildertrend_import", sourceRecordType: "owner_pay_application", sourceRecordId: `bt-${number}`, sourceRecordNumber: number, amount })
-    expect(listedBillFor(payRequest("H-329-9607-01", 56_738.83), listed)?.bill.label).toBe("Invoice H-329-9607-01")
-    expect(listedBillFor(payRequest("H-329-9607-02", 90_348.13), listed)?.bill.label).toBe("Invoice H-329-9607-02")
+    expect(match(payRequest("H-329-9607-01", 56_738.83), listed)?.bill.label).toBe("Invoice H-329-9607-01")
+    expect(match(payRequest("H-329-9607-02", 90_348.13), listed)?.bill.label).toBe("Invoice H-329-9607-02")
     // A different amount is a different bill.
-    expect(listedBillFor(payRequest("H-329-9607-02", 90_348.14), listed)).toBeNull()
+    expect(match(payRequest("H-329-9607-02", 90_348.14), listed)).toBeNull()
   })
 
   it("matches an invoice only to an invoice and a pay request only to a draw", () => {
     const invoice: Listed = { kind: "invoice", ids: ["inv-1", "bt-inv-1001"], number: "INV-7", cents: 123_450, label: "Invoice INV-7" }
     const draw: Listed = { kind: "draw", ids: ["app-4", "drive-file-4"], number: "PA-004", cents: 123_450, label: "Pay application PA-004" }
-    expect(listedBillFor(workflow({}), [invoice, draw])?.bill.label).toBe("Invoice INV-7")
-    expect(listedBillFor(workflow({ sourceRecordId: "staging-9" }), [draw])).toBeNull()
+    expect(match(workflow({}), [invoice, draw])?.bill.label).toBe("Invoice INV-7")
+    expect(match(workflow({ sourceRecordId: "staging-9" }), [draw])).toBeNull()
     // A Drive draw's workflow row matches its listed pay application by id or sequence ("4" is PA-004).
     const drivePayRequest = { sourceSystem: "google_drive_g702_g703", sourceRecordType: "owner_pay_application", sourceRecordNumber: "4" }
-    expect(listedBillFor(workflow({ ...drivePayRequest, sourceRecordId: null }), [invoice, draw])?.bill.label).toBe("Pay application PA-004")
-    expect(listedBillFor(workflow({ ...drivePayRequest, sourceSystem: "buildertrend", sourceRecordId: null, sourceRecordNumber: "INV-7" }), [invoice])).toBeNull()
+    expect(match(workflow({ ...drivePayRequest, sourceRecordId: null }), [invoice, draw])?.bill.label).toBe("Pay application PA-004")
+    expect(match(workflow({ ...drivePayRequest, sourceSystem: "buildertrend", sourceRecordId: null, sourceRecordNumber: "INV-7" }), [invoice])).toBeNull()
   })
 
   it("keeps bills not listed elsewhere, Compass's own workflow items, and payments", () => {
     const listed: Listed[] = [{ kind: "draw", ids: ["app-1"], number: "1", cents: 123_450, label: "Pay application 1" }]
-    expect(listedBillFor(workflow({ sourceRecordType: "owner_pay_application", sourceRecordId: "bt-2", sourceRecordNumber: "9" }), listed)).toBeNull()
-    expect(listedBillFor(workflow({ sourceSystem: "compass", sourceRecordType: "owner_pay_application", sourceRecordId: "app-1" }), listed)).toBeNull()
+    expect(match(workflow({ sourceRecordType: "owner_pay_application", sourceRecordId: "bt-2", sourceRecordNumber: "9" }), listed)).toBeNull()
+    expect(match(workflow({ sourceSystem: "compass", sourceRecordType: "owner_pay_application", sourceRecordId: "app-1" }), listed)).toBeNull()
     for (const sourceRecordType of ["payment", "deposit", "credit_memo"]) {
-      expect(listedBillFor(workflow({ sourceRecordType, sourceRecordId: "app-1" }), listed)).toBeNull()
+      expect(match(workflow({ sourceRecordType, sourceRecordId: "app-1" }), listed)).toBeNull()
     }
   })
 
@@ -61,6 +66,9 @@ describe("imported workflow copies of listed bills", () => {
     expect(billSequence("H-329-9607-01")).toBe("1")
     expect(billSequence("Contract Budget R2")).toBe("2")
     expect(billSequence("Final")).toBeNull()
+    expect(billSequence("O-170-PR5-31Aug26")).toBe("5")
+    expect(billSequence("O-170-2684-PAYAPP-003")).toBe("3")
+    expect(billSequence("O-202-595-PR09")).toBe("9")
   })
 })
 
@@ -115,7 +123,9 @@ describe("owner pay applications", () => {
 const dollars = (value: number): number => Math.round(value * 100)
 
 describe("Loomis (O-170-2684), staff side", () => {
-  const invoice = (number: string, amount: number): Listed => ({ kind: "invoice", ids: [`inv-${number}`], number, cents: dollars(amount), label: `Invoice ${number}` })
+  // Recorded before Compass built its own invoices (no kind): they came over with the cutover.
+  const invoice = (number: string, amount: number): Listed => ({ kind: "invoice", ids: [`inv-${number}`], number, cents: dollars(amount), importedRecord: true, label: `Invoice ${number}` })
+  const loomis = { projectNumber: "O-170-2684" }
   const invoices: Listed[] = [
     invoice("O-170-0001", 6178.75), invoice("O-170-0002", 1425), invoice("O-170-0003", 50322.11), invoice("O-170-002", 18460.77),
     invoice("O-170-003", 127452.82), invoice("O-170-004", 109097.63), invoice("O-170-005", 93632.88), invoice("O-170-O-170-001", 1576.25),
@@ -135,27 +145,38 @@ describe("Loomis (O-170-2684), staff side", () => {
       ["O-170-0001", 6178.75], ["O-170-0002", 1425], ["O-170-002", 18460.77], ["O-170-003", 133149.12],
       ["O-170-004", 109097.63], ["O-170-005", 99936.54], ["O-170-O-170-001", 1576.25],
     ]
-    const matches = buildertrend.map(([number, amount]) => listedBillFor(workflow({ sourceRecordId: `bt-${number}`, sourceRecordNumber: number, amount }), listed))
-    expect(matches.map((match) => match?.bill.label)).toEqual(buildertrend.map(([number]) => `Invoice ${number}`))
-    const differing = matches.filter((match) => match && match.recordedCents !== match.bill.cents)
-    expect(differing.map((match) => [match?.bill.label, match?.recordedCents])).toEqual([
-      ["Invoice O-170-003", 13_314_912],
-      ["Invoice O-170-005", 9_993_654],
+    const matches = buildertrend.map(([number, amount]) => match(workflow({ sourceRecordId: `bt-${number}`, sourceRecordNumber: number, amount }), listed, loomis))
+    expect(matches.map((found) => found?.bill.label)).toEqual(buildertrend.map(([number]) => `Invoice ${number}`))
+    const differing = matches.filter((found) => found && found.recordedCents !== found.bill.cents)
+    expect(differing.map((found) => [found?.bill.label, found?.recordedCents, found?.how])).toEqual([
+      ["Invoice O-170-003", 13_314_912, "number"],
+      ["Invoice O-170-005", 9_993_654, "number"],
     ])
   })
 
-  it("a bare number still needs equal cents", () => {
-    expect(listedBillFor(workflow({ sourceRecordId: "bt-3", sourceRecordNumber: "3", amount: 1 }), [invoice("3", 2)])).toBeNull()
+  it("matches a number alone only between cutover records, on the job's prefix, positive, and unique", () => {
+    const copy = (number: string, amount: number) => workflow({ sourceRecordId: `bt-${number}`, sourceRecordNumber: number, amount })
+    // A bare number, or one without the job's prefix, still needs equal cents.
+    expect(match(copy("3", 1), [invoice("3", 2)], loomis)).toBeNull()
+    expect(match(copy("INV-1", 1), [invoice("INV-1", 2)], loomis)).toBeNull()
+    // An invoice staff built in Compass after the cutover.
+    expect(match(copy("O-170-003", 1331.49), [{ ...invoice("O-170-003", 1274.52), importedRecord: false }], loomis)).toBeNull()
+    // Credits never match by number.
+    expect(match(copy("O-170-003", -100), [invoice("O-170-003", 1274.52)], loomis)).toBeNull()
+    expect(match(copy("O-170-003", 100), [invoice("O-170-003", -1274.52)], loomis)).toBeNull()
+    // Two imported copies carry the number.
+    expect(match(copy("O-170-003", 1331.49), [invoice("O-170-003", 1274.52)], { ...loomis, sameNumberCopies: 2 })).toBeNull()
+    expect(match(copy("O-170-003", 1331.49), [invoice("O-170-003", 1274.52)], loomis)?.how).toBe("number")
   })
 
   it("hides the Drive PAYAPP copies: by amount due, or by total earned (PAYAPP-001 is draw 1)", () => {
     const drive = (number: string, amount: number) =>
       workflow({ sourceSystem: "google_drive_g702_g703", sourceRecordType: "owner_pay_application", sourceRecordId: `op-${number}`, sourceRecordNumber: number, amount })
-    expect(listedBillFor(drive("O-170-2684-PAYAPP-001", 68782.88), listed)?.bill.label).toBe("Pay application 1")
-    expect(listedBillFor(drive("O-170-2684-PAYAPP-002", 133149.11), listed)?.bill.label).toBe("Pay application 2")
-    expect(listedBillFor(drive("O-170-2684-PAYAPP-003", 109097.63), listed)?.bill.label).toBe("Pay application 3")
+    expect(match(drive("O-170-2684-PAYAPP-001", 68782.88), listed)).toMatchObject({ bill: { label: "Pay application 1" }, how: "total_earned" })
+    expect(match(drive("O-170-2684-PAYAPP-002", 133149.11), listed)).toMatchObject({ bill: { label: "Pay application 2" }, how: "amount" })
+    expect(match(drive("O-170-2684-PAYAPP-003", 109097.63), listed)?.bill.label).toBe("Pay application 3")
     // Never matched to an invoice, even one with the same amount (O-170-004 is $109,097.63 too).
-    expect(listedBillFor(drive("O-170-2684-PAYAPP-003", 109097.63), invoices)).toBeNull()
+    expect(match(drive("O-170-2684-PAYAPP-003", 109097.63), invoices)).toBeNull()
   })
 })
 
@@ -167,7 +188,7 @@ describe("Loeffler (O-202-595)", () => {
 
   it("staff: the Drive PAYAPP-001..005 copies are draws 1-5", () => {
     const labels = due.map((amount, index) =>
-      listedBillFor(workflow({ sourceSystem: "google_drive_g702_g703", sourceRecordType: "owner_pay_application", sourceRecordId: `op-${index}`, sourceRecordNumber: `O-202-595-PAYAPP-00${index + 1}`, amount }), draws)?.bill.label
+      match(workflow({ sourceSystem: "google_drive_g702_g703", sourceRecordType: "owner_pay_application", sourceRecordId: `op-${index}`, sourceRecordNumber: `O-202-595-PAYAPP-00${index + 1}`, amount }), draws)?.bill.label
     )
     expect(labels).toEqual(draws.map((draw) => draw.label))
   })
@@ -181,6 +202,15 @@ describe("Loeffler (O-202-595)", () => {
     })
     const rows = [revision(6, "budget_current"), ...[5, 4, 3, 2, 1].map((number) => revision(number, "budget_superseded")), ...[5, 4, 3, 2, 1].map(draw)]
     expect(ownerPayApplicationHistory(rows).map((row) => row.id)).toEqual(["draw-5", "draw-4", "draw-3", "draw-2", "draw-1"])
+  })
+})
+
+describe("LaCasse (O-58-3674)", () => {
+  it("keeps all 21 Buildertrend pay requests: nothing on the job to match", () => {
+    const copies = Array.from({ length: 21 }, (_, index) =>
+      workflow({ sourceRecordType: "owner_pay_application", sourceRecordId: `bt-pr-${index + 1}`, sourceRecordNumber: String(index + 1), amount: 10_000 + index })
+    )
+    expect(copies.filter((copy) => match(copy, [], { projectNumber: "O-58-3674" }) !== null)).toEqual([])
   })
 })
 

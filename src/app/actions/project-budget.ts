@@ -3,7 +3,7 @@
 import { requireProjectAudienceReadUser } from "@/lib/project-audience-request-server"
 
 import { and, asc, desc, eq, ne, notInArray, sql } from "drizzle-orm"
-import { OWNER_HIDDEN_APPLICATION_STATUSES, ownerPayApplicationsOnce } from "@/lib/domain/financials/rules"
+import { OWNER_HIDDEN_APPLICATION_STATUSES, ownerPayApplicationsOnce } from "@/lib/domain/financials/bill-matching"
 
 import { getDb } from "@/db"
 import {

@@ -70,25 +70,31 @@ beforeEach(() => {
 })
 afterEach(() => sqlite.close())
 
+/** The version of the draw staff have open. */
+function seen(id: string): string {
+  const stored: unknown = sqlite.prepare("SELECT updated_at FROM project_budget_applications WHERE id = ?").get(id)
+  return String(Reflect.get(Object(stored), "updated_at"))
+}
+
 function row(id: string) {
   return sqlite.prepare("SELECT status, owner_visible, billed_by, sync_status, sage_invoice_number FROM project_budget_applications WHERE id = ?").get(id)
 }
 
 describe("approving a pay application for billing", () => {
   it("marks a reviewed draw billed and publishes it to the owner", async () => {
-    expect((await approveProjectOwnerPayApplicationForBilling("bishop", "app-1")).success).toBe(true)
+    expect((await approveProjectOwnerPayApplicationForBilling("bishop", "app-1", seen("app-1"))).success).toBe(true)
     expect(row("app-1")).toEqual({ status: "billed", owner_visible: 1, billed_by: "user", sync_status: "awaiting_sage_invoice", sage_invoice_number: null })
     expect(mocks.recordActivityEvent).toHaveBeenCalledWith(expect.objectContaining({ action: "pay_application_billed" }))
   })
 
   it("only approves a draw that is ready for review", async () => {
     sqlite.prepare("UPDATE project_budget_applications SET status = 'draft'").run()
-    expect((await approveProjectOwnerPayApplicationForBilling("bishop", "app-1")).success).toBe(false)
+    expect((await approveProjectOwnerPayApplicationForBilling("bishop", "app-1", seen("app-1"))).success).toBe(false)
     expect(row("app-1")).toMatchObject({ status: "draft", owner_visible: 0 })
   })
 
   it("records the Sage invoice and blocks undo until it's cleared", async () => {
-    await approveProjectOwnerPayApplicationForBilling("bishop", "app-1")
+    await approveProjectOwnerPayApplicationForBilling("bishop", "app-1", seen("app-1"))
     expect((await setProjectOwnerPayApplicationSageInvoice("bishop", "app-1", " 25031 ")).success).toBe(true)
     expect(row("app-1")).toMatchObject({ sage_invoice_number: "25031", sync_status: "synced" })
     expect((await undoProjectOwnerPayApplicationBilling("bishop", "app-1")).success).toBe(false)
@@ -98,7 +104,7 @@ describe("approving a pay application for billing", () => {
   })
 
   it("won't undo while a payment is applied to the draw", async () => {
-    await approveProjectOwnerPayApplicationForBilling("bishop", "app-1")
+    await approveProjectOwnerPayApplicationForBilling("bishop", "app-1", seen("app-1"))
     const insert = sqlite.prepare(
       "INSERT INTO pay_application_payment_allocations (id, organization_id, project_id, application_id, payment_id, allocation_cents, created_at, released_at) VALUES (?, 'org', 'bishop', 'app-1', ?, 100, 't', ?)"
     )
@@ -110,7 +116,7 @@ describe("approving a pay application for billing", () => {
   })
 
   it("won't undo once a later draw has been started", async () => {
-    await approveProjectOwnerPayApplicationForBilling("bishop", "app-1")
+    await approveProjectOwnerPayApplicationForBilling("bishop", "app-1", seen("app-1"))
     drizzle(sqlite).insert(projectBudgetApplications).values(application("app-2", "draft", "2026-11-16")).run()
     const result = await undoProjectOwnerPayApplicationBilling("bishop", "app-1")
     expect(result.success).toBe(false)
@@ -119,8 +125,8 @@ describe("approving a pay application for billing", () => {
 
   it("two approvals at once bill it once: one Activity entry, one Sage request", async () => {
     const results = await Promise.all([
-      approveProjectOwnerPayApplicationForBilling("bishop", "app-1"),
-      approveProjectOwnerPayApplicationForBilling("bishop", "app-1"),
+      approveProjectOwnerPayApplicationForBilling("bishop", "app-1", seen("app-1")),
+      approveProjectOwnerPayApplicationForBilling("bishop", "app-1", seen("app-1")),
     ])
     expect(results.filter((result) => result.success)).toHaveLength(1)
     expect(results.find((result) => !result.success)).toMatchObject({ error: expect.stringMatching(/already approved/) })
@@ -129,7 +135,7 @@ describe("approving a pay application for billing", () => {
   })
 
   it("taking back the approval and recording a Sage invoice at once never leaves an invoiced draw in review", async () => {
-    await approveProjectOwnerPayApplicationForBilling("bishop", "app-1")
+    await approveProjectOwnerPayApplicationForBilling("bishop", "app-1", seen("app-1"))
     const [undo, record] = await Promise.all([
       undoProjectOwnerPayApplicationBilling("bishop", "app-1"),
       setProjectOwnerPayApplicationSageInvoice("bishop", "app-1", "25031"),
@@ -150,14 +156,14 @@ describe("approving a pay application for billing", () => {
     }
 
     it("cancels a queued export together with the undo", async () => {
-      await approveProjectOwnerPayApplicationForBilling("bishop", "app-1")
+      await approveProjectOwnerPayApplicationForBilling("bishop", "app-1", seen("app-1"))
       exportRow("queued")
       expect((await undoProjectOwnerPayApplicationBilling("bishop", "app-1")).success).toBe(true)
       expect(exportStatus()).toEqual({ status: "cancelled" })
     })
 
     it("leaves the queued export alone when the undo is refused", async () => {
-      await approveProjectOwnerPayApplicationForBilling("bishop", "app-1")
+      await approveProjectOwnerPayApplicationForBilling("bishop", "app-1", seen("app-1"))
       exportRow("queued")
       // A Sage invoice number is recorded after the undo's checks, before its write.
       beforeNextBatch = () => sqlite.prepare("UPDATE project_budget_applications SET sage_invoice_number = '25031' WHERE id = 'app-1'").run()
@@ -171,7 +177,7 @@ describe("approving a pay application for billing", () => {
       for (const [status, sageRecordId] of [["running", null], ["succeeded", null], ["failed", "AR-77"]] as const) {
         sqlite.prepare("DELETE FROM sage_ar_invoice_exports").run()
         sqlite.prepare("UPDATE project_budget_applications SET status = 'internal_review'").run()
-        await approveProjectOwnerPayApplicationForBilling("bishop", "app-1")
+        await approveProjectOwnerPayApplicationForBilling("bishop", "app-1", seen("app-1"))
         exportRow(status, sageRecordId)
         const result = await undoProjectOwnerPayApplicationBilling("bishop", "app-1")
         expect(result).toMatchObject({ success: false, error: expect.stringMatching(/void the invoice in Sage/) })
@@ -181,7 +187,7 @@ describe("approving a pay application for billing", () => {
     })
 
     it("refuses when a payment is recorded or a later draw started after the undo's checks", async () => {
-      await approveProjectOwnerPayApplicationForBilling("bishop", "app-1")
+      await approveProjectOwnerPayApplicationForBilling("bishop", "app-1", seen("app-1"))
       exportRow("queued")
       beforeNextBatch = () => sqlite.prepare(
         "INSERT INTO pay_application_payment_allocations (id, organization_id, project_id, application_id, payment_id, allocation_cents, created_at, released_at) VALUES ('alloc-x', 'org', 'bishop', 'app-1', 'pay-x', 100, 't', NULL)"
@@ -196,7 +202,7 @@ describe("approving a pay application for billing", () => {
     })
 
     it("refuses when Sage starts adding the invoice after the undo's checks", async () => {
-      await approveProjectOwnerPayApplicationForBilling("bishop", "app-1")
+      await approveProjectOwnerPayApplicationForBilling("bishop", "app-1", seen("app-1"))
       exportRow("queued")
       beforeNextBatch = () => sqlite.prepare("UPDATE sage_ar_invoice_exports SET status = 'running' WHERE id = 'exp'").run()
       expect((await undoProjectOwnerPayApplicationBilling("bishop", "app-1")).success).toBe(false)
@@ -217,7 +223,7 @@ describe("approving a pay application for billing", () => {
 
   it("refuses clients", async () => {
     mocks.requireAuth.mockResolvedValue({ id: "client", role: "client", organizationId: "client-org" })
-    expect((await approveProjectOwnerPayApplicationForBilling("bishop", "app-1")).success).toBe(false)
+    expect((await approveProjectOwnerPayApplicationForBilling("bishop", "app-1", seen("app-1"))).success).toBe(false)
   })
 })
 

@@ -354,7 +354,7 @@ export function ProjectFinancialWorkspace({
         {shownElsewhere > 0 && (
           <p className="px-4 pt-3 text-xs text-muted-foreground">
             {shownElsewhere === 1 ? "1 imported bill is" : `${shownElsewhere} imported bills are`} shown under Received payments.
-            {differingCopies.length > 0 && ` Amounts differ: ${differingCopies.join("; ")}.`}
+            {differingCopies.length > 0 && ` ${differingCopies.join("; ")}.`}
           </p>
         )}
 

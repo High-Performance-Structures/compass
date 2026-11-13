@@ -87,7 +87,7 @@ export async function approveProjectOwnerPayApplicationForBilling(
   projectId: string,
   applicationId: string,
   /** The version staff reviewed; a draw changed since (Sage's amounts applied, say) is refused. */
-  expectedUpdatedAt?: string
+  expectedUpdatedAt: string
 ): Promise<BillingActionResult> {
   try {
     const { db, user, organizationId } = await billingAccess(projectId)
@@ -96,7 +96,7 @@ export async function approveProjectOwnerPayApplicationForBilling(
       throw new Error("Mark the pay application ready for review before approving it for billing.")
     }
     const changedMessage = "This pay application changed since you opened it. Refresh, check its amounts, and approve again."
-    if (expectedUpdatedAt !== undefined && expectedUpdatedAt !== application.updatedAt) throw new Error(changedMessage)
+    if (expectedUpdatedAt !== application.updatedAt) throw new Error(changedMessage)
     const now = new Date().toISOString()
     // Compare-and-set on the status and the version read: a double click or a
     // second person approving lands once (only that one logs Activity and
