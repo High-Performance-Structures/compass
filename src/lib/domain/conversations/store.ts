@@ -17,6 +17,7 @@ import {
   messageReactions,
   messages,
 } from "@/db/schema-conversations"
+import { chunkD1InsertRows } from "@/lib/d1-query"
 import type { Db } from "@/lib/server/action-context"
 
 type ChannelInsert = typeof channels.$inferInsert
@@ -87,9 +88,12 @@ export function upsertChannelThreadStateStatement(
 // ---------------------------------------------------------------------------
 
 export async function insertChannelMembers(db: Db, rows: readonly MemberInsert[], options: InsertOptions = {}): Promise<void> {
-  if (rows.length === 0) return
-  const insert = db.insert(channelMembers).values([...rows])
-  await (options.ignoreConflict ? insert.onConflictDoNothing() : insert).run()
+  // One user can join hundreds of imported conversations at once (access-request
+  // approval); split so each statement stays under D1's 100-parameter limit.
+  for (const chunk of chunkD1InsertRows(channelMembers, rows)) {
+    const insert = db.insert(channelMembers).values(chunk)
+    await (options.ignoreConflict ? insert.onConflictDoNothing() : insert).run()
+  }
 }
 
 export async function setChannelMemberRole(db: Db, channelId: string, userId: string, role: string): Promise<void> {
@@ -113,9 +117,10 @@ export async function removeChannelMembers(db: Db, channelId: string, userIds: r
 // ---------------------------------------------------------------------------
 
 export async function insertReadStates(db: Db, rows: readonly ReadStateInsert[], options: InsertOptions = {}): Promise<void> {
-  if (rows.length === 0) return
-  const insert = db.insert(channelReadState).values([...rows])
-  await (options.ignoreConflict ? insert.onConflictDoNothing() : insert).run()
+  for (const chunk of chunkD1InsertRows(channelReadState, rows)) {
+    const insert = db.insert(channelReadState).values(chunk)
+    await (options.ignoreConflict ? insert.onConflictDoNothing() : insert).run()
+  }
 }
 
 export async function removeReadStates(db: Db, channelId: string, userIds: readonly string[]): Promise<void> {
@@ -192,7 +197,9 @@ export async function updateMessage(
 }
 
 export async function insertMessageMentions(db: Db, rows: readonly (typeof messageMentions.$inferInsert)[]): Promise<void> {
-  await db.insert(messageMentions).values([...rows])
+  for (const chunk of chunkD1InsertRows(messageMentions, rows)) {
+    await db.insert(messageMentions).values(chunk)
+  }
 }
 
 export async function insertMessageReaction(db: Db, row: typeof messageReactions.$inferInsert): Promise<void> {

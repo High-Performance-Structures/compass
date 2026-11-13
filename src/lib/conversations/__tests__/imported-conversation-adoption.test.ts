@@ -74,6 +74,25 @@ describe("adoptImportedConversationsForContact", () => {
     expect(rows(sqlite, `SELECT COUNT(*) AS n FROM channel_members WHERE user_id = '${OWNER}'`)).toEqual([{ n: 1 }])
   })
 
+  it("joins hundreds of threads without exceeding D1's 100-parameter limit", async () => {
+    // A long Buildertrend job (Loeffler) gave one owner ~160 threads; one INSERT for all of them failed.
+    const threads = Array.from({ length: 160 }, (_, index) => `bulk-${index}`)
+    for (const thread of threads) {
+      sqlite.exec(`
+        INSERT INTO channels (id, name, type, organization_id, project_id, is_private, audience, created_by, sort_order, created_at, updated_at, source_system, source_thread_id)
+          VALUES ('chan-${thread}', 'Thread', 'text', '${ORG}', 'proj-open', 1, 'clients', '${STAFF}', 0, '${NOW}', '${NOW}', 'buildertrend', '${thread}');
+        INSERT INTO project_source_record_participants (id, organization_id, project_id, source_record_type, source_record_id, source_participant_id, participant_role, project_contact_id, identity_status, membership_status, review_status, active, created_at, updated_at)
+          VALUES ('psrp-${thread}', '${ORG}', 'proj-open', 'buildertrend_message_thread', '${thread}', 'owner:3', 'owner', 'contact-proj-open', 'matched', 'active', 'reviewed', 1, '${NOW}', '${NOW}');
+      `)
+    }
+    const joined = await adoptImportedConversationsForContact({
+      db: drizzleOverSqlite(sqlite, { bindLimit: 100 }), projectId: "proj-open", projectContactId: "contact-proj-open", userId: OWNER, audience: "owner", now: NOW,
+    })
+    expect(joined).toHaveLength(161)
+    expect(rows(sqlite, `SELECT COUNT(*) AS n FROM channel_members WHERE user_id = '${OWNER}'`)).toEqual([{ n: 161 }])
+    expect(rows(sqlite, `SELECT COUNT(*) AS n FROM channel_read_state WHERE user_id = '${OWNER}'`)).toEqual([{ n: 161 }])
+  })
+
   it("adds nobody on a staff-only project", async () => {
     const joined = await adoptImportedConversationsForContact({
       db: drizzleOverSqlite(sqlite), projectId: "proj-hold", projectContactId: "contact-proj-hold", userId: OWNER, audience: "owner", now: NOW,
