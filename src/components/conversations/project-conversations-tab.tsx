@@ -137,8 +137,8 @@ export async function ProjectConversationsTab({
       <aside
         aria-label="Job conversations"
         className={cn(
-          "flex w-full shrink-0 flex-col overflow-y-auto md:w-[var(--split-list,32%)]",
-          (channel || (renderChannel && query.channelId)) && "hidden md:flex",
+          "flex w-full shrink-0 flex-col overflow-y-auto lg:w-[var(--split-list,32%)]",
+          (channel || (renderChannel && query.channelId)) && "hidden lg:flex",
         )}
       >
         <div className="space-y-3 border-b p-4">
@@ -212,11 +212,11 @@ export async function ProjectConversationsTab({
           )}
         </div>
       </aside>
-      <SplitDivider storageKey="compass.messages.conversation-split" defaultPercent={32} label="Resize the conversation list" className="hidden md:block" />
-      <section aria-label="Open conversation" className={cn("min-w-0 flex-1", !(channel || (renderChannel && query.channelId)) && "hidden md:flex")}>
+      <SplitDivider storageKey="compass.messages.conversation-split" defaultPercent={32} label="Resize the conversation list" className="hidden lg:block" />
+      <section aria-label="Open conversation" className={cn("min-w-0 flex-1", !(channel || (renderChannel && query.channelId)) && "hidden lg:flex")}>
         {channel || (renderChannel && query.channelId) ? (
           <div className="flex h-full min-h-0 w-full flex-col">
-            <div className="border-b px-4 py-2 md:hidden">
+            <div className="border-b px-4 py-2 lg:hidden">
               <Link className="text-sm underline" href={href({ channelId: null })}>Back to conversations</Link>
             </div>
             <div className="min-h-0 flex-1">
@@ -224,7 +224,7 @@ export async function ProjectConversationsTab({
                 ? renderChannel(query.channelId)
                 : channel && currentUser && (
                   // The conversation's list, composer and threads read the same context as /dashboard/conversations.
-                  <ConversationsProvider>
+                  <ConversationsProvider key={channel.id}>
                     <ChannelView channel={channel} currentUser={currentUser} />
                   </ConversationsProvider>
                 )}

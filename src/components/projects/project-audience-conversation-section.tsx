@@ -78,7 +78,7 @@ export async function AudienceConversationSection({
     return <section id="messages" className="flex min-w-0 flex-col">
       <ProjectMessagesTabs active={conversationsQuery ? "conversations" : "emails"} emailsHref={basePath} conversationsHref={`${basePath}?view=conversations`} />
       {conversationsQuery
-        ? <div className="flex h-[calc(100dvh-11rem)] min-h-[32rem] border">
+        ? <div className="flex h-[calc(100dvh-11rem)] border md:min-h-[32rem]">
           {/* A fixed-height frame so the list and the open conversation scroll on their own, as on the staff page. */}
           <ProjectConversationsTab
             projectId={data.project.id}

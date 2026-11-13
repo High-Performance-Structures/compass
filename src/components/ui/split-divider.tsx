@@ -52,6 +52,9 @@ export function SplitDivider({
 }) {
   const ref = React.useRef<HTMLDivElement>(null)
   const [percent, setPercent] = React.useState(defaultPercent)
+  // Ends a drag in progress; also run on unmount so a page change mid-drag never leaves text unselectable.
+  const endDrag = React.useRef<(() => void) | null>(null)
+  React.useEffect(() => () => endDrag.current?.(), [])
 
   const apply = React.useCallback((next: number) => {
     const value = clamp(next, min, max)
@@ -67,25 +70,31 @@ export function SplitDivider({
   const onPointerDown = (event: React.PointerEvent<HTMLDivElement>): void => {
     const parent = ref.current?.parentElement
     if (!parent || event.button !== 0) return
+    const rect = parent.getBoundingClientRect()
+    if (rect.width <= 0) return
     event.preventDefault()
+    endDrag.current?.()
     const handle = event.currentTarget
     handle.setPointerCapture(event.pointerId)
-    const rect = parent.getBoundingClientRect()
     let last = percent
     const move = (moveEvent: PointerEvent): void => {
       last = apply(((moveEvent.clientX - rect.left) / rect.width) * 100)
     }
-    const up = (): void => {
+    const end = (): void => {
       handle.removeEventListener("pointermove", move)
-      handle.removeEventListener("pointerup", up)
-      handle.removeEventListener("pointercancel", up)
+      handle.removeEventListener("pointerup", end)
+      handle.removeEventListener("pointercancel", end)
+      handle.removeEventListener("lostpointercapture", end)
       document.body.style.removeProperty("user-select")
+      endDrag.current = null
       save(storageKey, last)
     }
     document.body.style.setProperty("user-select", "none")
     handle.addEventListener("pointermove", move)
-    handle.addEventListener("pointerup", up)
-    handle.addEventListener("pointercancel", up)
+    handle.addEventListener("pointerup", end)
+    handle.addEventListener("pointercancel", end)
+    handle.addEventListener("lostpointercapture", end)
+    endDrag.current = end
   }
 
   const onKeyDown = (event: React.KeyboardEvent<HTMLDivElement>): void => {

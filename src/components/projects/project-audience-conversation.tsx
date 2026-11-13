@@ -107,7 +107,8 @@ function ConversationBody({
       </article>)}
     </section>
   }
-  return <ConversationsProvider>
+  // Keyed by conversation so a half-typed reply or open thread never carries into the next one.
+  return <ConversationsProvider key={channelId}>
     <div className="flex h-full w-full min-w-0 overflow-hidden">
       <div
         className="grid min-w-0 flex-1 grid-cols-1 overflow-hidden"
@@ -153,8 +154,9 @@ export async function ProjectAudienceConversationPane({
   let data: LoadedConversation
   try {
     data = await loadConversation(projectId, channelId, audience)
-  } catch {
+  } catch (error) {
     // A link to a conversation this person can't open shows a note, not a missing page.
+    if (!(hasDigest(error) && error.digest === "NEXT_NOT_FOUND")) console.error("project_audience_conversation_pane_failed", error instanceof Error ? error.message : error)
     return <p className="p-6 text-sm text-muted-foreground">This conversation isn't available.</p>
   }
   return <ConversationBody data={data} channelId={channelId} audience={audience} />
