@@ -92,8 +92,8 @@ export async function reopenAccessRequest(db: Db, requestId: string, now: string
       status: accessRequestMachine.transitions.reopen.to,
       decidedBy: null,
       decidedAt: null,
-      customerContactId: null,
-      vendorContactId: null,
+      // customerContactId / vendorContactId stay: a directory person the
+      // failed attempt created is reused by the retry (no second client).
       grantedRole: null,
       grantedProjectCount: null,
       updatedAt: now,
@@ -111,6 +111,24 @@ export async function reopenAccessRequest(db: Db, requestId: string, now: string
 }
 
 /** Records what an approval granted: the directory person it linked and how many jobs it opened. */
+/**
+ * Remembers the directory person an approval just created, before granting,
+ * so a retry after a failed grant reuses it instead of adding another.
+ */
+export async function rememberAccessRequestPerson(
+  db: Db,
+  requestId: string,
+  input: { readonly kind: "client" | "vendor"; readonly personId: string; readonly now: string },
+): Promise<void> {
+  await db
+    .update(organizationAccessRequests)
+    .set(input.kind === "client"
+      ? { customerContactId: input.personId, updatedAt: input.now }
+      : { vendorContactId: input.personId, updatedAt: input.now })
+    .where(eq(organizationAccessRequests.id, requestId))
+    .run()
+}
+
 export async function recordAccessRequestGrant(
   db: Db,
   requestId: string,

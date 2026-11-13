@@ -28,6 +28,7 @@ import {
 import { membershipsView } from "@/lib/domain/identity/views"
 import { organizationAccessRequests } from "@/db/schema-access-requests"
 import { recordActivityEvent, type ActivityActor } from "@/lib/activity-log"
+import { directoryPersonWithEmail } from "@/lib/domain/contacts/directory-people"
 import { grantProjectContactAccess } from "@/lib/domain/contacts/prior-project-access"
 import { contactAccountLinkStatements, insertCustomer, insertCustomerPerson, insertVendor, insertVendorPersonStatement } from "@/lib/domain/contacts/store"
 import { ensureExternalOrganizationMembership, insertOrganizationMember } from "@/lib/domain/identity/store"
@@ -50,7 +51,7 @@ import {
   type AccessRequestInput,
   type ApproveAccessRequestInput,
 } from "./rules"
-import { closeAccessRequest, insertAccessRequest, markAccessRequestApproved, recordAccessRequestGrant, reopenAccessRequest } from "./store"
+import { closeAccessRequest, insertAccessRequest, markAccessRequestApproved, recordAccessRequestGrant, rememberAccessRequestPerson, reopenAccessRequest } from "./store"
 import type { AccessRequestKind } from "./statuses"
 import { resolvedContactColumns, withContactDirectory } from "@/lib/domain/contacts/resolved-columns"
 
@@ -429,10 +430,17 @@ function pickedId(choice: ApprovalChoice): string {
  * a picked person must be live and not another login's; a picked client
  * record or vendor company must be live. Returns an error, or null.
  */
-async function checkPick(db: Db, organizationId: string, choice: ApprovalChoice, requesterUserId: string): Promise<string | null> {
+async function checkPick(db: Db, organizationId: string, choice: ApprovalChoice, requester: PickRequester): Promise<string | null> {
   if (choice.kind === "employee") return null
   const picked = pickedId(choice)
-  if (picked === NEW_DIRECTORY_RECORD_OPTION) return null
+  if (picked === NEW_DIRECTORY_RECORD_OPTION) {
+    // A retry reuses the record its failed attempt made (resolvePerson).
+    if (await earlierAttemptPerson(db, organizationId, choice.kind, requester)) return null
+    const same = await directoryPersonWithEmail(db, organizationId, choice.kind, requester.email)
+    return same
+      ? `${same.label} is already in your ${choice.kind === "client" ? "clients" : "vendors"} with this email. Pick them instead of adding a new ${choice.kind}.`
+      : null
+  }
   const notFound = "That directory contact wasn't found or is inactive."
   if (choice.kind === "client" && picked.startsWith(CLIENT_RECORD_OPTION_PREFIX)) {
     const record = await db.select({ id: customers.id }).from(customers).where(and(
@@ -453,7 +461,22 @@ async function checkPick(db: Db, organizationId: string, choice: ApprovalChoice,
   }
   const person = choice.kind === "client" ? await clientPerson(db, organizationId, picked) : await vendorPerson(db, organizationId, picked)
   if (!person) return notFound
-  return person.userId && person.userId !== requesterUserId ? LINKED_ELSEWHERE : null
+  return person.userId && person.userId !== requester.userId ? LINKED_ELSEWHERE : null
+}
+
+/** Who asked, and the directory person an earlier failed attempt at this approval created, if any. */
+type PickRequester = {
+  readonly userId: string
+  readonly email: string
+  readonly customerContactId: string | null
+  readonly vendorContactId: string | null
+}
+
+/** The person a failed earlier "new" approval of this request added, if still live. */
+async function earlierAttemptPerson(db: Db, organizationId: string, kind: "client" | "vendor", requester: PickRequester): Promise<LinkedPerson | undefined> {
+  const earlier = kind === "client" ? requester.customerContactId : requester.vendorContactId
+  if (!earlier) return undefined
+  return kind === "client" ? clientPerson(db, organizationId, earlier) : vendorPerson(db, organizationId, earlier)
 }
 
 const LINKED_ELSEWHERE = "That directory contact is already linked to a different Compass login."
@@ -464,10 +487,18 @@ async function resolvePerson(
   organizationId: string,
   choice: Exclude<ApprovalChoice, { readonly kind: "employee" }>,
   requester: Requester,
+  attempt: { readonly requestId: string; readonly pick: PickRequester },
   now: string,
 ): Promise<LinkedPerson | undefined> {
   const picked = pickedId(choice)
-  if (picked === NEW_DIRECTORY_RECORD_OPTION) return newDirectoryPerson(db, organizationId, choice.kind, requester, now)
+  if (picked === NEW_DIRECTORY_RECORD_OPTION) {
+    const earlier = await earlierAttemptPerson(db, organizationId, choice.kind, attempt.pick)
+    if (earlier) return earlier
+    const made = await newDirectoryPerson(db, organizationId, choice.kind, requester, now)
+    // Saved before granting, so a retry after a failed grant finds it.
+    if (made) await rememberAccessRequestPerson(db, attempt.requestId, { kind: choice.kind, personId: made.id, now })
+    return made
+  }
   if (choice.kind === "client") {
     return picked.startsWith(CLIENT_RECORD_OPTION_PREFIX)
       ? clientPersonForRecord(db, organizationId, picked.slice(CLIENT_RECORD_OPTION_PREFIX.length), requester, now)
@@ -521,7 +552,11 @@ export async function approveAccessRequest(
   // Never change a staff member's role from a request.
   if (existing && isInternalStaffRole(existing.role)) return fail("This person is already on your staff in Compass.")
   if (existing && choice.kind === "employee") return fail("This person already has access. Change their role in People.")
-  const pickProblem = await checkPick(db, organizationId, choice, request.userId)
+  const pick: PickRequester = {
+    userId: request.userId, email: found.requesterEmail,
+    customerContactId: request.customerContactId, vendorContactId: request.vendorContactId,
+  }
+  const pickProblem = await checkPick(db, organizationId, choice, pick)
   if (pickProblem) return fail(pickProblem)
 
   const role = approvedOrganizationRole(choice)
@@ -534,7 +569,7 @@ export async function approveAccessRequest(
   }
   let granted: Result<{ readonly opened: readonly string[]; readonly skipped: readonly string[] }>
   try {
-    granted = await grantApprovedRequest(db, database, actor, { organizationId, requestId: request.id, userId: request.userId, choice, role, requester, now })
+    granted = await grantApprovedRequest(db, database, actor, { organizationId, requestId: request.id, userId: request.userId, choice, role, requester, pick, now })
   } catch (error) {
     await reopenAfterFailedGrant(db, request.id)
     throw error
@@ -587,7 +622,7 @@ async function grantApprovedRequest(
   actor: AccessRequestActor,
   input: {
     readonly organizationId: string; readonly requestId: string; readonly userId: string
-    readonly choice: ApprovalChoice; readonly role: UserRole; readonly requester: Requester; readonly now: string
+    readonly choice: ApprovalChoice; readonly role: UserRole; readonly requester: Requester; readonly pick: PickRequester; readonly now: string
   },
 ): Promise<Result<{ readonly opened: readonly string[]; readonly skipped: readonly string[] }>> {
   const { organizationId, choice, role, now } = input
@@ -599,7 +634,7 @@ async function grantApprovedRequest(
     return { success: true, data: { opened, skipped } }
   }
 
-  const person = await resolvePerson(db, organizationId, choice, input.requester, now)
+  const person = await resolvePerson(db, organizationId, choice, input.requester, { requestId: input.requestId, pick: input.pick }, now)
   if (!person) return fail("That directory contact wasn't found or is inactive.")
   if (person.userId && person.userId !== input.userId) return fail(LINKED_ELSEWHERE)
   // The membership comes first: the directory link requires the login to be

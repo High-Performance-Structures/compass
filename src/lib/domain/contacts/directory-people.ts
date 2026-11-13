@@ -9,7 +9,7 @@
  */
 import { and, eq, isNull, sql } from "drizzle-orm"
 
-import { customerContacts, customers, vendors } from "@/db/schema"
+import { customerContacts, customers, vendorContacts, vendors } from "@/db/schema"
 import type { ActionFailure } from "@/lib/action-result"
 import type { Db } from "@/lib/server/action-context"
 
@@ -152,4 +152,49 @@ export async function saveCustomerPerson(
     await clearOtherCustomerPrimaryPeople(db, { customerId, keepPersonId: id, now })
   }
   return { success: true, id }
+}
+
+/**
+ * A live client or vendor person in this company's directory who already has
+ * this email. Approving an access request as a "new" client or vendor checks
+ * it first, so the directory never gets a second record for the same person.
+ * `label` is "Name (Company)" for the message that asks to pick them instead.
+ */
+export async function directoryPersonWithEmail(
+  db: Db,
+  organizationId: string,
+  kind: "client" | "vendor",
+  email: string,
+): Promise<{ readonly id: string; readonly label: string } | null> {
+  const wanted = email.trim().toLowerCase()
+  if (!wanted.includes("@")) return null
+  if (kind === "client") {
+    const person = await db
+      .select({ id: customerContacts.id, name: customerContacts.name, company: sql<string>`COALESCE(NULLIF(trim(${customers.company}), ''), ${customers.name})` })
+      .from(customerContacts)
+      .innerJoin(customers, eq(customers.id, customerContacts.customerId))
+      .where(and(
+        eq(customers.organizationId, organizationId),
+        isNull(customers.mergedIntoCustomerId),
+        eq(customerContacts.active, true),
+        isNull(customerContacts.mergedIntoPersonId),
+        sql`lower(trim(${customerContacts.email})) = ${wanted}`,
+      ))
+      .get()
+    return person ? { id: person.id, label: `${person.name} (${person.company})` } : null
+  }
+  const person = await db
+    .select({ id: vendorContacts.id, name: vendorContacts.name, company: vendors.name })
+    .from(vendorContacts)
+    .innerJoin(vendors, eq(vendors.id, vendorContacts.vendorId))
+    .where(and(
+      eq(vendors.organizationId, organizationId),
+      eq(vendors.directoryStatus, "active"),
+      isNull(vendors.mergedIntoVendorId),
+      eq(vendorContacts.active, true),
+      isNull(vendorContacts.mergedIntoPersonId),
+      sql`lower(trim(${vendorContacts.email})) = ${wanted}`,
+    ))
+    .get()
+  return person ? { id: person.id, label: `${person.name} (${person.company})` } : null
 }
