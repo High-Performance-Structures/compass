@@ -10,7 +10,13 @@ import { actionFailure, errorMessage, type ActionResult } from "@/lib/action-res
 import { activityActorName, recordActivityEvent } from "@/lib/activity-log"
 import { simpleInvoiceContext } from "@/lib/domain/financials/access"
 import { squareEligibility } from "@/lib/domain/financials/simple-invoice-rules"
-import { simpleInvoiceUpdateStatement } from "@/lib/domain/financials/store"
+import {
+  cancelSquareInvoiceLink,
+  failSquareInvoiceLink,
+  publishSquareInvoiceLink,
+  simpleInvoiceUpdateStatement,
+  startSquareInvoiceLink,
+} from "@/lib/domain/financials/store"
 import { COMPASS_GMAIL_SEND_SCOPE, getCompassGmailAccessToken } from "@/lib/email/compass-email"
 import { isValidRecipientEmail, normalizeRecipientEmail } from "@/lib/email/recipient-options"
 import { sendTrackedEmail } from "@/lib/email/tracked-send"
@@ -21,7 +27,7 @@ import { loadSimpleInvoice, loadSimpleInvoiceProject, readSimpleInvoiceSettings 
 import { formatCents, formatDate } from "@/lib/format"
 import { PRINT_READY_SELECTOR, printSourcePath } from "@/lib/print/print-documents"
 import { renderPrintPagePdf } from "@/lib/print/render-pdf"
-import { createAndPublishSquareInvoice, squareInvoiceAccessToken } from "@/lib/sage/square-invoice-create"
+import { cancelSquareInvoice, createAndPublishSquareInvoice, squareInvoiceAccessToken } from "@/lib/sage/square-invoice-create"
 import { orgContext, type Db } from "@/lib/server/action-context"
 import { isInternalStaffRole } from "@/lib/user-roles"
 
@@ -164,7 +170,12 @@ export async function emailProjectInvoice(projectId: string, invoiceId: string, 
       if (!invoice.customerName) return actionFailure("Choose who the invoice is billed to.")
       const firstTo = to[0]
       if (!firstTo) return actionFailure("Choose who the invoice goes to.")
-      await simpleInvoiceUpdateStatement(db, fence, { squareState: "pending", squareError: null, updatedAt: new Date().toISOString() })
+      // Only one request creates the Square invoice: a double click or a second
+      // person sending at the same moment would otherwise make two payment links.
+      const key = { invoiceId, organizationId, projectId }
+      if (!(await startSquareInvoiceLink(db, { ...key, now: new Date().toISOString() }))) {
+        return actionFailure("The Square invoice is already being created (or the invoice changed). Wait a moment, refresh and send again.")
+      }
       try {
         const created = await createAndPublishSquareInvoice({
           token,
@@ -197,7 +208,13 @@ export async function emailProjectInvoice(projectId: string, invoiceId: string, 
         })
         squareUrl = created.publicUrl
         const now = new Date().toISOString()
-        await simpleInvoiceUpdateStatement(db, fence, { squareState: "published", squarePublicUrl: created.publicUrl, squareError: null, updatedAt: now })
+        if (!(await publishSquareInvoiceLink(db, { ...key, publicUrl: created.publicUrl, now }))) {
+          // Voided while Square was creating it: take the payment link back down.
+          const cancelled = await cancelSquareInvoice(token, created.squareInvoiceId).then(() => true, () => false)
+          if (cancelled) await cancelSquareInvoiceLink(db, { ...key, now })
+          revalidatePath(`/dashboard/projects/${projectId}/financials/invoices/${invoiceId}`)
+          return actionFailure(`This invoice was voided while Square was creating it. ${cancelled ? "The Square invoice was cancelled." : "Cancel the Square invoice in Square."} The email was not sent.`)
+        }
         await recordActivityEvent({
           db,
           organizationId,
@@ -212,12 +229,14 @@ export async function emailProjectInvoice(projectId: string, invoiceId: string, 
         })
       } catch (error) {
         const message = errorMessage(error, "Square didn't create the invoice.")
-        await simpleInvoiceUpdateStatement(db, fence, { squareState: "failed", squareError: message.slice(0, 1000), updatedAt: new Date().toISOString() })
+        await failSquareInvoiceLink(db, { ...key, error: message.slice(0, 1000), now: new Date().toISOString() })
         revalidatePath(`/dashboard/projects/${projectId}/financials/invoices/${invoiceId}`)
         return actionFailure(`Square: ${message} The email was not sent.`)
       }
     }
 
+    // Voided while the link was made: don't email a void invoice.
+    if ((await loadSimpleInvoice(db, organizationId, projectId, invoiceId))?.status === "void") return actionFailure("This invoice is void.")
     const pdf = await invoicePdf(projectId, invoiceId)
     if (!pdf.ok) return actionFailure(`${pdf.error}${squareUrl ? " The Square invoice is created; send the email again." : ""}`)
     const from = sender.sender

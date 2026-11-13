@@ -792,7 +792,7 @@
       "src/lib/domain/sage-bridge/square-store.ts"
     ],
     "sageSquareWebhookEvents": [
-      "src/lib/sage/square-payment.ts"
+      "src/lib/domain/sage-bridge/square-store.ts"
     ],
     "sageTaxEntities": [
       "src/lib/sage/tax-catalog-ingest.ts"
@@ -1024,7 +1024,7 @@
     "src/lib/feature-settings/registry.ts": 938,
     "src/lib/notifications/create-event.ts": 830,
     "src/lib/notifications/events.ts": 951,
-    "src/lib/sage/square-payment.ts": 1333,
+    "src/lib/sage/square-payment.ts": 1310,
     "src/lib/sync/engine.ts": 864
   },
   "localHelpers": {

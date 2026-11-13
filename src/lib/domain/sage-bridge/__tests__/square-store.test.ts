@@ -27,8 +27,8 @@ const OPEN_STATUSES = "('queued', 'running', 'manual_action_required', 'succeede
 const AWAITING_ENTRY = `operation_type = 'post_square_receipt' AND status = 'manual_action_required'`
 
 describe("Sage Square store", () => {
-  it("keeps the fee-writer claim fence and .returning()", () => {
-    const changes = { status: "manual_action_required", claimToken: null, claimedAt: null, updatedAt: now }
+  it("keeps the caller's fence and .returning() for non-status changes, and refuses a status", () => {
+    const changes = { organizationId: "org-1", projectId: "p1", updatedAt: now }
     const fence = and(eq(sageSquarePaymentOperations.id, "op1"), or(
       eq(sageSquarePaymentOperations.status, "queued"),
       and(eq(sageSquarePaymentOperations.status, "running"), lt(sageSquarePaymentOperations.claimedAt, now)),
@@ -36,6 +36,7 @@ describe("Sage Square store", () => {
     expect(updateSageSquarePaymentOperations(db, changes, fence).returning({ id: sageSquarePaymentOperations.id }).toSQL()).toEqual(
       db.update(sageSquarePaymentOperations).set(changes).where(fence).returning({ id: sageSquarePaymentOperations.id }).toSQL(),
     )
+    expect(() => updateSageSquarePaymentOperations(db, { status: "succeeded", updatedAt: now }, fence)).toThrow(/event functions/)
   })
 
   it("upserts an operation by idempotency key, refreshing only its scope", () => {
@@ -69,7 +70,7 @@ describe("Sage Square store", () => {
       expect(statementShape(flagSageSquareOperationsForAttentionStatement(d1, { match, squareId: "x", errorMessage: "e", now })))
         .toEqual(expectedShape(
           `UPDATE sage_square_payment_operations
-       SET status = CASE WHEN status = 'succeeded' THEN status ELSE 'attention' END,
+       SET status = CASE WHEN status IN ('queued', 'running', 'failed', 'already_in_sage', 'manual_action_required') THEN 'attention' ELSE status END,
            error_message = ?, updated_at = ?
        WHERE ${match} = ?`,
           ["e", now, "x"],
@@ -112,7 +113,8 @@ describe("Sage Square store", () => {
       `UPDATE sage_square_payment_operations
       SET status = 'already_in_sage', sage_record_id = ?, sage_record_number = ?, sage_receipt_checked_at = ?,
         completed_at = COALESCE(completed_at, ?), updated_at = ?, claim_token = NULL
-      WHERE id = ? AND organization_id = ? AND ${AWAITING_ENTRY}`,
+      WHERE id = ? AND organization_id = ? AND ${AWAITING_ENTRY}
+        AND status IN ('running', 'manual_action_required')`,
       ["r", "n", "c", now, now, "op1", "org-1"],
     ))
     expect(statementShape(recordSageReceiptReminderStatement(d1, {

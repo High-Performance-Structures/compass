@@ -3,7 +3,7 @@ import { and, eq } from "drizzle-orm"
 import { getDb } from "@/db"
 import { sageSquarePaymentOperations } from "@/db/schema-sage"
 import { getCloudflareContext } from "@/lib/db"
-import { updateSageSquarePaymentOperations } from "@/lib/domain/sage-bridge/square-store"
+import { finishSageSquareFeeOperation } from "@/lib/domain/sage-bridge/square-store"
 import {
   getSageBridgeSecret,
   readBoundedSageBridgeBody,
@@ -95,17 +95,22 @@ export async function POST(request: Request): Promise<Response> {
     )
   }
   const now = new Date().toISOString()
-  if (result.outcome === "failed") {
-    await updateSageSquarePaymentOperations(
-      db,
-      {
-        status: "failed",
-        errorMessage: result.error,
-        completedAt: now,
-        updatedAt: now,
-      },
-      eq(sageSquarePaymentOperations.id, operation.id)
+  const claim = { operationId: operation.id, claimToken: result.claimToken, now }
+  const stale = (): Response =>
+    Response.json(
+      { error: "Sage payment claim is missing, stale, or already completed" },
+      { status: 409 }
     )
+  if (result.outcome === "failed") {
+    // Compare-and-set on the claim: a repeated or stale result changes nothing and alerts no one.
+    const recorded = await finishSageSquareFeeOperation(db, {
+      ...claim,
+      event: "fail",
+      sageRecordId: null,
+      sageRecordNumber: null,
+      errorMessage: result.error,
+    })
+    if (!recorded) return stale()
     await hydrateLegacySageSquarePaymentScopes(env, operation.squarePaymentId)
     const receipt = await db
       .select({
@@ -150,31 +155,23 @@ export async function POST(request: Request): Promise<Response> {
   }
   if (result.outcome === "already_in_sage") {
     // Nothing was written; the matching Sage entry is recorded for audit.
-    await updateSageSquarePaymentOperations(
-      db,
-      {
-        status: "already_in_sage",
-        sageRecordId: result.sageRecordId,
-        sageRecordNumber: result.sageRecordNumber,
-        errorMessage: result.matchReason,
-        completedAt: now,
-        updatedAt: now,
-      },
-      eq(sageSquarePaymentOperations.id, operation.id)
-    )
-    return Response.json({ success: true, status: "already_in_sage" })
-  }
-  await updateSageSquarePaymentOperations(
-    db,
-    {
-      status: "succeeded",
+    const recorded = await finishSageSquareFeeOperation(db, {
+      ...claim,
+      event: "found_in_sage",
       sageRecordId: result.sageRecordId,
       sageRecordNumber: result.sageRecordNumber,
-      errorMessage: null,
-      completedAt: now,
-      updatedAt: now,
-    },
-    eq(sageSquarePaymentOperations.id, operation.id)
-  )
+      errorMessage: result.matchReason,
+    })
+    if (!recorded) return stale()
+    return Response.json({ success: true, status: "already_in_sage" })
+  }
+  const recorded = await finishSageSquareFeeOperation(db, {
+    ...claim,
+    event: "succeed",
+    sageRecordId: result.sageRecordId,
+    sageRecordNumber: result.sageRecordNumber,
+    errorMessage: null,
+  })
+  if (!recorded) return stale()
   return Response.json({ success: true, status: "succeeded" })
 }

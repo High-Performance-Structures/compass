@@ -42,3 +42,19 @@ export type SageDirectoryAddStatus = (typeof SAGE_DIRECTORY_ADD_STATUSES)[number
 
 export const SAGE_DIRECTORY_ADD_KINDS = ["vendor_company", "client_company", "vendor_person", "client_person"] as const
 export type SageDirectoryAddKind = (typeof SAGE_DIRECTORY_ADD_KINDS)[number]
+
+/** A Square webhook event as Compass processed it (./square-machines.ts). */
+export const SQUARE_WEBHOOK_EVENT_STATUSES = ["processing", "processed", "failed", "attention"] as const
+export type SquareWebhookEventStatus = (typeof SQUARE_WEBHOOK_EVENT_STATUSES)[number]
+
+/** A Square receipt (entered in Sage by staff) or processing fee (posted by the Sage writer). */
+export const SQUARE_PAYMENT_OPERATION_STATUSES = [
+  "queued",
+  "running",
+  "succeeded",
+  "failed",
+  "already_in_sage",
+  "manual_action_required",
+  "attention",
+] as const
+export type SquarePaymentOperationStatus = (typeof SQUARE_PAYMENT_OPERATION_STATUSES)[number]

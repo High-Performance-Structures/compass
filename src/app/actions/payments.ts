@@ -14,7 +14,7 @@ import {
   isOrganizationProject,
   PROJECT_NOT_FOUND,
 } from "@/lib/domain/financials/access"
-import { deletePaymentRow, insertPayment, updatePaymentRow } from "@/lib/domain/financials/store"
+import { deletePaymentRow, insertPayment, updatePaymentRow, updateUnappliedPaymentRow } from "@/lib/domain/financials/store"
 import { paymentHasAllocations } from "@/lib/domain/financials/receivables"
 
 const BILLING_SCOPE_ERROR = "Choose construction or preconstruction billing."
@@ -154,7 +154,13 @@ export async function updatePayment(
     if (changesApplication && (await paymentHasAllocations(db, id))) {
       return { success: false, error: APPLIED }
     }
-    await updatePaymentRow(db, id, { ...safeData, updatedAt: new Date().toISOString() })
+    const values = { ...safeData, updatedAt: new Date().toISOString() }
+    if (changesApplication) {
+      // Compare-and-set: refused if the payment was applied after the check above.
+      if (!(await updateUnappliedPaymentRow(db, id, values))) return { success: false, error: APPLIED }
+    } else {
+      await updatePaymentRow(db, id, values)
+    }
 
     revalidatePath("/dashboard/financials")
     return { success: true }

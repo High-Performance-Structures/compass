@@ -430,6 +430,7 @@ export async function readActivePaymentAllocations(db: Db, scope: ProjectReceiva
     readonly total: number
     readonly amountPaid: number
     readonly sourceSystem: string
+    readonly invoiceKind: string | null
   }[]
 }> {
   const [applicationRows, invoiceRows] = await Promise.all([
@@ -454,6 +455,7 @@ export async function readActivePaymentAllocations(db: Db, scope: ProjectReceiva
         total: invoices.total,
         amountPaid: invoices.amountPaid,
         sourceSystem: invoices.sourceSystem,
+        invoiceKind: invoices.invoiceKind,
       })
       .from(invoicePaymentAllocations)
       .innerJoin(invoices, eq(invoices.id, invoicePaymentAllocations.invoiceId))

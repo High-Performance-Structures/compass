@@ -408,7 +408,7 @@ export async function voidReceivedPaymentWithReason(projectId: string, paymentId
           invoice: invoicePaidValues({
             totalDollars: row.total,
             paidCents: paidCentsAfterRelease(paidCents, row.cents),
-            unpaidStatus: invoiceUnpaidStatus(row.sourceSystem),
+            unpaidStatus: invoiceUnpaidStatus(row.sourceSystem, row.invoiceKind),
           }),
         }
       }),

@@ -1,16 +1,26 @@
-import { and, eq, isNull, lt, or, sql } from "drizzle-orm"
+import { and, eq, isNull, or, sql } from "drizzle-orm"
 import { z } from "zod/v4"
 
 import { getDb } from "@/db"
 import { projects } from "@/db/schema"
 import { sageSquarePaymentOperations } from "@/db/schema-sage"
+import { formatCents } from "@/lib/format"
 import {
+  beginSquareWebhookEventLease,
+  finishSquareWebhookEvent,
   flagSageSquareOperationsForAttentionStatement,
+  handSageSquareReceiptToStaff,
+  insertSageSquareFeeOperation,
+  receiptsAwaitingHandOff,
+  reopenSquareWebhookEventLease,
   updateSageSquarePaymentOperations,
   upsertSageSquarePaymentOperationStatement,
+  type SageSquareOperationUpsert,
+  type SquareWebhookLease,
 } from "@/lib/domain/sage-bridge/square-store"
 import {
   dismissSageSquareException,
+  notifySageSquareException,
   notifySageSquareManualReceipt,
 } from "@/lib/sage/square-payment-notifications"
 import { upsertSquareOwnerReceivable } from "@/lib/sage/square-receivable"
@@ -196,8 +206,6 @@ export class SageSquarePaymentAttentionError extends Error {
     this.receiptOperationId = scope?.receiptOperationId ?? null
   }
 }
-
-type WebhookBeginResult = "process" | "duplicate"
 
 type BridgeInvoice = {
   readonly id: string
@@ -550,18 +558,16 @@ function validatePayment(
   }
 }
 
-async function insertOperation(
-  env: CloudflareEnv,
+function operationRow(
   operationType: SageSquareOperationType,
   idempotencyKey: string,
   context: OperationContext,
   amountCents: number,
   payload: SageSquarePaymentPayload,
   now: string
-): Promise<string> {
-  const operationId = crypto.randomUUID()
-  await upsertSageSquarePaymentOperationStatement(env.DB, {
-    id: operationId,
+): SageSquareOperationUpsert {
+  return {
+    id: crypto.randomUUID(),
     organizationId: context.organizationId,
     projectId: context.projectId,
     operationType,
@@ -581,7 +587,22 @@ async function insertOperation(
     status: sageSquareInitialOperationStatus(operationType),
     paymentCompletedAt: context.paymentCompletedAt,
     now,
-  }).run()
+  }
+}
+
+async function insertOperation(
+  env: CloudflareEnv,
+  operationType: SageSquareOperationType,
+  idempotencyKey: string,
+  context: OperationContext,
+  amountCents: number,
+  payload: SageSquarePaymentPayload,
+  now: string
+): Promise<string> {
+  await upsertSageSquarePaymentOperationStatement(
+    env.DB,
+    operationRow(operationType, idempotencyKey, context, amountCents, payload, now)
+  ).run()
   const stored = await env.DB.prepare(
     `SELECT id FROM sage_square_payment_operations WHERE idempotency_key = ?`
   )
@@ -633,6 +654,15 @@ async function queueReceipt(
   return { context, operationId }
 }
 
+/** How many times a fee delta is re-read when another delivery queued a fee at the same moment. */
+const FEE_DELTA_ATTEMPTS = 3
+
+/**
+ * Queues what Square's fee total adds over the fees already queued for the
+ * payment. The insert is compare-and-set on the queued total, so two webhook
+ * deliveries that read different fee totals at once (an invoice payment and
+ * a payment update, say) can't both queue a delta and post the fee twice.
+ */
 async function queueFeeDelta(
   env: CloudflareEnv,
   context: OperationContext,
@@ -640,40 +670,47 @@ async function queueFeeDelta(
   now: string
 ): Promise<void> {
   if (totalFeeCents <= 0) return
-  const existing = await env.DB.prepare(
-    `SELECT COALESCE(SUM(amount_cents), 0) AS amount_cents
-     FROM sage_square_payment_operations
-     WHERE square_payment_id = ?
-       AND operation_type = 'post_square_processing_fee'`
-  )
-    .bind(context.squarePaymentId)
-    .first<{ amount_cents: number }>()
-  const recorded = existing?.amount_cents ?? 0
-  const delta = totalFeeCents - recorded
-  if (delta < 0) {
-    throw new SageSquarePaymentAttentionError(
-      "Square reduced a previously queued processing fee"
+  for (let attempt = 0; attempt < FEE_DELTA_ATTEMPTS; attempt += 1) {
+    const existing = await env.DB.prepare(
+      `SELECT COALESCE(SUM(amount_cents), 0) AS amount_cents
+       FROM sage_square_payment_operations
+       WHERE square_payment_id = ?
+         AND operation_type = 'post_square_processing_fee'`
     )
+      .bind(context.squarePaymentId)
+      .first<{ amount_cents: number }>()
+    const recorded = Number(existing?.amount_cents ?? 0)
+    const delta = totalFeeCents - recorded
+    if (delta < 0) {
+      throw new SageSquarePaymentAttentionError(
+        "Square reduced a previously queued processing fee"
+      )
+    }
+    if (delta === 0) return
+    const payload = feePayloadSchema.parse({
+      operationType: "post_square_processing_fee",
+      company: "High Performance Structures Inc",
+      ...context,
+      processingFeeCents: delta,
+      currency: "USD",
+      depositAccountNumber: SAGE_SQUARE_DEPOSIT_ACCOUNT_NUMBER,
+      merchantFeeAccountNumber: SAGE_SQUARE_MERCHANT_FEE_ACCOUNT_NUMBER,
+    })
+    const stored = await insertSageSquareFeeOperation(env.DB, {
+      ...operationRow(
+        "post_square_processing_fee",
+        `square-payment:${context.squarePaymentId}:fee-total:${totalFeeCents}`,
+        context,
+        delta,
+        payload,
+        now
+      ),
+      recordedCents: recorded,
+    })
+    if (stored) return
   }
-  if (delta === 0) return
-  const payload = feePayloadSchema.parse({
-    operationType: "post_square_processing_fee",
-    company: "High Performance Structures Inc",
-    ...context,
-    processingFeeCents: delta,
-    currency: "USD",
-    depositAccountNumber: SAGE_SQUARE_DEPOSIT_ACCOUNT_NUMBER,
-    merchantFeeAccountNumber: SAGE_SQUARE_MERCHANT_FEE_ACCOUNT_NUMBER,
-  })
-  await insertOperation(
-    env,
-    "post_square_processing_fee",
-    `square-payment:${context.squarePaymentId}:fee-total:${totalFeeCents}`,
-    context,
-    delta,
-    payload,
-    now
-  )
+  // Still moving: fail the delivery so Square (or the recovery pass) retries it.
+  throw new Error("Square processing fees changed while being queued; retrying")
 }
 
 async function processBridgeInvoicePayment(
@@ -766,7 +803,7 @@ async function processBridgeInvoicePayment(
         const processingFeeCents = squareProcessingFeeExpenseCents(
           payment.processing_fee ?? []
         )
-        await upsertSquareOwnerReceivable(
+        const receivable = await upsertSquareOwnerReceivable(
           env,
           {
             organizationId: project.organizationId,
@@ -805,6 +842,17 @@ async function processBridgeInvoicePayment(
           processingFeeCents,
           now
         )
+        if (receivable.invoiceStatus === "void") {
+          // The money is real (recorded, receipt and fee queued as usual), but
+          // the invoice stays void: staff decide what the payment is for.
+          await notifySageSquareException(
+            env,
+            { ...scope, receiptOperationId: receipt.operationId },
+            `void-invoice-payment:${payment.id}`,
+            `Square payment received on void invoice ${invoice.invoiceNumber}`,
+            `Square received ${formatCents(payment.amount_money.amount)} for Sage invoice ${invoice.invoiceNumber}, which is void in Compass. The payment is recorded; refund it or apply it elsewhere, and check Sage.`
+          )
+        }
       } catch (error) {
         if (error instanceof SageSquarePaymentAttentionError) {
           throw new SageSquarePaymentAttentionError(error.message, {
@@ -972,18 +1020,7 @@ export async function reconcileSageSquareManualReceipts(
   const receipts = await db
     .select()
     .from(sageSquarePaymentOperations)
-    .where(
-      and(
-        eq(sageSquarePaymentOperations.operationType, "post_square_receipt"),
-        or(
-          eq(sageSquarePaymentOperations.status, "queued"),
-          and(
-            eq(sageSquarePaymentOperations.status, "running"),
-            lt(sageSquarePaymentOperations.claimedAt, staleClaimIso)
-          )
-        )
-      )
-    )
+    .where(receiptsAwaitingHandOff(staleClaimIso))
     .limit(MANUAL_RECEIPT_RECONCILIATION_BATCH)
   let transitioned = 0
   for (const receipt of receipts) {
@@ -1001,27 +1038,9 @@ export async function reconcileSageSquareManualReceipts(
       depositAccountNumber: receipt.depositAccountNumber,
       merchantFeeAccountNumber: receipt.merchantFeeAccountNumber,
     })
-    const updated = await updateSageSquarePaymentOperations(
-      db,
-      {
-        status: "manual_action_required",
-        claimToken: null,
-        claimedAt: null,
-        updatedAt: now.toISOString(),
-      },
-      and(
-        eq(sageSquarePaymentOperations.id, receipt.id),
-        or(
-          eq(sageSquarePaymentOperations.status, "queued"),
-          and(
-            eq(sageSquarePaymentOperations.status, "running"),
-            lt(sageSquarePaymentOperations.claimedAt, staleClaimIso)
-          )
-        )
-      )
-    )
-      .returning({ id: sageSquarePaymentOperations.id })
-    if (updated.length === 1) transitioned += 1
+    if (await handSageSquareReceiptToStaff(db, { operationId: receipt.id, staleClaimIso, now: now.toISOString() })) {
+      transitioned += 1
+    }
   }
   return { scanned: receipts.length, transitioned }
 }
@@ -1083,90 +1102,50 @@ async function processPaymentUpdate(
   }
 }
 
+/** Takes the processing lease for a delivered event, or reports a duplicate delivery. */
 export async function beginSquareWebhookEvent(
   env: CloudflareEnv,
   event: SquareWebhookEvent,
   now: string
-): Promise<WebhookBeginResult> {
-  const inserted = await env.DB.prepare(
-    `INSERT INTO sage_square_webhook_events (
-       event_id, event_type, square_object_id, square_created_at,
-       status, attempt_count, received_at, updated_at
-     ) VALUES (?, ?, ?, ?, 'processing', 1, ?, ?)
-     ON CONFLICT(event_id) DO NOTHING`
-  )
-    .bind(
-      event.event_id,
-      event.type,
-      event.data.id ?? null,
-      event.created_at,
-      now,
-      now
-    )
-    .run()
-  if (inserted.meta.changes > 0) return "process"
-  const staleBefore = new Date(
-    Date.parse(now) - SQUARE_WEBHOOK_PROCESSING_LEASE_MS
-  ).toISOString()
-  const reclaimed = await env.DB.prepare(
-    `UPDATE sage_square_webhook_events
-     SET status = 'processing', attempt_count = attempt_count + 1,
-         error_message = NULL, updated_at = ?
-     WHERE event_id = ?
-       AND (
-         status = 'failed'
-         OR (status = 'processing' AND updated_at <= ?)
-       )`
-  )
-    .bind(now, event.event_id, staleBefore)
-    .run()
-  return reclaimed.meta.changes > 0 ? "process" : "duplicate"
+): Promise<SquareWebhookLease> {
+  return beginSquareWebhookEventLease(env.DB, {
+    eventId: event.event_id,
+    eventType: event.type,
+    squareObjectId: event.data.id ?? null,
+    squareCreatedAt: event.created_at,
+    staleBefore: new Date(Date.parse(now) - SQUARE_WEBHOOK_PROCESSING_LEASE_MS).toISOString(),
+    now,
+  })
 }
 
+/** Each returns false when this attempt lost its lease; the attempt that took over records the outcome. */
 export async function completeSquareWebhookEvent(
   env: CloudflareEnv,
   eventId: string,
+  attempt: number,
   now: string
-): Promise<void> {
-  await env.DB.prepare(
-    `UPDATE sage_square_webhook_events
-     SET status = 'processed', error_message = NULL,
-         processed_at = ?, updated_at = ?
-     WHERE event_id = ?`
-  )
-    .bind(now, now, eventId)
-    .run()
+): Promise<boolean> {
+  return finishSquareWebhookEvent(env.DB, { eventId, attempt, event: "complete", errorMessage: null, now })
 }
 
 export async function failSquareWebhookEvent(
   env: CloudflareEnv,
   eventId: string,
+  attempt: number,
   error: string,
   now: string
-): Promise<void> {
-  await env.DB.prepare(
-    `UPDATE sage_square_webhook_events
-     SET status = 'failed', error_message = ?, updated_at = ?
-     WHERE event_id = ?`
-  )
-    .bind(error.slice(0, 1000), now, eventId)
-    .run()
+): Promise<boolean> {
+  return finishSquareWebhookEvent(env.DB, { eventId, attempt, event: "fail", errorMessage: error, now })
 }
 
 export async function flagSquareWebhookEventForAttention(
   env: CloudflareEnv,
   eventId: string,
+  attempt: number,
   error: string,
   now: string
-): Promise<void> {
-  await env.DB.prepare(
-    `UPDATE sage_square_webhook_events
-     SET status = 'attention', error_message = ?,
-         processed_at = ?, updated_at = ?
-     WHERE event_id = ?`
-  )
-    .bind(error.slice(0, 1000), now, now, eventId)
-    .run()
+): Promise<boolean> {
+  return finishSquareWebhookEvent(env.DB, { eventId, attempt, event: "flag", errorMessage: error, now })
 }
 
 export type SageSquareAttentionRecoveryResult = {
@@ -1216,16 +1195,12 @@ export async function reconcileSageSquareAttentionEvents(
   let attention = 0
   let failed = 0
   for (const candidate of candidates.results) {
-    const claimed = await env.DB.prepare(
-      `UPDATE sage_square_webhook_events
-       SET status = 'processing', attempt_count = attempt_count + 1,
-           error_message = NULL, updated_at = ?
-       WHERE event_id = ? AND status IN ('attention', 'failed')
-         AND updated_at <= ?`
-    )
-      .bind(nowIso, candidate.event_id, retryBefore)
-      .run()
-    if (claimed.meta.changes !== 1) continue
+    const attempt = await reopenSquareWebhookEventLease(env.DB, {
+      eventId: candidate.event_id,
+      retryBefore,
+      now: nowIso,
+    })
+    if (attempt === null) continue
     try {
       const squareInvoice = await retrieveInvoice(
         env,
@@ -1237,8 +1212,9 @@ export async function reconcileSageSquareAttentionEvents(
         squareCutoff(env),
         nowIso
       )
-      await completeSquareWebhookEvent(env, candidate.event_id, nowIso)
-      await dismissSageSquareException(env, candidate.event_id, nowIso)
+      if (await completeSquareWebhookEvent(env, candidate.event_id, attempt, nowIso)) {
+        await dismissSageSquareException(env, candidate.event_id, nowIso)
+      }
       recovered += 1
     } catch (error) {
       const message = error instanceof Error ? error.message : "Unknown error"
@@ -1246,12 +1222,13 @@ export async function reconcileSageSquareAttentionEvents(
         await flagSquareWebhookEventForAttention(
           env,
           candidate.event_id,
+          attempt,
           message,
           nowIso
         )
         attention += 1
       } else {
-        await failSquareWebhookEvent(env, candidate.event_id, message, nowIso)
+        await failSquareWebhookEvent(env, candidate.event_id, attempt, message, nowIso)
         failed += 1
       }
     }
