@@ -11,7 +11,7 @@ import { USER_ROLES } from "@/lib/domain/identity/statuses"
 import { isInternalStaffRole } from "@/lib/user-roles"
 import type { InboundCandidate } from "./gmail-message-parser"
 import { projectEmailTitle } from "./project-address"
-import { inboundProjectMessageRecipients } from "./project-message-mentions"
+import { inboundMessageMentionsSomeone, inboundProjectMessageRecipients } from "./project-message-mentions"
 import { storeInboundMessageAttachments } from "@/lib/correspondence/inbound-attachments"
 import { attachmentInsertStatement, conversationInsertStatement, messageInsertStatement, participantInsertStatement, recipientInsertStatement, writeGuardDeleteStatement, writeGuardInsertStatement } from "@/lib/domain/correspondence/store"
 import { notificationEventInsertStatement, notificationRecipientInsertStatement } from "@/lib/domain/notifications/store"
@@ -51,7 +51,7 @@ export async function routeInboundProjectMessage(input: {
     .leftJoin(notificationPreferences, eq(notificationPreferences.userId, accounts.id))
     .where(and(eq(accounts.isActive, true), inArray(memberships.role, staffRoles)))
   const text = `${input.candidate.subject}\n${input.body}`
-  const requiresAssignment = !/(?:^|[\s(])@/u.test(text)
+  const requiresAssignment = !inboundMessageMentionsSomeone(text)
   const recipients = inboundProjectMessageRecipients(text, staff.map((person) => ({
     ...person, name: person.name ?? [person.firstName, person.lastName].filter(Boolean).join(" "), assigned: Boolean(person.assigned), inApp: person.inApp ?? true,
   })))
