@@ -134,6 +134,7 @@ export function ProjectSelectionEditForm({
       costCode: fieldValue(formData, "costCode"),
       phaseCode: fieldValue(formData, "phaseCode"),
       status: selectionStatus,
+      expectedStatus: selection.status,
       notes: fieldValue(formData, "notes"),
       changeReason: fieldValue(formData, "changeReason"),
     })

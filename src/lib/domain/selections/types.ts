@@ -116,6 +116,8 @@ export type CreateProjectSelectionInput = {
 
 export type UpdateProjectSelectionInput = CreateProjectSelectionInput & {
   readonly changeReason: string | null
+  /** The status the form opened with (compare-and-set when the status changes). */
+  readonly expectedStatus?: string | null
 }
 
 export type ProjectFinishScheduleImportPreview = {

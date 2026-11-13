@@ -229,6 +229,60 @@ describe("round signing", () => {
     ])
   })
 
+  it("applies a signature once, and approves only the picks the owner signed for", async () => {
+    const hex = await choice("tile", "Hex", "4185")
+    const brass = await choice("faucet", "Brass", "380")
+    const chrome = await choice("faucet", "Chrome", "300")
+    await setSelectionChoiceChosen("p1", hex, true)
+    await setSelectionChoiceChosen("p1", brass, true)
+    expect(await sendRoundForSignature("p1", "rough-in", ["owner@example.com"])).toMatchObject({ success: true })
+    const prepared = await findRoundSignatureByEnvelope(drizzleOverSqlite(sqlite), "env-1")
+    if (!prepared) throw new Error("no signature")
+    await handleRoundSignatureEvent({ db: drizzleOverSqlite(sqlite), env, signature: prepared, event: "folder_sent" })
+    const sentRow = await findRoundSignatureByEnvelope(drizzleOverSqlite(sqlite), "env-1")
+    if (!sentRow) throw new Error("no signature")
+
+    // Staff switch the faucet while the document is out: the owner signed for Brass, not Chrome.
+    await setSelectionChoiceChosen("p1", chrome, true)
+
+    // Foxit delivers the event twice, both read while the signature was still sent.
+    const db = drizzleOverSqlite(sqlite)
+    const results = await Promise.all([
+      handleRoundSignatureEvent({ db, env, signature: sentRow, event: "folder_executed" }),
+      handleRoundSignatureEvent({ db, env, signature: sentRow, event: "folder_executed" }),
+    ])
+    expect(results.filter(Boolean)).toHaveLength(1)
+    expect(mocks.announce).toHaveBeenCalledTimes(1)
+    expect(sqlite.prepare("SELECT id, status, owner_approved FROM project_finish_selections ORDER BY id").all()).toEqual([
+      { id: "faucet", status: "needed", owner_approved: 0 },
+      { id: "tile", status: "approved", owner_approved: 1 },
+    ])
+  })
+
+  it("never signs a declined envelope, and announces a decline once", async () => {
+    const hex = await choice("tile", "Hex", "4185")
+    const brass = await choice("faucet", "Brass", "380")
+    await setSelectionChoiceChosen("p1", hex, true)
+    await setSelectionChoiceChosen("p1", brass, true)
+    await sendRoundForSignature("p1", "rough-in", ["owner@example.com"])
+    const prepared = await findRoundSignatureByEnvelope(drizzleOverSqlite(sqlite), "env-1")
+    if (!prepared) throw new Error("no signature")
+    await handleRoundSignatureEvent({ db: drizzleOverSqlite(sqlite), env, signature: prepared, event: "folder_sent" })
+    const sentRow = await findRoundSignatureByEnvelope(drizzleOverSqlite(sqlite), "env-1")
+    if (!sentRow) throw new Error("no signature")
+
+    expect(await handleRoundSignatureEvent({ db: drizzleOverSqlite(sqlite), env, signature: sentRow, event: "folder_declined" })).toBe(true)
+    expect(await handleRoundSignatureEvent({ db: drizzleOverSqlite(sqlite), env, signature: sentRow, event: "folder_declined" })).toBe(false)
+    expect(mocks.announce).toHaveBeenCalledTimes(1)
+    const declined = await findRoundSignatureByEnvelope(drizzleOverSqlite(sqlite), "env-1")
+    if (!declined) throw new Error("no signature")
+    expect(declined.status).toBe("declined")
+    expect(sqlite.prepare("SELECT status FROM project_change_orders").get()).toEqual({ status: "void" })
+
+    expect(await handleRoundSignatureEvent({ db: drizzleOverSqlite(sqlite), env, signature: declined, event: "folder_executed" })).toBe(false)
+    expect(sqlite.prepare("SELECT count(*) AS n FROM project_finish_selections WHERE owner_approved = 1").get()).toEqual({ n: 0 })
+  })
+
   it("can't send until every selection in the round has a priced pick", async () => {
     const hex = await choice("tile", "Hex", "4185")
     await setSelectionChoiceChosen("p1", hex, true)

@@ -29,6 +29,8 @@ export type SelectionChoiceInput = {
   readonly vendorId?: string | null
   readonly supplierName?: string | null
   readonly status?: string | null
+  /** The status the form opened with; a changed status saves only while it is still this. */
+  readonly expectedStatus?: string | null
 }
 
 export type ParsedSelectionChoice = {

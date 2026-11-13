@@ -16,7 +16,7 @@ import {
 import { selectionAccess } from "@/lib/domain/selections/access"
 import { ensureSelectionTodo } from "@/lib/domain/selections/selection-todos"
 import { advanceSelectionStatus, advanceSelectionsForPurchaseOrder } from "@/lib/domain/selections/status-advance"
-import { updateFinishSelectionsStatement } from "@/lib/domain/selections/store"
+import { updateFinishSelectionsStatement, updateFinishSelectionsWithEventStatement } from "@/lib/domain/selections/store"
 import {
   approvalBlocker,
   moneyCents,
@@ -350,18 +350,19 @@ export async function approveSelectionDecision(
           .from(decisions)
           .where(eq(decisions.lastMutationId, token))
       ),
-      updateFinishSelectionsStatement(
+      // The approval lands only with the decision update above (same token);
+      // its status move never rewinds procurement or installation progress.
+      updateFinishSelectionsWithEventStatement(
         db,
         and(
           eq(projectFinishSelections.id, selectionId),
           sql`EXISTS (SELECT 1 FROM ${decisions} WHERE ${decisions.selectionId} = ${selectionId} AND ${decisions.lastMutationId} = ${token})`
         ),
+        "owner_approve",
         {
           ownerApproved: true,
           approvedBy: user.id,
           approvedAt: now,
-          // Signature collection must not rewind procurement or installation progress.
-          status: sql`CASE WHEN ${projectFinishSelections.status} IN ('needed', 'proposed', 'owner_review') THEN 'approved' ELSE ${projectFinishSelections.status} END`,
           updatedAt: now,
         }
       ),

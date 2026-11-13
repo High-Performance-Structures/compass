@@ -27,6 +27,7 @@ import {
   deleteFinishSelectionsReturningIds,
   insertFinishSelection,
   insertSelectionRoomIfAbsent,
+  setSelectionStatusByStaff,
   updateFinishSelections
 } from "@/lib/domain/selections/store"
 import type {
@@ -58,6 +59,8 @@ import { cleanText } from "@/lib/shared/guards"
 type ActionResult =
   | { readonly success: true; readonly id?: string }
   | { readonly success: false; readonly error: string }
+
+const STATUS_CHANGED = "This selection's status changed while you had it open. Refresh and try again."
 
 /** Throws "Project not found" and the other access errors, as before. */
 export async function getProjectSelections(projectId: string): Promise<ProjectSelectionsSummary> {
@@ -318,7 +321,7 @@ export async function updateProjectSelection(
     const productUrl = cleanText(input.productUrl)
     const costCode = cleanText(input.costCode)
     const phaseCode = cleanText(input.phaseCode)
-    const status = normalizeStatus(input.status)
+    const requestedStatus = normalizeStatus(input.status)
     const notes = cleanText(input.notes)
     const changeReason = cleanText(input.changeReason)
 
@@ -336,6 +339,12 @@ export async function updateProjectSelection(
     if (!existing) {
       return { success: false, error: "Selection not found." }
     }
+    // The status the form opened with. Unchanged, the stored status is kept
+    // (Compass may have moved it meanwhile); changed, it saves only while the
+    // selection still has the status the person saw.
+    const seenStatus = input.expectedStatus ?? existing.status
+    const statusChanged = requestedStatus !== seenStatus
+    const status = statusChanged ? requestedStatus : existing.status
 
     const changes = [
       changedTextField("Room", existing.roomName, roomName),
@@ -367,41 +376,40 @@ export async function updateProjectSelection(
       updatedAt: now
     })
 
-    await updateFinishSelections(
-      db,
-      and(
-        eq(projectFinishSelections.id, selectionId),
-        eq(projectFinishSelections.projectId, projectId)
-      ),
-      {
-        roomName,
-        roomType,
-        category,
-        name,
-        description,
-        quantity,
-        manufacturer,
-        model,
-        colorFinish,
-        supplierName,
-        productUrl,
-        costCode,
-        phaseCode,
-        status,
-        // Staff workflow status is not an owner signature. Material edits invalidate it.
-        ownerApproved: specificationChanged ? false : existing.ownerApproved,
-        approvedBy: specificationChanged ? null : existing.approvedBy,
-        approvedAt: specificationChanged ? null : existing.approvedAt,
-        notes,
-        syncStatus:
-          existing.status === "approved" && changes.length > 0
-            ? "selection_change_review"
-            : existing.sourceSystem === "google_sheets" && changes.length > 0
-              ? "manual_edit"
-              : existing.syncStatus,
-        updatedAt: now
-      }
-    )
+    const values = {
+      roomName,
+      roomType,
+      category,
+      name,
+      description,
+      quantity,
+      manufacturer,
+      model,
+      colorFinish,
+      supplierName,
+      productUrl,
+      costCode,
+      phaseCode,
+      // Staff workflow status is not an owner signature. Material edits invalidate it.
+      ownerApproved: specificationChanged ? false : existing.ownerApproved,
+      approvedBy: specificationChanged ? null : existing.approvedBy,
+      approvedAt: specificationChanged ? null : existing.approvedAt,
+      notes,
+      syncStatus:
+        existing.status === "approved" && changes.length > 0
+          ? "selection_change_review"
+          : existing.sourceSystem === "google_sheets" && changes.length > 0
+            ? "manual_edit"
+            : existing.syncStatus,
+      updatedAt: now
+    }
+    if (statusChanged) {
+      const saved = await setSelectionStatusByStaff(db, { projectId, selectionId, expected: seenStatus, status, values })
+      if (!saved) return { success: false, error: STATUS_CHANGED }
+    } else {
+      const row = and(eq(projectFinishSelections.id, selectionId), eq(projectFinishSelections.projectId, projectId))
+      await updateFinishSelections(db, row, values)
+    }
 
     if (existing.status === "approved" && changes.length > 0) {
       const logId = crypto.randomUUID()
@@ -557,7 +565,9 @@ export async function updateProjectSelection(
 export async function updateProjectSelectionStatus(
   projectId: string,
   selectionId: string,
-  status: string
+  status: string,
+  /** The status the picker showed; the change lands only while it is still that. */
+  expectedStatus?: string
 ): Promise<ActionResult> {
   try {
     if (!isSelectionStatus(status)) {
@@ -581,26 +591,17 @@ export async function updateProjectSelectionStatus(
       return { success: false, error: "Selection not found." }
     }
 
-    await updateFinishSelections(
-      db,
-      and(
-        eq(projectFinishSelections.id, selectionId),
-        eq(projectFinishSelections.projectId, projectId)
-      ),
-      {
-        status,
-        // Only the authenticated owner decision action records owner approval.
-        ownerApproved: existing.ownerApproved,
-        approvedAt: existing.approvedAt,
-        syncStatus:
-          status === "unavailable" && existing.status !== "unavailable"
-            ? "selection_change_review"
-            : existing.syncStatus,
-        updatedAt: now
-      }
-    )
+    const seenStatus = expectedStatus ?? existing.status
+    const becameUnavailable = status === "unavailable" && seenStatus !== "unavailable"
+    // Owner approval is left as it is: only the owner's own approval sets it.
+    const syncStatus = becameUnavailable ? "selection_change_review" : existing.syncStatus
+    const values = { syncStatus, updatedAt: now }
+    if (!(await setSelectionStatusByStaff(db, { projectId, selectionId, expected: seenStatus, status, values }))) {
+      return { success: false, error: STATUS_CHANGED }
+    }
 
-    if (status === "unavailable" && existing.status !== "unavailable") {
+    // Runs once: a second request from the same status loses the compare-and-set above.
+    if (becameUnavailable) {
       const reviewId = crypto.randomUUID()
       const pmTaskId = crypto.randomUUID()
       const adminTaskId = crypto.randomUUID()
@@ -631,7 +632,7 @@ export async function updateProjectSelectionStatus(
         source: "compass_finish_selection",
         selectionId,
         selectionName: existing.name,
-        previousStatus: existing.status,
+        previousStatus: seenStatus,
         nextStatus: status,
         requiredFollowUp: [
           "Confirm product availability issue.",
