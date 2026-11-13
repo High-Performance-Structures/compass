@@ -621,3 +621,12 @@ export async function payApplicationHasActivePayments(db: Db, applicationId: str
     .get()
   return Boolean(row)
 }
+
+/** Invoices in the organization with a payment applied that still counts: their amount paid and status come from the payments. */
+export async function readInvoiceIdsSetByPayments(db: Db, organizationId: string): Promise<string[]> {
+  const rows = await db
+    .selectDistinct({ invoiceId: invoicePaymentAllocations.invoiceId })
+    .from(invoicePaymentAllocations)
+    .where(and(eq(invoicePaymentAllocations.organizationId, organizationId), isNull(invoicePaymentAllocations.releasedAt)))
+  return rows.map((row) => row.invoiceId)
+}

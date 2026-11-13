@@ -9,6 +9,7 @@
 
 import { formatCents, parseDateOnly } from "@/lib/format"
 import type { ReceivableItemKind, ReceivablePaidState } from "@/lib/domain/financials/statuses"
+import type { NewInvoice } from "@/db/schema-netsuite"
 
 export type LineItem = {
   description: string
@@ -36,6 +37,36 @@ export type BillTotals = {
   readonly subtotal: number
   readonly total: number
   readonly amountDue: number
+}
+
+/** Why amount paid and status can't be edited on an older invoice: recorded payments are applied to it. */
+export const INVOICE_SET_BY_PAYMENTS_REASON = "Set by recorded payments"
+export const INVOICE_PAID_BY_PAYMENTS_ERROR =
+  "Amount paid and status on this invoice are set by recorded payments. Change the payments instead; other fields can still be edited."
+export const INVOICE_TOTAL_BELOW_PAID_ERROR =
+  "The new total is less than the payments already applied to this invoice. Take a payment off first, or keep the total at least the amount paid."
+export const INVOICE_PAYMENT_HISTORY_ERROR =
+  "Payments have been applied to this invoice (some may since be voided), so it stays on its job and can't be deleted. Void the invoice instead."
+
+/** What staff may change on an older invoice in the Financials editor; ids, kind, sync, email and Square fields never come from the browser, and totals are derived on the server. */
+export type LegacyInvoiceEdit = Partial<Pick<NewInvoice,
+  "customerId" | "projectId" | "invoiceNumber" | "status" | "issueDate" | "dueDate" | "memo" | "billingScope" | "lineItems" | "tax" | "amountPaid">>
+
+export function legacyInvoiceEdit(data: Partial<NewInvoice>): LegacyInvoiceEdit {
+  // Absent stays absent: an undefined key would still count as sent when the totals are derived.
+  const edit: LegacyInvoiceEdit = {}
+  if (data.customerId !== undefined) edit.customerId = data.customerId
+  if (data.projectId !== undefined) edit.projectId = data.projectId
+  if (data.invoiceNumber !== undefined) edit.invoiceNumber = data.invoiceNumber
+  if (data.status !== undefined) edit.status = data.status
+  if (data.issueDate !== undefined) edit.issueDate = data.issueDate
+  if (data.dueDate !== undefined) edit.dueDate = data.dueDate
+  if (data.memo !== undefined) edit.memo = data.memo
+  if (data.billingScope !== undefined) edit.billingScope = data.billingScope
+  if (data.lineItems !== undefined) edit.lineItems = data.lineItems
+  if (data.tax !== undefined) edit.tax = data.tax
+  if (data.amountPaid !== undefined) edit.amountPaid = data.amountPaid
+  return edit
 }
 
 /** Invoice and vendor bill totals: subtotal + tax, less what was paid. */

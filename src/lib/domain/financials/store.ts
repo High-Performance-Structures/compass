@@ -1,6 +1,6 @@
 import { and, eq, inArray, isNotNull, lt, notInArray, or, sql, type SQL } from "drizzle-orm"
 import type { BatchItem } from "drizzle-orm/batch"
-
+import type { SQLiteUpdateSetSource } from "drizzle-orm/sqlite-core"
 import {
   creditMemos,
   invoiceLines,
@@ -39,6 +39,7 @@ import {
   type SimpleInvoiceEvent,
   type SquareLinkEvent,
 } from "@/lib/domain/financials/invoice-machines"
+import { invoiceEmailNotOut } from "@/lib/domain/financials/invoice-email-fence"
 import { assertListFields } from "@/lib/shared/statuses"
 import { chunkD1Rows } from "@/lib/d1-query"
 import type { Db } from "@/lib/server/action-context"
@@ -54,12 +55,12 @@ export async function insertInvoice(db: Db, values: NewInvoice): Promise<void> {
   await db.insert(invoices).values(values)
 }
 
-export async function updateInvoiceRow(db: Db, id: string, values: Partial<NewInvoice>): Promise<void> {
-  await db.update(invoices).set(values).where(eq(invoices.id, id))
+export async function updateInvoiceRowsWhere(db: Db, where: SQL | undefined, values: SQLiteUpdateSetSource<typeof invoices>): Promise<readonly { readonly id: string }[]> { // fenced by the caller (./invoice-guards.ts)
+  return db.update(invoices).set(values).where(where).returning({ id: invoices.id })
 }
 
-export async function deleteInvoiceRow(db: Db, id: string): Promise<void> {
-  await db.delete(invoices).where(eq(invoices.id, id))
+export async function deleteInvoiceRowsWhere(db: Db, where: SQL | undefined): Promise<readonly { readonly id: string }[]> {
+  return db.delete(invoices).where(where).returning({ id: invoices.id })
 }
 
 // ---------------------------------------------------------------------------
@@ -133,9 +134,14 @@ export async function finalizeSimpleInvoice(db: Db, key: SimpleInvoiceKey & {
   }
 }
 
-/** reopen: a final, unpaid invoice back to draft. */
+/** reopen: a final, unpaid invoice never emailed (or maybe emailed) and not being emailed, back to draft. */
+const reopenFence = (now: string): SQL | undefined => and(eq(invoices.amountPaid, 0), invoiceEmailNotOut(now))
 export async function reopenSimpleInvoice(db: Db, key: SimpleInvoiceKey & { readonly now: string }): Promise<boolean> {
-  return moveSimpleInvoice(db, key, "reopen", { updatedAt: key.now }, eq(invoices.amountPaid, 0))
+  return moveSimpleInvoice(db, key, "reopen", { updatedAt: key.now }, reopenFence(key.now))
+}
+/** The same, unexecuted for a batch (plus the caller's `also`, e.g. Sage can't have it). */
+export function reopenSimpleInvoiceStatement(db: Db, key: SimpleInvoiceKey & { readonly now: string }, also?: SQL) {
+  return simpleInvoiceMoveStatement(db, key, "reopen", { updatedAt: key.now }, and(reopenFence(key.now), also))
 }
 
 /** void: keeps a final, unpaid invoice for the record. The caller cancels its Sage export and Square invoice only after this lands. */
@@ -177,20 +183,9 @@ export function replaceInvoiceLinesStatements(db: Db, invoiceId: string, rows: r
   return statements
 }
 
-/** Deletes a draft simple invoice (its lines cascade); returns the deleted ids. */
-export function deleteDraftSimpleInvoiceStatement(db: Db, input: { readonly invoiceId: string; readonly organizationId: string; readonly projectId: string }) {
-  return db
-    .delete(invoices)
-    .where(
-      and(
-        eq(invoices.id, input.invoiceId),
-        eq(invoices.organizationId, input.organizationId),
-        eq(invoices.projectId, input.projectId),
-        eq(invoices.status, "draft"),
-        isNotNull(invoices.invoiceKind)
-      )
-    )
-    .returning({ id: invoices.id })
+/** Deletes a draft simple invoice never emailed and not being emailed (its lines cascade); returns the deleted ids. */
+export function deleteDraftSimpleInvoiceStatement(db: Db, input: SimpleInvoiceKey & { readonly now: string }) {
+  return db.delete(invoices).where(and(simpleInvoiceKey(input), eq(invoices.status, "draft"), invoiceEmailNotOut(input.now))).returning({ id: invoices.id })
 }
 
 export async function insertVendorBill(db: Db, values: NewVendorBill): Promise<void> {

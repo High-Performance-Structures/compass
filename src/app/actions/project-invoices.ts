@@ -31,7 +31,7 @@ import {
   cancelSquareInvoiceLink,
   deleteDraftSimpleInvoiceStatement,
   finalizeSimpleInvoice,
-  simpleInvoiceMoveStatement,
+  reopenSimpleInvoiceStatement,
   replaceInvoiceLinesStatements,
   simpleInvoiceInsertStatement,
   simpleInvoiceUpdateStatement,
@@ -44,6 +44,7 @@ import {
   cancelSageInvoiceArExportStatement,
   POSSIBLY_IN_SAGE_SQL,
 } from "@/lib/domain/sage-bridge/ar-invoice-store"
+import { invoiceEmailBlock } from "@/lib/domain/financials/invoice-email-fence"
 import { addDays } from "@/lib/domain/sage-bridge/ar-invoice-rules"
 import { readFeatureSettings } from "@/lib/feature-settings/server"
 import { formatSageInvoiceNumber, simpleInvoiceNumberFormat } from "@/lib/financials/sage-invoice-number"
@@ -373,6 +374,7 @@ export async function finalizeProjectInvoice(projectId: string, invoiceId: strin
 }
 
 const SAGE_MAY_HAVE_IT = "Sage may already have this invoice; check Sage first, or void it instead."
+const EMAIL_UNCONFIRMED = "An email of this invoice may have gone out (Compass couldn't confirm it). Check the sent mail, then use \"It didn't go out\" on the invoice before reopening it, or void it."
 
 /** Takes a final invoice back to draft, while nothing has gone out (Sage, email, Square) and nothing is paid. */
 export async function reopenProjectInvoice(projectId: string, invoiceId: string): Promise<ActionDone> {
@@ -385,25 +387,28 @@ export async function reopenProjectInvoice(projectId: string, invoiceId: string)
     if (invoice.emailedAt || invoice.squareState === "published" || invoice.amountPaidCents > 0) {
       return actionFailure("This invoice has gone out or been paid; void it instead.")
     }
+    if (invoice.emailUnconfirmedAt) return actionFailure(EMAIL_UNCONFIRMED)
+    const now = new Date().toISOString()
+    if (invoiceEmailBlock({ emailedAt: null, emailClaimedAt: invoice.emailClaimedAt, now, windowMs: 0 })) {
+      return actionFailure("This invoice is being emailed right now. Reopen it after that send finishes, or void it.")
+    }
     const mayBeInSage = () => arExportPossiblyInSage(db, { kind: "invoice", organizationId, sourceId: invoiceId })
     if (await mayBeInSage()) return actionFailure(SAGE_MAY_HAVE_IT)
-    const now = new Date().toISOString()
-    // One batch: the invoice goes back to draft (machine fence, nothing paid)
+    // One batch: the invoice goes back to draft (machine fence, nothing paid,
+    // no email delivered, maybe delivered or in flight: reopenSimpleInvoiceStatement)
     // only while Sage can't have it (no export the writer ran or is running,
     // see POSSIBLY_IN_SAGE_SQL), and its queued export is cancelled only if
     // that reopen landed. Neither can happen without the other.
     const [reopened] = await db.batch([
-      simpleInvoiceMoveStatement(db, { invoiceId, organizationId, projectId }, "reopen", { updatedAt: now }, and(
-        eq(invoices.amountPaid, 0),
-        sql`NOT EXISTS (SELECT 1 FROM sage_invoice_ar_exports WHERE invoice_id = ${invoiceId} AND ${sql.raw(POSSIBLY_IN_SAGE_SQL)})`,
-      )),
+      reopenSimpleInvoiceStatement(db, { invoiceId, organizationId, projectId, now },
+        sql`NOT EXISTS (SELECT 1 FROM sage_invoice_ar_exports WHERE invoice_id = ${invoiceId} AND ${sql.raw(POSSIBLY_IN_SAGE_SQL)})`),
       cancelSageInvoiceArExportStatement(db, {
         organizationId, invoiceId, now,
         when: sql`EXISTS (SELECT 1 FROM invoices WHERE id = ${invoiceId} AND status = 'draft' AND updated_at = ${now})`,
       }),
     ])
     if (reopened.length !== 1) {
-      return actionFailure((await mayBeInSage()) ? SAGE_MAY_HAVE_IT : "Only a final, unpaid invoice can be reopened.")
+      return actionFailure((await mayBeInSage()) ? SAGE_MAY_HAVE_IT : "Only a final, unpaid invoice that hasn't been emailed (and isn't being emailed) can be reopened.")
     }
     await recordActivityEvent({
       db,
@@ -436,8 +441,8 @@ export async function deleteProjectInvoice(projectId: string, invoiceId: string)
     if (invoice.status !== "draft" || invoice.emailedAt || invoice.squareInvoiceId || (exported && ["running", "succeeded"].includes(exported.status))) {
       return actionFailure("Only a draft that hasn't gone out can be deleted; void this invoice instead.")
     }
-    const deleted = await deleteDraftSimpleInvoiceStatement(db, { invoiceId, organizationId, projectId })
-    if (deleted.length !== 1) return actionFailure("Only a draft invoice can be deleted.")
+    const deleted = await deleteDraftSimpleInvoiceStatement(db, { invoiceId, organizationId, projectId, now: new Date().toISOString() })
+    if (deleted.length !== 1) return actionFailure("Only a draft invoice that hasn't gone out can be deleted.")
     await recordActivityEvent({
       db,
       organizationId,
