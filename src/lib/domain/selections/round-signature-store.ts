@@ -43,12 +43,6 @@ function signatureWhere(id: string, fromStatus: SelectionRoundSignatureStatus | 
     : and(eq(projectSelectionRoundSignatures.id, id), eq(projectSelectionRoundSignatures.status, fromStatus))
 }
 
-/** An update guarded on the status the caller read, so webhook retries apply once. */
-export function updateRoundSignatureStatement(db: Db, id: string, fromStatus: SelectionRoundSignatureStatus | null, patch: SignaturePatch): BatchItem<"sqlite"> {
-  assertListFields("project_selection_round_signatures", patch, SIGNATURE_LISTS)
-  return db.update(projectSelectionRoundSignatures).set(withoutStatus(patch)).where(signatureWhere(id, fromStatus))
-}
-
 export async function updateRoundSignature(db: Db, id: string, fromStatus: SelectionRoundSignatureStatus | null, patch: SignaturePatch): Promise<D1Result> {
   assertListFields("project_selection_round_signatures", patch, SIGNATURE_LISTS)
   return db.update(projectSelectionRoundSignatures).set(withoutStatus(patch)).where(signatureWhere(id, fromStatus)).run()
