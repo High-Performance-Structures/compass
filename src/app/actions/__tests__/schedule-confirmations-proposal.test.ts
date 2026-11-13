@@ -109,7 +109,7 @@ describe("legacy subcontractor schedule proposals", () => {
       update: () => ({
         set: (value: unknown) => {
           mocks.updateSet(value)
-          return { where: async () => undefined }
+          return { where: () => ({ run: async () => ({ meta: { changes: 1 } }) }) }
         },
       }),
     })
@@ -153,6 +153,8 @@ function setupLegacyResponse(input: {
   readonly assignedUserId?: string
   readonly startDate?: string
   readonly schedulePublished?: boolean
+  /** The answer did not land; the read-back finds this (null: something else changed). */
+  readonly notLanded?: { readonly latest: QueryValue }
 }): void {
   const snapshot = [{ snapshotData: publishedSnapshot(input.ownerVisible ?? true, input.subVendorVisible ?? false) }]
   const membership = { role: input.role }
@@ -161,6 +163,7 @@ function setupLegacyResponse(input: {
     [],
     { schedulePublished: input.schedulePublished ?? true },
     ...(input.action === "response" ? [snapshot, membership] : [membership, snapshot]),
+    ...(input.notLanded ? [input.notLanded.latest] : []),
     [{ id: "staff-1", email: "staff@example.test", googleEmail: null, role: "project_manager" }],
   ]
   let index = 0
@@ -168,7 +171,7 @@ function setupLegacyResponse(input: {
     select: () => query(values[index++] ?? null),
     update: () => ({ set: (value: unknown) => {
       mocks.updateSet(value)
-      return { where: async () => undefined }
+      return { where: () => ({ run: async () => ({ meta: { changes: input.notLanded ? 0 : 1 } }) }) }
     } }),
   })
   mocks.getCloudflareContext.mockResolvedValue({ env: { DB: {} } })
@@ -229,5 +232,34 @@ describe("owner and vendor commitment responses", () => {
     await expect(respondToScheduleTaskConfirmation("task-1", "declined", "x".repeat(1001)))
       .resolves.toEqual({ success: false, error: "Notes must be 1,000 characters or fewer." })
     expect(mocks.updateSet).not.toHaveBeenCalled()
+  })
+})
+
+describe("commitment answers against a schedule that moved", () => {
+  const changed = { success: false, error: "The schedule changed while you were answering. Please review it and respond again." }
+
+  it.each(["response", "proposal"] as const)("refuses a %s given against dates the item no longer has", async (action) => {
+    setupLegacyResponse({ role: "owner", action })
+    const seen = { startDate: "2026-09-07", workdays: 3 }
+    const result = action === "response"
+      ? await respondToScheduleTaskConfirmation("task-1", "confirmed", "", seen)
+      : await proposeScheduleTaskChange("task-1", { startDate: "2026-09-21", workdays: 3, seen })
+    expect(result).toEqual(changed)
+    expect(mocks.updateSet).not.toHaveBeenCalled()
+  })
+
+  it("records and announces nothing when staff moved or re-asked before the answer landed", async () => {
+    setupLegacyResponse({ role: "owner", action: "response", notLanded: { latest: null } })
+    await expect(respondToScheduleTaskConfirmation("task-1", "confirmed", "", { startDate: "2026-09-14", workdays: 3 }))
+      .resolves.toEqual(changed)
+    expect(mocks.recordActivityEvent).not.toHaveBeenCalled()
+    expect(mocks.createNotificationEvent).not.toHaveBeenCalled()
+  })
+
+  it("treats a second submit of the same answer as done, without announcing it twice", async () => {
+    setupLegacyResponse({ role: "owner", action: "proposal", notLanded: { latest: { id: "task-1" } } })
+    await expect(proposeScheduleTaskChange("task-1", { startDate: "2026-09-21", workdays: 5 }))
+      .resolves.toEqual({ success: true })
+    expect(mocks.recordActivityEvent).not.toHaveBeenCalled()
   })
 })

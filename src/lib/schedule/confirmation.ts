@@ -1,10 +1,9 @@
+import { confirmationMachine, staffConfirmationEvent } from "@/lib/domain/schedule/confirmation-machine"
+import type { ScheduleConfirmationStatus } from "@/lib/domain/schedule/statuses"
 import { isOwnerRole, isVendorRole } from "@/lib/user-roles"
 
 export type ScheduleConfirmationState = {
-  readonly status:
-    | "not_requested"
-    | "pending"
-    | "unavailable"
+  readonly status: ScheduleConfirmationStatus
   readonly requestedAt: string | null
 }
 
@@ -57,16 +56,15 @@ export function isPublishedScheduleAssignmentVisible(input: {
   return true
 }
 
+/** The confirmation staff's settings start (confirmation-machine.ts). */
 export function newScheduleConfirmationState(input: {
   readonly required: boolean
   readonly assignedUserId: string | null
   readonly now: string
 }): ScheduleConfirmationState {
-  if (!input.required) {
-    return { status: "not_requested", requestedAt: null }
-  }
+  const event = staffConfirmationEvent(input)
   return {
-    status: input.assignedUserId ? "pending" : "unavailable",
-    requestedAt: input.now,
+    status: confirmationMachine.transitions[event].to,
+    requestedAt: event === "stop" ? null : input.now,
   }
 }

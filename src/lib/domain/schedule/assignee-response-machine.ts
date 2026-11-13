@@ -15,6 +15,10 @@
  * lands only while the item's dates and the row's assigned_at (set again by
  * every reset) are still the ones it was given against, so a late answer
  * never overwrites a reset and two submits of one answer land once.
+ *
+ * Rows start at "pending" (the 0140 default). The only code that created them,
+ * setScheduleTaskAssignees, was removed as unused in #1051; existing rows
+ * still take answers and resets.
  */
 import { defineMachine } from "@/lib/shared/state-machine"
 

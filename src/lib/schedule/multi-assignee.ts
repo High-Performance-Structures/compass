@@ -1,3 +1,4 @@
+import type { ScheduleDatesSeen } from "@/lib/schedule/change-proposal"
 import {
   answerEvent,
   assigneeResponseParts,
@@ -15,7 +16,7 @@ export type ScheduleAssigneeProposalInput = {
   readonly proposedWorkdays?: number | null
   readonly message?: string | null
   /** The item's dates as the assignee saw them when answering. */
-  readonly seen?: { readonly startDate: string; readonly workdays: number }
+  readonly seen?: ScheduleDatesSeen
 }
 
 /** An answer ready to record: the machine event, its columns, the proposal. */

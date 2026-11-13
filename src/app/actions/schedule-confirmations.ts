@@ -21,9 +21,10 @@ import { recordActivityEvent } from "@/lib/activity-log"
 import {
   markTaskReminderSent,
   recordAssigneeResponse,
-  updateTask,
-  updateTaskForAssignee,
+  recordConfirmationAnswer,
+  rejectConfirmationProposal,
 } from "@/lib/domain/schedule/store"
+import { answerEvent } from "@/lib/domain/schedule/assignee-response-machine"
 import {
   notifyScheduleAssignees,
   publishedAssigneeUserIds,
@@ -44,6 +45,7 @@ import { isPublishedScheduleAssignmentVisible } from "@/lib/schedule/confirmatio
 import {
   validateScheduleChangeProposal,
   type ScheduleChangeProposalInput,
+  type ScheduleDatesSeen,
 } from "@/lib/schedule/change-proposal"
 import { parsePublishedScheduleSnapshot } from "@/lib/schedule/publications"
 import { isInternalStaffRole, projectAudienceForRole } from "@/lib/user-roles"
@@ -162,6 +164,18 @@ async function notifyInternalScheduleResponse(input: {
       push: true,
     },
   })
+}
+
+const SCHEDULE_CHANGED = "The schedule changed while you were answering. Please review it and respond again."
+
+/** True when the assignee answered dates staff have since moved. */
+function movedSince(seen: ScheduleDatesSeen | undefined, task: ScheduleDatesSeen): boolean {
+  return seen !== undefined && (seen.startDate !== task.startDate || seen.workdays !== task.workdays)
+}
+
+/** An answer that did not land: a double submit is already done; otherwise look again. */
+function unrecorded(outcome: "already_recorded" | "schedule_changed"): ScheduleConfirmationResult {
+  return outcome === "already_recorded" ? { success: true } : { success: false, error: SCHEDULE_CHANGED }
 }
 
 function revalidateConfirmationPaths(projectId: string): void {
@@ -544,7 +558,8 @@ export async function sendScheduleTaskReminder(
 export async function respondToScheduleTaskConfirmation(
   taskId: string,
   response: ConfirmationResponse,
-  note = ""
+  note = "",
+  seen?: ScheduleDatesSeen
 ): Promise<ScheduleConfirmationResult> {
   try {
     await assertAudiencePreviewWriteAllowed()
@@ -561,9 +576,8 @@ export async function respondToScheduleTaskConfirmation(
       .from(scheduleTasks)
       .where(eq(scheduleTasks.id, taskId))
       .get()
-    if (!task) {
-      return { success: false, error: "Schedule item not found." }
-    }
+    if (!task) return { success: false, error: "Schedule item not found." }
+    if (movedSince(seen, task)) return { success: false, error: SCHEDULE_CHANGED }
     if (await hasNormalizedScheduleAssignees(db, task.id)) {
       return {
         success: false,
@@ -637,15 +651,15 @@ export async function respondToScheduleTaskConfirmation(
     }
 
     const now = new Date().toISOString()
-    await updateTaskForAssignee(db, task.id, user.id, {
-      confirmationStatus: response,
-      confirmationRespondedAt: now,
+    // Lands only against the item read above; a double submit is announced once.
+    const outcome = await recordConfirmationAnswer(db, { ...task, assignedUserId: user.id }, answerEvent(response), {
+      respondedAt: now,
       proposedStartDate: null,
       proposedWorkdays: null,
       proposalNote: note.trim() || null,
       proposalSubmittedAt: null,
-      updatedAt: now,
     })
+    if (outcome !== "recorded") return unrecorded(outcome)
     await recordActivityEvent({
       db,
       organizationId: project.organizationId,
@@ -696,6 +710,7 @@ export async function proposeScheduleTaskChange(
       .where(eq(scheduleTasks.id, taskId))
       .get()
     if (!task) return { success: false, error: "Schedule item not found." }
+    if (movedSince(input.seen, task)) return { success: false, error: SCHEDULE_CHANGED }
     if (await hasNormalizedScheduleAssignees(db, task.id)) {
       return {
         success: false,
@@ -762,15 +777,14 @@ export async function proposeScheduleTaskChange(
     }
 
     const now = new Date().toISOString()
-    await updateTaskForAssignee(db, task.id, user.id, {
-      confirmationStatus: "proposed",
-      confirmationRespondedAt: now,
+    const outcome = await recordConfirmationAnswer(db, { ...task, assignedUserId: user.id }, "propose", {
+      respondedAt: now,
       proposedStartDate: validation.proposal.startDate,
       proposedWorkdays: validation.proposal.workdays,
       proposalNote: validation.proposal.note,
       proposalSubmittedAt: now,
-      updatedAt: now,
     })
+    if (outcome !== "recorded") return unrecorded(outcome)
     const proposal: ScheduleTaskChangeProposal = {
       startDate: validation.proposal.startDate,
       workdays: validation.proposal.workdays,
@@ -880,19 +894,10 @@ export async function rejectScheduleTaskChangeProposal(
       )
       .get()
     if (!task) return { success: false, error: "Schedule item not found." }
-    if (!task.proposedStartDate) {
-      return { success: false, error: "There is no pending date proposal." }
-    }
-    const now = new Date().toISOString()
-    await updateTask(db, task.id, {
-      confirmationStatus: "pending",
-      confirmationRespondedAt: null,
-      proposedStartDate: null,
-      proposedWorkdays: null,
-      proposalNote: null,
-      proposalSubmittedAt: null,
-      updatedAt: now,
-    })
+    // Only while a proposal still waits: an answer that landed meanwhile stays.
+    const rejected = task.proposedStartDate !== null &&
+      (await rejectConfirmationProposal(db, task.id, new Date().toISOString()))
+    if (!rejected) return { success: false, error: "There is no pending date proposal." }
     await recordActivityEvent({
       db,
       organizationId,
@@ -1144,8 +1149,6 @@ export async function getScheduleTaskAssignees(
   )
 }
 
-const SCHEDULE_CHANGED = "The schedule changed while you were answering. Please review it and respond again."
-
 export async function respondToScheduleTaskAssignee(
   assignmentId: string,
   input: ScheduleAssigneeProposalInput | ScheduleAssigneeResponse,
@@ -1181,11 +1184,7 @@ export async function respondToScheduleTaskAssignee(
       .where(eq(scheduleTaskAssignees.id, assignmentId))
       .get()
     if (!assignment) return { success: false, error: "Assignment not found." }
-    // Answered against dates staff have since moved: look again first.
-    const seen = responseInput.seen
-    if (seen && (seen.startDate !== assignment.startDate || seen.workdays !== assignment.workdays)) {
-      return { success: false, error: SCHEDULE_CHANGED }
-    }
+    if (movedSince(responseInput.seen, assignment)) return { success: false, error: SCHEDULE_CHANGED }
     const project = await assertProjectAccess(db, user, assignment.projectId)
     if (!project.organizationId || !assignment.confirmationRequired) {
       return { success: false, error: "A response is not required for this assignment." }
@@ -1278,8 +1277,7 @@ export async function respondToScheduleTaskAssignee(
     // Lands only against the row read above; a double submit is announced once.
     const by = { respondedAt: now, respondedByUserId: user.id, responseSource: "compass" }
     const outcome = await recordAssigneeResponse(db, assignment, state, by)
-    if (outcome === "already_recorded") return { success: true }
-    if (outcome === "schedule_changed") return { success: false, error: SCHEDULE_CHANGED }
+    if (outcome !== "recorded") return unrecorded(outcome)
     await recordActivityEvent({
       db,
       organizationId: project.organizationId,
