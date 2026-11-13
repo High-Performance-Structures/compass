@@ -2,27 +2,12 @@ import { and, eq, ne, type SQL } from "drizzle-orm"
 import type { BatchItem } from "drizzle-orm/batch"
 import type { SQLiteUpdateSetSource } from "drizzle-orm/sqlite-core"
 
-import {
-  projectChangeOrderDocuments,
-  projectChangeOrderHistory,
-  projectChangeOrderLines,
-  projectChangeOrders,
-} from "@/db/schema"
-import {
-  projectEstimateAcknowledgements,
-  projectEstimateAssemblies,
-  projectEstimateAssemblyCopies,
-  projectEstimateBasisDocuments,
-  projectEstimateLineCostItems,
-  projectEstimateLines,
-  projectEstimatePhaseDescriptions,
-  projectEstimateReportPhases,
-  projectEstimates,
-  projectPhaseProposals,
-} from "@/db/schema-estimates"
+import { projectChangeOrderDocuments, projectChangeOrderHistory, projectChangeOrderLines, projectChangeOrders } from "@/db/schema"
+import { projectEstimateAcknowledgements, projectEstimateAssemblies, projectEstimateAssemblyCopies, projectEstimateBasisDocuments, projectEstimateLineCostItems, projectEstimateLines, projectEstimatePhaseDescriptions, projectEstimateReportPhases, projectEstimates, projectPhaseProposals } from "@/db/schema-estimates"
 import { contractEstimateConditions } from "@/lib/estimates/estimate-family"
 import type { EstimateAssembly } from "@/lib/estimates/assemblies"
 import type { Db } from "@/lib/server/action-context"
+import { insertWhenStatement } from "@/lib/server/insert-when"
 import { assertListFields } from "@/lib/shared/statuses"
 
 import { CHANGE_ORDER_HISTORY_LISTS, CHANGE_ORDER_LINE_LISTS, CHANGE_ORDER_LISTS, ESTIMATE_LISTS } from "./statuses"
@@ -235,6 +220,17 @@ export function deleteChangeOrderLinesStatement(db: Db, where: SQL | undefined):
   return db.delete(projectChangeOrderLines).where(where)
 }
 
+export function updateChangeOrderLinesStatement(db: Db, where: SQL | undefined, patch: SQLiteUpdateSetSource<typeof projectChangeOrderLines>): Statement {
+  assertListFields("project_change_order_lines", patch, CHANGE_ORDER_LINE_LISTS)
+  return db.update(projectChangeOrderLines).set(patch).where(where)
+}
+
+/** A line (or, below, a history row) that lands only when `condition` holds at write time (insertWhenStatement). */
+export function insertChangeOrderLineWhenStatement(db: Db, row: ChangeOrderLineInsert, condition: SQL): Statement {
+  assertListFields("project_change_order_lines", row, CHANGE_ORDER_LINE_LISTS)
+  return insertWhenStatement(db, projectChangeOrderLines, row, condition)
+}
+
 // ---- projectChangeOrderDocuments
 
 type ChangeOrderDocumentInsert = typeof projectChangeOrderDocuments.$inferInsert
@@ -254,6 +250,11 @@ type ChangeOrderHistoryInsert = typeof projectChangeOrderHistory.$inferInsert
 export function insertChangeOrderHistoryStatement(db: Db, values: ChangeOrderHistoryInsert | readonly ChangeOrderHistoryInsert[]): Statement {
   assertListFields("project_change_order_history", values, CHANGE_ORDER_HISTORY_LISTS)
   return isRows(values) ? db.insert(projectChangeOrderHistory).values([...values]) : db.insert(projectChangeOrderHistory).values(values)
+}
+
+export function insertChangeOrderHistoryWhenStatement(db: Db, row: ChangeOrderHistoryInsert, condition: SQL): Statement {
+  assertListFields("project_change_order_history", row, CHANGE_ORDER_HISTORY_LISTS)
+  return insertWhenStatement(db, projectChangeOrderHistory, row, condition)
 }
 
 function isRows<T>(values: T | readonly T[]): values is readonly T[] {

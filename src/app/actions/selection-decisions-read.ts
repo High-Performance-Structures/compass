@@ -21,7 +21,6 @@ import {
   parseSpecification,
   selectionSpecification,
   specificationCurrent,
-  specificationJson,
 } from "@/lib/selections/decisions"
 import type {
   SelectionDecisionItem,
@@ -145,9 +144,11 @@ export async function getSelectionWorkspace(
       : selectionSpecification(row)
     if (!published) return []
     // A locked selection moved to another room is shown where it is now.
-    const spec = decision && LOCKED_STATUSES.has(row.status) ? { ...published, roomName: row.roomName } : published
+    // Ordered, installed and replaced selections keep their product: a room move only moves them.
+    const locked = LOCKED_STATUSES.has(row.status) || replaced.has(row.id)
+    const spec = decision && locked ? { ...published, roomName: row.roomName } : published
     const current =
-      !decision || specificationCurrent(decision.specificationJson, row, LOCKED_STATUSES.has(row.status))
+      !decision || specificationCurrent(decision.specificationJson, row, locked)
     const ownLinks = links.filter((link) => link.selectionId === row.id)
     // Partners see a specification once a signature finalizes it (or it is
     // approved, ordered or installed), never on the owner's click alone.
@@ -259,7 +260,7 @@ export async function getSelectionWorkspace(
                 audience === "staff"
                   ? `/dashboard/projects/${encodeURIComponent(projectId)}/${section}#${section === "rfqs" ? "rfq" : "commitment"}-${encodeURIComponent(link.operationId)}`
                   : `/preview/projects/${encodeURIComponent(projectId)}/sub-vendor/${section}`,
-              current: link.specificationJson === specificationJson(row),
+              current: specificationCurrent(link.specificationJson, row, locked),
             },
           ]
         }),

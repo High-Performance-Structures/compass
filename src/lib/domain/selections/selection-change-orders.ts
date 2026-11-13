@@ -22,7 +22,20 @@ import type { Db } from "@/lib/server/action-context"
 
 export type SelectionChangeOrderActor = VarianceActor & { readonly name: string }
 
-export type SelectionChangeOrderLine = { readonly costCode: string; readonly description: string; readonly amountCents: number }
+export type SelectionChangeOrderLine = {
+  /** Set to know the line's id afterwards (a replacement's pick line); generated otherwise. */
+  readonly id?: string
+  /** Null: not coded yet (a replacement's pick line before its selection has a cost code). */
+  readonly costCode: string | null
+  readonly description: string
+  readonly amountCents: number
+}
+
+/** Project liability insurance for the coded, priced lines (change orders get it the way estimates do). */
+export async function selectionInsuranceLines(db: Db, projectId: string, lines: readonly SelectionChangeOrderLine[]) {
+  const coded = lines.flatMap((line) => (line.costCode && line.amountCents !== 0 ? [{ costCode: line.costCode, description: line.description, amountCents: line.amountCents }] : []))
+  return changeOrderInsuranceLines({ db, projectId, lines: coded })
+}
 
 /**
  * How the change order starts: inside a signature already going out
@@ -51,7 +64,7 @@ export async function createSelectionChangeOrder(
 ): Promise<{ readonly id: string; readonly number: string }> {
   const project = await db.select({ projectNumber: projects.projectNumber }).from(projects).where(eq(projects.id, input.projectId)).get()
   const id = crypto.randomUUID()
-  const insurance = await changeOrderInsuranceLines({ db, projectId: input.projectId, lines: input.lines })
+  const insurance = await selectionInsuranceLines(db, input.projectId, input.lines)
   const allLines = [
     ...input.lines.map((line) => ({ ...line, derivedFrom: null })),
     ...insurance.map((line) => ({ costCode: line.costCode, description: line.description, amountCents: line.amountCents, derivedFrom: line.derivedFrom })),
@@ -59,12 +72,12 @@ export async function createSelectionChangeOrder(
   const amountCents = allLines.reduce((total, line) => total + line.amountCents, 0)
   const status = input.start.kind === "in_signature" ? "signature_pending" : "draft"
   const lineRows = allLines.map((line, index) => ({
-    id: crypto.randomUUID(),
+    id: ("id" in line && line.id) || crypto.randomUUID(),
     projectId: input.projectId,
     changeOrderId: id,
     lineNumber: index + 1,
     description: line.description,
-    phaseCode: line.costCode.slice(0, 2),
+    phaseCode: line.costCode ? line.costCode.slice(0, 2) : null,
     costCode: line.costCode,
     amountCents: line.amountCents,
     derivedFrom: line.derivedFrom,

@@ -136,7 +136,18 @@ export async function setSelectionStatusByStaff(
 ): Promise<boolean> {
   const blocker = staffStatusChangeBlocker(input.expected, input.status, false)
   if (blocker) throw new Error(blocker)
-  const values = { ...withoutStatus(input.values ?? {}), status: input.status }
+  // Ordered → Unavailable (the supplier can't fill it): the old purchase
+  // order lets go (PO links before now no longer move it; history kept), and
+  // the pick's owner price stays as the price already in the contract.
+  const unfilled =
+    input.expected === "ordered" && input.status === "unavailable"
+      ? {
+          purchaseOrderOperationId: null,
+          procurementReleasedAt: new Date().toISOString(),
+          settledOwnerPriceCents: sql`(SELECT owner_price_cents FROM project_selection_choices WHERE selection_id = ${input.selectionId} AND chosen = 1)`,
+        }
+      : {}
+  const values = { ...withoutStatus(input.values ?? {}), ...unfilled, status: input.status }
   assertListFields("project_finish_selections", values, SELECTION_LISTS)
   const result = await db
     .update(projectFinishSelections)
@@ -279,6 +290,9 @@ export function insertReplacementSelectionStatement(
       replacesSelectionId: input.replacesSelectionId,
       replacementReason: input.reason,
       replacementPricedChoiceId: null,
+      replacementPricedLineId: null,
+      settledOwnerPriceCents: null,
+      procurementReleasedAt: null,
       createdAt: input.now,
       updatedAt: input.now,
     },
@@ -321,16 +335,45 @@ export async function updateLockedSelection(
   return result.meta.changes > 0
 }
 
-/** Records the choice a replacement's change order is priced for (null: none yet). */
-export async function setReplacementPricedChoice(
+/** Records the choice a replacement's change order is priced for (null: none yet) and the line that prices it. */
+export async function setReplacementPricing(
   db: Db,
-  input: { readonly projectId: string; readonly selectionId: string; readonly choiceId: string | null },
+  input: { readonly projectId: string; readonly selectionId: string; readonly choiceId: string | null; readonly lineId: string },
 ): Promise<void> {
   await db
     .update(projectFinishSelections)
-    .set({ replacementPricedChoiceId: input.choiceId })
+    .set({ replacementPricedChoiceId: input.choiceId, replacementPricedLineId: input.lineId })
     .where(and(eq(projectFinishSelections.id, input.selectionId), eq(projectFinishSelections.projectId, input.projectId)))
     .run()
+}
+
+/**
+ * Re-prices a replacement for `choiceId`, for the caller's batch: lands only
+ * while the selection is still priced for `expectedChoiceId` (another
+ * re-price meanwhile wins), and stamps `token` in updated_at so the batch's
+ * line, change-order and history writes can land only with it.
+ */
+export function repriceReplacementStatement(
+  db: Db,
+  input: {
+    readonly projectId: string
+    readonly selectionId: string
+    readonly expectedChoiceId: string | null
+    readonly choiceId: string | null
+    readonly lineId: string
+    readonly token: string
+  },
+): Statement {
+  return db
+    .update(projectFinishSelections)
+    .set({ replacementPricedChoiceId: input.choiceId, replacementPricedLineId: input.lineId, updatedAt: input.token })
+    .where(
+      and(
+        eq(projectFinishSelections.id, input.selectionId),
+        eq(projectFinishSelections.projectId, input.projectId),
+        sql`${projectFinishSelections.replacementPricedChoiceId} IS ${input.expectedChoiceId}`,
+      ),
+    )
 }
 
 /** The ids of the rows the delete removed. */

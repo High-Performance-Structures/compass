@@ -11,7 +11,7 @@
 import * as React from "react"
 import Link from "next/link"
 
-import { ownerChangedSelectionAfterPurchase, replaceInstalledSelection } from "@/app/actions/selection-replacements"
+import { ownerChangedSelectionAfterPurchase, replaceInstalledSelection, supplierCouldntFillSelection } from "@/app/actions/selection-replacements"
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Label } from "@/components/ui/label"
@@ -23,7 +23,7 @@ import { formatCents } from "@/lib/format"
 // The radio value for "no new product yet" (choice ids are UUIDs).
 const NOT_CHOSEN = "not-chosen"
 
-export type SelectionReplaceKind = "installed" | "ordered"
+export type SelectionReplaceKind = "installed" | "ordered" | "unfilled"
 
 const COPY: Readonly<Record<SelectionReplaceKind, { readonly title: string; readonly action: string; readonly pickLabel: string }>> = {
   installed: {
@@ -35,6 +35,11 @@ const COPY: Readonly<Record<SelectionReplaceKind, { readonly title: string; read
     title: "Owner changed selection after purchase",
     action: "Make a new selection",
     pickLabel: "Owner's new choice (optional)",
+  },
+  unfilled: {
+    title: "Supplier couldn't fill the order",
+    action: "Make a new selection",
+    pickLabel: "New product (optional)",
   },
 }
 
@@ -88,7 +93,9 @@ export function SelectionReplaceDialog({
       const result =
         kind === "installed" && choiceId
           ? await replaceInstalledSelection(projectId, selectionId, choiceId, trimmed)
-          : await ownerChangedSelectionAfterPurchase(projectId, selectionId, choiceId, trimmed)
+          : kind === "unfilled"
+            ? await supplierCouldntFillSelection(projectId, selectionId, choiceId, trimmed)
+            : await ownerChangedSelectionAfterPurchase(projectId, selectionId, choiceId, trimmed)
       if (!result.success) {
         setError(result.error)
         return
@@ -105,7 +112,7 @@ export function SelectionReplaceDialog({
           <DialogTitle>{copy.title}</DialogTitle>
           <DialogDescription>
             {selectionName} stays on record exactly as it is. A new selection replaces it
-            {kind === "installed" ? " with the product you choose" : ", for the owner's new choice"}, with a draft change order for the owner to sign when your company uses them for replacements.
+            {kind === "installed" ? " with the product you choose" : kind === "unfilled" ? " with a product that can be supplied" : ", for the owner's new choice"}, with a draft change order for the owner to sign when your company uses them for replacements.
           </DialogDescription>
         </DialogHeader>
         {done ? (
@@ -140,7 +147,7 @@ export function SelectionReplaceDialog({
                       {choice.ownerPriceCents !== null && <span className="text-muted-foreground">{formatCents(choice.ownerPriceCents)}</span>}
                     </div>
                   ))}
-                  {kind === "ordered" && (
+                  {kind !== "installed" && (
                     <div className="flex items-center gap-2 text-sm">
                       <RadioGroupItem id={`${formId}-none`} value={NOT_CHOSEN} />
                       <Label htmlFor={`${formId}-none`} className="font-normal text-muted-foreground">

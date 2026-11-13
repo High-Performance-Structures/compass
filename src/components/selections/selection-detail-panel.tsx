@@ -29,7 +29,7 @@ import { AttachPhotosDialog, FollowUpsDialog, PasteLinkDialog, PickForOwnerDialo
 import { SelectionLinkCard } from "@/components/selections/selection-link-card"
 import { SelectionPriceRequest } from "@/components/selections/selection-price-request"
 import { SelectionReplaceDialog, type SelectionReplaceKind } from "@/components/selections/selection-replace-dialog"
-import { createReplacementChangeOrder } from "@/app/actions/selection-replacements"
+import { createReplacementChangeOrder, updateReplacementChangeOrder } from "@/app/actions/selection-replacements"
 import { SelectionRoundTemplateControls } from "@/components/selections/selection-round-template-controls"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -213,6 +213,14 @@ export function SelectionDetailPanel({
               Replaces {detail.replaces.name}
               {detail.replaces.reason ? ` (${REPLACEMENT_REASON_LABELS[detail.replaces.reason].toLocaleLowerCase()})` : ""}.
             </span>
+            {detail.replacementPricingStale && (
+              <span className="flex flex-wrap items-center gap-2 text-destructive">
+                Pick changed — update the change order.
+                <Button type="button" variant="outline" size="sm" disabled={pending} onClick={() => run(() => updateReplacementChangeOrder(projectId, row.id))}>
+                  Update change order
+                </Button>
+              </span>
+            )}
             {detail.replacementChangeOrder ? (
               <Link
                 className="text-primary hover:underline"
@@ -227,6 +235,14 @@ export function SelectionDetailPanel({
             ) : (
               <span>No change order yet.</span>
             )}
+          </div>
+        )}
+        {detail?.canReplaceUnfilled && (
+          <div className="flex flex-wrap items-center gap-2 rounded-md border p-2 text-sm">
+            <span>The supplier couldn&apos;t fill this order.</span>
+            <Button type="button" variant="outline" size="sm" onClick={() => setDialog({ kind: "replace", replaceKind: "unfilled" })}>
+              Replace with a new selection
+            </Button>
           </div>
         )}
         {detail?.lock && (

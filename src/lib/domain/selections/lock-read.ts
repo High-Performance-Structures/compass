@@ -40,14 +40,14 @@ export async function loadSelectionLock(
   db: Db,
   projectId: string,
   selectionId: string,
-): Promise<{ readonly status: string; readonly lock: SelectionLock | null } | null> {
+): Promise<{ readonly status: string; readonly lock: SelectionLock | null; readonly releasedFromOrder: boolean } | null> {
   const row = await db
-    .select({ status: projectFinishSelections.status })
+    .select({ status: projectFinishSelections.status, releasedAt: projectFinishSelections.procurementReleasedAt })
     .from(projectFinishSelections)
     .where(and(eq(projectFinishSelections.id, selectionId), eq(projectFinishSelections.projectId, projectId)))
     .get()
   if (!row) return null
-  return { status: row.status, lock: selectionLock(row.status, await selectionIsReplaced(db, selectionId)) }
+  return { status: row.status, lock: selectionLock(row.status, await selectionIsReplaced(db, selectionId)), releasedFromOrder: row.releasedAt !== null }
 }
 
 export type SelectionReplacementLink = {

@@ -3,7 +3,6 @@
 import { and, eq } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 
-import { projectFinishSelections } from "@/db/schema"
 import { projectSelectionChoices } from "@/db/schema-selection-choices"
 
 import { actionFailure, errorMessage, type ActionFailure, type ActionResult } from "@/lib/action-result"
@@ -43,10 +42,10 @@ import { loadSelectionLock, loadSelectionReplacement, replacementChangeOrderFor,
 import type { SelectionLock } from "@/lib/domain/selections/locks"
 import { loadOwnerChoiceBoard, type OwnerBoardSelection } from "@/lib/domain/selections/owner-board-read"
 import { notifyPriceChangesDuringSignature } from "@/lib/domain/selections/price-change-notice"
-import { repriceReplacementDraft } from "@/lib/domain/selections/replacement"
+import { changePickByStaff } from "@/lib/domain/selections/pick-change"
+import { repriceReplacementChangeOrder, replacementPricingStale } from "@/lib/domain/selections/replacement-pricing"
 import { selectionPickIsSigned } from "@/lib/domain/selections/round-signing"
 import { checkRoundsReady, loadRoundCards, type RoundCard } from "@/lib/domain/selections/rounds-server"
-import { updateFinishSelectionsWithEvent } from "@/lib/domain/selections/store"
 import {
   loadDraftRfqOptions,
   loadSelectionRfqs,
@@ -181,6 +180,10 @@ export type SelectionDetail = {
   readonly replacementChangeOrder: { readonly id: string; readonly number: string; readonly status: string } | null
   /** The viewer may create change orders ("Create change order"). */
   readonly canCreateChangeOrder: boolean
+  /** A replacement's draft change order no longer prices its pick (the owner picked, or staff couldn't re-price). */
+  readonly replacementPricingStale: boolean
+  /** Marked Unavailable after it was ordered and not replaced yet: "Supplier couldn't fill" can replace it. */
+  readonly canReplaceUnfilled: boolean
 }
 
 /** Everything the staff detail panel shows for one selection. */
@@ -190,7 +193,7 @@ export async function getSelectionDetail(projectId: string, selectionId: string)
     const { db } = context
     if (!(await selectionInProject(db, projectId, selectionId))) throw new Error("Selection not found")
     const userId = context.user.id
-    const [panel, todos, rfqs, draftRfqs, lock, replacement, replacementChangeOrder, canCreateChangeOrder] = await Promise.all([
+    const [panel, todos, rfqs, draftRfqs, lock, replacement, replacementChangeOrder, canCreateChangeOrder, replacementPricingStale_] = await Promise.all([
       loadSelectionChoicesPanel(db, projectId, selectionId, "staff", userId),
       loadSelectionTodos(db, projectId, selectionId),
       loadSelectionRfqs(db, projectId, selectionId),
@@ -199,8 +202,23 @@ export async function getSelectionDetail(projectId: string, selectionId: string)
       loadSelectionReplacement(db, projectId, selectionId),
       replacementChangeOrderFor(db, projectId, selectionId),
       canFeature(context.user, "change-orders", "create"),
+      replacementPricingStale(db, projectId, selectionId),
     ])
-    return { success: true, data: { panel, todos, rfqs, draftRfqs, lock: lock?.lock ?? null, ...replacement, replacementChangeOrder, canCreateChangeOrder } }
+    return {
+      success: true,
+      data: {
+        panel,
+        todos,
+        rfqs,
+        draftRfqs,
+        lock: lock?.lock ?? null,
+        ...replacement,
+        replacementChangeOrder,
+        canCreateChangeOrder,
+        replacementPricingStale: replacementPricingStale_,
+        canReplaceUnfilled: lock !== null && lock.status === "unavailable" && lock.releasedFromOrder && replacement.replacedBy === null,
+      },
+    }
   } catch (error) {
     return failure(error, "Unable to load the selection.")
   }
@@ -281,6 +299,14 @@ export async function saveSelectionChoice(
         actor: context.user,
         now,
       })
+      // A replacement's draft change order follows its pick's price.
+      if (existing.chosen) {
+        await repriceReplacementChangeOrder(db, {
+          projectId,
+          selectionId,
+          by: { kind: "staff", actor: context.user, canUpdateChangeOrders: await canFeature(context.user, "change-orders", "update") },
+        })
+      }
       refresh(projectId)
       return { success: true, data: { id: choiceId } }
     }
@@ -371,45 +397,28 @@ export async function setSelectionChoiceChosen(
       if (await selectionPickIsSigned(access.db, choice.selectionId, await currentPickId(access.db, choice.selectionId))) {
         return { success: false, error: "You've signed for this selection. Ask your builder to change it." }
       }
+      if (await selectionOwnerApproved(access.db, projectId, choice.selectionId)) {
+        return { success: false, error: "This selection is approved. Ask your builder to change it." }
+      }
       if (!(await setChosenRow(access.db, choice.selectionId, choiceId, chosen, new Date().toISOString(), { userId: access.user.id, audience: "owner", note: null }))) {
         return { success: false, error: "This selection can't be changed here any more. Ask your builder." }
       }
-      await repriceReplacementDraft(access.db, { projectId, selectionId: choice.selectionId, actor: { ...access.user, name: access.user.displayName ?? access.user.email } })
+      // The owner's pick is a preference: it never re-prices a change order (staff see it flagged).
       await checkRoundsReady(access.db, projectId, access.user.id)
       refresh(projectId)
       return { success: true, data: { id: choiceId } }
     }
     const { db, choice, user } = await staffChoice(projectId, choiceId)
-    // Ordered and installed picks change only through a replacement (a new selection).
-    const locked = await pickLockMessage(db, projectId, choice.selectionId)
-    if (locked) return { success: false, error: locked }
-    const before = await currentPickId(db, choice.selectionId)
-    // Approved before this change: signed for the current pick, or an older
-    // approval (e.g. imported) that no signature covers. Either way a new
-    // pick goes back through signing.
-    const wasApproved = (await selectionPickIsSigned(db, choice.selectionId, before)) || (await selectionOwnerApproved(db, projectId, choice.selectionId))
-    const now = new Date().toISOString()
-    // The write re-checks the lock (a selection ordered meanwhile keeps its pick).
-    const picked = await setChosenRow(db, choice.selectionId, choiceId, chosen, now, {
-      userId: user.id,
-      audience: "staff",
-      note: note?.trim().slice(0, 500) || null,
+    const changed = await changePickByStaff(db, {
+      projectId,
+      selectionId: choice.selectionId,
+      choiceId,
+      chosen,
+      note,
+      actor: user,
+      canUpdateChangeOrders: await canFeature(user, "change-orders", "update"),
     })
-    if (!picked) {
-      const locked = await pickLockMessage(db, projectId, choice.selectionId)
-      return { success: false, error: locked ?? "The pick can't change now: its replacement change order is out for signature or executed." }
-    }
-    // Changing an approved pick reopens just this selection (never an ordered or installed one); the next signature covers it.
-    if (wasApproved && (!chosen || before !== choiceId)) {
-      await updateFinishSelectionsWithEvent(
-        db,
-        and(eq(projectFinishSelections.id, choice.selectionId), eq(projectFinishSelections.projectId, projectId)),
-        "reopen",
-        { ownerApproved: false, approvedBy: null, approvedAt: null, updatedAt: now },
-      )
-    }
-    // A replacement's draft change order follows its pick.
-    await repriceReplacementDraft(db, { projectId, selectionId: choice.selectionId, actor: { ...user, name: user.displayName ?? user.email } })
+    if (!changed.ok) return { success: false, error: changed.error }
     await checkRoundsReady(db, projectId, user.id)
     refresh(projectId)
     return { success: true, data: { id: choiceId } }

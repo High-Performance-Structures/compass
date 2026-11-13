@@ -115,12 +115,22 @@ export function staffEditBlocker(input: {
 /**
  * Why a selection with `status` can't be replaced for `reason`, or null.
  * "Replace installed item" needs an installed selection; "Owner changed
- * selection after purchase" an ordered one. A selection is replaced once.
+ * selection after purchase" an ordered one; "Supplier couldn't fill" an
+ * Unavailable one that was marked so from Ordered (`releasedFromOrder`). A
+ * selection is replaced once.
  */
-export function replacementBlocker(status: string, replaced: boolean, reason: SelectionReplacementReason): string | null {
+export function replacementBlocker(
+  status: string,
+  replaced: boolean,
+  reason: SelectionReplacementReason,
+  releasedFromOrder = false,
+): string | null {
   if (replaced) return "This selection was already replaced. Make changes on the replacement."
   if (reason === "installed_replaced" && status !== "installed") return "Only an installed selection can be replaced this way."
   if (reason === "owner_changed_after_purchase" && status !== "ordered") return "Only an ordered selection can be changed this way."
+  if (reason === "supplier_couldnt_fill" && !(status === "unavailable" && releasedFromOrder)) {
+    return "Only a selection marked Unavailable after it was ordered can be replaced this way."
+  }
   return null
 }
 
@@ -129,10 +139,27 @@ export function replacementStartStatus(hasPick: boolean): ProjectSelectionStatus
   return hasPick ? "proposed" : "needed"
 }
 
+/**
+ * What a replacement's change order charges for its pick: the new owner
+ * price (the earlier item stays installed or bought; owner decision
+ * 2026-11-12 — staff add any credit), or for a supplier that couldn't fill
+ * the order, the difference from the price already in the contract. $0
+ * until the pick has an owner price.
+ */
+export function replacementLineAmount(reason: SelectionReplacementReason, pickOwnerPriceCents: number | null, settledOwnerPriceCents: number | null): number {
+  if (pickOwnerPriceCents === null) return 0
+  return reason === "supplier_couldnt_fill" ? pickOwnerPriceCents - (settledOwnerPriceCents ?? 0) : pickOwnerPriceCents
+}
+
+export function replacementLineDescription(selectionName: string, pickTitle: string | null, label: string): string {
+  return `${selectionName}: ${pickTitle ?? "new selection to be made"} (${label.toLocaleLowerCase()})`.slice(0, 500)
+}
+
 /** How each replacement reason reads to staff and on the change order. */
 export const REPLACEMENT_REASON_LABELS: Readonly<Record<SelectionReplacementReason, string>> = {
   installed_replaced: "Installed item replaced",
   owner_changed_after_purchase: "Owner changed selection after purchase",
+  supplier_couldnt_fill: "Supplier couldn't fill the order",
 }
 
 /**

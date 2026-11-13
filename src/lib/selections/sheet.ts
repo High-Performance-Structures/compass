@@ -31,6 +31,8 @@ export type SelectionSheetInput = {
     readonly replacement?: boolean
     /** The owner's approval is recorded on the selection (a signature, or an older approval). */
     readonly ownerApproved?: boolean
+    /** The owner price already in the contract when an approved pick changed (the difference is billed). */
+    readonly settledOwnerPriceCents?: number | null
   }[]
   readonly choices: readonly {
     readonly selectionId: string
@@ -80,6 +82,11 @@ export type SelectionSheetRow = {
   readonly orderKey: string
 }
 
+/** The pick's owner price over (+) or under (-) what the contract already holds for it. */
+function deltaFrom(ownerPriceCents: number | null, baseCents: number | null): number | null {
+  return ownerPriceCents === null || baseCents === null ? null : ownerPriceCents - baseCents
+}
+
 export function selectionSheetRows(input: SelectionSheetInput): readonly SelectionSheetRow[] {
   const byId = new Map(input.selections.map((row) => [row.id, row]))
   const parentOf = new Map<string, string>()
@@ -118,7 +125,7 @@ export function selectionSheetRows(input: SelectionSheetInput): readonly Selecti
       pickPriceCents: pick?.priceCents ?? null,
       pickOwnerPriceCents,
       allowanceCents: row.allowanceCents,
-      deltaCents: pickOwnerPriceCents === null || row.allowanceCents === null ? null : pickOwnerPriceCents - row.allowanceCents,
+      deltaCents: deltaFrom(pickOwnerPriceCents, row.settledOwnerPriceCents ?? row.allowanceCents),
       dueDate: row.dueDate,
       published: row.published,
       roundKey: row.roundKey,

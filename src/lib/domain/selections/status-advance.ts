@@ -8,7 +8,7 @@
  * only the moves that landed are logged to Activity. Staff can still set any
  * status by hand.
  */
-import { and, eq, inArray } from "drizzle-orm"
+import { and, eq, inArray, sql } from "drizzle-orm"
 
 import { projectFinishSelections, projects } from "@/db/schema"
 import { projectSelectionProcurementLinks } from "@/db/schema-selection-decisions"
@@ -120,10 +120,18 @@ export async function advanceSelectionStatus(
 /** Selections tied to a purchase order: procurement links and the selection's own PO link. */
 async function selectionsForPurchaseOrder(db: Db, projectId: string, purchaseOrderId: string): Promise<readonly string[]> {
   const [linked, own] = await Promise.all([
+    // A link made before the selection let go of its order (Ordered → Unavailable) no longer moves it.
     db
       .select({ id: projectSelectionProcurementLinks.selectionId })
       .from(projectSelectionProcurementLinks)
-      .where(and(eq(projectSelectionProcurementLinks.projectId, projectId), eq(projectSelectionProcurementLinks.operationId, purchaseOrderId))),
+      .innerJoin(projectFinishSelections, eq(projectFinishSelections.id, projectSelectionProcurementLinks.selectionId))
+      .where(
+        and(
+          eq(projectSelectionProcurementLinks.projectId, projectId),
+          eq(projectSelectionProcurementLinks.operationId, purchaseOrderId),
+          sql`(${projectFinishSelections.procurementReleasedAt} IS NULL OR ${projectSelectionProcurementLinks.createdAt} > ${projectFinishSelections.procurementReleasedAt})`,
+        ),
+      ),
     db
       .select({ id: projectFinishSelections.id })
       .from(projectFinishSelections)

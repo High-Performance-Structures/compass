@@ -19,19 +19,18 @@
  */
 import { and, eq } from "drizzle-orm"
 
-import { projectChangeOrders, projectFinishSelections } from "@/db/schema"
+import { projectFinishSelections } from "@/db/schema"
 import { projectSelectionChoices, projectSelectionLinks, projectSelectionPhotos } from "@/db/schema-selection-choices"
 import { recordActivityEvents } from "@/lib/activity-log"
-import { insertChangeOrderHistoryStatement, updateChangeOrdersStatement } from "@/lib/domain/estimates/store"
 import type { Db } from "@/lib/server/action-context"
 
 import { copyChoicesToReplacementStatements } from "./choices-store"
 import { replacementChangeOrderFor, selectionIsReplaced } from "./lock-read"
-import { REPLACEMENT_REASON_LABELS, replacementBlocker, replacementStartStatus } from "./locks"
+import { REPLACEMENT_REASON_LABELS, replacementBlocker, replacementLineAmount, replacementLineDescription, replacementStartStatus } from "./locks"
 import { readProjectSelectionSettings } from "./project-settings"
 import { createSelectionChangeOrder, type SelectionChangeOrderActor } from "./selection-change-orders"
 import type { SelectionReplacementReason } from "./statuses"
-import { insertReplacementSelectionStatement, setReplacementPricedChoice } from "./store"
+import { insertReplacementSelectionStatement, setReplacementPricing } from "./store"
 
 export type ReplaceSelectionResult =
   | {
@@ -73,12 +72,14 @@ export async function replaceLockedSelection(
       roomName: projectFinishSelections.roomName,
       status: projectFinishSelections.status,
       costCode: projectFinishSelections.costCode,
+      settledOwnerPriceCents: projectFinishSelections.settledOwnerPriceCents,
+      procurementReleasedAt: projectFinishSelections.procurementReleasedAt,
     })
     .from(projectFinishSelections)
     .where(and(eq(projectFinishSelections.id, input.selectionId), eq(projectFinishSelections.projectId, input.projectId)))
     .get()
   if (!old) return failed("Selection not found.")
-  const blocker = replacementBlocker(old.status, await selectionIsReplaced(db, old.id), input.reason)
+  const blocker = replacementBlocker(old.status, await selectionIsReplaced(db, old.id), input.reason, old.procurementReleasedAt !== null)
   if (blocker) return failed(blocker)
 
   const [choices, links, photos] = await Promise.all([
@@ -186,7 +187,7 @@ async function replacementChangeOrder(
   input: {
     readonly projectId: string
     readonly newId: string
-    readonly old: { readonly id: string; readonly name: string; readonly roomName: string; readonly costCode: string | null }
+    readonly old: { readonly id: string; readonly name: string; readonly roomName: string; readonly costCode: string | null; readonly settledOwnerPriceCents: number | null }
     readonly pick: { readonly id: string; readonly title: string; readonly ownerPriceCents: number | null } | null
     readonly label: string
     readonly note: string | null
@@ -197,8 +198,8 @@ async function replacementChangeOrder(
 ): Promise<{ readonly changeOrder: { readonly id: string; readonly number: string } | null; readonly changeOrderError: string | null }> {
   const { old, pick, label, note } = input
   try {
-    const costCode = old.costCode?.trim() ?? ""
-    const priced = pick !== null && pick.ownerPriceCents !== null && costCode !== ""
+    // One line always prices the pick ($0 until there is one); re-pricing updates it in place.
+    const lineId = crypto.randomUUID()
     const changeOrder = await createSelectionChangeOrder(db, {
       projectId: input.projectId,
       start: { kind: "draft" },
@@ -210,7 +211,14 @@ async function replacementChangeOrder(
         (pick ? `, replaced with ${pick.title}.` : "; the new selection is still to be made.") +
         " The earlier selection stays on record.",
       reason: note ?? label,
-      lines: priced && pick ? [{ costCode, description: `${old.name}: ${pick.title} (${label.toLocaleLowerCase()})`.slice(0, 500), amountCents: pick.ownerPriceCents ?? 0 }] : [],
+      lines: [
+        {
+          id: lineId,
+          costCode: old.costCode?.trim() || null,
+          description: replacementLineDescription(old.name, pick?.title ?? null, label),
+          amountCents: replacementLineAmount(input.reason, pick?.ownerPriceCents ?? null, old.settledOwnerPriceCents),
+        },
+      ],
       history: {
         eventType: "created_from_selection_replacement",
         note: `Created when ${old.name} was replaced (${label.toLocaleLowerCase()}). Complete the amounts before sending it for the owner's signature.`,
@@ -220,7 +228,7 @@ async function replacementChangeOrder(
       now: input.now,
     })
     // The replacement counts as signed only while its pick is the one priced here.
-    await setReplacementPricedChoice(db, { projectId: input.projectId, selectionId: input.newId, choiceId: pick?.id ?? null })
+    await setReplacementPricing(db, { projectId: input.projectId, selectionId: input.newId, choiceId: pick?.id ?? null, lineId })
     return { changeOrder, changeOrderError: null }
   } catch (error) {
     // The one-live-change-order index refuses a second (a double submit).
@@ -249,7 +257,13 @@ export async function startReplacementChangeOrder(
   if (!selection?.replacesSelectionId || !selection.reason) return { ok: false, error: "Only a replacement selection gets this change order." }
   if (await replacementChangeOrderFor(db, input.projectId, input.selectionId)) return { ok: false, error: "This replacement already has a change order." }
   const old = await db
-    .select({ id: projectFinishSelections.id, name: projectFinishSelections.name, roomName: projectFinishSelections.roomName, costCode: projectFinishSelections.costCode })
+    .select({
+      id: projectFinishSelections.id,
+      name: projectFinishSelections.name,
+      roomName: projectFinishSelections.roomName,
+      costCode: projectFinishSelections.costCode,
+      settledOwnerPriceCents: projectFinishSelections.settledOwnerPriceCents,
+    })
     .from(projectFinishSelections)
     .where(and(eq(projectFinishSelections.id, selection.replacesSelectionId), eq(projectFinishSelections.projectId, input.projectId)))
     .get()
@@ -271,60 +285,4 @@ export async function startReplacementChangeOrder(
     now: new Date().toISOString(),
   })
   return created.changeOrder ? { ok: true, ...created.changeOrder } : { ok: false, error: created.changeOrderError ?? "The change order could not be created." }
-}
-
-/**
- * After a replacement's pick changes: a draft change order priced for a
- * different choice is voided (it stays on record) and a new draft is made
- * for the new pick. A change order already out for signature or executed
- * fixes the pick (choices-store refuses the change), so nothing to do then.
- * Never fails the pick; a problem is logged.
- */
-export async function repriceReplacementDraft(
-  db: Db,
-  input: { readonly projectId: string; readonly selectionId: string; readonly actor: SelectionChangeOrderActor },
-): Promise<void> {
-  try {
-    const selection = await db
-      .select({
-        replacesSelectionId: projectFinishSelections.replacesSelectionId,
-        reason: projectFinishSelections.replacementReason,
-        pricedChoiceId: projectFinishSelections.replacementPricedChoiceId,
-      })
-      .from(projectFinishSelections)
-      .where(and(eq(projectFinishSelections.id, input.selectionId), eq(projectFinishSelections.projectId, input.projectId)))
-      .get()
-    if (!selection?.replacesSelectionId || !selection.reason) return
-    const order = await replacementChangeOrderFor(db, input.projectId, input.selectionId)
-    if (!order || order.status !== "draft") return
-    const pick = await db
-      .select({ id: projectSelectionChoices.id })
-      .from(projectSelectionChoices)
-      .where(and(eq(projectSelectionChoices.selectionId, input.selectionId), eq(projectSelectionChoices.chosen, true)))
-      .get()
-    if ((pick?.id ?? null) === selection.pricedChoiceId) return
-    const now = new Date().toISOString()
-    const [voided] = await db.batch([
-      updateChangeOrdersStatement(db, and(eq(projectChangeOrders.id, order.id), eq(projectChangeOrders.status, "draft")), { status: "void", updatedAt: now }),
-      insertChangeOrderHistoryStatement(db, {
-        id: crypto.randomUUID(),
-        projectId: input.projectId,
-        changeOrderId: order.id,
-        eventType: "voided_for_new_selection_pick",
-        fromStatus: "draft",
-        toStatus: "void",
-        actorUserId: input.actor.id,
-        actorName: input.actor.name.slice(0, 200),
-        actorRole: input.actor.role.slice(0, 80),
-        note: "The replacement's pick changed; a new draft change order is priced for it.",
-        metadataJson: JSON.stringify({ selectionId: input.selectionId, pricedChoiceId: selection.pricedChoiceId, newChoiceId: pick?.id ?? null }),
-        createdAt: now,
-      }),
-    ])
-    if (voided.meta.changes === 0) return
-    const started = await startReplacementChangeOrder(db, input)
-    if (!started.ok) console.error("[selections] re-pricing a replacement change order failed", started.error)
-  } catch (error) {
-    console.error("[selections] re-pricing a replacement change order failed", error)
-  }
 }
