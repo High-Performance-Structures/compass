@@ -11,7 +11,7 @@ import {
 } from "@/lib/public-paths"
 
 import { AUDIENCE_SCOPE_HEADER, audienceScopeFromUrl } from "@/lib/project-audience-request"
-import { VIEW_AS_COOKIE, VIEW_AS_ENDED_PATH, VIEW_AS_READ_ONLY_MESSAGE } from "@/lib/view-as/constants"
+import { VIEW_AS_COOKIE, VIEW_AS_ENDED_PATH, VIEW_AS_ENDING_HEADER, VIEW_AS_READ_ONLY_MESSAGE } from "@/lib/view-as/constants"
 import { cookieHeaderWithout, viewAsMiddlewareDecision } from "@/lib/view-as/middleware"
 
 function legacyResolutionUrl(request: NextRequest): URL | null {
@@ -27,6 +27,7 @@ export default async function middleware(incomingRequest: NextRequest) {
   // Never accept a caller-supplied effective identity header.
   const requestHeaders = new Headers(incomingRequest.headers)
   requestHeaders.delete(AUDIENCE_SCOPE_HEADER)
+  requestHeaders.delete(VIEW_AS_ENDING_HEADER)
   const scope = audienceScopeFromUrl(incomingRequest.nextUrl)
   if (scope) requestHeaders.set(AUDIENCE_SCOPE_HEADER, JSON.stringify(scope))
   const request = new NextRequest(incomingRequest, { headers: requestHeaders })
@@ -39,8 +40,9 @@ export default async function middleware(incomingRequest: NextRequest) {
   const viewAs = viewAsMiddlewareDecision(request)
   if (viewAs === "signing-in") {
     // Sign in as the admin, not inside View as: strip the cookie from the
-    // request and clear it in the browser. (No end entry here: the
-    // middleware has no database; the session was already unusable.)
+    // request and clear it in the browser. The sign-in handler records the
+    // end from the token passed in VIEW_AS_ENDING_HEADER.
+    requestHeaders.set(VIEW_AS_ENDING_HEADER, request.cookies.get(VIEW_AS_COOKIE)?.value ?? "")
     requestHeaders.set("cookie", cookieHeaderWithout(requestHeaders.get("cookie"), VIEW_AS_COOKIE))
     const response = NextResponse.next({ request: { headers: requestHeaders } })
     response.cookies.delete(VIEW_AS_COOKIE)

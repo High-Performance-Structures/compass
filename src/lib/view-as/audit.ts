@@ -30,6 +30,7 @@ export type ViewAsEndReason =
   | "person_unavailable"
   | "privilege"
   | "cross_site"
+  | "signed_in_again"
 
 export type ViewAsAuditInput = {
   readonly kind: "start" | "end"

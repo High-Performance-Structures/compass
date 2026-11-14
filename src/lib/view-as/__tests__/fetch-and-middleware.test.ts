@@ -132,12 +132,19 @@ describe("viewAsReturnUrl (no open redirect)", () => {
 })
 
 describe("signing in again during View as", () => {
-  it("lets the sign-in routes through instead of blocking them", () => {
+  it("lets sign-in POSTs through instead of blocking them", () => {
     const cookies = { [VIEW_AS_COOKIE]: "token" }
-    for (const path of ["/api/auth/login", "/api/auth/mobile/session", "/api/auth/callback", "/callback"]) {
+    for (const path of ["/api/auth/login", "/api/auth/mobile/session"]) {
       expect(viewAsMiddlewareDecision(request("POST", path, cookies))).toBe("signing-in")
     }
     expect(viewAsMiddlewareDecision(request("POST", "/api/projects", cookies))).toBe("block-write")
+  })
+
+  it("sends sign-in GETs (OAuth callbacks) through /view-as/ended so the end is recorded", () => {
+    const live = { [VIEW_AS_COOKIE]: tokenWithExpiry(1_900_000_000), [DEVELOPER_MODE_COOKIE]: "enabled" }
+    for (const path of ["/callback", "/api/auth/callback"]) {
+      expect(viewAsMiddlewareDecision(request("GET", path, live), 1_800_000_000)).toBe("clear")
+    }
   })
 
   it("removes only the View as cookie from the request", () => {

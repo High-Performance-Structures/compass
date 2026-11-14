@@ -5,9 +5,10 @@
  *   mode off, or past its expiry). The page is sent through
  *   VIEW_AS_ENDED_PATH, which records the end in Activity, drops the cookie
  *   and returns the admin to the page as themselves;
- * - "signing-in": a sign-in route (`isAuthSessionWritePath`); it runs as a
+ * - "signing-in": a sign-in POST (`isAuthSessionWritePath`); it runs as a
  *   normal sign-in with the View as cookie removed from the request and
- *   cleared on the response;
+ *   cleared on the response, and the token passed in VIEW_AS_ENDING_HEADER
+ *   so the handler records the end (a sign-in GET is "clear");
  * - "pass": everything else.
  * Clearing reads the payload without the signature on purpose: it only ever
  * removes the cookie, never grants anything. The signed check is server side
@@ -42,8 +43,10 @@ export function viewAsMiddlewareDecision(
   const token = request.cookies.get(VIEW_AS_COOKIE)?.value
   if (!token) return "pass"
   // Signing in again (the admin's own WorkOS session lapsed mid-view) must
-  // work: the sign-in routes run without the View as cookie, which is dropped.
-  if (isAuthSessionWritePath(request.nextUrl.pathname)) return "signing-in"
+  // work, and ends the session with a record. A GET (the OAuth callbacks)
+  // goes through /view-as/ended first; a POST runs without the View as
+  // cookie, and its handler records the end (endViewAsOnSignIn).
+  if (isAuthSessionWritePath(request.nextUrl.pathname)) return request.method === "GET" ? "clear" : "signing-in"
   const isRead = ["GET", "HEAD", "OPTIONS"].includes(request.method)
   if (request.nextUrl.pathname.startsWith("/api/") && !isRead) return "block-write"
   if (request.method !== "GET" || request.nextUrl.pathname.startsWith("/api/")) return "pass"

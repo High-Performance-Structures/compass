@@ -30,5 +30,12 @@ export const VIEW_AS_COOKIE_MAX_AGE_SECONDS = VIEW_AS_MAX_AGE_SECONDS + 24 * 60 
 /** Records the end of a session the middleware found over, then returns to `?next=`. */
 export const VIEW_AS_ENDED_PATH = "/view-as/ended"
 
+/**
+ * Set only by the middleware on sign-in POSTs made during View as: the View
+ * as token, so the sign-in handler can record the session's end. Any
+ * caller-supplied value is removed first.
+ */
+export const VIEW_AS_ENDING_HEADER = "x-compass-view-as-ending"
+
 /** Shown when a blocked write is attempted while viewing as someone. */
 export const VIEW_AS_READ_ONLY_MESSAGE = "View as is read only. Exit View as to make changes."

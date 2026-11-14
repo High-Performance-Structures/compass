@@ -9,12 +9,14 @@ import { cookies } from "next/headers"
 
 import { getDb } from "@/db"
 import { getSignedInUser, type AuthUser } from "@/lib/auth"
+import type { ActivityActor } from "@/lib/activity-log"
 import { getUnguardedCloudflareContext } from "@/lib/db"
+import { accountById } from "@/lib/domain/identity/accounts"
 import { searchViewAsPeople, viewAsDisplayNames, type ViewAsPersonOption } from "@/lib/domain/identity/view-as-people"
 import { readFeatureSettings } from "@/lib/feature-settings/server"
 import type { OrgContext } from "@/lib/server/action-context"
 import { isViewAsSessionEnded, writeViewAsActivity, type ViewAsEndReason } from "@/lib/view-as/audit"
-import { VIEW_AS_COOKIE, VIEW_AS_MAX_AGE_SECONDS } from "@/lib/view-as/constants"
+import { VIEW_AS_COOKIE, VIEW_AS_ENDING_HEADER, VIEW_AS_MAX_AGE_SECONDS } from "@/lib/view-as/constants"
 import { canViewTargetRole, viewAsPermission } from "@/lib/view-as/policy"
 import { viewAsSecret, viewAsTargetUser } from "@/lib/view-as/session"
 import { signViewAsToken, verifyViewAsToken } from "@/lib/view-as/token"
@@ -93,15 +95,20 @@ export async function beginViewAs(
  * started. The request still carries the cookie, so its bindings are read
  * only; the entry is written with the real ones.
  */
-export async function recordViewAsEnd(token: string, admin: AuthUser | null, endedBy: ViewAsEndReason = "exit"): Promise<void> {
+export async function recordViewAsEnd(token: string, signedIn: AuthUser | null, endedBy: ViewAsEndReason = "exit"): Promise<void> {
   // Called again on failure by Exit (a second try), so it must stay idempotent.
   const { env } = await getUnguardedCloudflareContext()
   const secret = viewAsSecret(env)
   const payload = secret ? await verifyViewAsToken(token, secret, undefined, { allowExpired: true }) : null
-  if (!payload || !admin || admin.id !== payload.adminId) return
+  if (!payload) return
   const db = getDb(env.DB)
   // One end per session, however many ways it ends.
   if (await isViewAsSessionEnded(db, payload)) return
+  // Any valid token may end its own session (that only takes access away),
+  // and the entry always names the admin who started it, signed in or not:
+  // this is what revokes it server side.
+  const admin = signedIn?.id === payload.adminId ? signedIn : await viewAsStartedBy(db, payload.adminId)
+  if (!admin) return
   const names = await viewAsDisplayNames(db, [payload.targetId])
   await writeViewAsActivity(db, {
     kind: "end",
@@ -112,6 +119,35 @@ export async function recordViewAsEnd(token: string, admin: AuthUser | null, end
     at: new Date().toISOString(),
     endedBy,
   })
+}
+
+/** The admin who started a session, as an Activity actor. */
+async function viewAsStartedBy(db: ReturnType<typeof getDb>, adminId: string): Promise<ActivityActor & { readonly id: string } | null> {
+  const account = await accountById(db, adminId)
+  if (!account) return null
+  return {
+    id: account.id,
+    email: account.email,
+    displayName: account.displayName,
+    firstName: account.firstName,
+    lastName: account.lastName,
+    role: account.role,
+  }
+}
+
+/**
+ * A sign-in POST made during View as (the middleware passes the token in
+ * VIEW_AS_ENDING_HEADER and has already cleared the cookie): record the end.
+ * Never fails the sign-in.
+ */
+export async function endViewAsOnSignIn(request: Request): Promise<void> {
+  const token = request.headers.get(VIEW_AS_ENDING_HEADER)
+  if (!token) return
+  try {
+    await recordViewAsEnd(token, null, "signed_in_again")
+  } catch (error) {
+    console.error("Unable to record the end of View as on sign-in", error)
+  }
 }
 
 /** Signing out ends any View as session too: record it and drop the cookie. */

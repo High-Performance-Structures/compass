@@ -26,6 +26,13 @@ vi.mock("@/lib/db", () => ({
 }))
 vi.mock("@/db", () => ({ getDb: () => ({}) }))
 vi.mock("@/lib/auth", () => ({ getSignedInUser: vi.fn(async () => null) }))
+vi.mock("@/lib/domain/identity/accounts", () => ({
+  accountById: vi.fn(async (_db: unknown, id: string) =>
+    id === "admin-1"
+      ? { id: "admin-1", email: "admin@example.com", displayName: "Ada Admin", firstName: "Ada", lastName: "Admin", role: "admin" }
+      : undefined,
+  ),
+}))
 vi.mock("@/lib/view-as/audit", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/lib/view-as/audit")>()),
   isViewAsSessionEnded: vi.fn(async () => mocks.ended),
@@ -39,7 +46,7 @@ vi.mock("@/lib/domain/identity/view-as-people", () => ({
   viewAsDisplayNames: vi.fn(async () => new Map([["owner-1", "Olive Owner"]])),
 }))
 
-const { beginViewAs, recordViewAsEnd, searchPeopleToViewAs } = await import("@/lib/view-as/service")
+const { beginViewAs, endViewAsOnSignIn, recordViewAsEnd, searchPeopleToViewAs } = await import("@/lib/view-as/service")
 const { verifyViewAsToken } = await import("@/lib/view-as/token")
 
 function user(overrides: Partial<AuthUser>): AuthUser {
@@ -161,13 +168,36 @@ describe("recordViewAsEnd", () => {
     mocks.ended = false
   })
 
-  it("records nothing for another admin's or a forged session", async () => {
+  it("records nothing for a forged session", async () => {
+    mocks.recordRequiredActivityEvent.mockClear()
+    await recordViewAsEnd("forged.token", user({}))
+    expect(mocks.recordRequiredActivityEvent).not.toHaveBeenCalled()
+  })
+
+  it("revokes a valid session with no admin signed in, naming the admin who started it", async () => {
     const start = await beginViewAs(context(user({})), true, "owner-1")
     if (!start.ok) throw new Error(start.error)
     mocks.recordRequiredActivityEvent.mockClear()
-    await recordViewAsEnd(start.value, user({ id: "admin-2" }))
-    await recordViewAsEnd("forged.token", user({}))
-    expect(mocks.recordRequiredActivityEvent).not.toHaveBeenCalled()
+    await recordViewAsEnd(start.value, null, "cross_site")
+    await recordViewAsEnd(start.value, user({ id: "someone-else" }), "cross_site")
+    expect(mocks.recordRequiredActivityEvent).toHaveBeenCalledTimes(2)
+    expect(mocks.recordRequiredActivityEvent).toHaveBeenLastCalledWith(
+      expect.objectContaining({ action: "view_as.ended", actor: expect.objectContaining({ id: "admin-1" }), metadata: expect.objectContaining({ endedBy: "cross_site" }) }),
+    )
+  })
+
+  it("records the end when the admin signs in again (sign-in POST), never failing sign-in", async () => {
+    const start = await beginViewAs(context(user({})), true, "owner-1")
+    if (!start.ok) throw new Error(start.error)
+    mocks.recordRequiredActivityEvent.mockClear()
+    await endViewAsOnSignIn(new Request("https://compass.example/api/auth/login", { method: "POST", headers: { "x-compass-view-as-ending": start.value } }))
+    expect(mocks.recordRequiredActivityEvent).toHaveBeenCalledWith(
+      expect.objectContaining({ action: "view_as.ended", metadata: expect.objectContaining({ endedBy: "signed_in_again" }) }),
+    )
+    vi.spyOn(console, "error").mockImplementation(() => undefined)
+    mocks.recordRequiredActivityEvent.mockRejectedValueOnce(new Error("D1 down"))
+    await expect(endViewAsOnSignIn(new Request("https://compass.example/api/auth/login", { method: "POST", headers: { "x-compass-view-as-ending": start.value } }))).resolves.toBeUndefined()
+    await expect(endViewAsOnSignIn(new Request("https://compass.example/api/auth/login", { method: "POST" }))).resolves.toBeUndefined()
   })
 })
 
