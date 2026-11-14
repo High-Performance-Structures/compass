@@ -24,6 +24,7 @@ import type {
 import { filterConversations } from "./correspondence-workspace-utils"
 import { ProjectDraftList } from "./project-draft-list"
 import { conversationColumns, type InboxSearchHit } from "./correspondence-inbox-columns"
+import { useAudiencePreviewReadOnly } from "@/components/projects/project-audience-preview-scope"
 
 const FILTERS: readonly { readonly value: CorrespondenceInboxFilter; readonly label: string }[] = [
   { value: "inbox", label: "Inbox" },
@@ -79,7 +80,9 @@ export function CorrespondenceInboxPanel(props: {
   }, [filter, hits, inbox.conversations, query, searching])
   const visibleIds = React.useMemo(() => visible.map((conversation) => conversation.id), [visible])
   const selectedIds = visibleIds.filter((id) => selected.has(id))
-  const locked = pending || props.busy
+  // Staff previewing someone's inbox can't archive, save or mark read for them.
+  const previewReadOnly = useAudiencePreviewReadOnly()
+  const locked = pending || props.busy || previewReadOnly
   const unreadCount = inbox.conversations.filter((c) => c.unread && !c.archived).length
 
   const hitsFor = React.useCallback(

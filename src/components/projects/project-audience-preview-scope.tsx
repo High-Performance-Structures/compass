@@ -56,3 +56,21 @@ export function ProjectAudiencePreviewScope({ children, readOnly = false, canoni
     }
   }}>{children}</div></ScopeContext.Provider></ReadOnlyContext.Provider>
 }
+
+/**
+ * Shows a control exactly as the previewed person sees it, but unusable, with a
+ * note saying so. Outside a staff preview it renders the children unchanged.
+ * The server refuses preview writes regardless; this keeps staff from trying.
+ */
+export function PreviewReadOnlyArea({ note, onClose, children }: { readonly note: string; readonly onClose?: () => void; readonly children: React.ReactNode }): React.ReactElement {
+  const readOnly = useAudiencePreviewReadOnly()
+  if (!readOnly) return <>{children}</>
+  return <>
+    <p className="mb-1.5 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+      {note}
+      {/* A whole form is unusable in preview, so its own Back button is too; keep a way out. */}
+      {onClose && <button type="button" className="underline hover:text-foreground" onClick={onClose}>Close</button>}
+    </p>
+    <div inert className="opacity-60">{children}</div>
+  </>
+}

@@ -8,17 +8,17 @@ import { Separator } from "@/components/ui/separator"
 import { cn } from "@/lib/utils"
 import { useConversations, type ThreadMessage } from "@/contexts/conversations-context"
 import { getThreadMessages, markThreadRead } from "@/app/actions/chat-messages"
+import { useAudiencePreviewReadOnly } from "@/components/projects/project-audience-preview-scope"
 import { announceNotificationsChanged } from "@/lib/notifications/client-events"
 import { getChannel } from "@/app/actions/conversations"
 import { MessageItem } from "./message-item"
 import { MessageComposer } from "./message-composer"
 import { useIsMobile } from "@/hooks/use-mobile"
-import { useViewAsActive } from "@/components/view-as/view-as-context"
 
 export function ThreadPanel({ currentUserId }: { readonly currentUserId: string | null }): React.ReactElement | null {
+  const previewReadOnly = useAudiencePreviewReadOnly()
   const { threadOpen, threadMessageId, threadParentMessage, closeThread } = useConversations()
   const isMobile = useIsMobile()
-  const viewAs = useViewAsActive()
   const [replies, setReplies] = React.useState<readonly ThreadMessage[]>([])
   const [loading, setLoading] = React.useState(false)
   const [loadError, setLoadError] = React.useState<string | null>(null)
@@ -56,12 +56,10 @@ export function ThreadPanel({ currentUserId }: { readonly currentUserId: string 
       }
       setReplies([...messagesResult.data].reverse())
       setOrganizationId(channelResult.data.organizationId)
-      // Opening the thread counts as reading its replies (never in View as).
-      if (!viewAs) {
-        void markThreadRead(threadMessageId).then((result) => {
-          if (result.success) announceNotificationsChanged()
-        })
-      }
+      // Opening the thread counts as reading its replies (never in a staff preview).
+      if (!previewReadOnly) void markThreadRead(threadMessageId).then((result) => {
+        if (result.success) announceNotificationsChanged()
+      })
     }).catch((error: unknown) => {
       if (cancelled) return
       const message = error instanceof Error ? error.message : ""
@@ -77,7 +75,7 @@ export function ThreadPanel({ currentUserId }: { readonly currentUserId: string 
     return () => {
       cancelled = true
     }
-  }, [threadMessageId, threadParentMessage, viewAs])
+  }, [previewReadOnly, threadMessageId, threadParentMessage])
 
   // resize handlers (follow ChatPanelShell pattern)
   React.useEffect(() => {

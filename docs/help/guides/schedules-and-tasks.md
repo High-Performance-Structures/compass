@@ -12,7 +12,7 @@
   "permissions": ["help:read", "schedule:read"],
   "routes": ["/dashboard/schedule", "/dashboard/projects/[id]/schedule"],
   "owner": "Scheduling operations",
-  "lastReviewed": "2026-11-11"
+  "lastReviewed": "2026-11-13"
 }
 ---
 
@@ -22,7 +22,7 @@ Use **Tasks & Schedule → Project Schedule** for every job at once, **Work Cale
 
 ## Gantt View {#gantt}
 
-The task list and timeline scroll together. The Gantt opens around **Today**; use **Today**, zoom, search, grouping, and color modes to focus the view. Selecting a row selects the schedule item without rebuilding the whole view or repeatedly jumping the timeline. Grouping by phase keeps list rows aligned with their bars. Colors are viewing aids; confirm actual phase, status, and completion data.
+The task list and timeline scroll together. The Gantt opens around **Today**; use **Today**, zoom, search, grouping, and color modes to focus the view. Click a row or a bar to highlight the item on the timeline; the chart slides sideways only if the bar is off-screen. Double-click a row or a bar, or use the pencil, to edit the item. Dragging a bar still moves its dates. Grouping by phase keeps list rows aligned with their bars. Colors are viewing aids; confirm actual phase, status, and completion data.
 
 ## See Every Job Together {#all-jobs}
 

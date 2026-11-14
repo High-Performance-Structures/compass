@@ -12,7 +12,6 @@ import { ProjectCorrespondenceWorkspace } from "@/components/correspondence/proj
 import { ProjectConversationsTab, type ProjectConversationsQuery } from "@/components/conversations/project-conversations-tab"
 import { ProjectMessagesTabs } from "@/components/conversations/project-messages-tabs"
 import { ProjectAudienceConversationPane } from "@/components/projects/project-audience-conversation"
-import { ProjectAudienceCorrespondencePreview } from "@/components/projects/project-audience-correspondence-preview"
 import { Badge } from "@/components/ui/badge"
 import { isCorrespondenceEnabled } from "@/lib/correspondence/access"
 import { getCloudflareContext } from "@/lib/db"
@@ -89,7 +88,7 @@ export async function AudienceConversationSection({
             renderChannel={(channelId) => <ProjectAudienceConversationPane projectId={data.project.id} channelId={channelId} audience={data.audience} />}
           />
           </div>
-        : inbox.success ? data.viewerIsInternal ? <ProjectAudienceCorrespondencePreview key={inbox.data.viewerId} projectId={data.project.id} inbox={inbox.data} /> : <ProjectCorrespondenceWorkspace projectId={data.project.id} initialInbox={inbox.data} initialNewMessage={initialNewMessage} /> : <p className="p-4 text-sm">Messages are unavailable. {inbox.error}</p>}
+        : inbox.success ? <ProjectCorrespondenceWorkspace key={inbox.data.viewerId} projectId={data.project.id} initialInbox={inbox.data} initialNewMessage={!data.viewerIsInternal && initialNewMessage} /> : <p className="p-4 text-sm">Messages are unavailable. {inbox.error}</p>}
     </section>
   }
   return (

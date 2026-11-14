@@ -15,6 +15,7 @@ import {
   setCorrespondenceState,
 } from "@/app/actions/project-correspondence"
 import { getProjectDrafts, saveProjectComposition, setProjectDraftDiscarded } from "@/app/actions/correspondence-saved-drafts"
+import { PreviewReadOnlyArea, useAudiencePreviewReadOnly } from "@/components/projects/project-audience-preview-scope"
 import type { CompositionDraftHandle } from "./use-composition-draft"
 import { Button } from "@/components/ui/button"
 import { CorrespondenceInboxPanel, InboxSplitDivider } from "./correspondence-inbox-panel"
@@ -29,17 +30,8 @@ import { useConversationScroll } from "./use-conversation-scroll"
 import { Composer, NewMessagePanel } from "./correspondence-composer"
 import { ProjectEmailComposer } from "./project-email-composer"
 import type { ProjectEmailPrefill } from "@/lib/billing/owner-document-notices"
-import {
-  earliestSequence,
-  applyMessageRevision,
-  composerTransitionBlock,
-  detailForConversation,
-  loadMessageHistory,
-  mergeMessages,
-  uploadStagedAttachment,
-  type StagedAttachment,
-} from "./correspondence-workspace-utils"
-import type { ProjectDraft, SavedComposition, CorrespondenceInboxFilter, CorrespondenceAttachment, CorrespondenceDetail, CorrespondenceInbox, CorrespondenceMessage, CorrespondencePerson, CorrespondenceStateInput, CorrespondenceSummary, SendCorrespondenceInput, SendCorrespondenceResult } from "@/lib/correspondence/types"
+import { applyMessageRevision, composerTransitionBlock, detailForConversation, earliestSequence, formatDate, loadMessageHistory, mergeMessages, readyAttachmentIds, restoredAttachments, roleName, uploadStagedAttachment, type StagedAttachment } from "./correspondence-workspace-utils"
+import type { ProjectDraft, SavedComposition, CorrespondenceInboxFilter, CorrespondenceAttachment, CorrespondenceDetail, CorrespondenceInbox, CorrespondenceMessage, CorrespondenceStateInput, CorrespondenceSummary, SendCorrespondenceInput, SendCorrespondenceResult } from "@/lib/correspondence/types"
 import { isChannelThreadId, sendFromProjectMessages } from "./channel-thread-send"
 import { useQuickAddEntry } from "@/hooks/use-quick-add-entry"
 import { useVisibleInterval } from "@/hooks/use-visible-interval"
@@ -53,6 +45,8 @@ type PendingSend = { readonly input: SendCorrespondenceInput }
 type SearchHit = { readonly conversationId: string; readonly messageId: string; readonly subject: string; readonly excerpt: string; readonly sentAt: string }
 const POLL_INTERVAL_MS = 20_000
 export function ProjectCorrespondenceWorkspace({ projectId, initialInbox, initialConversationId, initialMessageId, initialNewMessage = false, initialEmail = null, initialStatus = null }: ProjectCorrespondenceWorkspaceProps): React.ReactElement {
+  // Staff previewing someone's workspace see it exactly, but nothing is saved or marked read for them.
+  const previewReadOnly = useAudiencePreviewReadOnly()
   const [initialCompositionDraft] = React.useState(() => compositionDraft())
   const [discardedComposition, setDiscardedComposition] = React.useState<{ readonly id: string; readonly version: number } | null>(null)
   const [drafts, setDrafts] = React.useState<readonly ProjectDraft[]>([])
@@ -161,9 +155,10 @@ export function ProjectCorrespondenceWorkspace({ projectId, initialInbox, initia
     return result.data
   }, [projectId])
   const refreshDrafts = React.useCallback(async (): Promise<void> => {
+    if (previewReadOnly) return
     const result = await getProjectDrafts(projectId)
     if (result.success) setDrafts(result.data)
-  }, [projectId])
+  }, [previewReadOnly, projectId])
   React.useEffect(() => { void refreshDrafts() }, [refreshDrafts])
   const saveCompositionDraft = React.useCallback(async (draft: NewDraft): Promise<boolean> => {
     const queued = compositionSave.current.catch(() => false).then(async (): Promise<boolean> => {
@@ -216,7 +211,7 @@ export function ProjectCorrespondenceWorkspace({ projectId, initialInbox, initia
     return queued
   }, [projectId, refreshDrafts])
   const markOpened = React.useCallback(async (conversationId: string, messages: readonly { readonly id: string; readonly editedAt: string | null }[]): Promise<void> => {
-    if (conversationId !== activeId || document.visibilityState !== "visible" || !document.hasFocus()) return
+    if (previewReadOnly || conversationId !== activeId || document.visibilityState !== "visible" || !document.hasFocus()) return
     const unopened = messages.filter((message) => !openedMessageIds.current.has(`${message.id}:${message.editedAt ?? ""}`))
     for (let index = 0; index < unopened.length; index += 50) {
       const batch = unopened.slice(index, index + 50)
@@ -228,7 +223,7 @@ export function ProjectCorrespondenceWorkspace({ projectId, initialInbox, initia
       void refreshInbox()
       announceNotificationsChanged()
     }
-  }, [activeId, projectId, refreshInbox])
+  }, [activeId, previewReadOnly, projectId, refreshInbox])
   const loadDetail = React.useCallback(
     async (
       conversationId: string,
@@ -893,9 +888,9 @@ export function ProjectCorrespondenceWorkspace({ projectId, initialInbox, initia
       <InboxSplitDivider />
       <main ref={detailPaneRef} className={cn("min-w-0 shrink-0 scroll-mt-2 border-t xl:min-h-0 xl:flex-1 xl:shrink xl:border-t-0", !composingEmail && !composingNew && activeSummary !== null ? "h-[85svh] min-h-[28rem] overflow-hidden xl:h-auto xl:min-h-0" : "xl:overflow-y-auto", !mobileDetail && "hidden xl:block")}>
         {composingEmail ? (
-          <ProjectEmailComposer key={emailKey} ref={emailHandle} initialDraft={emailDraft} prefill={emailDraft ? null : emailPrefill} onDraftSaved={() => { void refreshDrafts() }} projectId={projectId} onBack={() => { void backFromEmailCompose() }} onBusyChange={(busy) => { sendInProgress.current = busy; setIsSending(busy) }} onSent={projectEmailSent} />
+          <PreviewReadOnlyArea note="Preview: this is the new email form this person sees. You can't send for them." onClose={() => { void backFromEmailCompose() }}><ProjectEmailComposer key={emailKey} ref={emailHandle} initialDraft={emailDraft} prefill={emailDraft ? null : emailPrefill} onDraftSaved={() => { void refreshDrafts() }} projectId={projectId} onBack={() => { void backFromEmailCompose() }} onBusyChange={(busy) => { sendInProgress.current = busy; setIsSending(busy) }} onSent={projectEmailSent} /></PreviewReadOnlyArea>
         ) : composingNew ? (
-          <NewMessagePanel
+          <PreviewReadOnlyArea note="Preview: this is the new message form this person sees. You can't send for them." onClose={() => { void backFromNewCompose() }}><NewMessagePanel
             projectId={projectId}
             onProjectAttachment={projectAttachment}
             onAttachmentBusy={attachmentBusy}
@@ -915,7 +910,7 @@ export function ProjectCorrespondenceWorkspace({ projectId, initialInbox, initia
             onSend={send}
             onSaveDraft={saveNewDraft}
             onDiscard={discardNewDraft}
-          />
+          /></PreviewReadOnlyArea>
         ) : activeSummary === null ? (
           <EmptyDetail />
         ) : (
@@ -1115,17 +1110,13 @@ function ConversationDetail(props: {
         {props.compose !== null && <>
           {props.editingMessage === null && detail.replyAudience && <p className="mx-4 border-x border-t px-3 py-2 text-sm text-muted-foreground md:mx-6">{detail.replyAudience === "private_staff" ? "Your reply is private to you and project staff." : "Replies here are shared with all active Compass recipients of this email. Use New email to send a private reply."}</p>}
           {props.editingMessage !== null && <p className="mx-4 border-x border-t px-3 py-2 text-sm text-muted-foreground md:mx-6">Editing your message from {formatDate(props.editingMessage.sentAt)}</p>}
-          <Composer projectId={activeSummary.projectId} onProjectAttachment={props.onProjectAttachment} onAttachmentBusy={props.onAttachmentBusy} body={props.body} stagedAttachments={props.stagedAttachments} isSending={props.isSending} locked={props.hasPendingSend} onBodyChange={props.onBodyChange} onFiles={props.onFiles} onRetryUpload={props.onRetryUpload} onRemoveAttachment={props.onRemoveAttachment} onSend={props.editingMessage === null ? props.onSend : props.onSaveRevision} onDiscard={props.editingMessage === null ? props.onDiscard : props.onCancelRevision} submitLabel={props.editingMessage === null ? props.hasPendingSend ? "Resolve saved send" : "Send" : "Save edit"} />
+          <PreviewReadOnlyArea note="Preview: this is the reply box this person sees. You can't send for them."><Composer projectId={activeSummary.projectId} onProjectAttachment={props.onProjectAttachment} onAttachmentBusy={props.onAttachmentBusy} body={props.body} stagedAttachments={props.stagedAttachments} isSending={props.isSending} locked={props.hasPendingSend} onBodyChange={props.onBodyChange} onFiles={props.onFiles} onRetryUpload={props.onRetryUpload} onRemoveAttachment={props.onRemoveAttachment} onSend={props.editingMessage === null ? props.onSend : props.onSaveRevision} onDiscard={props.editingMessage === null ? props.onDiscard : props.onCancelRevision} submitLabel={props.editingMessage === null ? props.hasPendingSend ? "Resolve saved send" : "Send" : "Save edit"} /></PreviewReadOnlyArea>
         </>}
         {props.compose === null && <div className="border-t p-4 md:p-6"><Button onClick={props.onCompose}>Reply</Button></div>}
       </>}
     </div>
   )
 }
-function roleName(role: CorrespondencePerson["role"]): string { return role === "sub_vendor" ? "Sub/Vendor" : role[0].toUpperCase() + role.slice(1) }
-function formatDate(value: string): string { const date = new Date(value); return Number.isNaN(date.valueOf()) ? value : date.toLocaleString([], { dateStyle: "medium", timeStyle: "short" }) }
 function compositionDraft(): NewDraft { return { id: crypto.randomUUID(), subject: "", body: "", recipientIds: [], attachmentIds: [], requestId: null, version: 0 } }
-function readyAttachmentIds(files: readonly StagedAttachment[]): readonly string[] { return files.flatMap((file) => file.state === "ready" && file.attachment ? [file.attachment.id] : []) }
-function restoredAttachments(files: readonly CorrespondenceAttachment[]): readonly StagedAttachment[] { return files.map((file) => ({ localId: file.id, file: null, state: file.available ? "ready" : "failed", attachment: file })) }
 
 function compositionKey(draft: NewDraft): string { return `${draft.subject}\u0000${draft.body}\u0000${draft.recipientIds.join("\u0001")}\u0000${draft.attachmentIds.join("\u0001")}\u0000${draft.requestId ?? ""}` }

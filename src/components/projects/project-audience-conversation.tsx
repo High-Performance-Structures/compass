@@ -73,9 +73,10 @@ async function loadConversation(
 type LoadedConversation = Awaited<ReturnType<typeof loadConversation>>
 
 /**
- * One conversation's messages and composer for an owner or vendor (a read-only
- * transcript when staff preview the workspace). The full conversation page and
- * the Messages > Conversations tab both render it after loadConversation.
+ * One conversation's messages and composer for an owner or vendor. Staff
+ * previewing the workspace see exactly this, with its controls disabled. The
+ * full conversation page and the Messages > Conversations tab both render it
+ * after loadConversation.
  */
 function ConversationBody({
   data,
@@ -96,17 +97,8 @@ function ConversationBody({
     projectNumber: preview.project.projectNumber,
     clientName: preview.project.clientName,
   }
-  if (preview.viewerIsInternal) {
-    return <section className="h-full overflow-y-auto p-5">
-      <h1 className="text-lg font-medium">{channel.name}</h1>
-      <p className="my-3 text-sm text-muted-foreground">Read-only conversation preview.</p>
-      {messages.map((message) => <article key={message.id} className="border-b py-4">
-        <p className="text-sm font-medium">{message.user?.displayName ?? message.user?.email ?? "Project participant"}</p>
-        <p className="mt-2 whitespace-pre-wrap break-words text-sm">{message.content}</p>
-        {message.attachments.map((attachment) => <a className="mt-2 block text-sm underline" key={attachment.id} href={attachment.storageUrl}>{attachment.fileName}</a>)}
-      </article>)}
-    </section>
-  }
+  // Staff previews render this same body: the preview scope disables posting,
+  // reactions and read receipts, so staff see exactly what the person sees.
   // Keyed by conversation so a half-typed reply or open thread never carries into the next one.
   return <ConversationsProvider key={channelId}>
     <div className="flex h-full w-full min-w-0 overflow-hidden">

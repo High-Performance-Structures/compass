@@ -125,7 +125,7 @@ Existing RFIs without a reviewed company/contact association are withheld from v
 ## Validation results
 
 - Focused permission, correspondence, schedule, notification, RFI, and file regressions: **315 tests in 41 files passed** using `node node_modules/vitest/vitest.mjs run` with the affected suites.
-- `node scripts/verify-audience-person-preview.mjs`: passed selection, stale-content clearing, scoped navigation/download, read-only messages, search, and desktop/mobile layout checks. Desktop and mobile screenshots were inspected.
+- `node scripts/verify-audience-person-preview.mjs`: passed selection, stale-content clearing, scoped navigation/download, read-only messages, search, and desktop/mobile layout checks. Desktop and mobile screenshots were inspected. (Retired 2026-11-13: staff previews now render the person's real Messages workspace with its controls disabled instead of a separate read-only reader; see the preview fidelity rule in docs/development/ui-standards.md.)
 - Changed-file ESLint, `bun run ui:check`, and `git diff --check HEAD`: passed.
 - `bun run build`: passed compilation, TypeScript, and production route generation.
 - `node scripts/verify-external-dashboard.mjs`: cannot bundle its existing isolated fixture because server dependencies reach its browser bundle. The same failure was reproduced from unchanged base `64f2edd337`; the dedicated person-preview browser proof above passes.

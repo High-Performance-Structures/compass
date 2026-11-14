@@ -13,6 +13,7 @@ import { Button } from "@/components/ui/button"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { getPinnedMessages, unpinMessage } from "@/app/actions/message-search"
+import { useAudiencePreviewReadOnly } from "@/components/projects/project-audience-preview-scope"
 import { normalizeConversationMentions } from "@/lib/conversations/message-content"
 
 type PinnedMessage = {
@@ -47,6 +48,8 @@ export function PinnedMessagesPanel({
   onClose,
   onJumpToMessage,
 }: PinnedMessagesPanelProps) {
+  // Staff previewing someone's workspace can't unpin for them.
+  const previewReadOnly = useAudiencePreviewReadOnly()
   const [messages, setMessages] = React.useState<PinnedMessage[]>([])
   const [isLoading, setIsLoading] = React.useState(false)
   const [error, setError] = React.useState<string | null>(null)
@@ -174,7 +177,8 @@ export function PinnedMessagesPanel({
                               size="icon"
                               className="h-6 w-6 opacity-0 transition-opacity group-hover:opacity-100"
                               onClick={() => handleUnpin(message.id)}
-                              disabled={unpinningId === message.id}
+                              disabled={previewReadOnly || unpinningId === message.id}
+                              title={previewReadOnly ? "Preview: you can't unpin for this person." : undefined}
                               aria-label="Unpin message"
                             >
                               {unpinningId === message.id ? (

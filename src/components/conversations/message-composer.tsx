@@ -45,6 +45,8 @@ import {
   type ProjectMessageRecipient,
 } from "@/app/actions/project-messages"
 import { setTyping } from "@/app/actions/conversations-realtime"
+import { PreviewReadOnlyArea } from "@/components/projects/project-audience-preview-scope"
+import { extractMentions } from "@/lib/conversations/composer-mentions"
 import { useRouter } from "next/navigation"
 import { useTheme } from "@/components/theme-provider"
 import { cn } from "@/lib/utils"
@@ -126,11 +128,6 @@ export type ProjectRecipientContact = {
   readonly email: string | null
 }
 
-type MentionInput = {
-  mentionType: "user" | "channel" | "here" | "agent"
-  targetId: string | null
-}
-
 type RecipientOption = {
   readonly value: string
   readonly label: string
@@ -138,41 +135,6 @@ type RecipientOption = {
   readonly search: string
   readonly group: string
   readonly disabled?: boolean
-}
-
-function extractMentions(
-  json: Record<string, unknown>,
-): Array<MentionInput> {
-  const mentions: Array<MentionInput> = []
-
-  function walk(node: Record<string, unknown>) {
-    if (node.type === "mention" && node.attrs) {
-      const attrs = node.attrs as Record<string, string>
-      const id = attrs.id
-
-      if (id === "channel") {
-        mentions.push({ mentionType: "channel", targetId: null })
-      } else if (id === "here") {
-        mentions.push({ mentionType: "here", targetId: null })
-      } else if (id === "compass-agent") {
-        mentions.push({
-          mentionType: "agent",
-          targetId: "compass-agent",
-        })
-      } else {
-        mentions.push({ mentionType: "user", targetId: id })
-      }
-    }
-
-    if (Array.isArray(node.content)) {
-      for (const child of node.content) {
-        walk(child as Record<string, unknown>)
-      }
-    }
-  }
-
-  walk(json)
-  return mentions
 }
 
 function contactLabel(contact: ProjectRecipientContact): string {
@@ -666,342 +628,344 @@ export function MessageComposer({
 
   return (
     <div className={cn("min-h-[68px] px-2 pb-4 pt-2 sm:px-4", className)}>
-      {hasProjectDelivery && (
-        <div className="mb-2 flex flex-col gap-2 border-y bg-background/80 px-1 py-2 sm:flex-row sm:items-center sm:justify-between sm:border sm:px-3">
-          <div className="flex min-w-0 flex-1 items-center gap-2">
-            <SendToBack className="h-4 w-4 shrink-0 text-muted-foreground" />
-            <div className="min-w-0">
-              <div className="flex flex-wrap items-center gap-2">
-                <span className="text-xs font-medium text-muted-foreground">
-                  Delivery
-                </span>
-                <Popover open={recipientOpen} onOpenChange={setRecipientOpen}>
-                  <PopoverTrigger asChild>
+      <PreviewReadOnlyArea note="Preview: this is the reply box this person sees. You can't post for them.">
+        {hasProjectDelivery && (
+          <div className="mb-2 flex flex-col gap-2 border-y bg-background/80 px-1 py-2 sm:flex-row sm:items-center sm:justify-between sm:border sm:px-3">
+            <div className="flex min-w-0 flex-1 items-center gap-2">
+              <SendToBack className="h-4 w-4 shrink-0 text-muted-foreground" />
+              <div className="min-w-0">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="text-xs font-medium text-muted-foreground">
+                    Delivery
+                  </span>
+                  <Popover open={recipientOpen} onOpenChange={setRecipientOpen}>
+                    <PopoverTrigger asChild>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        role="combobox"
+                        aria-expanded={recipientOpen}
+                        aria-label="Message delivery"
+                        className="h-8 w-[260px] justify-between bg-background px-2 text-xs font-normal"
+                      >
+                        <span className="truncate">
+                          {selectedRecipient?.label ?? "Post to channel only"}
+                        </span>
+                        <ChevronsUpDown className="ml-2 size-3.5 shrink-0 opacity-50" />
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent
+                      align="start"
+                      className="w-[min(420px,calc(100vw-2rem))] p-0"
+                    >
+                      <Command>
+                        <CommandInput placeholder="Search delivery, contact, trade, or email..." />
+                        <CommandList>
+                          <CommandEmpty>No matching recipients.</CommandEmpty>
+                          {groupedRecipientOptions.map(([group, options], index) => (
+                            <React.Fragment key={group}>
+                              {index > 0 && <CommandSeparator />}
+                              <CommandGroup heading={group}>
+                                {options.map((option) => (
+                                  <CommandItem
+                                    key={option.value}
+                                    value={`${option.label} ${option.search}`}
+                                    disabled={option.disabled}
+                                    onSelect={() => {
+                                      setRecipientValue(option.value)
+                                      setRecipientOpen(false)
+                                    }}
+                                    className="items-start gap-2 py-2"
+                                  >
+                                    <Check
+                                      className={cn(
+                                        "mt-0.5 size-4",
+                                        recipientValue === option.value
+                                          ? "opacity-100"
+                                          : "opacity-0"
+                                      )}
+                                    />
+                                    <span className="min-w-0 flex-1">
+                                      <span className="block truncate font-medium">
+                                        {option.label}
+                                      </span>
+                                      <span className="block truncate text-xs text-muted-foreground">
+                                        {option.detail}
+                                      </span>
+                                    </span>
+                                  </CommandItem>
+                                ))}
+                              </CommandGroup>
+                            </React.Fragment>
+                          ))}
+                        </CommandList>
+                      </Command>
+                    </PopoverContent>
+                  </Popover>
+                  <Badge variant="outline" className="rounded-md">
+                    {channelName}
+                  </Badge>
+                  {recipientValue !== "channel" && (
                     <Button
                       type="button"
-                      variant="outline"
-                      role="combobox"
-                      aria-expanded={recipientOpen}
-                      aria-label="Message delivery"
-                      className="h-8 w-[260px] justify-between bg-background px-2 text-xs font-normal"
+                      variant={importantDelivery ? "default" : "outline"}
+                      size="sm"
+                      className="h-8 rounded-md px-2 text-xs"
+                      onClick={() => setImportantDelivery((current) => !current)}
                     >
-                      <span className="truncate">
-                        {selectedRecipient?.label ?? "Post to channel only"}
-                      </span>
-                      <ChevronsUpDown className="ml-2 size-3.5 shrink-0 opacity-50" />
+                      <Bell className="size-3.5" />
+                      Important
                     </Button>
-                  </PopoverTrigger>
-                  <PopoverContent
-                    align="start"
-                    className="w-[min(420px,calc(100vw-2rem))] p-0"
-                  >
-                    <Command>
-                      <CommandInput placeholder="Search delivery, contact, trade, or email..." />
-                      <CommandList>
-                        <CommandEmpty>No matching recipients.</CommandEmpty>
-                        {groupedRecipientOptions.map(([group, options], index) => (
-                          <React.Fragment key={group}>
-                            {index > 0 && <CommandSeparator />}
-                            <CommandGroup heading={group}>
-                              {options.map((option) => (
-                                <CommandItem
-                                  key={option.value}
-                                  value={`${option.label} ${option.search}`}
-                                  disabled={option.disabled}
-                                  onSelect={() => {
-                                    setRecipientValue(option.value)
-                                    setRecipientOpen(false)
-                                  }}
-                                  className="items-start gap-2 py-2"
-                                >
-                                  <Check
-                                    className={cn(
-                                      "mt-0.5 size-4",
-                                      recipientValue === option.value
-                                        ? "opacity-100"
-                                        : "opacity-0"
-                                    )}
-                                  />
-                                  <span className="min-w-0 flex-1">
-                                    <span className="block truncate font-medium">
-                                      {option.label}
-                                    </span>
-                                    <span className="block truncate text-xs text-muted-foreground">
-                                      {option.detail}
-                                    </span>
-                                  </span>
-                                </CommandItem>
-                              ))}
-                            </CommandGroup>
-                          </React.Fragment>
-                        ))}
-                      </CommandList>
-                    </Command>
-                  </PopoverContent>
-                </Popover>
-                <Badge variant="outline" className="rounded-md">
-                  {channelName}
-                </Badge>
-                {recipientValue !== "channel" && (
-                  <Button
-                    type="button"
-                    variant={importantDelivery ? "default" : "outline"}
-                    size="sm"
-                    className="h-8 rounded-md px-2 text-xs"
-                    onClick={() => setImportantDelivery((current) => !current)}
-                  >
-                    <Bell className="size-3.5" />
-                    Important
-                  </Button>
-                )}
+                  )}
+                </div>
+                <p className="mt-1 truncate text-xs text-muted-foreground">
+                  {importantDelivery
+                    ? `${recipientDetail(recipientValue, projectRecipients)} Marked important.`
+                    : recipientDetail(recipientValue, projectRecipients)}
+                </p>
               </div>
-              <p className="mt-1 truncate text-xs text-muted-foreground">
-                {importantDelivery
-                  ? `${recipientDetail(recipientValue, projectRecipients)} Marked important.`
-                  : recipientDetail(recipientValue, projectRecipients)}
-              </p>
             </div>
           </div>
-        </div>
-      )}
-
-      {/* formatting toolbar */}
-      {editor && showToolbar && (
-        <div className="mb-1.5 flex items-center gap-0.5 pl-10 sm:pl-12">
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-7 w-7 rounded-md text-muted-foreground hover:text-foreground"
-            onClick={() =>
-              editor.chain().focus().toggleBold().run()
-            }
-            disabled={
-              !editor.can().chain().focus().toggleBold().run()
-            }
-          >
-            <Bold
-              className={cn(
-                "h-3.5 w-3.5",
-                editor.isActive("bold") && "text-primary",
-              )}
-            />
-          </Button>
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-7 w-7 rounded-md text-muted-foreground hover:text-foreground"
-            onClick={() =>
-              editor.chain().focus().toggleItalic().run()
-            }
-            disabled={
-              !editor.can().chain().focus().toggleItalic().run()
-            }
-          >
-            <Italic
-              className={cn(
-                "h-3.5 w-3.5",
-                editor.isActive("italic") && "text-primary",
-              )}
-            />
-          </Button>
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-7 w-7 rounded-md text-muted-foreground hover:text-foreground"
-            onClick={() =>
-              editor.chain().focus().toggleCode().run()
-            }
-            disabled={
-              !editor.can().chain().focus().toggleCode().run()
-            }
-          >
-            <Code
-              className={cn(
-                "h-3.5 w-3.5",
-                editor.isActive("code") && "text-primary",
-              )}
-            />
-          </Button>
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-7 w-7 rounded-md text-muted-foreground hover:text-foreground"
-            onClick={() =>
-              editor.chain().focus().toggleBulletList().run()
-            }
-          >
-            <List
-              className={cn(
-                "h-3.5 w-3.5",
-                editor.isActive("bulletList") && "text-primary",
-              )}
-            />
-          </Button>
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-7 w-7 rounded-md text-muted-foreground hover:text-foreground"
-            onClick={() =>
-              editor.chain().focus().toggleOrderedList().run()
-            }
-          >
-            <ListOrdered
-              className={cn(
-                "h-3.5 w-3.5",
-                editor.isActive("orderedList") && "text-primary",
-              )}
-            />
-          </Button>
-        </div>
-      )}
-
-      {/* main composer bar */}
-      {selectedFiles.length > 0 && (
-        <div className="mb-2 flex flex-wrap gap-2 border-y py-2">
-          {selectedFiles.map((file, index) => (
-            <div
-              key={`${file.name}-${file.size}-${index}`}
-              className="flex min-w-0 max-w-full items-center gap-2 border-l-2 border-primary/40 px-2 py-1 text-xs"
-            >
-              <Paperclip className="size-3.5 shrink-0 text-muted-foreground" />
-              <span className="max-w-56 truncate">{file.name}</span>
-              <button
-                type="button"
-                onClick={() =>
-                  setSelectedFiles((current) =>
-                    current.filter((_, fileIndex) => fileIndex !== index)
-                  )
-                }
-                aria-label={`Remove ${file.name}`}
-                className="text-muted-foreground hover:text-foreground"
-              >
-                <X className="size-3.5" />
-              </button>
-            </div>
-          ))}
-          <span className="self-center text-xs text-muted-foreground">
-            25 MB per file · 50 MB total
-          </span>
-        </div>
-      )}
-      <div
-        className={cn(
-          "relative flex items-end rounded-lg",
-          "bg-muted/50 ring-1 ring-border",
-          "focus-within:ring-2 focus-within:ring-ring",
-          "transition-shadow",
         )}
-      >
-        {/* + button */}
-        <button
-          type="button"
-          className={cn(
-            "flex h-[44px] w-[44px] shrink-0 items-center justify-center",
-            "text-muted-foreground",
-            "hover:text-foreground transition-colors",
-          )}
-          onClick={() => setShowToolbar((prev) => !prev)}
-          aria-label="Toggle formatting"
-        >
-          <Plus
-            className={cn(
-              "h-5 w-5 transition-transform duration-200",
-              showToolbar && "rotate-45",
-            )}
-          />
-        </button>
 
-        {/* editor area */}
-        <EditorContent
-          editor={editor}
-          className="composer-editor min-w-0 flex-1"
-        />
-
-        {/* right-side action icons */}
-        <div className="flex h-[44px] shrink-0 items-center gap-0 pr-1 sm:pr-1.5">
-          <input
-            ref={fileInputRef}
-            type="file"
-            multiple
-            className="sr-only"
-            onChange={handleFileSelection}
-          />
-          <button
-            type="button"
-            className={cn(
-              "flex h-8 w-8 items-center justify-center rounded-md",
-              "text-muted-foreground hover:text-foreground transition-colors",
-            )}
-            onClick={() => fileInputRef.current?.click()}
-            aria-label="Attach files"
-            title="Attach files"
-          >
-            <Paperclip className="h-[18px] w-[18px]" />
-          </button>
-
-          {/* emoji picker */}
-          <Popover open={emojiOpen} onOpenChange={setEmojiOpen}>
-            <PopoverTrigger asChild>
-              <button
-                type="button"
-                className={cn(
-                  "flex h-8 w-8 items-center justify-center rounded-md",
-                  "text-muted-foreground hover:text-foreground transition-colors",
-                  emojiOpen && "text-foreground",
-                )}
-                aria-label="Emoji"
-              >
-                <Smile className="h-[18px] w-[18px]" />
-              </button>
-            </PopoverTrigger>
-            <PopoverContent
-              side="top"
-              align="end"
-              sideOffset={8}
-              className="w-auto border-none bg-transparent p-0 shadow-none"
+        {/* formatting toolbar */}
+        {editor && showToolbar && (
+          <div className="mb-1.5 flex items-center gap-0.5 pl-10 sm:pl-12">
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-7 w-7 rounded-md text-muted-foreground hover:text-foreground"
+              onClick={() =>
+                editor.chain().focus().toggleBold().run()
+              }
+              disabled={
+                !editor.can().chain().focus().toggleBold().run()
+              }
             >
-              <React.Suspense
-                fallback={
-                  <div className="flex h-[350px] w-[352px] items-center justify-center rounded-lg border bg-popover">
-                    <p className="text-sm text-muted-foreground">
-                      Loading...
-                    </p>
-                  </div>
-                }
+              <Bold
+                className={cn(
+                  "h-3.5 w-3.5",
+                  editor.isActive("bold") && "text-primary",
+                )}
+              />
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-7 w-7 rounded-md text-muted-foreground hover:text-foreground"
+              onClick={() =>
+                editor.chain().focus().toggleItalic().run()
+              }
+              disabled={
+                !editor.can().chain().focus().toggleItalic().run()
+              }
+            >
+              <Italic
+                className={cn(
+                  "h-3.5 w-3.5",
+                  editor.isActive("italic") && "text-primary",
+                )}
+              />
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-7 w-7 rounded-md text-muted-foreground hover:text-foreground"
+              onClick={() =>
+                editor.chain().focus().toggleCode().run()
+              }
+              disabled={
+                !editor.can().chain().focus().toggleCode().run()
+              }
+            >
+              <Code
+                className={cn(
+                  "h-3.5 w-3.5",
+                  editor.isActive("code") && "text-primary",
+                )}
+              />
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-7 w-7 rounded-md text-muted-foreground hover:text-foreground"
+              onClick={() =>
+                editor.chain().focus().toggleBulletList().run()
+              }
+            >
+              <List
+                className={cn(
+                  "h-3.5 w-3.5",
+                  editor.isActive("bulletList") && "text-primary",
+                )}
+              />
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-7 w-7 rounded-md text-muted-foreground hover:text-foreground"
+              onClick={() =>
+                editor.chain().focus().toggleOrderedList().run()
+              }
+            >
+              <ListOrdered
+                className={cn(
+                  "h-3.5 w-3.5",
+                  editor.isActive("orderedList") && "text-primary",
+                )}
+              />
+            </Button>
+          </div>
+        )}
+
+        {/* main composer bar */}
+        {selectedFiles.length > 0 && (
+          <div className="mb-2 flex flex-wrap gap-2 border-y py-2">
+            {selectedFiles.map((file, index) => (
+              <div
+                key={`${file.name}-${file.size}-${index}`}
+                className="flex min-w-0 max-w-full items-center gap-2 border-l-2 border-primary/40 px-2 py-1 text-xs"
               >
-                <div style={emojiThemeVars as React.CSSProperties}>
-                  <EmojiPicker
-                    onEmojiSelect={handleEmojiSelect}
-                    theme={resolvedTheme === "dark" ? "dark" : "light"}
-                    set="native"
-                    skinTonePosition="search"
-                    previewPosition="none"
-                    maxFrequentRows={2}
-                  />
-                </div>
-              </React.Suspense>
-            </PopoverContent>
-          </Popover>
+                <Paperclip className="size-3.5 shrink-0 text-muted-foreground" />
+                <span className="max-w-56 truncate">{file.name}</span>
+                <button
+                  type="button"
+                  onClick={() =>
+                    setSelectedFiles((current) =>
+                      current.filter((_, fileIndex) => fileIndex !== index)
+                    )
+                  }
+                  aria-label={`Remove ${file.name}`}
+                  className="text-muted-foreground hover:text-foreground"
+                >
+                  <X className="size-3.5" />
+                </button>
+              </div>
+            ))}
+            <span className="self-center text-xs text-muted-foreground">
+              25 MB per file · 50 MB total
+            </span>
+          </div>
+        )}
+        <div
+          className={cn(
+            "relative flex items-end rounded-lg",
+            "bg-muted/50 ring-1 ring-border",
+            "focus-within:ring-2 focus-within:ring-ring",
+            "transition-shadow",
+          )}
+        >
+          {/* + button */}
           <button
             type="button"
             className={cn(
-              "flex h-8 w-8 items-center justify-center rounded-md",
-              "text-muted-foreground hover:text-foreground transition-colors",
-              "disabled:cursor-not-allowed disabled:opacity-40",
+              "flex h-[44px] w-[44px] shrink-0 items-center justify-center",
+              "text-muted-foreground",
+              "hover:text-foreground transition-colors",
             )}
-            onClick={handleSend}
-            disabled={
-              isSending ||
-              (!hasMessageContent && selectedFiles.length === 0)
-            }
-            aria-label="Send message"
-            title="Send message"
+            onClick={() => setShowToolbar((prev) => !prev)}
+            aria-label="Toggle formatting"
           >
-            <SendHorizontal className="h-[18px] w-[18px]" />
+            <Plus
+              className={cn(
+                "h-5 w-5 transition-transform duration-200",
+                showToolbar && "rotate-45",
+              )}
+            />
           </button>
-        </div>
-      </div>
 
+          {/* editor area */}
+          <EditorContent
+            editor={editor}
+            className="composer-editor min-w-0 flex-1"
+          />
+
+          {/* right-side action icons */}
+          <div className="flex h-[44px] shrink-0 items-center gap-0 pr-1 sm:pr-1.5">
+            <input
+              ref={fileInputRef}
+              type="file"
+              multiple
+              className="sr-only"
+              onChange={handleFileSelection}
+            />
+            <button
+              type="button"
+              className={cn(
+                "flex h-8 w-8 items-center justify-center rounded-md",
+                "text-muted-foreground hover:text-foreground transition-colors",
+              )}
+              onClick={() => fileInputRef.current?.click()}
+              aria-label="Attach files"
+              title="Attach files"
+            >
+              <Paperclip className="h-[18px] w-[18px]" />
+            </button>
+
+            {/* emoji picker */}
+            <Popover open={emojiOpen} onOpenChange={setEmojiOpen}>
+              <PopoverTrigger asChild>
+                <button
+                  type="button"
+                  className={cn(
+                    "flex h-8 w-8 items-center justify-center rounded-md",
+                    "text-muted-foreground hover:text-foreground transition-colors",
+                    emojiOpen && "text-foreground",
+                  )}
+                  aria-label="Emoji"
+                >
+                  <Smile className="h-[18px] w-[18px]" />
+                </button>
+              </PopoverTrigger>
+              <PopoverContent
+                side="top"
+                align="end"
+                sideOffset={8}
+                className="w-auto border-none bg-transparent p-0 shadow-none"
+              >
+                <React.Suspense
+                  fallback={
+                    <div className="flex h-[350px] w-[352px] items-center justify-center rounded-lg border bg-popover">
+                      <p className="text-sm text-muted-foreground">
+                        Loading...
+                      </p>
+                    </div>
+                  }
+                >
+                  <div style={emojiThemeVars as React.CSSProperties}>
+                    <EmojiPicker
+                      onEmojiSelect={handleEmojiSelect}
+                      theme={resolvedTheme === "dark" ? "dark" : "light"}
+                      set="native"
+                      skinTonePosition="search"
+                      previewPosition="none"
+                      maxFrequentRows={2}
+                    />
+                  </div>
+                </React.Suspense>
+              </PopoverContent>
+            </Popover>
+            <button
+              type="button"
+              className={cn(
+                "flex h-8 w-8 items-center justify-center rounded-md",
+                "text-muted-foreground hover:text-foreground transition-colors",
+                "disabled:cursor-not-allowed disabled:opacity-40",
+              )}
+              onClick={handleSend}
+              disabled={
+                isSending ||
+                (!hasMessageContent && selectedFiles.length === 0)
+              }
+              aria-label="Send message"
+              title="Send message"
+            >
+              <SendHorizontal className="h-[18px] w-[18px]" />
+            </button>
+          </div>
+        </div>
+
+      </PreviewReadOnlyArea>
       {error && (
         <p className="mt-1.5 text-xs text-destructive">{error}</p>
       )}

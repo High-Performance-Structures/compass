@@ -10,6 +10,7 @@ import { MessageItem } from "./message-item"
 import { TypingIndicator } from "./typing-indicator"
 import { Button } from "@/components/ui/button"
 import { getMessages, markChannelRead } from "@/app/actions/chat-messages"
+import { useAudiencePreviewReadOnly } from "@/components/projects/project-audience-preview-scope"
 import { announceNotificationsChanged } from "@/lib/notifications/client-events"
 import { useRealtimeChannel } from "@/hooks/use-realtime-channel"
 import {
@@ -22,7 +23,6 @@ import {
   isAtNewestEdge,
   mergeOlderMessagePage,
 } from "./message-list-behavior"
-import { useViewAsActive } from "@/components/view-as/view-as-context"
 
 type MessageData = {
   readonly id: string
@@ -77,6 +77,7 @@ export function MessageList({
   showThreadActions = true,
   currentUserId,
 }: MessageListProps) {
+  const previewReadOnly = useAudiencePreviewReadOnly()
   // server returns DESC order; reverse for chronological display
   const [messageWindow, setMessageWindow] = React.useState<MessageWindowState>({
     messages: [...initialMessages].reverse(),
@@ -118,10 +119,9 @@ export function MessageList({
   // Only while the tab is visible, and settled briefly so a burst of arriving
   // messages sends one request.
   const lastReportedReadRef = React.useRef<string | null>(null)
-  const viewAs = useViewAsActive()
   React.useEffect(() => {
-    // View as leaves the viewed person's unread state alone.
-    if (viewAs || !lastMessageId || !atNewestEdge) return
+    // Staff previewing someone's workspace never mark their messages read.
+    if (previewReadOnly || !lastMessageId || !atNewestEdge) return
     let timer: number | null = null
     const report = (): void => {
       if (document.visibilityState !== "visible") return
@@ -143,7 +143,7 @@ export function MessageList({
       document.removeEventListener("visibilitychange", report)
       if (timer !== null) window.clearTimeout(timer)
     }
-  }, [atNewestEdge, channelId, lastMessageId, viewAs])
+  }, [atNewestEdge, channelId, lastMessageId, previewReadOnly])
 
   // consume new messages from real-time polling
   const consumedNewMessagesRef = React.useRef<Set<string>>(new Set())
