@@ -18,16 +18,15 @@ import { recordActivityEvent } from "@/lib/activity-log"
 import type { AuthUser } from "@/lib/auth"
 import { chunkD1Values } from "@/lib/d1-query"
 import { claimInboundEmailForReview, markInboundEmailPosted, releaseInboundEmailClaim } from "@/lib/domain/correspondence/email-store"
-import { COMPASS_GMAIL_READONLY_SCOPE, getCompassGmailAccessToken } from "@/lib/email/compass-email"
-import { fetchGmailJson, hydrateCandidateAttachments } from "@/lib/email/gmail-fetch"
-import { candidateFromMessage, isGmailMessage, stripHtml, type InboundCandidate } from "@/lib/email/gmail-message-parser"
+import { hydrateCandidateAttachments } from "@/lib/email/gmail-fetch"
+import { candidateFromMessage, stripHtml, type InboundCandidate } from "@/lib/email/gmail-message-parser"
+import { fetchHeldGmailMessage, type HeldGmailMessage } from "@/lib/email/held-email-reread"
 import { isSenderAuthentication } from "@/lib/email/sender-authentication"
 import { heldEmailReason, heldMessageReasonLabel, type HeldEmailReasonView } from "@/lib/email/held-email-reasons"
 import { inboundRecordKind, matchInboundProject } from "@/lib/email/inbound-routing"
 import { projectEmailTitle } from "@/lib/email/project-address"
 import { candidateBody } from "@/lib/email/project-inbound-routing"
 import { routeInboundProjectMessage } from "@/lib/email/project-message-routing"
-import { replyMailboxEmail } from "@/lib/email/reply-tracking"
 import type { Db } from "@/lib/server/action-context"
 
 const NEEDS_REVIEW = "needs_review"
@@ -179,38 +178,37 @@ function storedCandidate(email: StoredEmail): InboundCandidate {
  * The held email as it was received. Compass keeps the text but not the
  * files, so the files are fetched from Gmail again. `filesFetched` is false
  * when Gmail could not be reached; the email is then posted without them.
+ * `fetched` passes a message already read (fetchHeldGmailMessage, null when
+ * that read failed) so Gmail isn't asked twice.
  */
 export async function heldEmailCandidate(input: {
   readonly db: Db
   readonly env: unknown
   readonly organizationId: string
   readonly email: StoredEmail
+  readonly fetched?: HeldGmailMessage | null
 }): Promise<{ readonly candidate: InboundCandidate; readonly filesFetched: boolean }> {
   const stored = storedCandidate(input.email)
+  let fetched: HeldGmailMessage | null
   try {
-    const access = await getCompassGmailAccessToken({
-      env: input.env,
-      db: input.db,
-      organizationId: input.organizationId,
-      scopes: [COMPASS_GMAIL_READONLY_SCOPE],
-      sender: replyMailboxEmail(input.env),
-    })
-    if (!access.success) return { candidate: stored, filesFetched: false }
-    const url = new URL(`https://gmail.googleapis.com/gmail/v1/users/me/messages/${encodeURIComponent(input.email.gmailMessageId)}`)
-    url.searchParams.set("format", "full")
-    const message = await fetchGmailJson({ url: url.toString(), accessToken: access.accessToken })
-    if (!isGmailMessage(message)) return { candidate: stored, filesFetched: false }
-    // Gmail's verdict on the sender is read again, as it is for a newly received email.
-    const { attachments, senderAuthentication } = candidateFromMessage(message)
-    const fetched = { ...stored, senderAuthentication }
-    if (attachments.length === 0) return { candidate: fetched, filesFetched: true }
+    fetched = input.fetched === undefined ? await fetchHeldGmailMessage({ db: input.db, env: input.env, email: input.email }) : input.fetched
+  } catch (error) {
+    console.error("[held-job-emails] could not fetch the email's files from Gmail", error)
+    return { candidate: stored, filesFetched: false }
+  }
+  if (!fetched) return { candidate: stored, filesFetched: false }
+  // Gmail's verdict on the sender is read again, as it is for a newly received email.
+  const { attachments, senderAuthentication } = candidateFromMessage(fetched.message)
+  const withVerdict = { ...stored, senderAuthentication }
+  if (attachments.length === 0) return { candidate: withVerdict, filesFetched: true }
+  try {
     return {
-      candidate: await hydrateCandidateAttachments({ candidate: { ...fetched, attachments }, accessToken: access.accessToken }),
+      candidate: await hydrateCandidateAttachments({ candidate: { ...withVerdict, attachments }, accessToken: fetched.accessToken }),
       filesFetched: true,
     }
   } catch (error) {
     console.error("[held-job-emails] could not fetch the email's files from Gmail", error)
-    return { candidate: stored, filesFetched: false }
+    return { candidate: withVerdict, filesFetched: false }
   }
 }
 

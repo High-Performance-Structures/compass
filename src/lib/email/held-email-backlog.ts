@@ -7,6 +7,12 @@ import "server-only"
  * Messages quietly (no notifications, already read) and marked posted.
  * Emails whose job is still unknown stay held.
  *
+ * Each email is first read again from Gmail (held-email-reread): emails
+ * imported before Compass read the Cc and Delivered-To lines were stored
+ * without the job's Compass address and without Gmail's sender verdict. The
+ * recovered address decides the job, the verdict feeds sender verification,
+ * and both are saved on the row. The one read is reused for the files.
+ *
  * Idempotent: a posted email leaves `needs_review`, the message id comes from
  * the Gmail id, and each email is claimed before it is posted. Runs a page at
  * a time (`limit`, then `after` = the returned `nextAfter`) to stay well
@@ -17,6 +23,8 @@ import { and, asc, eq, gt, or, type SQL } from "drizzle-orm"
 import { inboundEmails, projects } from "@/db/schema"
 import { recordActivityEvents } from "@/lib/activity-log"
 import { claimInboundEmailForReview, markInboundEmailPosted, releaseInboundEmailClaim } from "@/lib/domain/correspondence/email-store"
+import { GmailRateLimitError } from "@/lib/email/gmail-fetch"
+import { applyRecoveredHeldEmailFields, fetchHeldGmailMessage, recoveredHeldEmailFields, type HeldGmailMessage } from "@/lib/email/held-email-reread"
 import { heldEmailCandidate } from "@/lib/email/held-job-emails"
 import { exactJobNumberMatches } from "@/lib/email/inbound-routing"
 import { projectEmailTitle, projectIdFromInboundAddress } from "@/lib/email/project-address"
@@ -36,10 +44,17 @@ export type HeldEmailBacklogSummary = {
   readonly posted: number
   /** The job is still unknown (no address, no job number or several), or posting was held. */
   readonly stillHeld: number
+  /** Emails whose job address was missing and was read again from Gmail. */
+  readonly addressesRecovered: number
   /** Tracked replies, emails someone else is handling, and failures. */
   readonly skipped: number
   readonly errors: readonly string[]
-  /** Pass as `after` for the next page; null when this was the last page. */
+  /**
+   * Gmail rate limited the page, which stopped at the email it refused: wait,
+   * then repeat with `after` = `nextAfter` (null here means from the start).
+   */
+  readonly rateLimited: boolean
+  /** Pass as `after` for the next page; null when this was the last page (unless rateLimited). */
   readonly nextAfter: string | null
 }
 
@@ -100,16 +115,35 @@ export async function postHeldEmailBacklog(input: {
   let posted = 0
   let stillHeld = 0
   let skipped = 0
+  let addressesRecovered = 0
   const errors: string[] = []
+  const tokens = new Map<string, Promise<string | null>>()
+  // The last email this page finished with; a Gmail rate limit stops the page there.
+  let resumeAfter: string | null = input.after ?? null
+  let rateLimited = false
   const activity: Parameters<typeof recordActivityEvents>[1][number][] = []
   const now = new Date().toISOString()
   // One email at a time: each posts files to Drive and fetches from Gmail, which are rate limited.
-  for (const email of rows) {
+  for (const storedEmail of rows) {
     // A tracked reply belongs to its record's thread, not this pass.
-    if (email.replyThreadId) {
+    if (storedEmail.replyThreadId) {
       skipped += 1
+      resumeAfter = `${storedEmail.receivedAt}|${storedEmail.id}`
       continue
     }
+    let fetched: HeldGmailMessage | null
+    try {
+      fetched = await fetchHeldGmailMessage({ db, env: input.env, email: storedEmail, tokens })
+    } catch (error) {
+      if (!(error instanceof GmailRateLimitError)) throw error
+      errors.push(error.message)
+      rateLimited = true
+      break
+    }
+    resumeAfter = `${storedEmail.receivedAt}|${storedEmail.id}`
+    const recovered = fetched ? recoveredHeldEmailFields(storedEmail, fetched.message) : null
+    const email = recovered ? await applyRecoveredHeldEmailFields(db, storedEmail, recovered) : storedEmail
+    if (recovered?.projectAddressRecovered) addressesRecovered += 1
     const projectId = knownJob(email, jobsByOrganization.get(email.organizationId) ?? [], input.env)
     if (!projectId) {
       stillHeld += 1
@@ -120,7 +154,7 @@ export async function postHeldEmailBacklog(input: {
       continue
     }
     try {
-      const held = await heldEmailCandidate({ db, env: input.env, organizationId: email.organizationId, email })
+      const held = await heldEmailCandidate({ db, env: input.env, organizationId: email.organizationId, email, fetched })
       const filesFetched = held.filesFetched
       // As in live intake, an unrecognized or unverified sender's @names pick no one.
       const recognized = await senderCanEmailProject({ env: input.env, db, organizationId: email.organizationId, projectId, senderEmail: email.fromAddress })
@@ -172,8 +206,10 @@ export async function postHeldEmailBacklog(input: {
     scanned: rows.length,
     posted,
     stillHeld,
+    addressesRecovered,
     skipped,
     errors,
-    nextAfter: rows.length === limit && last ? `${last.receivedAt}|${last.id}` : null,
+    rateLimited,
+    nextAfter: rateLimited ? resumeAfter : rows.length === limit && last ? `${last.receivedAt}|${last.id}` : null,
   }
 }

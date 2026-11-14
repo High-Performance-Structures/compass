@@ -5,7 +5,7 @@
  * email_reply_threads and inbound_emails (architecture standard, section 1).
  * No auth and no network here.
  */
-import { and, eq, type SQL } from "drizzle-orm"
+import { and, eq, isNull, type SQL } from "drizzle-orm"
 import type { BatchItem } from "drizzle-orm/batch"
 
 import { emailReplyThreads, inboundEmails } from "@/db/schema"
@@ -147,6 +147,31 @@ export async function releaseInboundEmailClaim(db: Db, emailId: string): Promise
     .update(inboundEmails)
     .set({ matchedStatus: "needs_review" })
     .where(and(eq(inboundEmails.id, emailId), eq(inboundEmails.matchedStatus, "posting")))
+}
+
+/**
+ * Fills in what a held email's stored row was missing, read again from Gmail:
+ * its job address (`toAddress`) and Gmail's sender verdict. Guarded: only
+ * while the row is still `needs_review` with the To address that was read,
+ * and a sender verdict is only filled in, never replaced. True when saved.
+ */
+export async function saveRecoveredHeldEmailFields(
+  db: Db,
+  email: { readonly id: string; readonly toAddress: string | null },
+  changes: { readonly toAddress?: string | null; readonly senderAuthentication?: string }
+): Promise<boolean> {
+  if (changes.toAddress === undefined && changes.senderAuthentication === undefined) return false
+  const rows = await db
+    .update(inboundEmails)
+    .set(changes)
+    .where(and(
+      eq(inboundEmails.id, email.id),
+      eq(inboundEmails.matchedStatus, "needs_review"),
+      email.toAddress === null ? isNull(inboundEmails.toAddress) : eq(inboundEmails.toAddress, email.toAddress),
+      changes.senderAuthentication === undefined ? undefined : isNull(inboundEmails.senderAuthentication),
+    ))
+    .returning({ id: inboundEmails.id })
+  return rows.length === 1
 }
 
 /** Staff posted a claimed email to a project record. */

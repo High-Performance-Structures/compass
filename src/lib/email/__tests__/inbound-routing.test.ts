@@ -21,23 +21,29 @@ const projects = [
 ]
 
 describe("inbound email routing", () => {
-  it("routes Wes's tagged office test to H-OFFICE", () => {
-    const match = matchInboundProject(
-      {
-        toAddress: "rebekahecrampton@gmail.com",
-        subject: "[RFI] Test RFI for Office Forward",
-        textBody: "How much wood could a woodchuck chuck?",
-        htmlBody: null,
-        snippet: null,
-      },
-      projects
-    )
+  it("routes an explicitly tagged office email to H-OFFICE", () => {
+    const routed = (toAddress: string, subject: string) =>
+      matchInboundProject({ toAddress, subject, textBody: "How much wood could a woodchuck chuck?", htmlBody: null, snippet: null }, projects)?.id ?? null
 
-    expect(inboundRecordKind("[RFI] Test RFI for Office Forward")).toBe("rfi")
-    expect(inboundRecordSubject("[RFI] Test RFI for Office Forward")).toBe(
-      "Test RFI for Office Forward"
-    )
-    expect(match?.id).toBe("proj-h-office")
+    expect(inboundRecordKind("[RFI] [OFFICE] Test RFI")).toBe("rfi")
+    expect(inboundRecordSubject("[RFI] Test RFI for Office Forward")).toBe("Test RFI for Office Forward")
+    expect(routed("rebekahecrampton@gmail.com", "[RFI] [OFFICE] Test RFI")).toBe("proj-h-office")
+    expect(routed("rebekahecrampton@gmail.com", "[RFI] H-OFFICE test")).toBe("proj-h-office")
+    // The Compass project inbox's +office address, alone or among others.
+    expect(routed("Pat <pat@example.test>, Jarvis <jarvis+office@hps-colorado.com>", "[RFI] Test")).toBe("proj-h-office")
+  })
+
+  it("never picks the office job from another mailbox named office or a plain word", () => {
+    const routed = (toAddress: string, subject: string) =>
+      matchInboundProject({ toAddress, subject, textBody: "Septic tank locations attached.", htmlBody: null, snippet: null }, projects)?.id ?? null
+
+    // A vendor's office@ mailbox (the 5565 Founders Place septic RFI).
+    expect(routed("office@coloradogeosolutions.com", "[RFI] 5565 Founders Place Septic Tanks")).toBeNull()
+    expect(routed("jarvis@hps-colorado.com, office@coloradogeosolutions.com", "[RFI] 5565 Founders Place Septic Tanks")).toBeNull()
+    // Another mailbox's +office tag, and "office" as an ordinary word.
+    expect(routed("bob+office@example.test", "[RFI] Question")).toBeNull()
+    expect(routed("compass@hps-colorado.com", "[RFI] Test RFI for Office Forward")).toBeNull()
+    expect(routed("compass@hps-colorado.com", "[RFI] Home office layout")).toBeNull()
   })
 
   it("prefers an explicit project number", () => {

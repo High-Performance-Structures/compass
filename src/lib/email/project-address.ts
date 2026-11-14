@@ -41,6 +41,20 @@ export function projectInboundEmailAddress(projectId: string): string {
   return `${mailbox.localPart}+${PROJECT_ADDRESS_PREFIX}${projectId}@${mailbox.domain}`
 }
 
+/**
+ * True when `value` (one address or a header listing several) includes the
+ * Compass project inbox with this plus tag, e.g. `jarvis+office@…`. Only the
+ * project inbox counts, never another mailbox with the same tag or name.
+ */
+export function isProjectInboxTagAddress(value: string | null, tag: string): boolean {
+  if (!value) return false
+  const mailbox = splitEmailAddress(PROJECT_EMAIL_MAILBOX)
+  if (!mailbox) return false
+  const wanted = `${mailbox.localPart}+${tag}@${mailbox.domain}`.toLowerCase()
+  const addresses: readonly string[] = value.toLowerCase().match(/[^\s<>,;"']+@[^\s<>,;"']+/g) ?? []
+  return addresses.includes(wanted)
+}
+
 export function projectIdFromInboundAddress(value: string | null): string | null {
   if (!value) return null
   const match = /\+project-(proj-[a-z0-9-]+)@/i.exec(value)
