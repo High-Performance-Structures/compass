@@ -20,6 +20,7 @@ import { cn } from "@/lib/utils"
 import { searchMessages } from "@/app/actions/message-search"
 import { listChannels } from "@/app/actions/conversations"
 import { getUsers } from "@/app/actions/users"
+import { useAudiencePreviewReadOnly } from "@/components/projects/project-audience-preview-scope"
 
 type SearchResultMessage = {
   id: string
@@ -67,6 +68,7 @@ export function SearchDialog({
   const [channels, setChannels] = React.useState<Channel[]>([])
   const [users, setUsers] = React.useState<User[]>([])
   const [selectedChannel, setSelectedChannel] = React.useState<string>("all")
+  const previewReadOnly = useAudiencePreviewReadOnly()
   const [selectedUser, setSelectedUser] = React.useState<string>("all")
   const [startDate, setStartDate] = React.useState<Date | undefined>()
   const [endDate, setEndDate] = React.useState<Date | undefined>()
@@ -76,7 +78,9 @@ export function SearchDialog({
     async function loadFilters() {
       const [channelsResult, usersResult] = await Promise.all([
         listChannels(),
-        getUsers(),
+        // Owners and vendors can't list the company's people; a staff preview
+        // of their workspace mustn't show the staff member's roster either.
+        previewReadOnly ? Promise.resolve([]) : getUsers(),
       ])
       if (channelsResult.success && channelsResult.data) {
         setChannels(channelsResult.data)
@@ -86,7 +90,7 @@ export function SearchDialog({
       }
     }
     loadFilters()
-  }, [])
+  }, [previewReadOnly])
 
   // debounce query
   React.useEffect(() => {

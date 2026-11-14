@@ -322,6 +322,34 @@ this on 2026-11-01.
   estimate from Buildertrend…", are features, not record labels.
   `source-tag-standard.test.ts` enforces this rule with a reasoned allowlist.
 
+### Preview fidelity (owner-approved standard)
+
+Staff must see exactly what an owner's or vendor's workspace shows and how it
+behaves, so that when someone reports a problem, staff can see the same thing
+and help. The owner approved this on 2026-11-13.
+
+- **Same screens.** An owner or vendor preview renders the same components the
+  person gets: the same layout, formatting, data, buttons, drawers and empty
+  states. Never build a simplified or "read-only" staff version of a client
+  or vendor screen.
+- **Controls shown, not usable.** Show every control the person has, disabled.
+  Wrap a composer or form in `<PreviewReadOnlyArea note="…">` (with `onClose`
+  when the form's own Back button would otherwise be unreachable), or check
+  `useAudiencePreviewReadOnly()` for a single button, both in
+  `src/components/projects/project-audience-preview-scope.tsx`. Give a disabled
+  control a short title saying it is a preview.
+- **Nothing happens in their name.** A preview never sends, saves a draft,
+  reacts, marks anything read or changes settings for the person. Skip
+  automatic writes such as read receipts and draft loading when
+  `useAudiencePreviewReadOnly()` is true. The server refuses every preview
+  write anyway through `assertAudiencePreviewWriteAllowed()` (and
+  `correspondenceContext(projectId, "write")` for project email); keep that
+  check on every new write action.
+- **Staff-only branches.** `viewerIsInternal` tells a component it is a staff
+  preview. Use it to disable a control or show a preview notice, never to
+  render a different screen. `preview-fidelity-standard.test.ts` caps its use
+  per file; the caps may only shrink.
+
 ## Layout and visual language
 
 - Use shadcn/ui with the New York style and the shared UI primitives.

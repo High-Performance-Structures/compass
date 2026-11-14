@@ -7,6 +7,8 @@ import { getDb } from "@/db"
 import { messages, channels, channelMembers } from "@/db/schema-conversations"
 import { peopleView } from "@/lib/domain/identity/views"
 import { getCurrentUser } from "@/lib/auth"
+import { conversationRequestViewer } from "@/lib/conversations/preview-viewer"
+import { assertAudiencePreviewWriteAllowed } from "@/lib/project-audience-request-server"
 import { requirePermission } from "@/lib/permissions"
 import { revalidatePath } from "next/cache"
 import { updateMessage } from "@/lib/domain/conversations/store"
@@ -48,7 +50,8 @@ export async function searchMessages(
   | { success: false; error: string }
 > {
   try {
-    const user = await getCurrentUser()
+    // In a staff preview this is the previewed person, so results match what they see.
+    const user = await conversationRequestViewer(await getCurrentUser())
     if (!user) {
       return { success: false, error: "Unauthorized" }
     }
@@ -149,7 +152,7 @@ export async function getPinnedMessages(
   channelId: string
 ): Promise<{ success: true; data: unknown[] } | { success: false; error: string }> {
   try {
-    const user = await getCurrentUser()
+    const user = await conversationRequestViewer(await getCurrentUser())
     if (!user) {
       return { success: false, error: "Unauthorized" }
     }
@@ -217,6 +220,7 @@ export async function unpinMessage(
   messageId: string
 ): Promise<{ success: true } | { success: false; error: string }> {
   try {
+    await assertAudiencePreviewWriteAllowed()
     const user = await getCurrentUser()
     if (!user) {
       return { success: false, error: "Unauthorized" }

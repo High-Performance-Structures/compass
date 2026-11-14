@@ -6,6 +6,7 @@ import type {
   CorrespondenceAttachment,
   CorrespondenceDetail,
   CorrespondenceMessage,
+  CorrespondencePerson,
   CorrespondenceSummary,
 } from "@/lib/correspondence/types"
 
@@ -87,3 +88,8 @@ export async function uploadStagedAttachment(projectId: string, candidate: Stage
     setStagedAttachments((items) => items.map((item) => item.localId === candidate.localId ? { ...item, state: "failed" } : item))
   }
 }
+
+export function roleName(role: CorrespondencePerson["role"]): string { return role === "sub_vendor" ? "Sub/Vendor" : role[0].toUpperCase() + role.slice(1) }
+export function formatDate(value: string): string { const date = new Date(value); return Number.isNaN(date.valueOf()) ? value : date.toLocaleString([], { dateStyle: "medium", timeStyle: "short" }) }
+export function readyAttachmentIds(files: readonly StagedAttachment[]): readonly string[] { return files.flatMap((file) => file.state === "ready" && file.attachment ? [file.attachment.id] : []) }
+export function restoredAttachments(files: readonly CorrespondenceAttachment[]): readonly StagedAttachment[] { return files.map((file) => ({ localId: file.id, file: null, state: file.available ? "ready" : "failed", attachment: file })) }
