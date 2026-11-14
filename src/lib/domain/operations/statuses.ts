@@ -34,3 +34,9 @@ export const RATE_BOOK_CATEGORIES = [
   "other",
 ] as const
 export type RateBookCategory = (typeof RATE_BOOK_CATEGORIES)[number]
+
+/**
+ * A recipient vendor's answer to an RFQ (project_rfq_recipients). Only vendors
+ * who answered are recorded; invited-but-silent vendors get no row.
+ */
+export const RFQ_RECIPIENT_RESPONSE_STATUSES = ["quoted", "declined"] as const

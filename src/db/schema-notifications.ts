@@ -245,6 +245,7 @@ export const inboundEmails = sqliteTable(
     textBody: text("text_body"),
     htmlBody: text("html_body"),
     snippet: text("snippet"),
+    senderAuthentication: text("sender_authentication"),
     matchedStatus: text("matched_status").notNull().default("needs_review"),
     postedMessageId: text("posted_message_id"),
     receivedAt: text("received_at").notNull(),

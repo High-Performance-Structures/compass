@@ -762,7 +762,10 @@ export function companyMergeOperationStatements(database: D1Database, move: Comp
   return [database.prepare(`UPDATE project_operations SET vendor_id = ?, updated_at = ? WHERE vendor_id = ?
       AND (sage_vendor_id IS NULL OR trim(sage_vendor_id) = '' OR EXISTS (SELECT 1 FROM vendors k WHERE k.id = ?
         AND (k.sage_vendor_id = project_operations.sage_vendor_id OR k.sage_vendor_number = project_operations.sage_vendor_id)))
-      AND ${guard.sql}`).bind(move.destinationId, move.now, move.sourceId, move.destinationId, ...guard.binds)]
+      AND ${guard.sql}`).bind(move.destinationId, move.now, move.sourceId, move.destinationId, ...guard.binds),
+    // RFQ recipients (rfq-recipients.ts) follow the vendor to the kept record.
+    database.prepare(`UPDATE project_rfq_recipients SET vendor_id = ? WHERE vendor_id = ? AND ${guard.sql}`)
+      .bind(move.destinationId, move.sourceId, ...guard.binds)]
 }
 
 // ---- shopTickets

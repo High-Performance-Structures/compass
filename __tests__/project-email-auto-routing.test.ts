@@ -1,9 +1,10 @@
 import { afterEach, describe, expect, it, vi } from "vitest"
 import { readFileSync } from "node:fs"
-import { openCorrespondenceTestDatabase, type CorrespondenceTestDatabase, addContactDirectorySchema } from "./helpers/correspondence-core"
+import { openCorrespondenceTestDatabase, type CorrespondenceTestDatabase, addContactDirectorySchema, addFeatureSettingsSchema } from "./helpers/correspondence-core"
 import { routeProjectInboundEmail } from "@/lib/email/project-email-intake"
 import { postHeldEmailBacklog } from "@/lib/email/held-email-backlog"
 import { FILES_NOT_SAVED_NOTE } from "@/lib/email/project-message-routing"
+import { UNVERIFIED_SENDER_NOTE } from "@/lib/email/sender-verification"
 import { isCompassMailboxSender } from "@/lib/email/reply-tracking"
 import type { InboundCandidate } from "@/lib/email/gmail-message-parser"
 import { recordActivityEvent } from "@/lib/activity-log"
@@ -28,6 +29,7 @@ function setup(): CorrespondenceTestDatabase {
   db.sqlite.exec(readFileSync("drizzle/0048_notification_channels.sql", "utf8").replaceAll("--> statement-breakpoint", ""))
   db.sqlite.exec(readFileSync("drizzle/0049_sms_consent.sql", "utf8").replaceAll("--> statement-breakpoint", ""))
   addContactDirectorySchema(db.sqlite)
+  addFeatureSettingsSchema(db.sqlite)
   // Job addresses carry "proj-" ids; give both jobs numbers long enough to match.
   db.sqlite.exec(`
     UPDATE projects SET id='proj-a', project_number='J-1001' WHERE id='project-a';
@@ -37,7 +39,7 @@ function setup(): CorrespondenceTestDatabase {
       id TEXT PRIMARY KEY, organization_id TEXT NOT NULL, project_id TEXT, reply_thread_id TEXT, token TEXT,
       gmail_message_id TEXT NOT NULL UNIQUE, gmail_thread_id TEXT, message_id_header TEXT, in_reply_to_header TEXT,
       references_header TEXT, from_address TEXT NOT NULL, from_name TEXT, to_address TEXT, subject TEXT NOT NULL,
-      text_body TEXT, html_body TEXT, snippet TEXT, matched_status TEXT NOT NULL DEFAULT 'needs_review',
+      text_body TEXT, html_body TEXT, snippet TEXT, sender_authentication TEXT, matched_status TEXT NOT NULL DEFAULT 'needs_review',
       posted_message_id TEXT, received_at TEXT NOT NULL, imported_at TEXT NOT NULL
     );
   `)
@@ -147,6 +149,25 @@ describe("job emails are held only when the job is unknown", () => {
     db.sqlite.exec("UPDATE users SET is_active=0 WHERE id='staff-a'")
     expect(await route(db, candidate({ gmailMessageId: "email-2", fromAddress: "staff.home@example.test" }))).toMatchObject({ kind: "routed" })
     expect(recordActivityEvent).toHaveBeenLastCalledWith(routedAs(false))
+  })
+
+  it("records Gmail's sender verdict without changing anything until the company enforces it", async () => {
+    const db = setup()
+    const routedWith = (metadata: Record<string, unknown>) => expect.objectContaining({ action: "project_email.routed", metadata: expect.objectContaining(metadata) })
+    const known = { fromAddress: "owner-a@example.test", fromName: "Owner A", senderAuthentication: "fail" as const }
+    // Record only, the default: a known sender who failed is still trusted.
+    expect(await route(db, candidate(known))).toMatchObject({ kind: "routed" })
+    expect(recordActivityEvent).toHaveBeenLastCalledWith(routedWith({ senderAuthorized: true, senderRecognized: true, senderAuthentication: "fail", senderVerification: "record" }))
+    // Enforced: the same email posts to Messages with a note, untrusted.
+    db.sqlite.exec(`INSERT INTO organization_feature_settings (organization_id, feature_key, value, updated_at) VALUES ('org-a', 'email-sender-verification', '{"mode":"enforce"}', '2026-11-13T00:00:00.000Z')`)
+    expect(await route(db, candidate({ ...known, gmailMessageId: "email-2", subject: "[TO-DO] Fix the deck" }))).toMatchObject({ kind: "routed", matchedStatus: "routed_message" })
+    expect(recordActivityEvent).toHaveBeenLastCalledWith(routedWith({ senderAuthorized: false, senderRecognized: true, senderVerification: "enforce" }))
+    expect(db.sqlite.prepare("SELECT body FROM correspondence_messages ORDER BY sequence DESC LIMIT 1").get()).toEqual({ body: `Can someone check the deck boards?\n\n${UNVERIFIED_SENDER_NOTE}` })
+    // A verified known sender stays trusted; an email stored before the check counts as unverified.
+    expect(await route(db, candidate({ ...known, gmailMessageId: "email-3", senderAuthentication: "pass" }))).toMatchObject({ kind: "routed" })
+    expect(recordActivityEvent).toHaveBeenLastCalledWith(routedWith({ senderAuthorized: true, senderAuthentication: "pass" }))
+    expect(await route(db, candidate({ ...known, gmailMessageId: "email-4", senderAuthentication: undefined }))).toMatchObject({ kind: "routed" })
+    expect(recordActivityEvent).toHaveBeenLastCalledWith(routedWith({ senderAuthorized: false, senderAuthentication: "unknown" }))
   })
 
   it("never finds a job from numbers in Compass's own mail", async () => {

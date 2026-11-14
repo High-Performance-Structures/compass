@@ -614,6 +614,9 @@
     "projectRfqQuoteLinks": [
       "src/lib/domain/operations/store.ts"
     ],
+    "projectRfqRecipients": [
+      "src/lib/domain/operations/store.ts"
+    ],
     "projectRouteAliases": [
       "src/lib/domain/project/numbering-store.ts"
     ],
@@ -991,7 +994,7 @@
     "src/app/actions/greeting-cards.ts": 1102,
     "src/app/actions/listening-room.ts": 1084,
     "src/app/actions/nutech-orders.ts": 891,
-    "src/app/actions/project-audience-preview.ts": 998,
+    "src/app/actions/project-audience-preview.ts": 975,
     "src/app/actions/project-change-orders.ts": 1307,
     "src/app/actions/project-documents.ts": 876,
     "src/app/actions/project-financial-workflows.ts": 1348,
@@ -1019,7 +1022,7 @@
     "src/components/ui/sidebar.tsx": 916,
     "src/components/voice/realtimekit-meeting-window.tsx": 1060,
     "src/lib/email/gmail-inbound.ts": 816,
-    "src/lib/email/project-inbound-routing.ts": 1006,
+    "src/lib/email/project-inbound-routing.ts": 1004,
     "src/lib/estimates/sage-estimate-cost-code-catalog.ts": 1182,
     "src/lib/feature-settings/registry.ts": 938,
     "src/lib/notifications/create-event.ts": 830,

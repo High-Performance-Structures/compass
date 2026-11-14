@@ -301,7 +301,7 @@ async function insertInboundAudit(input: {
     subject: input.candidate.subject,
     textBody: input.candidate.textBody,
     htmlBody: input.candidate.htmlBody,
-    snippet: input.candidate.snippet,
+    snippet: input.candidate.snippet, senderAuthentication: input.candidate.senderAuthentication ?? null,
     matchedStatus: input.matchedStatus,
     postedMessageId: input.postedMessageId,
     receivedAt: input.candidate.receivedAt,

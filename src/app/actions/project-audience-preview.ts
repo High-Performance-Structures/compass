@@ -65,12 +65,13 @@ import { isWarrantyProjectStage } from "@/lib/warranty/status"
 import { gotoSenderNumberForProject } from "@/lib/goto/numbers"
 import {
   isPortalVisibleRfqStatus,
-  parsePortalRfqPayload,
-  portalRfqMatchesRecipient,
+  type PortalRfqVendorResponse,
 } from "@/lib/rfqs/portal-response"
+import { staffPortalRfq, vendorPortalRfq } from "@/lib/rfqs/vendor-portal-rfq"
 import { requireUserContext } from "@/lib/server/action-context"
 import { resolvedContactColumns, withContactDirectory } from "@/lib/domain/contacts/resolved-columns"
 import { projectMembersView } from "@/lib/domain/project/views"
+import { vendorRfqRecipientAnswers } from "@/lib/domain/operations/rfq-recipients"
 
 export type { ProjectAudience } from "@/lib/project-audience-access"
 export type {
@@ -562,6 +563,7 @@ export async function getProjectAudiencePreview(
       ? await db
           .select({
             id: projectOperations.id,
+            sourceSystem: projectOperations.sourceSystem,
             sourceRecordType: projectOperations.sourceRecordType,
             sourceRecordNumber: projectOperations.sourceRecordNumber,
             title: projectOperations.title,
@@ -795,44 +797,19 @@ export async function getProjectAudiencePreview(
       ]
       : audienceScheduleRows.map(visibleScheduleItem)
 
-  const audienceRfqs: readonly AudienceRfq[] = operationRows
-    .filter((operation) => {
-      if (
-        operation.sourceRecordType !== "rfq" ||
-        !isPortalVisibleRfqStatus(operation.status)
-      ) {
-        return false
-      }
-      if (viewerIsInternal) return true
-      if (!viewerContact) return false
-      const payload = parsePortalRfqPayload(operation.sagePayloadJson)
-      return portalRfqMatchesRecipient({
-        recipientEmail: payload.recipientEmail,
-        companyName: operation.companyName,
-        assigneeName: operation.assigneeName,
-        viewerEmail: viewer.email,
-        viewerCompanyName: viewerContact.companyName,
-        viewerDisplayName: viewerContact.displayName,
-      })
-    })
-    .map((operation) => {
-      const payload = parsePortalRfqPayload(operation.sagePayloadJson)
-      return {
-        id: operation.id,
-        number: operation.sourceRecordNumber,
-        title: operation.title,
-        description: operation.description,
-        status: operation.status,
-        priority: operation.priority,
-        companyName: operation.companyName,
-        vendorCategory: payload.vendorCategory,
-        dueDate: operation.dueDate,
-        amount: operation.amount,
-        scopeItems: payload.scopeItems,
-        documentLinks: payload.documentLinks,
-        vendorResponse: payload.vendorResponse,
-      }
-    })
+  // RFQs this vendor's company answered (project_rfq_recipients), with only
+  // its own answer. Staff see every RFQ, so they need no lookup.
+  const recipientAnswers = audience === "sub_vendor" && !viewerIsInternal && viewerContact
+    ? await vendorRfqRecipientAnswers(db, { organizationId, projectId, vendorId: viewerContact.vendorId, vendorCompanyName: viewerContact.companyName })
+    : new Map<string, PortalRfqVendorResponse>()
+  const audienceRfqs: readonly AudienceRfq[] = operationRows.flatMap((operation): AudienceRfq[] => {
+    if (operation.sourceRecordType !== "rfq" || !isPortalVisibleRfqStatus(operation.status)) return []
+    if (viewerIsInternal) return [staffPortalRfq(operation)]
+    if (!viewerContact) return []
+    const viewerRow = { email: viewer.email, companyName: viewerContact.companyName, displayName: viewerContact.displayName }
+    const vendorView = vendorPortalRfq(operation, viewerRow, recipientAnswers.get(operation.id) ?? null)
+    return vendorView ? [vendorView] : []
+  })
 
   const portalOperationContacts = viewerIsInternal
     ? externalContactRows

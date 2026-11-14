@@ -33,7 +33,7 @@ function setup(): CorrespondenceTestDatabase {
       id TEXT PRIMARY KEY, organization_id TEXT NOT NULL, project_id TEXT, reply_thread_id TEXT, token TEXT,
       gmail_message_id TEXT NOT NULL UNIQUE, gmail_thread_id TEXT, message_id_header TEXT, in_reply_to_header TEXT,
       references_header TEXT, from_address TEXT NOT NULL, from_name TEXT, to_address TEXT, subject TEXT NOT NULL,
-      text_body TEXT, html_body TEXT, snippet TEXT, matched_status TEXT NOT NULL DEFAULT 'needs_review',
+      text_body TEXT, html_body TEXT, snippet TEXT, sender_authentication TEXT, matched_status TEXT NOT NULL DEFAULT 'needs_review',
       posted_message_id TEXT, received_at TEXT NOT NULL, imported_at TEXT NOT NULL
     );
     CREATE TABLE IF NOT EXISTS activity_events (

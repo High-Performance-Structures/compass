@@ -263,11 +263,16 @@ function RfqRow({
             <p className="font-medium">
               {item.vendorResponse.decision === "decline"
                 ? "Declined to quote"
-                : `Quote submitted · ${formatMoney(item.vendorResponse.amount)}`}
+                : item.vendorResponse.amount === null
+                  ? "Quote submitted"
+                  : `Quote submitted · ${formatMoney(item.vendorResponse.amount)}`}
             </p>
-            <span className="text-xs text-muted-foreground">
-              {new Date(item.vendorResponse.submittedAt).toLocaleDateString("en-US")}
-            </span>
+            {/* Imported answers may carry no answer date. */}
+            {item.vendorResponse.submittedAt && (
+              <span className="text-xs text-muted-foreground">
+                {new Date(item.vendorResponse.submittedAt).toLocaleDateString("en-US")}
+              </span>
+            )}
           </div>
           <div className="mt-2 flex flex-wrap gap-3 text-xs text-muted-foreground">
             {item.vendorResponse.leadTime && (
