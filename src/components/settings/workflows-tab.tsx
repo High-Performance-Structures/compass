@@ -62,6 +62,7 @@ import { ShopTicketSettingsSection } from "@/components/settings/shop-ticket-set
 import { JobWorkflowSettingsSection } from "@/components/settings/job-workflow-settings-section"
 import { JobEmailSettingsSection } from "@/components/settings/job-email-settings-section"
 import { CompanyEmailDomainsSettingsSection } from "@/components/settings/company-email-domains-settings-section"
+import { EmailSenderVerificationSettingsSection } from "@/components/settings/email-sender-verification-settings-section"
 import { ProjectDuplicateSettingsSection } from "@/components/settings/project-duplicate-settings-section"
 
 const DEFAULTS = FEATURE_SETTINGS["message-desk"].defaults
@@ -253,6 +254,7 @@ const WORKFLOW_AREAS = [
   { value: "linked-jobs", label: "Linked jobs", description: "Shortcuts for creating a linked job in another department for the same customer and site." },
   { value: "job-emails", label: "Job emails", description: "Emails offered on HPS, ORC and Design job overviews." },
   { value: "company-email-domains", label: "Company email domains", description: "Your own email domains, old ones too: never matched to a vendor, and used to recognize staff on imported messages." },
+  { value: "email-sender-verification", label: "Email sender verification", description: "Whether a job email must pass Gmail's check that it really came from the sender's domain before its tags and @names count." },
   { value: "message-desk", label: "Message Desk", description: "Response times, aging and stale reminders." },
   { value: "project-aging", label: "Project aging", description: "When client follow-ups turn due and overdue." },
   { value: "portfolio-map", label: "Portfolio map", description: "Which state the dashboard map shows, and which job statuses and departments appear on it, in which phase." },
@@ -295,6 +297,8 @@ function WorkflowAreaSection({ area }: { readonly area: WorkflowArea }): React.R
       return <JobEmailSettingsSection />
     case "company-email-domains":
       return <CompanyEmailDomainsSettingsSection />
+    case "email-sender-verification":
+      return <EmailSenderVerificationSettingsSection />
     case "message-desk":
       return <MessageDeskSettingsSection />
     case "project-aging":

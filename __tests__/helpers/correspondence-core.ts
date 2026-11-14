@@ -350,3 +350,8 @@ export function insertAttachment(sqlite: Sqlite, values: { readonly id: string; 
     values.id, "org-a", values.projectId ?? "project-a", values.ownerUserId ?? "staff-a", values.messageId ?? null, `${values.id}.txt`, "text/plain", 12, values.driveFileId === undefined ? "drive-file" : values.driveFileId, values.createdAt ?? "2026-09-05T12:00:00.000Z", values.retiredAt ?? null,
   )
 }
+
+/** Company settings, for tests whose code reads a feature setting (absent rows use the defaults). */
+export function addFeatureSettingsSchema(sqlite: Sqlite): void {
+  sqlite.exec(readFileSync(resolve(process.cwd(), "drizzle/0203_organization_feature_settings.sql"), "utf8").replaceAll("--> statement-breakpoint", ""))
+}

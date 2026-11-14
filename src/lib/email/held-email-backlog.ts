@@ -21,6 +21,7 @@ import { heldEmailCandidate } from "@/lib/email/held-job-emails"
 import { exactJobNumberMatches } from "@/lib/email/inbound-routing"
 import { projectEmailTitle, projectIdFromInboundAddress } from "@/lib/email/project-address"
 import { candidateBody, senderCanEmailProject } from "@/lib/email/project-inbound-routing"
+import { applySenderVerification } from "@/lib/email/sender-verification"
 import { routeInboundProjectMessage } from "@/lib/email/project-message-routing"
 import { isCompassMailboxSender } from "@/lib/email/reply-tracking"
 import type { Db } from "@/lib/server/action-context"
@@ -119,10 +120,13 @@ export async function postHeldEmailBacklog(input: {
       continue
     }
     try {
-      const { candidate, filesFetched } = await heldEmailCandidate({ db, env: input.env, organizationId: email.organizationId, email })
+      const held = await heldEmailCandidate({ db, env: input.env, organizationId: email.organizationId, email })
+      const filesFetched = held.filesFetched
+      // As in live intake, an unrecognized or unverified sender's @names pick no one.
+      const recognized = await senderCanEmailProject({ env: input.env, db, organizationId: email.organizationId, projectId, senderEmail: email.fromAddress })
+      const verified = await applySenderVerification({ db, organizationId: email.organizationId, candidate: held.candidate, recognized })
+      const candidate = verified.candidate
       const body = candidateBody(candidate)
-      // As in live intake, an unrecognized sender's @names pick no one.
-      const senderAuthorized = await senderCanEmailProject({ env: input.env, db, organizationId: email.organizationId, projectId, senderEmail: email.fromAddress })
       const routed = await routeInboundProjectMessage({
         db,
         env: input.env,
@@ -134,7 +138,7 @@ export async function postHeldEmailBacklog(input: {
         now,
         postWhenJobKnown: true,
         quiet: true,
-        ignoreMentions: !senderAuthorized,
+        ignoreMentions: !verified.senderAuthorized,
       })
       if (routed.status === "held") {
         await releaseInboundEmailClaim(db, email.id)
@@ -153,7 +157,7 @@ export async function postHeldEmailBacklog(input: {
         entityType: "project_correspondence",
         entityId: routed.id,
         summary: `Posted a held email from ${email.fromName?.trim() || email.fromAddress} to job messages once its job was known: “${projectEmailTitle(email.subject) || email.subject}”.`,
-        metadata: { destination: "message", backlog: true, quiet: true, filesLeftOut: routed.filesLeftOut, filesUnchecked: !filesFetched },
+        metadata: { destination: "message", backlog: true, quiet: true, filesLeftOut: routed.filesLeftOut, filesUnchecked: !filesFetched, ...verified.metadata },
       })
     } catch (error) {
       await releaseInboundEmailClaim(db, email.id)

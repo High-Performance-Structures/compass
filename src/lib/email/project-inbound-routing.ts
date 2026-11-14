@@ -19,6 +19,7 @@ import {
 } from "@/db/schema"
 import { membershipsView, peopleView } from "@/lib/domain/identity/views"
 import { isActiveStaffAlternateEmail } from "@/lib/domain/identity/alternate-emails"
+import { applySenderVerification } from "@/lib/email/sender-verification"
 import { insertProjectInteractionIfAbsent } from "@/lib/domain/crm/store"
 import {
   stripHtml,
@@ -712,7 +713,7 @@ async function routeVerifiedProjectInboundMessage(input: {
   readonly todoDetails?: ReviewedInboundTodoDetails
   /** Where a message without a subject tag goes; none holds it for review. */ readonly untaggedDestination?: ProjectEmailDestination
   /** False for an email from someone who isn't a contact or staff: it goes to job Messages, never a tagged record. */
-  readonly senderAuthorized?: boolean
+  readonly senderAuthorized?: boolean; /** Sender verification details for Activity. */ readonly senderCheck?: Readonly<Record<string, unknown>>
 }): Promise<ProjectInboundRouteResult> {
   const senderAuthorized = input.senderAuthorized ?? true
   const projectId = input.projectId
@@ -777,7 +778,7 @@ async function routeVerifiedProjectInboundMessage(input: {
       entityType: `project_${input.source.sourceSystem}`,
       entityId: input.candidate.gmailMessageId,
       summary: routed ? `Project message needs review: ${heldMessageReasonLabel(routed.reason)}.` : "Project message needs review: check internal @names, assigned project staff, attachment import, and messaging availability.",
-      metadata: { senderAuthorized, destination, heldReason: routed?.reason ?? null },
+      metadata: { senderAuthorized, destination, heldReason: routed?.reason ?? null, ...input.senderCheck },
       createdAt: input.candidate.receivedAt,
     })
     return { kind: "needs_review", projectId }
@@ -803,12 +804,7 @@ async function routeVerifiedProjectInboundMessage(input: {
             input.candidate.attachments.length === 1 ? "file" : "files"
           }.`
         : ""),
-    metadata: {
-      destination,
-      senderAuthorized,
-      attachmentCount: input.candidate.attachments.length,
-      filesLeftOut,
-    },
+    metadata: { destination, senderAuthorized, attachmentCount: input.candidate.attachments.length, filesLeftOut, ...input.senderCheck },
     createdAt: input.candidate.receivedAt,
   })
   if (senderAuthorized) await recordVerifiedInboundClientInteraction({
@@ -839,9 +835,11 @@ export async function routeKnownJobEmail(input: {
   readonly projectId: string
   readonly candidate: InboundCandidate
 }): Promise<ProjectInboundRouteResult> {
-  const senderAuthorized = await senderCanEmailProject({ ...input, senderEmail: input.candidate.fromAddress })
+  const recognized = await senderCanEmailProject({ ...input, senderEmail: input.candidate.fromAddress })
+  // A recognized sender is trusted only if Gmail verified them, when the company enforces it (sender-verification.ts).
+  const { senderAuthorized, candidate, metadata } = await applySenderVerification({ ...input, recognized })
   // Staff and contacts email the project inbox without tags: post as a message.
-  return routeVerifiedProjectInboundMessage({ ...input, source: EMAIL_SOURCE, untaggedDestination: "message", senderAuthorized })
+  return routeVerifiedProjectInboundMessage({ ...input, candidate, source: EMAIL_SOURCE, untaggedDestination: "message", senderAuthorized, senderCheck: metadata })
 }
 
 function normalizedPhone(value: string): string {
