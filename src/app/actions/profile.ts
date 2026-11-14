@@ -9,7 +9,7 @@ import { revalidatePath } from "next/cache"
 import { requireAuth } from "@/lib/auth"
 import { isViewAsRequest } from "@/lib/view-as/request"
 import { endViewAsOnSignOut } from "@/lib/view-as/service"
-import { ViewAsReadOnlyError } from "@/lib/view-as/write-guard"
+import { ViewAsReadOnlyError } from "@/lib/view-as/errors"
 import {
   cancelPendingAccountDeletionRequest,
   insertAccountDeletionRequest,

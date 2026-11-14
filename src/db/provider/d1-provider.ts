@@ -68,7 +68,5 @@ export async function getD1FromContext(): Promise<D1Database> {
   // Dynamic import to avoid issues in non-Cloudflare environments
   const { getCloudflareContext } = await import("@opennextjs/cloudflare")
   const ctx = await getCloudflareContext()
-  // Read only during developer View as, like src/lib/db.ts.
-  const { viewAsGuardedD1 } = await import("@/lib/view-as/guarded-binding")
-  return viewAsGuardedD1(ctx.env.DB)
+  return ctx.env.DB
 }

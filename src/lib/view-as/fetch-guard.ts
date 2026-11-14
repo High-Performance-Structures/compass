@@ -16,7 +16,7 @@
  * screen degrades the way it would for any failed outside call.
  */
 import { VIEW_AS_READ_ONLY_MESSAGE } from "@/lib/view-as/constants"
-import { ViewAsReadOnlyError, type GuardMode } from "@/lib/view-as/write-guard"
+import { ViewAsReadOnlyError, type GuardMode } from "@/lib/view-as/errors"
 
 const READ_METHODS = new Set(["GET", "HEAD", "OPTIONS"])
 

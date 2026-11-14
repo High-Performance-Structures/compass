@@ -4,7 +4,7 @@ import { isViewedPersonSubject } from "@/lib/view-as/delegation"
 import { isOutsideRequestError, isViewAsRequest } from "@/lib/view-as/request"
 
 describe("Google delegation during View as", () => {
-  const viewed = { email: "Pat@Builder.com", googleEmail: "pat.g@builder.com" }
+  const viewed = ["pat@builder.com", "pat.g@builder.com"]
 
   it("refuses the viewed person's own Google identities", () => {
     expect(isViewedPersonSubject("pat@builder.com", viewed)).toBe(true)
@@ -13,7 +13,7 @@ describe("Google delegation during View as", () => {
 
   it("leaves Compass-owned identities alone", () => {
     expect(isViewedPersonSubject("jarvis@builder.com", viewed)).toBe(false)
-    expect(isViewedPersonSubject("drive-bot@builder.com", { email: "x@y.com", googleEmail: null })).toBe(false)
+    expect(isViewedPersonSubject("drive-bot@builder.com", ["x@y.com"])).toBe(false)
   })
 })
 

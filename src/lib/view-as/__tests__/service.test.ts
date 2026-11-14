@@ -84,7 +84,7 @@ describe("beginViewAs", () => {
     expect(result.ok).toBe(true)
     if (!result.ok) return
     const payload = await verifyViewAsToken(result.value, "a-test-secret-that-is-long-enough", Math.floor(now.getTime() / 1000) + 1)
-    expect(payload).toMatchObject({ adminId: "admin-1", targetId: "owner-1", orgId: "org-1" })
+    expect(payload).toMatchObject({ adminId: "admin-1", targetId: "owner-1", orgId: "org-1", targetEmails: ["olive@example.com"] })
     expect(mocks.recordRequiredActivityEvent).toHaveBeenCalledTimes(1)
     expect(mocks.recordRequiredActivityEvent).toHaveBeenCalledWith(
       expect.objectContaining({

@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest"
 
-import { isReadOnlySql, readOnlyD1, readOnlyEnv, ViewAsReadOnlyError } from "@/lib/view-as/write-guard"
+import { ViewAsReadOnlyError } from "@/lib/view-as/errors"
+import { isReadOnlySql, readOnlyD1, readOnlyEnv } from "@/lib/view-as/write-guard"
 
 /** A tiny stand-in for a D1 binding that records what actually ran. */
 function fakeD1() {

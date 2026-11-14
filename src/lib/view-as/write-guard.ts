@@ -16,15 +16,9 @@
  *   as if nothing matched, so a screen that stamps a cache or a "seen" flag
  *   while rendering still shows exactly what the person would see.
  */
-import { VIEW_AS_READ_ONLY_MESSAGE } from "@/lib/view-as/constants"
+import { ViewAsReadOnlyError, type GuardMode } from "@/lib/view-as/errors"
 import { isRecord } from "@/lib/shared/guards"
 
-export class ViewAsReadOnlyError extends Error {
-  constructor(detail?: string) {
-    super(detail ? `${VIEW_AS_READ_ONLY_MESSAGE} (${detail})` : VIEW_AS_READ_ONLY_MESSAGE)
-    this.name = "ViewAsReadOnlyError"
-  }
-}
 
 /** Leading whitespace, comments and opening parentheses removed. */
 function sqlBody(sql: string): string {
@@ -93,8 +87,6 @@ export function isReadOnlySql(sql: string): boolean {
       return false
   }
 }
-
-export type GuardMode = "reject" | "skip"
 
 type StatementInfo = { readonly real: D1PreparedStatement; readonly sql: string }
 
@@ -242,3 +234,4 @@ export function readOnlyEnv(env: CloudflareEnv, mode: GuardMode = "reject"): Clo
   guardedEnvs[mode].set(env, guarded)
   return guarded
 }
+

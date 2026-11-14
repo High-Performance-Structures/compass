@@ -17,6 +17,11 @@ export type ViewAsTokenPayload = {
   readonly targetId: string
   /** The admin's company when viewing started; the viewed person is seen through it. */
   readonly orgId: string
+  /**
+   * The viewed person's sign-in and Google emails, lower case, so the Google
+   * delegation guard can refuse them without loading auth (delegation.ts).
+   */
+  readonly targetEmails: readonly string[]
   /** Seconds since the epoch. */
   readonly iat: number
   readonly exp: number
@@ -60,12 +65,13 @@ export async function signViewAsToken(payload: ViewAsTokenPayload, secret: strin
 
 function parsePayload(value: unknown): ViewAsTokenPayload | null {
   if (!isRecord(value)) return null
-  const { v, sid, adminId, targetId, orgId, iat, exp } = value
+  const { v, sid, adminId, targetId, orgId, iat, exp, targetEmails } = value
   if (v !== 1) return null
+  if (!Array.isArray(targetEmails) || !targetEmails.every((email): email is string => typeof email === "string")) return null
   if (typeof sid !== "string" || typeof adminId !== "string" || typeof targetId !== "string" || typeof orgId !== "string") return null
   if (typeof iat !== "number" || typeof exp !== "number") return null
   if (!sid || !adminId || !targetId || !orgId) return null
-  return { v, sid, adminId, targetId, orgId, iat, exp }
+  return { v, sid, adminId, targetId, orgId, iat, exp, targetEmails }
 }
 
 /** The payload when the signature is valid and the session has not expired; otherwise null. */
@@ -93,4 +99,21 @@ export async function verifyViewAsToken(
   // Exit still records the end of a session that ran out; nothing else may.
   if (!options.allowExpired && (payload.exp <= nowSeconds || payload.iat > nowSeconds + 60)) return null
   return payload
+}
+
+/**
+ * The viewed person's emails from a token, without checking the signature.
+ * Only for refusing things (the Google delegation guard): a forged token can
+ * add refusals, never permissions, and a forged session never resolves to
+ * the viewed person anyway. Null when the token can't be read.
+ */
+export function unverifiedViewAsTargetEmails(token: string): readonly string[] | null {
+  const body = base64UrlDecode(token.split(".")[0] ?? "")
+  if (!body) return null
+  try {
+    const payload = parsePayload(JSON.parse(new TextDecoder().decode(body)))
+    return payload ? payload.targetEmails : null
+  } catch {
+    return null
+  }
 }

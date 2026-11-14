@@ -5,6 +5,8 @@
  * records the start in Activity and only then hands back the signed session
  * token. Exit records the end. The viewed person is never notified.
  */
+import { cookies } from "next/headers"
+
 import { getDb } from "@/db"
 import { getSignedInUser, type AuthUser } from "@/lib/auth"
 import { getUnguardedCloudflareContext } from "@/lib/db"
@@ -62,7 +64,16 @@ export async function beginViewAs(
   const seconds = Math.floor(now.getTime() / 1000)
   const sessionId = crypto.randomUUID()
   const token = await signViewAsToken(
-    { v: 1, sid: sessionId, adminId: admin.id, targetId: target.user.id, orgId: organizationId, iat: seconds, exp: seconds + VIEW_AS_MAX_AGE_SECONDS },
+    {
+      v: 1,
+      sid: sessionId,
+      adminId: admin.id,
+      targetId: target.user.id,
+      orgId: organizationId,
+      targetEmails: [target.user.email, target.user.googleEmail].flatMap((email) => (email ? [email.trim().toLowerCase()] : [])),
+      iat: seconds,
+      exp: seconds + VIEW_AS_MAX_AGE_SECONDS,
+    },
     secret,
   )
   // No view goes unrecorded: if Activity cannot be written, do not start.
@@ -106,7 +117,6 @@ export async function recordViewAsEnd(token: string, admin: AuthUser | null, end
 /** Signing out ends any View as session too: record it and drop the cookie. */
 export async function endViewAsOnSignOut(): Promise<void> {
   try {
-    const { cookies } = await import("next/headers")
     const cookieStore = await cookies()
     const token = cookieStore.get(VIEW_AS_COOKIE)?.value
     if (!token) return

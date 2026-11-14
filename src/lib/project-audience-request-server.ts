@@ -1,10 +1,9 @@
 import { cache } from "react"
 import { resolveProjectRouteId } from "@/lib/project-route-id"
-import { headers } from "next/headers"
+import { cookies, headers } from "next/headers"
 import { requireAuth } from "@/lib/auth"
 import { AUDIENCE_SCOPE_HEADER, parseAudienceScope, type ProjectAudienceRequestScope } from "@/lib/project-audience-request"
-import { isViewAsRequest } from "@/lib/view-as/request"
-import { ViewAsReadOnlyError } from "@/lib/view-as/write-guard"
+import { VIEW_AS_COOKIE, VIEW_AS_READ_ONLY_MESSAGE } from "@/lib/view-as/constants"
 
 export const getProjectAudienceRequestScope = cache(async function getProjectAudienceRequestScope(): Promise<ProjectAudienceRequestScope | null> {
   // Background work (cron, queues) has no request and so is never a preview.
@@ -28,9 +27,19 @@ export async function isAudiencePreviewRequest(): Promise<boolean> {
   return (await resolveProjectAudienceViewer(scope.projectId, scope.audience)).isPreview
 }
 
+/** An early, friendly refusal only; src/lib/view-as/request.ts is the real check. */
+async function viewAsCookiePresent(): Promise<boolean> {
+  try {
+    return Boolean((await cookies()).get(VIEW_AS_COOKIE)?.value)
+  } catch {
+    return false
+  }
+}
+
 export async function assertAudiencePreviewWriteAllowed(): Promise<void> {
-  // Developer View as is read only everywhere; the database guard backs this up.
-  if (await isViewAsRequest()) throw new ViewAsReadOnlyError()
+  // Developer View as is read only everywhere; the database guard backs this
+  // up (and fails closed where cookies can't be read).
+  if (await viewAsCookiePresent()) throw new Error(VIEW_AS_READ_ONLY_MESSAGE)
   const scope = await getProjectAudienceRequestScope()
   if (!scope) return
   // Active-shell roles may belong to another organization. Use the same

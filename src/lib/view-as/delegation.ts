@@ -7,31 +7,26 @@
  * identities (the correspondence Drive user, the Jarvis mailbox, shared
  * drives reached through them) are unaffected.
  *
- * Called from createServiceAccountJWT (src/lib/google/auth/service-account.ts),
- * the one place every delegated Drive, Sheets and Gmail token starts.
+ * Called from createServiceAccountJWT (src/lib/google/auth/service-account.ts)
+ * and before the Drive token cache. The viewed person's emails come from the
+ * verified session (they are recorded in the signed token at start).
  */
+import { getViewAsState } from "@/lib/auth"
+import { ViewAsReadOnlyError } from "@/lib/view-as/errors"
 import { isViewAsRequest } from "@/lib/view-as/request"
-import { ViewAsReadOnlyError } from "@/lib/view-as/write-guard"
 
-function normalized(email: string | null | undefined): string | null {
-  const value = email?.trim().toLowerCase()
-  return value ? value : null
-}
-
-/** Pure rule, for tests: may a token be minted for `subject` while viewing these identities? */
-export function isViewedPersonSubject(subject: string, viewed: { readonly email: string; readonly googleEmail: string | null }): boolean {
-  const target = normalized(subject)
-  return target !== null && (target === normalized(viewed.email) || target === normalized(viewed.googleEmail))
+/** Pure rule, for tests: is `subject` one of the viewed person's own emails? */
+export function isViewedPersonSubject(subject: string, viewedEmails: readonly string[]): boolean {
+  const target = subject.trim().toLowerCase()
+  return target !== "" && viewedEmails.includes(target)
 }
 
 export async function assertDelegationAllowed(subject: string): Promise<void> {
   if (!(await isViewAsRequest())) return
-  // Loaded on use: auth reaches Google code, so a static import would cycle.
-  const { getViewAsState } = await import("@/lib/auth")
   const state = await getViewAsState()
   // A session that is no longer valid gets no delegated access at all.
   if (state.kind !== "active") throw new ViewAsReadOnlyError("Google access")
-  if (isViewedPersonSubject(subject, state.target)) {
+  if (isViewedPersonSubject(subject, state.payload.targetEmails)) {
     throw new ViewAsReadOnlyError("the person's own Google Drive and mailbox are not shown")
   }
 }

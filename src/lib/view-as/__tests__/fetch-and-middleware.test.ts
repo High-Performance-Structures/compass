@@ -4,7 +4,7 @@ import { DEVELOPER_MODE_COOKIE } from "@/lib/developer-mode"
 import { VIEW_AS_COOKIE, VIEW_AS_ENDED_PATH } from "@/lib/view-as/constants"
 import { installViewAsFetchGuard, viewAsFetchRefusal } from "@/lib/view-as/fetch-guard"
 import { cookieHeaderWithout, viewAsMiddlewareDecision, viewAsReturnUrl } from "@/lib/view-as/middleware"
-import { ViewAsReadOnlyError } from "@/lib/view-as/write-guard"
+import { ViewAsReadOnlyError } from "@/lib/view-as/errors"
 
 describe("outside requests while viewing as", () => {
   it("refuses writes to outside services", () => {

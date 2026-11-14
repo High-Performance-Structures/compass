@@ -5,12 +5,14 @@
  * substitution until the session is ended. Background work (cron, queues)
  * has no request and is never a View as request.
  *
- * next/headers is loaded on first use: db.ts imports this module, and db.ts
- * is reachable from bundles where a static next/headers import is refused.
+ * next/headers is imported statically on purpose: a dynamic import here (db.ts
+ * reaches this module from nearly every server chunk) gave every chunk its own
+ * copy of Next's cookie parser (scripts/bundle-duplicates-check.mjs).
  */
+import { cookies as requestCookies, headers as requestHeaders } from "next/headers"
 
 import { VIEW_AS_COOKIE } from "@/lib/view-as/constants"
-import type { GuardMode } from "@/lib/view-as/write-guard"
+import type { GuardMode } from "@/lib/view-as/errors"
 
 /**
  * Next's error when a request API is called with no request at all (cron,
@@ -29,30 +31,37 @@ export function isOutsideRequestError(error: unknown): boolean {
  * read the cookie fails closed and treats the request as View as.
  */
 export async function isViewAsRequest(): Promise<boolean> {
+  return (await viewAsCookie()) !== null
+}
+
+/**
+ * The View as cookie on this request: its value, "" when it can't be read
+ * (fail closed: still treated as View as), or null when there is none.
+ */
+export async function viewAsCookie(): Promise<string | null> {
   let cookies: unknown = null
   try {
-    cookies = Reflect.get(await import("next/headers"), "cookies")
+    cookies = requestCookies
   } catch {
     // No request API in this runtime (scripts, some test doubles).
   }
-  if (typeof cookies !== "function") return false
+  if (typeof cookies !== "function") return null
   try {
     const store: unknown = await Reflect.apply(cookies, undefined, [])
     const get: unknown = typeof store === "object" && store !== null ? Reflect.get(store, "get") : null
-    if (typeof get !== "function") return true
+    if (typeof get !== "function") return ""
     const entry: unknown = Reflect.apply(get, store, [VIEW_AS_COOKIE])
     const value: unknown = typeof entry === "object" && entry !== null ? Reflect.get(entry, "value") : null
-    return typeof value === "string" && value !== ""
+    return typeof value === "string" && value !== "" ? value : null
   } catch (error) {
-    return !isOutsideRequestError(error)
+    return isOutsideRequestError(error) ? null : ""
   }
 }
 
 /** A server action invocation (Next sends the `next-action` header). */
 export async function isServerActionRequest(): Promise<boolean> {
   try {
-    const { headers } = await import("next/headers")
-    return (await headers()).has("next-action")
+    return (await requestHeaders()).has("next-action")
   } catch {
     return false
   }
@@ -65,8 +74,7 @@ export async function isServerActionRequest(): Promise<boolean> {
  */
 export async function viewAsGuardMode(): Promise<GuardMode> {
   try {
-    const { headers } = await import("next/headers")
-    return (await headers()).has("next-action") ? "reject" : "skip"
+    return (await requestHeaders()).has("next-action") ? "reject" : "skip"
   } catch {
     return "reject"
   }

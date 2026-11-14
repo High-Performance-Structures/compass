@@ -3,7 +3,7 @@ import { join, relative } from "node:path"
 import { afterEach, describe, expect, it, vi } from "vitest"
 
 import { VIEW_AS_COOKIE } from "@/lib/view-as/constants"
-import { ViewAsReadOnlyError } from "@/lib/view-as/write-guard"
+import { ViewAsReadOnlyError } from "@/lib/view-as/errors"
 
 /*
  * The central chokepoint: every server action, API route and page reaches
@@ -103,9 +103,9 @@ function sourceFiles(dir: string): string[] {
 }
 
 describe("direct Cloudflare context imports", () => {
-  // Only db.ts may read the bindings from OpenNext directly; github.ts reads
-  // a secret only, and the platform provider passes D1 through the View as
-  // guard (src/lib/view-as/guarded-binding.ts).
+  // Only db.ts may read the bindings from OpenNext directly. github.ts reads
+  // a secret only. The platform provider's getD1FromContext has no callers
+  // outside src/db; guarding it pulled server-only code into client bundles.
   const ALLOWED_DIRECT = new Set(["src/lib/db.ts", "src/app/actions/github.ts", "src/db/provider/d1-provider.ts"])
 
   it("go through src/lib/db.ts", { timeout: 60_000 }, () => {
@@ -115,10 +115,6 @@ describe("direct Cloudflare context imports", () => {
     expect(direct.filter((path) => !ALLOWED_DIRECT.has(path))).toEqual([])
   })
 
-  it("the platform provider guards D1 during View as", () => {
-    const provider = readFileSync(join(process.cwd(), "src/db/provider/d1-provider.ts"), "utf8")
-    expect(provider).toContain("viewAsGuardedD1")
-  })
 })
 
 describe("getUnguardedCloudflareContext", () => {

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest"
 
-import { signViewAsToken, verifyViewAsToken, type ViewAsTokenPayload } from "@/lib/view-as/token"
+import { signViewAsToken, unverifiedViewAsTargetEmails, verifyViewAsToken, type ViewAsTokenPayload } from "@/lib/view-as/token"
 
 const SECRET = "a-test-secret-that-is-long-enough"
 const NOW = 1_800_000_000
@@ -11,6 +11,7 @@ const payload: ViewAsTokenPayload = {
   adminId: "admin-1",
   targetId: "owner-1",
   orgId: "org-1",
+  targetEmails: ["owner@example.com"],
   iat: NOW,
   exp: NOW + 3600,
 }
@@ -42,5 +43,11 @@ describe("View as token", () => {
     const token = await signViewAsToken(payload, SECRET)
     expect(await verifyViewAsToken(token, SECRET, NOW + 3600)).toBeNull()
     expect(await verifyViewAsToken(token, SECRET, NOW + 3600, { allowExpired: true })).toEqual(payload)
+  })
+
+  it("reads the viewed person's emails for the delegation guard", async () => {
+    const token = await signViewAsToken(payload, SECRET)
+    expect(unverifiedViewAsTargetEmails(token)).toEqual(["owner@example.com"])
+    expect(unverifiedViewAsTargetEmails("garbage")).toBeNull()
   })
 })

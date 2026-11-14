@@ -65,7 +65,7 @@ const admin: AuthUser = {
 
 async function token(overrides: Partial<{ adminId: string; orgId: string; exp: number }> = {}): Promise<string> {
   const now = Math.floor(Date.now() / 1000)
-  return signViewAsToken({ v: 1, sid: "s1", adminId: "admin-1", targetId: "owner-1", orgId: "org-1", iat: now, exp: now + 600, ...overrides }, SECRET)
+  return signViewAsToken({ v: 1, sid: "s1", adminId: "admin-1", targetId: "owner-1", orgId: "org-1", targetEmails: ["olive@example.com"], iat: now, exp: now + 600, ...overrides }, SECRET)
 }
 
 async function resolve(input: Partial<{ token: string; admin: AuthUser | null; developerModeEnabled: boolean }> = {}) {
