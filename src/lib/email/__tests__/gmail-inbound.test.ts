@@ -1,10 +1,13 @@
-import { describe, expect, it } from "vitest"
+import { describe, expect, it, vi } from "vitest"
 
 import {
   candidateFromMessage,
   type InboundCandidate,
 } from "@/lib/email/gmail-message-parser"
 import { isReplyMessage } from "@/lib/email/reply-detection"
+import { hydrateCandidateAttachments } from "@/lib/email/gmail-fetch"
+
+vi.mock("server-only", () => ({}))
 
 function candidate(
   overrides: Partial<InboundCandidate> = {}
@@ -25,6 +28,7 @@ function candidate(
     snippet: "Original outbound message",
     receivedAt: "2026-08-06T22:19:12.000Z",
     attachments: [],
+    automatic: null,
     ...overrides,
   }
 }
@@ -122,8 +126,46 @@ describe("candidateFromMessage attachments", () => {
         mimeType: "image/jpeg",
         size: 2048,
         data: null,
+        embedded: false,
       },
     ])
+  })
+
+  it("marks pictures shown inside the email body as embedded", () => {
+    const result = candidateFromMessage({
+      id: "message-with-logo",
+      payload: {
+        headers: [{ name: "From", value: "Sylvi <sylvi@example.com>" }, { name: "Subject", value: "Fw: inspection" }],
+        parts: [
+          { filename: "image001.png", mimeType: "image/png", headers: [{ name: "Content-ID", value: "<image001.png@01DB>" }, { name: "Content-Disposition", value: "inline; filename=\"image001.png\"" }], body: { attachmentId: "logo", size: 39636 } },
+          { filename: "report.pdf", mimeType: "application/pdf", headers: [{ name: "Content-Disposition", value: "attachment; filename=\"report.pdf\"" }], body: { attachmentId: "report", size: 90000 } },
+        ],
+      },
+    })
+    expect(result.attachments.map((file) => [file.fileName, file.embedded])).toEqual([["image001.png", true], ["report.pdf", false]])
+  })
+
+  it("flags out-of-office replies and bounces, not other machine-sent mail", () => {
+    const message = (headers: readonly { readonly name: string; readonly value: string }[]): string | null =>
+      candidateFromMessage({ id: "m", payload: { headers: [{ name: "From", value: "Client <client@example.com>" }, ...headers] } }).automatic
+    expect(message([{ name: "Auto-Submitted", value: "auto-replied" }])).toBe("out_of_office")
+    expect(message([{ name: "X-Autoreply", value: "yes" }])).toBe("out_of_office")
+    expect(message([{ name: "Auto-Submitted", value: "auto-generated" }])).toBeNull()
+    expect(message([{ name: "Auto-Submitted", value: "no" }])).toBeNull()
+    expect(message([{ name: "Precedence", value: "bulk" }])).toBeNull()
+    expect(candidateFromMessage({ id: "m", payload: { headers: [{ name: "From", value: "Mail Delivery Subsystem <mailer-daemon@googlemail.com>" }] } }).automatic).toBe("bounce")
+    expect(message([])).toBeNull()
+  })
+
+  it("drops signature logos before any route sees the files", async () => {
+    const bytes = (size: number): Uint8Array<ArrayBuffer> => new Uint8Array(size)
+    const candidate = candidateFromMessage({ id: "m", payload: { headers: [{ name: "From", value: "Field <field@example.com>" }, { name: "Subject", value: "[DAILY LOG]" }] } })
+    const hydrated = await hydrateCandidateAttachments({ accessToken: "token", candidate: { ...candidate, attachments: [
+      { attachmentId: null, fileName: "image001.png", mimeType: "image/png", size: 39_636, data: bytes(39_636), embedded: true },
+      { attachmentId: null, fileName: "IMG_1.jpeg", mimeType: "image/jpeg", size: 80_000, data: bytes(80_000), embedded: true },
+      { attachmentId: null, fileName: "site.jpg", mimeType: "image/jpeg", size: 10, data: bytes(10), embedded: false },
+    ] } })
+    expect(hydrated.attachments.map((file) => file.fileName)).toEqual(["IMG_1.jpeg", "site.jpg"])
   })
 
   it("decodes attachment data included directly in a Gmail part", () => {

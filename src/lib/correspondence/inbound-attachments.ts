@@ -10,7 +10,7 @@ import {
   isRestrictedCorrespondenceFolder,
   restrictedCorrespondenceDriveFolder,
 } from "@/lib/correspondence/attachment-storage"
-import type { InboundAttachment } from "@/lib/email/gmail-message-parser"
+import { isSignatureImage, type InboundAttachment } from "@/lib/email/gmail-message-parser"
 import { getOrganizationDriveContext } from "@/lib/google/organization-drive"
 import { safeFileName } from "@/lib/shared/text"
 
@@ -40,9 +40,11 @@ export async function storeInboundMessageAttachments(input: {
   readonly attachments: readonly InboundAttachment[]
   readonly now: string
 }): Promise<StoredInboundAttachments | null> {
-  if (input.attachments.length === 0) return { rows: [], discard: async () => {} }
-  if (input.attachments.length > MAX_CORRESPONDENCE_ATTACHMENTS) return null
-  if (input.attachments.some((file) => !file.data || file.data.byteLength > MAX_CORRESPONDENCE_FILE_BYTES)) return null
+  // Signature logos and icons ride along on most email; they aren't project files.
+  const attachments = input.attachments.filter((file) => !isSignatureImage(file))
+  if (attachments.length === 0) return { rows: [], discard: async () => {} }
+  if (attachments.length > MAX_CORRESPONDENCE_ATTACHMENTS) return null
+  if (attachments.some((file) => !file.data || file.data.byteLength > MAX_CORRESPONDENCE_FILE_BYTES)) return null
   const folder = restrictedCorrespondenceDriveFolder({ environment: input.env, organizationId: input.organizationId })
   if (!folder) return null
   const drive = await getOrganizationDriveContext({
@@ -69,7 +71,7 @@ export async function storeInboundMessageAttachments(input: {
   const rows: AttachmentInsert[] = []
   try {
     // Sequential: each file is a Google Drive upload (rate-limited outside API).
-    for (const [index, file] of input.attachments.entries()) {
+    for (const [index, file] of attachments.entries()) {
       if (!file.data) {
         await discard()
         return null
@@ -79,7 +81,7 @@ export async function storeInboundMessageAttachments(input: {
         name: safeFileName(file.fileName, "email-attachment"),
         mimeType: contentType,
         parentId: folder.id,
-        data: new Blob([file.data.slice().buffer], { type: contentType }),
+        data: new Blob([file.data], { type: contentType }),
       })
       uploadedIds.push(uploaded.id)
       rows.push({
