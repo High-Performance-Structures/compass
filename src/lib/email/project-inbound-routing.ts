@@ -251,17 +251,12 @@ export async function senderCanEmailProject(input: {
       and(
         eq(memberships.organizationId, input.organizationId),
         eq(accounts.isActive, true),
-        or(
-          sql`lower(${accounts.email}) = ${email}`,
-          sql`lower(${accounts.googleEmail}) = ${email}`
-        )
+        or(sql`lower(${accounts.email}) = ${email}`, sql`lower(${accounts.googleEmail}) = ${email}`)
       )
     )
     .limit(1)
-  if (member) return true
-
   // A staff member's other email addresses (Settings → Team) count as theirs.
-  if (await isActiveStaffAlternateEmail(input.db, input.organizationId, email)) return true
+  if (member || (await isActiveStaffAlternateEmail(input.db, input.organizationId, email))) return true
 
   // Staff commonly use parallel company-domain aliases (for example,
   // firstname@hps-colorado.com and firstname@openrangeconstruction.com).
