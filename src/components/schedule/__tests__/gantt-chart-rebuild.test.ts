@@ -71,4 +71,31 @@ describe("GanttChart rebuilds", () => {
     expect(container.querySelector('[data-id="b"]')?.classList.contains("schedule-focused")).toBe(true)
     expect(container.querySelector('[data-id="a"]')?.classList.contains("schedule-focused")).toBe(false)
   })
+
+  it("reports bar clicks with the pointer type and double-clicks separately", async () => {
+    const clicks: string[] = []
+    const doubleClicks: string[] = []
+    await act(async () => {
+      root.render(
+        React.createElement(GanttChart, {
+          tasks,
+          viewMode: "Day",
+          onTaskClick: (task, pointerType) => clicks.push(`${task.id}:${pointerType}`),
+          onTaskDoubleClick: (task) => doubleClicks.push(task.id),
+        })
+      )
+      await new Promise((resolve) => setTimeout(resolve, 0))
+    })
+    const bar = container.querySelector('[data-id="a"]')
+    if (!bar) throw new Error("bar missing")
+    await act(async () => {
+      const press = new MouseEvent("pointerdown", { bubbles: true })
+      Object.defineProperty(press, "pointerType", { value: "touch" })
+      bar.dispatchEvent(press)
+      bar.dispatchEvent(new MouseEvent("click", { bubbles: true }))
+      bar.dispatchEvent(new MouseEvent("dblclick", { bubbles: true }))
+    })
+    expect(clicks).toEqual(["a:touch"])
+    expect(doubleClicks).toEqual(["a"])
+  })
 })

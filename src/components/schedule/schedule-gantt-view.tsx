@@ -161,6 +161,16 @@ export function ScheduleGanttView({
     displayItems,
     setFocusedTaskId,
   })
+  // A single click on a bar selects it like a click on its list row; a
+  // double-click opens the editor. Dragging a bar still reschedules it.
+  const { focusTaskOnTimeline } = scroll
+  const focusBar = useCallback(
+    (task: FrappeTask) => {
+      const scheduleTask = tasks.find((item) => item.id === task.id)
+      if (scheduleTask) focusTaskOnTimeline(scheduleTask)
+    },
+    [focusTaskOnTimeline, tasks]
+  )
   const togglePhase = (phase: string) => {
     setCollapsedPhases((prev) => {
       const next = new Set(prev)
@@ -250,6 +260,7 @@ export function ScheduleGanttView({
                 focusedTaskId={focusedTaskId}
                 displayColorPalette={palette.displayColorPalette}
                 onZoom={handleZoom}
+                onTaskClick={focusBar}
                 onTaskDoubleClick={openTaskEditor}
                 onContainerReady={scroll.handleGanttContainerReady}
                 onScrollPositionChange={scroll.handleGanttScroll}
@@ -292,6 +303,7 @@ export function ScheduleGanttView({
                 focusedTaskId={focusedTaskId}
                 displayColorPalette={palette.displayColorPalette}
                 onZoom={handleZoom}
+                onTaskClick={focusBar}
                 onTaskDoubleClick={openTaskEditor}
                 onContainerReady={scroll.handleGanttContainerReady}
                 onScrollPositionChange={scroll.handleGanttScroll}

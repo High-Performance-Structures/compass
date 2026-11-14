@@ -179,7 +179,12 @@ interface GanttChartProps {
   ) => void
   onProgressChange?: (task: FrappeTask, progress: number) => void
   onZoom?: (direction: "in" | "out") => void
-  onTaskClick?: (task: FrappeTask) => void
+  /**
+   * Single click on a bar. `pointerType` is the pointer that made the click
+   * ("mouse", "touch" or "pen") so callers can treat a tap on a selected bar
+   * as "open" — double-tap is unreliable on phones.
+   */
+  onTaskClick?: (task: FrappeTask, pointerType: string) => void
   onTaskDoubleClick?: (task: FrappeTask) => void
   onContainerReady?: (container: HTMLElement | null) => void
   onScrollPositionChange?: (position: GanttScrollPosition) => void
@@ -248,6 +253,9 @@ export function GanttChart({
     if (!taskId || taskId.startsWith("phase-")) return null
     return latestTasksRef.current.find((task) => task.id === taskId) ?? null
   }, [])
+
+  // The pointer of the latest press; click events don't reliably carry it.
+  const lastPointerTypeRef = useRef("mouse")
 
   const handleDoubleClick = useCallback(
     (event: React.MouseEvent<HTMLDivElement>) => {
@@ -697,9 +705,17 @@ export function GanttChart({
       onMouseMove={handleMouseMove}
       onMouseUp={handleMouseUp}
       onMouseLeave={handleMouseUp}
+      onPointerDown={(event) => {
+        lastPointerTypeRef.current = event.pointerType || "mouse"
+      }}
       onClick={(event) => {
         const task = taskForEventTarget(event.target)
-        if (task) interactionCallbacksRef.current.onTaskClick?.(task)
+        if (task) {
+          interactionCallbacksRef.current.onTaskClick?.(
+            task,
+            lastPointerTypeRef.current
+          )
+        }
       }}
       onDoubleClick={handleDoubleClick}
     >

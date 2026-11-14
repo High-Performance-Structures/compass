@@ -27,7 +27,9 @@ import {
   getScheduleItemDisplayColor,
   normalizeDisplayColor
 } from "@/lib/schedule/appearance"
+import { scheduleItemClickAction } from "@/lib/schedule/gantt-click"
 import type { FrappeTask } from "@/lib/schedule/gantt-transform"
+import { cn } from "@/lib/utils"
 import type { WorkdayExceptionData } from "@/lib/schedule/types"
 import { ScheduleItemResponses } from "./schedule-item-responses"
 
@@ -40,6 +42,7 @@ const WIDTHS: Readonly<Record<ViewMode, number>> = {
 }
 const MODES: readonly ViewMode[] = ["Day", "Week", "Month", "Year"]
 const NO_EXCEPTIONS: readonly WorkdayExceptionData[] = []
+const ROW_HINT = "Click to show on the chart; double-click for details"
 
 function formatDate(date: string): string {
   return new Date(`${date}T12:00:00`).toLocaleDateString("en-US", {
@@ -61,12 +64,17 @@ export function ProjectAudienceGantt({
   const [mobileView, setMobileView] = React.useState<"chart" | "items">("chart")
   const [mode, setMode] = React.useState<ViewMode>("Week")
   const [width, setWidth] = React.useState(WIDTHS.Week)
+  // One click highlights an item on the chart; opening the details drawer is
+  // a separate step (double-click, Enter, or a second tap on a phone).
+  const [highlightedId, setHighlightedId] = React.useState<string | null>(null)
   const [selectedId, setSelectedId] = React.useState<string | null>(null)
   const selected = items.find((item) => item.id === selectedId)
   const listRef = React.useRef<HTMLDivElement>(null)
   const chartRef = React.useRef<HTMLElement | null>(null)
   const dateScroll = React.useRef<((date: string) => void) | null>(null)
   const todayScroll = React.useRef<(() => void) | null>(null)
+  const revealTask = React.useRef<((taskId: string) => void) | null>(null)
+  const listPointerType = React.useRef("mouse")
   const position = React.useRef<GanttScrollPosition>({ left: 0, top: 0 })
   const tasks = React.useMemo<FrappeTask[]>(
     () =>
@@ -103,9 +111,23 @@ export function ProjectAudienceGantt({
     }
   }, [])
   const openItem = (item: AudienceScheduleItem): void => {
-    dateScroll.current?.(item.startDate)
+    setHighlightedId(item.id)
     setSelectedId(item.id)
   }
+  const clickItem = (item: AudienceScheduleItem, pointerType: string): void => {
+    if (
+      scheduleItemClickAction(pointerType, highlightedId === item.id) === "open"
+    ) {
+      openItem(item)
+      return
+    }
+    setHighlightedId(item.id)
+    // Only slides the chart sideways when the bar is off-screen; the list
+    // and chart already share vertical scroll, so the row is level with it.
+    revealTask.current?.(item.id)
+  }
+  const itemForTask = (task: FrappeTask): AudienceScheduleItem | undefined =>
+    items.find((candidate) => candidate.id === task.id)
   const chart = (
     <GanttChart
       tasks={tasks}
@@ -113,11 +135,19 @@ export function ProjectAudienceGantt({
       viewMode={mode}
       columnWidth={width}
       readOnly
+      focusedTaskId={highlightedId}
       displayColorPalette={palette}
       onZoom={zoom}
-      onTaskClick={(task) => {
-        const item = items.find((candidate) => candidate.id === task.id)
+      onTaskClick={(task, pointerType) => {
+        const item = itemForTask(task)
+        if (item) clickItem(item, pointerType)
+      }}
+      onTaskDoubleClick={(task) => {
+        const item = itemForTask(task)
         if (item) openItem(item)
+      }}
+      onTaskVisibilityReady={(handler) => {
+        revealTask.current = handler
       }}
       onContainerReady={(container) => {
         chartRef.current = container
@@ -175,14 +205,34 @@ export function ProjectAudienceGantt({
           {items.map((item) => (
             <tr
               key={item.id}
-              className="h-[48px] border-b even:bg-muted/20 hover:bg-muted/50"
+              data-schedule-task-id={item.id}
+              className={cn(
+                "h-[48px] border-b",
+                highlightedId === item.id
+                  ? "bg-accent"
+                  : "even:bg-muted/20 hover:bg-muted/50"
+              )}
             >
               <td className="h-[48px] px-3 py-0">
                 <button
                   type="button"
-                  onClick={() => openItem(item)}
+                  aria-pressed={highlightedId === item.id}
+                  onPointerDown={(event) => {
+                    listPointerType.current = event.pointerType || "mouse"
+                  }}
+                  onClick={() => {
+                    clickItem(item, listPointerType.current)
+                    // Keyboard and assistive-tech clicks have no pointer press.
+                    listPointerType.current = "mouse"
+                  }}
+                  onDoubleClick={() => openItem(item)}
+                  onKeyDown={(event) => {
+                    if (event.key !== "Enter" && event.key !== " ") return
+                    event.preventDefault()
+                    openItem(item)
+                  }}
                   className="flex h-full w-full min-w-0 items-center gap-2 text-left focus-visible:outline-ring"
-                  title={item.title}
+                  title={`${item.title}\n${ROW_HINT}`}
                 >
                   <span
                     className="size-2 shrink-0 rounded-full"
@@ -292,7 +342,7 @@ export function ProjectAudienceGantt({
           Today
         </Button>
         <p className="ml-auto text-xs text-muted-foreground">
-          Select an item for details and responses
+          Double-click an item (or tap it twice) for details and responses
         </p>
       </div>
       <div
