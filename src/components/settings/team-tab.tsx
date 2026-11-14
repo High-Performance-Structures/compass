@@ -30,7 +30,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
 import {
-  teamAccessSectionForRole,
+  teamAccessSectionForUser,
   type TeamAccessSection,
 } from "@/lib/team-access-section"
 import { projectNumberAndName } from "@/lib/project-display-name"
@@ -39,6 +39,7 @@ const SECTION_OPTIONS = [
   { value: "internal", label: "Internal Team", description: "Staff accounts and invitations" },
   { value: "vendors", label: "Vendors", description: "Subcontractor and supplier access" },
   { value: "clients", label: "Clients", description: "Owner and client access" },
+  { value: "development", label: "Development", description: "People who build Compass, not employees" },
   { value: "other", label: "Other Access", description: "Guest and developer accounts" },
 ] as const
 
@@ -67,7 +68,7 @@ export function TeamTab({ initialSection }: { readonly initialSection: TeamAcces
     setSelectedUserIds([])
   }
 
-  const sectionUsers = users.filter((user) => teamAccessSectionForRole(user.role) === section)
+  const sectionUsers = users.filter((user) => teamAccessSectionForUser(user) === section)
   const sectionLabel = SECTION_OPTIONS.find((option) => option.value === section)?.label ?? "Internal Team"
 
   const loadUsers = async () => {
@@ -181,7 +182,7 @@ export function TeamTab({ initialSection }: { readonly initialSection: TeamAcces
             ariaLabel="Choose account group"
             options={SECTION_OPTIONS.map((option) => ({
               ...option,
-              selectedLabel: `${option.label} (${users.filter((user) => teamAccessSectionForRole(user.role) === option.value).length})`,
+              selectedLabel: `${option.label} (${users.filter((user) => teamAccessSectionForUser(user) === option.value).length})`,
             }))}
             value={section}
             onValueChange={handleSectionChange}
@@ -193,6 +194,13 @@ export function TeamTab({ initialSection }: { readonly initialSection: TeamAcces
         {section === "other" && (
           <p className="text-xs text-muted-foreground">
             Guest and developer accounts stay separate until they have an explicit directory relationship.
+          </p>
+        )}
+        {section === "development" && (
+          <p className="text-xs text-muted-foreground">
+            People who build Compass rather than work for the company, such as an automation&apos;s account or an outside
+            developer. They keep their role and access, but are left out of staff pickers, staff counts and Sage employee
+            linking. An admin sets or clears this on the person&apos;s Access tab.
           </p>
         )}
 

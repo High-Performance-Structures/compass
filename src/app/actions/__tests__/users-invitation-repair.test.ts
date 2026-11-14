@@ -102,7 +102,8 @@ function openDatabase(): InstanceType<typeof Database> {
       organization_id TEXT NOT NULL,
       user_id TEXT NOT NULL,
       role TEXT NOT NULL,
-      joined_at TEXT NOT NULL
+      joined_at TEXT NOT NULL,
+      is_development_account INTEGER NOT NULL DEFAULT 0
     );
     CREATE TABLE organizations (
       id TEXT PRIMARY KEY,

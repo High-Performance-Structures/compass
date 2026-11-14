@@ -6,6 +6,7 @@ import { revalidatePath } from "next/cache"
 import { getDb } from "@/db"
 import { myCompassCalendarItems, myCompassCalendars, organizationCalendarSettings } from "@/db/schema"
 import { membershipsView, peopleView } from "@/lib/domain/identity/views"
+import { notDevelopmentAccount } from "@/lib/domain/identity/development-accounts"
 import { googleAuth } from "@/db/schema-google"
 import { requireAuth, type AuthUser } from "@/lib/auth"
 import { getCloudflareContext } from "@/lib/db"
@@ -229,7 +230,7 @@ export async function getMyCompassCalendarStaffOptions(): Promise<
       })
       .from(people)
       .innerJoin(memberships, eq(memberships.userId, people.id))
-      .where(and(eq(memberships.organizationId, ctx.organizationId), eq(people.isActive, true)))
+      .where(and(eq(memberships.organizationId, ctx.organizationId), eq(people.isActive, true), notDevelopmentAccount(memberships)))
     return {
       success: true,
       data: rows

@@ -9,6 +9,8 @@ import { organizationMembers, organizations, projectAccessInvitations, users } f
 import type { Db } from "@/lib/server/action-context"
 import { isAdminRole, isInternalStaffRole } from "@/lib/user-roles"
 
+import { notDevelopmentAccount } from "./development-accounts"
+
 /**
  * A still-open ("sent") invitation to this project, for staff previewing
  * someone who hasn't accepted yet. Null when it was accepted, revoked,
@@ -51,7 +53,7 @@ export function organizationMembershipsQuery(db: Db, userId: string) {
     .where(eq(organizationMembers.userId, userId))
 }
 
-/** The company's active staff (internal roles only), by name, for staff-only pickers. */
+/** The company's active staff (internal roles only, no development accounts), by name, for staff-only pickers. */
 export async function activeStaff(
   db: Db,
   organizationId: string,
@@ -60,7 +62,7 @@ export async function activeStaff(
     .select({ id: users.id, displayName: users.displayName, email: users.email, role: organizationMembers.role })
     .from(organizationMembers)
     .innerJoin(users, eq(users.id, organizationMembers.userId))
-    .where(and(eq(organizationMembers.organizationId, organizationId), eq(users.isActive, true)))
+    .where(and(eq(organizationMembers.organizationId, organizationId), eq(users.isActive, true), notDevelopmentAccount(organizationMembers)))
     .orderBy(asc(users.displayName), asc(users.email))
   return rows.filter((row) => isInternalStaffRole(row.role)).map((row) => ({ id: row.id, name: row.displayName?.trim() || row.email }))
 }

@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache"
 import { z } from "zod"
 
 import { actionFailure, type ActionFailure } from "@/lib/action-result"
-import { crewInputProblem, listCrews, type Crew } from "@/lib/domain/identity/crews"
+import { crewInputProblem, crewMemberNames, listCrews, type Crew } from "@/lib/domain/identity/crews"
 import { deleteCrew, saveCrew } from "@/lib/domain/identity/store"
 import { activeStaff } from "@/lib/domain/identity/reads"
 import { PROJECT_DEPARTMENTS } from "@/lib/domain/project/statuses"
@@ -14,6 +14,8 @@ import { orgContext } from "@/lib/server/action-context"
 export type CrewSettings = {
   readonly crews: readonly Crew[]
   readonly staff: readonly { readonly id: string; readonly name: string }[]
+  /** Crew members by name, including people no longer in the staff picker, so they can be shown and removed. */
+  readonly memberNames: readonly { readonly id: string; readonly name: string }[]
   readonly canEdit: boolean
 }
 
@@ -21,12 +23,13 @@ export async function getCrewSettings(): Promise<{ readonly success: true; reado
   const context = await orgContext({ feature: "teams", action: "read" })
   if (!context.success) return context
   const { db, organizationId } = context.data
-  const [crews, staff, editor] = await Promise.all([
+  const [crews, staff, memberNames, editor] = await Promise.all([
     listCrews(db, organizationId),
     activeStaff(db, organizationId),
+    crewMemberNames(db, organizationId),
     orgContext({ feature: "teams", action: "update" }),
   ])
-  return { success: true, data: { crews, staff, canEdit: editor.success } }
+  return { success: true, data: { crews, staff, memberNames, canEdit: editor.success } }
 }
 
 const crewSchema = z.object({
@@ -46,7 +49,12 @@ export async function saveCrewSettings(
   if (!context.success) return context
   const { db, organizationId } = context.data
   const input = parsed.data
-  const staffIds = new Set((await activeStaff(db, organizationId)).map((person) => person.id))
+  const [staff, crews] = await Promise.all([activeStaff(db, organizationId), listCrews(db, organizationId)])
+  // People already on this crew may stay even if they no longer appear in the
+  // staff picker (deactivated, or tagged as a development account), so a
+  // rename or other edit never fails because of them.
+  const current = crews.find((crew) => crew.id === input.id)
+  const staffIds = new Set([...staff.map((person) => person.id), ...(current?.memberIds ?? [])])
   const problem = crewInputProblem(input, staffIds)
   if (problem) return actionFailure(problem)
   const id = await saveCrew(db, { ...input, organizationId, now: new Date().toISOString() })

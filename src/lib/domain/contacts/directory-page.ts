@@ -2,6 +2,7 @@ import { and, asc, count, desc, eq, isNull, ne, sql, type AnyColumn, type SQL } 
 
 import { customers, internalContacts, vendors, type Customer, type Vendor } from "@/db/schema"
 import { readFeatureSettings } from "@/lib/feature-settings/server"
+import { userIsNotDevelopmentAccount } from "@/lib/domain/identity/development-accounts"
 import { containsPattern, phoneDigitsPattern, type RecordPage, type RecordPageQuery } from "@/lib/record-page"
 import type { Db } from "@/lib/server/action-context"
 
@@ -267,8 +268,13 @@ export async function loadDirectorySummary(
       .where(and(eq(customers.organizationId, organizationId), isNull(customers.mergedIntoCustomerId))),
     db.select({ value: count() }).from(vendors)
       .where(and(eq(vendors.organizationId, organizationId), eq(vendors.directoryStatus, "active"), notInternal)),
+    // Staff count: development accounts are not staff (same rule as the Internal tab list).
     db.select({ value: count() }).from(internalContacts)
-      .where(and(eq(internalContacts.organizationId, organizationId), eq(internalContacts.active, true))),
+      .where(and(
+        eq(internalContacts.organizationId, organizationId),
+        eq(internalContacts.active, true),
+        userIsNotDevelopmentAccount(internalContacts.userId, organizationId),
+      )),
     db.selectDistinct({ category: vendors.category }).from(vendors)
       .where(and(eq(vendors.organizationId, organizationId), eq(vendors.directoryStatus, "active"), notInternal)),
   ]), readFeatureSettings(db, organizationId, "vendor-types")])

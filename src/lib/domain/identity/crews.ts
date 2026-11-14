@@ -8,7 +8,7 @@
  */
 import { and, asc, eq, inArray } from "drizzle-orm"
 
-import { teamMembers, teams } from "@/db/schema"
+import { teamMembers, teams, users } from "@/db/schema"
 import { chunkD1Values } from "@/lib/d1-query"
 import { PROJECT_DEPARTMENTS, type ProjectDepartmentCode } from "@/lib/domain/project/statuses"
 import type { Db } from "@/lib/server/action-context"
@@ -42,6 +42,20 @@ export function crewInputProblem(input: CrewInput, staffIds: ReadonlySet<string>
   if (input.memberIds.some((id) => !staffIds.has(id))) return "Crews are for your own staff only."
   if (input.leadUserId !== null && !input.memberIds.includes(input.leadUserId)) return "The crew lead must be on the crew."
   return null
+}
+
+/** Names of everyone on any of the company's crews, including people no longer in the staff picker. */
+export async function crewMemberNames(
+  db: Db,
+  organizationId: string,
+): Promise<{ readonly id: string; readonly name: string }[]> {
+  const rows = await db
+    .selectDistinct({ id: users.id, displayName: users.displayName, email: users.email })
+    .from(teamMembers)
+    .innerJoin(teams, eq(teams.id, teamMembers.teamId))
+    .innerJoin(users, eq(users.id, teamMembers.userId))
+    .where(eq(teams.organizationId, organizationId))
+  return rows.map((row) => ({ id: row.id, name: row.displayName?.trim() || row.email }))
 }
 
 /** Every crew in the company with its members, by name. */

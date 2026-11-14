@@ -98,6 +98,11 @@ export const organizationMembers = sqliteTable("organization_members", {
     .references(() => users.id, { onDelete: "cascade" }),
   role: text("role", { enum: USER_ROLES }).notNull(),
   joinedAt: text("joined_at").notNull(),
+  // A person who builds Compass itself (an automation's service account, an
+  // outside developer) rather than a company employee. Role and access are
+  // unchanged; they are left out of staff pickers, staff counts and Sage
+  // employee linking. An admin sets it in Settings → Team (migration 0325).
+  isDevelopmentAccount: integer("is_development_account", { mode: "boolean" }).notNull().default(false),
 }, (table) => [
   // Resolved on every authenticated request (current user's memberships).
   index("organization_members_user_idx").on(table.userId),

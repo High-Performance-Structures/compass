@@ -46,6 +46,8 @@ export type UserWithRelations = User & {
   projectCount: number
   organizationCount: number
   accessStatus: "active" | "invited"
+  /** Builds Compass rather than works for the company (Settings → Team → Development). */
+  developmentAccount: boolean
 }
 
 async function getOrganizationUsers(
@@ -74,6 +76,7 @@ async function getOrganizationUsers(
       .select({
         ...getTableColumns(users),
         organizationRole: organizationMembers.role,
+        developmentAccount: organizationMembers.isDevelopmentAccount,
       })
       .from(users)
       .innerJoin(organizationMembers, eq(organizationMembers.userId, users.id))
@@ -88,7 +91,7 @@ async function getOrganizationUsers(
     const crewsByUser = await crewsForUsers(db, organizationId, allUsers.map((user) => user.id))
     const usersWithRelations = await Promise.all(
       allUsers.map(async (user) => {
-        const { organizationRole, ...identity } = user
+        const { organizationRole, developmentAccount, ...identity } = user
         const accessStatus: UserWithRelations["accessStatus"] = user.isActive
           ? "active"
           : "invited"
@@ -133,6 +136,7 @@ async function getOrganizationUsers(
           projectCount,
           organizationCount,
           accessStatus,
+          developmentAccount,
         }
       })
     )

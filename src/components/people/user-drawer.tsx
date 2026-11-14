@@ -6,6 +6,7 @@ import { toast } from "sonner"
 
 import type { UserWithRelations } from "@/app/actions/users"
 import { updateUserRole } from "@/app/actions/users"
+import { setUserDevelopmentAccount } from "@/app/actions/development-accounts"
 import { USER_ROLE_OPTIONS, isInternalStaffRole, userRoleDescription } from "@/lib/user-roles"
 import { AlternateEmailsSection } from "@/components/people/alternate-emails-section"
 import { SearchableCombobox } from "@/components/searchable-combobox"
@@ -13,6 +14,7 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { Switch } from "@/components/ui/switch"
 import {
   Sheet,
   SheetContent,
@@ -37,10 +39,13 @@ export function UserDrawer({
 }: UserDrawerProps) {
   const [saving, setSaving] = React.useState(false)
   const [selectedRole, setSelectedRole] = React.useState<string>("office")
+  const [developmentAccount, setDevelopmentAccount] = React.useState(false)
+  const [savingDevelopment, setSavingDevelopment] = React.useState(false)
 
   React.useEffect(() => {
     if (user) {
       setSelectedRole(user.role)
+      setDevelopmentAccount(user.developmentAccount)
     }
   }, [user])
 
@@ -65,6 +70,24 @@ export function UserDrawer({
       toast.error("Failed to update role")
     } finally {
       setSaving(false)
+    }
+  }
+
+  const handleDevelopmentAccountChange = async (next: boolean) => {
+    setSavingDevelopment(true)
+    try {
+      const result = await setUserDevelopmentAccount({ userId: user.id, developmentAccount: next })
+      if (result.success) {
+        setDevelopmentAccount(next)
+        toast.success(next ? `${result.data.name} is now a development account` : `${result.data.name} is no longer a development account`)
+        onUserUpdated?.()
+      } else {
+        toast.error(result.error)
+      }
+    } catch {
+      toast.error("Failed to update development account")
+    } finally {
+      setSavingDevelopment(false)
     }
   }
 
@@ -175,6 +198,23 @@ export function UserDrawer({
                   {saving ? "Saving..." : "Save Role"}
                 </Button>
               )}
+            </div>
+
+            <div className="flex items-start justify-between gap-4 border-t pt-4">
+              <div className="space-y-1">
+                <Label htmlFor="development-account">Development account</Label>
+                <p className="text-xs text-muted-foreground">
+                  Builds Compass rather than works for the company. Keeps this role and access, but is left out of staff
+                  pickers, staff counts and Sage employee linking.
+                </p>
+              </div>
+              <Switch
+                id="development-account"
+                checked={developmentAccount}
+                disabled={savingDevelopment}
+                onCheckedChange={(next) => void handleDevelopmentAccountChange(next)}
+                aria-label="Development account"
+              />
             </div>
 
             <div className="space-y-2">
