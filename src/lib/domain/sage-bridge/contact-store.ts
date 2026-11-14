@@ -258,6 +258,33 @@ export function rejectSageLinkReviewStatements(
   ]
 }
 
+/**
+ * Closes a candidate whose directory record already carries this exact Sage
+ * ID (linked another way, e.g. by email), then its audit event. No reviewer:
+ * the link it asked for already exists, so there is nothing to decide.
+ */
+export function closeAlreadyLinkedSageLinkStatements(
+  database: D1Database,
+  input: { readonly requestId: string; readonly organizationId: string; readonly sageRecordId: string; readonly now: string }
+): D1PreparedStatement[] {
+  return [
+    database.prepare(
+      `UPDATE sage_contact_read_requests SET status = 'linked', reviewed_at = ?,
+           review_note = 'Already linked to this Sage record.'
+           WHERE id = ? AND organization_id = ? AND purpose = 'link_candidate'
+             AND status = 'awaiting_review'`
+    ).bind(input.now, input.requestId, input.organizationId),
+    database.prepare(
+      `INSERT INTO sage_contact_link_events
+           (id, request_id, organization_id, actor_user_id, event_type, detail_json, created_at)
+           SELECT ?, id, organization_id, NULL, 'already_linked', ?, ?
+           FROM sage_contact_read_requests WHERE id = ? AND organization_id = ?
+             AND status = 'linked' AND reviewed_by_user_id IS NULL AND reviewed_at = ?`
+    ).bind(crypto.randomUUID(), JSON.stringify({ sageRecordId: input.sageRecordId }), input.now,
+      input.requestId, input.organizationId, input.now),
+  ]
+}
+
 /** Takes the `linking` claim on a candidate whose stored read-back is still `candidateSnapshotJson`. */
 export function startSageLinkStatement(
   database: D1Database,

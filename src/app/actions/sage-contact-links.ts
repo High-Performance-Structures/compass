@@ -10,6 +10,7 @@ import { requireAuth } from "@/lib/auth"
 import { getCloudflareContext } from "@/lib/db"
 import { sageIdentityLinkStatement } from "@/lib/domain/contacts/store"
 import {
+  closeAlreadyLinkedSageLinkStatements,
   confirmSageLinkStatement,
   insertSageContactLinkEvent,
   insertSageContactReadRequest,
@@ -199,8 +200,29 @@ export async function requestSageContactLinkCandidate(
   }
 }
 
+/**
+ * A lookup awaiting review whose record was since linked to this exact Sage
+ * ID another way is done, not a decision: close it so it leaves the queue.
+ */
+async function closeIfAlreadyLinked(
+  database: D1Database,
+  db: ReturnType<typeof getDb>,
+  organizationId: string,
+  kind: SageContactKind,
+  requestId: string,
+  entityId: string,
+  candidateSageRecordId: string
+): Promise<boolean> {
+  const identity = await getSageContactEntityIdentity(db, organizationId, kind, entityId)
+  if (!identity?.sageRecordId || !sameSageRecordId(identity.sageRecordId, candidateSageRecordId)) return false
+  const results = await database.batch(closeAlreadyLinkedSageLinkStatements(database, {
+    requestId, organizationId, sageRecordId: identity.sageRecordId, now: new Date().toISOString(),
+  }))
+  return results[0]?.meta.changes === 1
+}
+
 export async function listSageContactLinkCandidates(): Promise<readonly SageContactLinkCandidate[]> {
-  const { user, db } = await requireUserContext()
+  const { user, db, env } = await requireUserContext()
   await requireFeaturePermission(user, "sage-contact-review", "read")
   const orgId = requireOrg(user)
   const canSeeEmployee = await requireFeaturePermission(user, "employee-contact-private", "read")
@@ -228,15 +250,20 @@ export async function listSageContactLinkCandidates(): Promise<readonly SageCont
     let snapshot: unknown
     try { snapshot = row.candidateSnapshotJson ? JSON.parse(row.candidateSnapshotJson) : null } catch { snapshot = null }
     const parsed = sageContactSnapshotResultSchema.safeParse(snapshot)
+    let status = row.status
+    if (status === "awaiting_review" && parsed.success && !isDemoUser(user.id) &&
+      await closeIfAlreadyLinked(env.DB, db, orgId, kind.data, row.id, row.entityId, parsed.data.sageRecordId)) {
+      status = "linked"
+    }
     const sageIdentityName = parsed.success ? parsed.data.identityName?.trim() || null : null
     const employeeNamesMatch = kind.data === "employee" && sageEmployeeNamesMatch(name, sageIdentityName)
     const completedAt = row.completedAt ? Date.parse(row.completedAt) : Number.NaN
     result.push({
       id: row.id, kind: kind.data, entityId: row.entityId, directoryName: name,
-      status: row.status, sageRecordNumber: row.sageRecordNumber,
+      status, sageRecordNumber: row.sageRecordNumber,
       sageRecordId: parsed.success ? parsed.data.sageRecordId : null,
       sageIdentityName, employeeNamesMatch,
-      reviewExpired: row.status === "awaiting_review" &&
+      reviewExpired: status === "awaiting_review" &&
         (!Number.isFinite(completedAt) || Date.now() - completedAt > SAGE_LINK_CANDIDATE_MAX_AGE_MS),
       fields: parsed.success ? parsed.data.fields : {},
       requestedByUserId: row.requestedByUserId,
