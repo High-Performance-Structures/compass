@@ -219,7 +219,8 @@ export async function ProjectConversationsTab({
             <div className="border-b px-4 py-2 lg:hidden">
               <Link className="text-sm underline" href={href({ channelId: null })}>Back to conversations</Link>
             </div>
-            <div className="min-h-0 flex-1">
+            {/* A flex column so ConversationsProvider's flex-1 wrapper fills this frame instead of growing to its content and spilling below it. */}
+            <div className="flex min-h-0 flex-1 flex-col">
               {renderChannel && query.channelId
                 ? renderChannel(query.channelId)
                 : channel && currentUser && (
