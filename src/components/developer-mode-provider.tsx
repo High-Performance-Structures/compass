@@ -9,12 +9,15 @@ type DeveloperModeContextValue = {
   readonly canUseDeveloperMode: boolean
   readonly developerModeEnabled: boolean
   readonly setDeveloperModeEnabled: (enabled: boolean) => void
+  /** View as entry points show only with developer mode on (src/lib/view-as/). */
+  readonly canViewAs: boolean
 }
 
 const WORKER_MODE_CONTEXT: DeveloperModeContextValue = {
   canUseDeveloperMode: false,
   developerModeEnabled: false,
   setDeveloperModeEnabled: () => undefined,
+  canViewAs: false,
 }
 
 const DeveloperModeContext = React.createContext<DeveloperModeContextValue | null>(
@@ -24,10 +27,12 @@ const DeveloperModeContext = React.createContext<DeveloperModeContextValue | nul
 export function DeveloperModeProvider({
   canUseDeveloperMode,
   initialEnabled,
+  canViewAs = false,
   children,
 }: {
   readonly canUseDeveloperMode: boolean
   readonly initialEnabled: boolean
+  readonly canViewAs?: boolean
   readonly children: React.ReactNode
 }): React.ReactElement {
   const router = useRouter()
@@ -64,8 +69,9 @@ export function DeveloperModeProvider({
       canUseDeveloperMode,
       developerModeEnabled: canUseDeveloperMode && enabled,
       setDeveloperModeEnabled,
+      canViewAs: canUseDeveloperMode && enabled && canViewAs,
     }),
-    [canUseDeveloperMode, enabled, setDeveloperModeEnabled],
+    [canUseDeveloperMode, enabled, setDeveloperModeEnabled, canViewAs],
   )
 
   return (

@@ -3,7 +3,8 @@ import { ProjectAudiencePersonSelector } from "@/components/projects/project-aud
 import { ProjectAudiencePreviewScope } from "@/components/projects/project-audience-preview-scope"
 import type * as React from "react"
 
-import { getCurrentUser } from "@/lib/auth"
+import { getCurrentUser, getViewAsState } from "@/lib/auth"
+import { ViewAsFrame } from "@/components/view-as/view-as-frame"
 import { getProjects } from "@/app/actions/projects"
 import { getQuickAddProjects } from "@/lib/quick-add-server"
 import { QuickAddProvider } from "@/components/quick-add-menu"
@@ -36,8 +37,9 @@ export default async function PreviewLayout({
     // Titles and headings only; the drawer loads article text when opened.
     .map(toHelpGuideListing)
 
-  const departmentProfiles = await currentDepartmentProfiles()
+  const [departmentProfiles, viewAsState] = await Promise.all([currentDepartmentProfiles(), getViewAsState()])
   return (
+    <ViewAsFrame state={viewAsState}>
     <DepartmentProfilesProvider profiles={departmentProfiles}>
     <HelpUiProvider guides={helpGuides} canUseJarvis={false}>
       <QuickAddProvider projects={quickAddProjects}>
@@ -54,5 +56,6 @@ export default async function PreviewLayout({
       </QuickAddProvider>
     </HelpUiProvider>
     </DepartmentProfilesProvider>
+    </ViewAsFrame>
   )
 }

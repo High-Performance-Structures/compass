@@ -3,6 +3,8 @@ import { resolveProjectRouteId } from "@/lib/project-route-id"
 import { headers } from "next/headers"
 import { requireAuth } from "@/lib/auth"
 import { AUDIENCE_SCOPE_HEADER, parseAudienceScope, type ProjectAudienceRequestScope } from "@/lib/project-audience-request"
+import { isViewAsRequest } from "@/lib/view-as/request"
+import { ViewAsReadOnlyError } from "@/lib/view-as/write-guard"
 
 export const getProjectAudienceRequestScope = cache(async function getProjectAudienceRequestScope(): Promise<ProjectAudienceRequestScope | null> {
   // Background work (cron, queues) has no request and so is never a preview.
@@ -27,6 +29,8 @@ export async function isAudiencePreviewRequest(): Promise<boolean> {
 }
 
 export async function assertAudiencePreviewWriteAllowed(): Promise<void> {
+  // Developer View as is read only everywhere; the database guard backs this up.
+  if (await isViewAsRequest()) throw new ViewAsReadOnlyError()
   const scope = await getProjectAudienceRequestScope()
   if (!scope) return
   // Active-shell roles may belong to another organization. Use the same

@@ -22,6 +22,7 @@ import {
   isAtNewestEdge,
   mergeOlderMessagePage,
 } from "./message-list-behavior"
+import { useViewAsActive } from "@/components/view-as/view-as-context"
 
 type MessageData = {
   readonly id: string
@@ -117,8 +118,10 @@ export function MessageList({
   // Only while the tab is visible, and settled briefly so a burst of arriving
   // messages sends one request.
   const lastReportedReadRef = React.useRef<string | null>(null)
+  const viewAs = useViewAsActive()
   React.useEffect(() => {
-    if (!lastMessageId || !atNewestEdge) return
+    // View as leaves the viewed person's unread state alone.
+    if (viewAs || !lastMessageId || !atNewestEdge) return
     let timer: number | null = null
     const report = (): void => {
       if (document.visibilityState !== "visible") return
@@ -140,7 +143,7 @@ export function MessageList({
       document.removeEventListener("visibilitychange", report)
       if (timer !== null) window.clearTimeout(timer)
     }
-  }, [atNewestEdge, channelId, lastMessageId])
+  }, [atNewestEdge, channelId, lastMessageId, viewAs])
 
   // consume new messages from real-time polling
   const consumedNewMessagesRef = React.useRef<Set<string>>(new Set())

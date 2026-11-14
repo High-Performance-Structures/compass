@@ -173,6 +173,16 @@ export function isTokenExpired(token: string): boolean
 These are used for edge cases where the application needs to inspect the session token directly, outside the normal WorkOS flow.
 
 
+developer View as
+---
+
+Admins in developer mode can open a live, read-only copy of another person's Compass (staff, owner or vendor) from the developer menu, the People sheet or Contacts. Code lives in `src/lib/view-as/` (its `constants.ts` header maps the files); the company setting is "View as" under Settings > People (admins only by default; listed staff may be added, never owners or vendors).
+
+- **Session.** An httpOnly `compass-view-as` cookie holds an HMAC-signed token (who started it, whom, which company, expiry). `getCurrentUser()` re-checks it on every request: valid signature, same signed-in admin and company, admin still allowed, developer mode on, company setting on, viewed person still part of the company. If any check fails there is no user until the admin exits. `getSignedInUser()` returns the admin.
+- **Read only, in layers.** (1) `getCloudflareContext()` returns read-only D1 and R2 bindings whenever the cookie is present, so no write from a server action, API route or page reaches the database: in a server action it throws "View as is read only", while rendering a page it is dropped quietly so the screen still renders; only `getUnguardedCloudflareContext()` (View as module and the admin's own sign-in housekeeping, enforced by a test) writes. (2) The middleware refuses non-GET `/api` requests. (3) Outside writes through `fetch()` (Gmail, Drive uploads, push, Sage, GitHub) are refused, and Gmail and Google Calendar are never fetched. (4) `assertAudiencePreviewWriteAllowed()` refuses early, and `useViewAsActive()` / `useAudiencePreviewReadOnly()` skip mark-read effects and disable preview-aware controls.
+- **Audit.** Start and end are written to Activity (category Access, `view_as.started` / `view_as.ended`, linked by a session id). Starting refuses if the entry cannot be written. The viewed person is not notified.
+
+
 the RBAC system
 ---
 

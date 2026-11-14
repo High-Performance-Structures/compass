@@ -25,6 +25,7 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { RecordSearchInput, RecordTable, useRecordTable } from "@/components/record-table"
 import { useDeveloperMode } from "@/components/developer-mode-provider"
+import { ViewAsButton } from "@/components/view-as/view-as-launcher"
 import { SIGN_IN_EMAIL_LOCK } from "@/lib/contact-sign-in-email"
 
 type EditKey = "name" | "jobTitle" | "email" | "phone" | "cellPhone"
@@ -91,6 +92,7 @@ function InternalContactButtons({
           Archive
         </Button>
       ) : null}
+      <ViewAsButton userId={contact.active ? contact.userId : null} />
       {canArchive && !contact.active ? (
         <Button type="button" size="sm" variant="ghost" disabled={busy} onClick={() => onRestore(contact)}>
           Restore

@@ -45,6 +45,7 @@ import { useNotificationCenter } from "@/components/notifications/notification-c
 import { InboxRowItem } from "@/components/notifications/inbox-row"
 import { portfolioMessagesHref } from "@/lib/notifications/message-stacks"
 import { cn } from "@/lib/utils"
+import { useViewAsActive } from "@/components/view-as/view-as-context"
 
 type Row = InboxRow<NotificationCenterItem>
 const NOTIFICATION_BELL_REFRESH_MS = 15_000
@@ -206,11 +207,14 @@ function InboxPanel({
 
 export function NotificationsPopover({
   scope,
-  readOnly = false,
+  readOnly: readOnlyProp = false,
 }: {
   readonly readOnly?: boolean
   readonly scope?: NotificationCenterScope
 }) {
+  // View as shows the person's bell exactly, without marking anything read.
+  const viewAs = useViewAsActive()
+  const readOnly = readOnlyProp || viewAs
   const isMobile = useIsMobile()
   const conversationPanel = useConversationPanelOptional()
   const [open, setOpen] = useState(false)

@@ -10,6 +10,7 @@ import {
 import type { NotificationRow } from "@/components/notifications/inbox-row"
 import { useNotificationCenter } from "@/components/notifications/notification-center-provider"
 import { announceNotificationsChanged } from "@/lib/notifications/client-events"
+import { useViewAsActive } from "@/components/view-as/view-as-context"
 
 export type NotificationInbox = {
   readonly items: readonly NotificationCenterItem[]
@@ -40,7 +41,11 @@ export function useNotificationInbox(
     intervalMs: INBOX_REFRESH_MS,
   })
 
+  // View as never changes the viewed person's read state.
+  const viewAs = useViewAsActive()
+
   const markRead = React.useCallback(async (row: NotificationRow): Promise<void> => {
+    if (viewAs) return
     const unread = row.items.filter((item) => item.readAt === null)
     if (unread.length === 0) return
     const ids = new Set(unread.map((item) => item.id))
@@ -48,9 +53,10 @@ export function useNotificationInbox(
     update((current) => current.map((item) => (ids.has(item.id) ? { ...item, readAt: now } : item)))
     await Promise.all(unread.map((item) => markNotificationRead(item.id, scopeFor(item)).catch(() => undefined)))
     announceNotificationsChanged()
-  }, [scopeFor, update])
+  }, [scopeFor, update, viewAs])
 
   const done = React.useCallback(async (row: NotificationRow): Promise<void> => {
+    if (viewAs) return
     const ids = row.items.map((item) => item.id)
     const removed = new Set(ids)
     update((current) => current.filter((item) => !removed.has(item.id)))
@@ -58,7 +64,7 @@ export function useNotificationInbox(
     const result = await setNotificationsDismissed(ids, true, first ? scopeFor(first) : undefined)
     if (!result.success) void refresh()
     announceNotificationsChanged()
-  }, [refresh, scopeFor, update])
+  }, [refresh, scopeFor, update, viewAs])
 
   return { items, loaded, markRead, done }
 }

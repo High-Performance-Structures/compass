@@ -2,13 +2,16 @@
 
 import * as React from "react"
 import { usePathname, useSearchParams } from "next/navigation"
+import { useViewAsActive } from "@/components/view-as/view-as-context"
 import { audienceScopeFromUrl, scopedAudienceHref, type ProjectAudienceRequestScope } from "@/lib/project-audience-request"
 
 const ScopeContext = React.createContext<(href: string) => string>((href) => href)
 const ReadOnlyContext = React.createContext(false)
 
+/** True in a staff preview and in developer View as: controls render disabled. */
 export function useAudiencePreviewReadOnly(): boolean {
-  return React.useContext(ReadOnlyContext)
+  const viewAs = useViewAsActive()
+  return React.useContext(ReadOnlyContext) || viewAs
 }
 
 export function useAudiencePreviewHref(): (href: string) => string {

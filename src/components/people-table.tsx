@@ -18,6 +18,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
+import { ViewAsMenuItem } from "@/components/view-as/view-as-launcher"
 import { USER_ROLE_OPTIONS, userRoleBadgeVariant, userRoleLabel } from "@/lib/user-roles"
 
 type PeopleTableProps = {
@@ -76,6 +77,7 @@ function PersonMenu({ user, actions }: { readonly user: UserWithRelations; reado
             </DropdownMenuItem>
             <DropdownMenuItem>Assign to Project</DropdownMenuItem>
             <DropdownMenuItem>Assign to Team</DropdownMenuItem>
+            <ViewAsMenuItem userId={user.id} />
             <DropdownMenuSeparator />
             <DropdownMenuItem
               className="text-destructive"

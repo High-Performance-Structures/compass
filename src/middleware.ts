@@ -11,6 +11,8 @@ import {
 } from "@/lib/public-paths"
 
 import { AUDIENCE_SCOPE_HEADER, audienceScopeFromUrl } from "@/lib/project-audience-request"
+import { VIEW_AS_COOKIE, VIEW_AS_READ_ONLY_MESSAGE } from "@/lib/view-as/constants"
+import { viewAsMiddlewareDecision } from "@/lib/view-as/middleware"
 
 function legacyResolutionUrl(request: NextRequest): URL | null {
   if (request.nextUrl.searchParams.get("legacyResolved") === "1") return null
@@ -31,6 +33,19 @@ export default async function middleware(incomingRequest: NextRequest) {
   const { pathname } = request.nextUrl
   if (scope && pathname.startsWith("/api/") && !["GET", "HEAD", "OPTIONS"].includes(request.method)) {
     return NextResponse.json({ success: false, error: "Preview is read only." }, { status: 403 })
+  }
+  // Developer View as (src/lib/view-as/): API writes are refused outright;
+  // server actions are refused by the read-only database bindings.
+  const viewAs = viewAsMiddlewareDecision(request)
+  if (viewAs === "block-write") {
+    return NextResponse.json({ success: false, error: VIEW_AS_READ_ONLY_MESSAGE }, { status: 403 })
+  }
+  if (viewAs === "clear") {
+    // Developer mode was turned off or the session ran out: drop the cookie
+    // and load the page again as the admin.
+    const response = NextResponse.redirect(request.nextUrl)
+    response.cookies.delete(VIEW_AS_COOKIE)
+    return response
   }
 
   if (!isWorkOSConfigured()) {

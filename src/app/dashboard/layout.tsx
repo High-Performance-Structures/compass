@@ -27,7 +27,9 @@ import { ListSheetProvider } from "@/components/list-sheets/list-sheet-provider"
 import { loadListSheetPreferences } from "@/lib/domain/settings/list-sheets"
 import { savePersonalListSheetColumns } from "@/app/actions/list-sheets"
 import { NotificationCenterProvider } from "@/components/notifications/notification-center-provider"
-import { getCurrentUser, toSidebarUser } from "@/lib/auth"
+import { getCurrentUser, getViewAsState, toSidebarUser } from "@/lib/auth"
+import { developerShellAccess } from "@/lib/view-as/layout-access"
+import { ViewAsFrame } from "@/components/view-as/view-as-frame"
 import { isLocalDevelopment } from "@/lib/auth-config"
 import { cookies } from "next/headers"
 import { BiometricGuard } from "@/components/native/biometric-guard"
@@ -50,7 +52,6 @@ import {
   canUseOfficeTalk,
   canPrepareGreetingCards,
   canManageUserAccess,
-  canManageProjectRegistry,
 } from "@/lib/permissions"
 import { canFeature } from "@/lib/permission-enforcement"
 import { getQuickAddProjects } from "@/lib/quick-add-server"
@@ -105,7 +106,8 @@ export default async function DashboardLayout({
     canFeature(authUser, "project-archive-access", "read"),
   ])
   const canAccessGreetingCards = canPrepareGreetingCards(authUser)
-  const canUseDeveloperMode = canManageProjectRegistry(authUser)
+  const viewAsState = await getViewAsState()
+  const { canUseDeveloperMode, canViewAs } = await developerShellAccess(authUser, viewAsState.kind !== "none")
   const quickAddProjects = await getQuickAddProjects(authUser, projectList)
   const developerModeEnabled = developerModeFromCookie(
     cookieStore.get(DEVELOPER_MODE_COOKIE)?.value,
@@ -118,10 +120,12 @@ export default async function DashboardLayout({
 
   const departmentProfiles = await currentDepartmentProfiles()
   return (
+    <ViewAsFrame state={viewAsState}>
     <DepartmentProfilesProvider profiles={departmentProfiles}>
     <DeveloperModeProvider
       canUseDeveloperMode={canUseDeveloperMode}
       initialEnabled={developerModeEnabled}
+      canViewAs={canViewAs}
     >
     <HelpUiProvider
       guides={helpGuides}
@@ -218,5 +222,6 @@ export default async function DashboardLayout({
     </HelpUiProvider>
     </DeveloperModeProvider>
     </DepartmentProfilesProvider>
+    </ViewAsFrame>
   )
 }
