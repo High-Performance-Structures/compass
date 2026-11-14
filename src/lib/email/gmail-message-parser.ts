@@ -1,3 +1,5 @@
+import { senderAuthenticationFromHeaders, type SenderAuthentication } from "@/lib/email/sender-authentication"
+
 type GmailHeader = {
   readonly name: string
   readonly value: string
@@ -50,6 +52,8 @@ export type InboundCandidate = {
   readonly snippet: string | null
   readonly receivedAt: string
   readonly attachments: readonly InboundAttachment[]
+  /** Gmail's verdict on the From domain; absent on texts and older stored emails. */
+  readonly senderAuthentication?: SenderAuthentication
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -249,5 +253,6 @@ export function candidateFromMessage(message: GmailMessage): InboundCandidate {
     snippet: message.snippet ?? null,
     receivedAt: messageDate(message.internalDate),
     attachments: collectAttachments(message.payload),
+    senderAuthentication: senderAuthenticationFromHeaders(message.payload?.headers ?? [], from.email),
   }
 }

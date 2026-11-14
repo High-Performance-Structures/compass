@@ -21,6 +21,7 @@ import { claimInboundEmailForReview, markInboundEmailPosted, releaseInboundEmail
 import { COMPASS_GMAIL_READONLY_SCOPE, getCompassGmailAccessToken } from "@/lib/email/compass-email"
 import { fetchGmailJson, hydrateCandidateAttachments } from "@/lib/email/gmail-inbound"
 import { candidateFromMessage, isGmailMessage, stripHtml, type InboundCandidate } from "@/lib/email/gmail-message-parser"
+import { isSenderAuthentication } from "@/lib/email/sender-authentication"
 import { heldEmailReason, heldMessageReasonLabel, type HeldEmailReasonView } from "@/lib/email/held-email-reasons"
 import { inboundRecordKind, matchInboundProject } from "@/lib/email/inbound-routing"
 import { projectEmailTitle } from "@/lib/email/project-address"
@@ -169,6 +170,7 @@ function storedCandidate(email: StoredEmail): InboundCandidate {
     snippet: email.snippet,
     receivedAt: email.receivedAt,
     attachments: [],
+    senderAuthentication: isSenderAuthentication(email.senderAuthentication) ? email.senderAuthentication : undefined,
   }
 }
 
@@ -197,10 +199,12 @@ export async function heldEmailCandidate(input: {
     url.searchParams.set("format", "full")
     const message = await fetchGmailJson({ url: url.toString(), accessToken: access.accessToken })
     if (!isGmailMessage(message)) return { candidate: stored, filesFetched: false }
-    const { attachments } = candidateFromMessage(message)
-    if (attachments.length === 0) return { candidate: stored, filesFetched: true }
+    // Gmail's verdict on the sender is read again, as it is for a newly received email.
+    const { attachments, senderAuthentication } = candidateFromMessage(message)
+    const fetched = { ...stored, senderAuthentication }
+    if (attachments.length === 0) return { candidate: fetched, filesFetched: true }
     return {
-      candidate: await hydrateCandidateAttachments({ candidate: { ...stored, attachments }, accessToken: access.accessToken }),
+      candidate: await hydrateCandidateAttachments({ candidate: { ...fetched, attachments }, accessToken: access.accessToken }),
       filesFetched: true,
     }
   } catch (error) {

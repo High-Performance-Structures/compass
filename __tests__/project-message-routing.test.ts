@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest"
 import { readFileSync } from "node:fs"
-import { openCorrespondenceTestDatabase, type CorrespondenceTestDatabase, addContactDirectorySchema } from "./helpers/correspondence-core"
+import { openCorrespondenceTestDatabase, type CorrespondenceTestDatabase, addContactDirectorySchema, addFeatureSettingsSchema } from "./helpers/correspondence-core"
 import { routeProjectInboundSms } from "@/lib/email/project-inbound-routing"
 import { routeProjectInboundEmail } from "@/lib/email/project-email-intake"
 import { routeInboundProjectMessage } from "@/lib/email/project-message-routing"
@@ -25,6 +25,7 @@ function setup(): CorrespondenceTestDatabase {
   db.sqlite.exec(readFileSync("drizzle/0048_notification_channels.sql", "utf8").replaceAll("--> statement-breakpoint", ""))
   db.sqlite.exec(readFileSync("drizzle/0049_sms_consent.sql", "utf8").replaceAll("--> statement-breakpoint", ""))
   addContactDirectorySchema(db.sqlite)
+  addFeatureSettingsSchema(db.sqlite)
   return db
 }
 afterEach(() => database?.close())
