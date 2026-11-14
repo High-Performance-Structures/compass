@@ -6,7 +6,9 @@ import { signedMaintenanceRoute } from "@/lib/server/signed-maintenance-route"
  * covers the query string): posts held job emails whose job is now known to
  * that job's Messages, quietly. Query: `limit` (default 25, at most 50),
  * `after` (the previous page's `nextAfter`), optional `organizationId`.
- * Repeat with `after` until `nextAfter` is null.
+ * Repeat with `after` until `nextAfter` is null and `rateLimited` is false.
+ * When `rateLimited` is true, Gmail refused a request: wait a few minutes,
+ * then repeat with `after` = `nextAfter` (omit `after` when it is null).
  */
 export async function POST(request: Request): Promise<Response> {
   const params = new URL(request.url).searchParams

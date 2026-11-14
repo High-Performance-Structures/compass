@@ -37,7 +37,7 @@ function heldRow(id: string, values: { readonly toAddress?: string | null; reado
   )
 }
 
-function gmailMessage(id: string, headers: readonly { readonly name: string; readonly value: string }[]): Response {
+function gmailMessage(id: string, headers: readonly { readonly name: string; readonly value: string }[], parts: readonly unknown[] = []): Response {
   return new Response(JSON.stringify({
     id: `gmail-${id}`,
     threadId: `thread-${id}`,
@@ -47,6 +47,7 @@ function gmailMessage(id: string, headers: readonly { readonly name: string; rea
       mimeType: "text/plain",
       headers: [{ name: "From", value: "Ezell <ezell@bishopbuilt.test>" }, { name: "Subject", value: "Waterproofing change order" }, ...headers],
       body: { data: Buffer.from("@Staff A please see the change order.").toString("base64url") },
+      parts,
     },
   }))
 }
@@ -97,9 +98,10 @@ describe("held email backlog: re-reading Gmail", () => {
     expect(mocks.route).toHaveBeenCalledTimes(1)
     const call = mocks.route.mock.calls[0]?.[0]
     expect(call).toMatchObject({ projectId: "proj-h430", quiet: true, postWhenJobKnown: true, ignoreMentions: false })
-    expect(call?.candidate.toAddress).toBe(PROJECT_ADDRESS)
+    // The original To stays, followed by the Cc line that carried the job address.
+    expect(call?.candidate.toAddress).toBe(`Ezell <ezell@bishopbuilt.test>, ${PROJECT_ADDRESS}`)
     expect(call?.candidate.senderAuthentication).toBe("pass")
-    expect(stored("cc")).toEqual({ to_address: PROJECT_ADDRESS, sender_authentication: "pass", matched_status: "posted", project_id: "proj-h430" })
+    expect(stored("cc")).toEqual({ to_address: `Ezell <ezell@bishopbuilt.test>, ${PROJECT_ADDRESS}`, sender_authentication: "pass", matched_status: "posted", project_id: "proj-h430" })
 
     // Running again finds nothing to do.
     const again = await postHeldEmailBacklog({ db: db.db, env: {} })
@@ -175,5 +177,22 @@ describe("held email backlog: re-reading Gmail", () => {
     expect(mocks.fetch).toHaveBeenCalledTimes(2)
     expect(mocks.access).toHaveBeenCalledTimes(1)
     expect(stored("second").matched_status).toBe("needs_review")
+  })
+
+  it("stops at a Gmail rate limit while copying files, leaving that email held for the next page", async () => {
+    heldRow("first", { receivedAt: "2026-10-16T12:00:00.000Z" })
+    heldRow("files", { receivedAt: "2026-10-17T12:00:00.000Z" })
+    mocks.fetch
+      .mockResolvedValueOnce(gmailMessage("first", [{ name: "Authentication-Results", value: PASS }, { name: "Cc", value: PROJECT_ADDRESS }]))
+      .mockResolvedValueOnce(gmailMessage("files", [{ name: "Authentication-Results", value: PASS }, { name: "Cc", value: PROJECT_ADDRESS }], [
+        { filename: "change-order.pdf", mimeType: "application/pdf", body: { attachmentId: "att-1", size: 10 } },
+      ]))
+      .mockResolvedValueOnce(new Response("Rate limit exceeded", { status: 429 }))
+
+    const summary = await postHeldEmailBacklog({ db: db.db, env: {} })
+
+    expect(summary).toMatchObject({ posted: 1, rateLimited: true, nextAfter: "2026-10-16T12:00:00.000Z|first" })
+    expect(mocks.route).toHaveBeenCalledTimes(1)
+    expect(stored("files").matched_status).toBe("needs_review")
   })
 })

@@ -18,7 +18,7 @@ import { recordActivityEvent } from "@/lib/activity-log"
 import type { AuthUser } from "@/lib/auth"
 import { chunkD1Values } from "@/lib/d1-query"
 import { claimInboundEmailForReview, markInboundEmailPosted, releaseInboundEmailClaim } from "@/lib/domain/correspondence/email-store"
-import { hydrateCandidateAttachments } from "@/lib/email/gmail-fetch"
+import { GmailRateLimitError, hydrateCandidateAttachments } from "@/lib/email/gmail-fetch"
 import { candidateFromMessage, stripHtml, type InboundCandidate } from "@/lib/email/gmail-message-parser"
 import { fetchHeldGmailMessage, type HeldGmailMessage } from "@/lib/email/held-email-reread"
 import { isSenderAuthentication } from "@/lib/email/sender-authentication"
@@ -179,7 +179,8 @@ function storedCandidate(email: StoredEmail): InboundCandidate {
  * files, so the files are fetched from Gmail again. `filesFetched` is false
  * when Gmail could not be reached; the email is then posted without them.
  * `fetched` passes a message already read (fetchHeldGmailMessage, null when
- * that read failed) so Gmail isn't asked twice.
+ * that read failed) so Gmail isn't asked twice; a Gmail rate limit while
+ * copying the files is then thrown so the batch can stop.
  */
 export async function heldEmailCandidate(input: {
   readonly db: Db
@@ -207,6 +208,8 @@ export async function heldEmailCandidate(input: {
       filesFetched: true,
     }
   } catch (error) {
+    // A batch that read the message itself (the backlog) stops at a rate limit instead of posting without files.
+    if (input.fetched !== undefined && error instanceof GmailRateLimitError) throw error
     console.error("[held-job-emails] could not fetch the email's files from Gmail", error)
     return { candidate: withVerdict, filesFetched: false }
   }

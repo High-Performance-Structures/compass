@@ -117,7 +117,7 @@ export async function postHeldEmailBacklog(input: {
   let skipped = 0
   let addressesRecovered = 0
   const errors: string[] = []
-  const tokens = new Map<string, Promise<string | null>>()
+  const tokens = new Map<string, string>()
   // The last email this page finished with; a Gmail rate limit stops the page there.
   let resumeAfter: string | null = input.after ?? null
   let rateLimited = false
@@ -140,6 +140,7 @@ export async function postHeldEmailBacklog(input: {
       rateLimited = true
       break
     }
+    const resumeBefore = resumeAfter
     resumeAfter = `${storedEmail.receivedAt}|${storedEmail.id}`
     const recovered = fetched ? recoveredHeldEmailFields(storedEmail, fetched.message) : null
     const email = recovered ? await applyRecoveredHeldEmailFields(db, storedEmail, recovered) : storedEmail
@@ -195,6 +196,13 @@ export async function postHeldEmailBacklog(input: {
       })
     } catch (error) {
       await releaseInboundEmailClaim(db, email.id)
+      if (error instanceof GmailRateLimitError) {
+        // Gmail refused this email's files: stop, and start the next page at this email again.
+        errors.push(error.message)
+        rateLimited = true
+        resumeAfter = resumeBefore
+        break
+      }
       skipped += 1
       errors.push(`${email.id}: ${error instanceof Error ? error.message : "posting failed"}`)
     }

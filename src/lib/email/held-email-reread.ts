@@ -36,19 +36,20 @@ export async function fetchHeldGmailMessage(input: {
   readonly db: Db
   readonly env: unknown
   readonly email: Pick<StoredEmail, "organizationId" | "gmailMessageId">
-  readonly tokens?: Map<string, Promise<string | null>>
+  readonly tokens?: Map<string, string>
 }): Promise<HeldGmailMessage | null> {
   const { organizationId, gmailMessageId } = input.email
   try {
-    const token = input.tokens?.get(organizationId) ?? getCompassGmailAccessToken({
+    // Only a token that worked is reused; a failed lookup is retried for the next email.
+    const cached = input.tokens?.get(organizationId)
+    const accessToken = cached ?? await getCompassGmailAccessToken({
       env: input.env,
       db: input.db,
       organizationId,
       scopes: [COMPASS_GMAIL_READONLY_SCOPE],
       sender: replyMailboxEmail(input.env),
     }).then((access) => (access.success ? access.accessToken : null))
-    input.tokens?.set(organizationId, token)
-    const accessToken = await token
+    if (accessToken && !cached) input.tokens?.set(organizationId, accessToken)
     if (!accessToken) return null
     const url = new URL(`https://gmail.googleapis.com/gmail/v1/users/me/messages/${encodeURIComponent(gmailMessageId)}`)
     url.searchParams.set("format", "full")
@@ -72,7 +73,8 @@ export type RecoveredHeldEmailFields = {
 /**
  * Pure: the To address and sender verdict today's parser reads from the
  * message. The stored To address is kept unless it lacks a job address and
- * the message has one (on To, Cc, X-Original-To or Delivered-To), so an
+ * the message has one (on To, Cc, X-Original-To or Delivered-To); that line
+ * is then added after the stored recipients. An
  * email already addressed to a job never moves to another.
  */
 export function recoveredHeldEmailFields(
@@ -82,7 +84,8 @@ export function recoveredHeldEmailFields(
   const parsed = candidateFromMessage(message)
   const projectAddressRecovered = projectIdFromInboundAddress(stored.toAddress) === null && projectIdFromInboundAddress(parsed.toAddress) !== null
   return {
-    toAddress: projectAddressRecovered ? parsed.toAddress : stored.toAddress,
+    // The original To recipients are kept, followed by the line that carried the job address.
+    toAddress: projectAddressRecovered ? [stored.toAddress, parsed.toAddress].filter(Boolean).join(", ") : stored.toAddress,
     senderAuthentication: parsed.senderAuthentication ?? (isSenderAuthentication(stored.senderAuthentication) ? stored.senderAuthentication : null),
     projectAddressRecovered,
   }
