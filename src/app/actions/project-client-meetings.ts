@@ -33,6 +33,7 @@ import { projectNumberAndName } from "@/lib/project-display-name"
 import { isInternalStaffRole } from "@/lib/user-roles"
 import { requireUserContext } from "@/lib/server/action-context"
 import { membershipsView, peopleView } from "@/lib/domain/identity/views"
+import { notDevelopmentAccount } from "@/lib/domain/identity/development-accounts"
 
 const organizationMembers = membershipsView()
 const users = peopleView()
@@ -275,7 +276,8 @@ async function staffDirectory(
     .where(
       and(
         eq(organizationMembers.organizationId, access.organizationId),
-        eq(users.isActive, true)
+        eq(users.isActive, true),
+        notDevelopmentAccount(organizationMembers)
       )
     )
   return rows

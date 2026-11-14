@@ -66,8 +66,8 @@ export function SquareAlertSettingsSection(): React.ReactElement {
     }
     setPeople(
       users
-        // Internal process work: staff only, never subs, suppliers or clients.
-        .filter((user) => seesStaffViews(user.role))
+        // Internal process work: staff only, never subs, suppliers, clients or development accounts.
+        .filter((user) => seesStaffViews(user.role) && !user.developmentAccount)
         .map((user) => ({ id: user.id, name: user.displayName || user.email, role: user.role }))
         .sort((a, b) => a.name.localeCompare(b.name)),
     )

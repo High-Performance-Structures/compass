@@ -47,6 +47,7 @@ import { requireUserContext } from "@/lib/server/action-context"
 import type { VendorContactItem, VendorDirectoryCompany } from "@/lib/domain/contacts/directory-page"
 import { addVendorPerson } from "@/lib/domain/contacts/directory-people"
 import { membershipsView, peopleView } from "@/lib/domain/identity/views"
+import { userIsNotDevelopmentAccount } from "@/lib/domain/identity/development-accounts"
 
 const organizationMembers = membershipsView()
 const users = peopleView()
@@ -201,7 +202,11 @@ export async function getVendors(): Promise<VendorDirectoryCompany[]> {
   }))
 }
 
-/** Active internal people, or with `archived` the archived ones (such as people imported from Buildertrend). */
+/**
+ * Active internal people, or with `archived` the archived ones (such as
+ * people imported from Buildertrend). Development accounts are not staff, so
+ * they are left out here; they are managed in Settings → Team → Development.
+ */
 export async function getInternalDirectoryContacts(
   options: { readonly archived?: boolean } = {}
 ): Promise<readonly InternalDirectoryContact[]> {
@@ -237,7 +242,8 @@ export async function getInternalDirectoryContacts(
     .where(
       and(
         eq(internalContacts.organizationId, orgId),
-        eq(internalContacts.active, options.archived !== true)
+        eq(internalContacts.active, options.archived !== true),
+        userIsNotDevelopmentAccount(internalContacts.userId, orgId)
       )
     )
 

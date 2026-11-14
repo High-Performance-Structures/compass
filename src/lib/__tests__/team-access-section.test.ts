@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import { parseTeamAccessSection, teamAccessSectionForRole } from "@/lib/team-access-section"
+import { parseTeamAccessSection, teamAccessSectionForRole, teamAccessSectionForUser } from "@/lib/team-access-section"
 
 describe("team access sections", () => {
   it("keeps staff, vendors, and clients in separate views", () => {
@@ -15,5 +15,13 @@ describe("team access sections", () => {
     expect(teamAccessSectionForRole("guest")).toBe("other")
     expect(teamAccessSectionForRole("developer")).toBe("other")
     expect(parseTeamAccessSection("unknown")).toBe("internal")
+  })
+
+  it("groups a development account on its own whatever its role", () => {
+    expect(teamAccessSectionForUser({ role: "admin", developmentAccount: true })).toBe("development")
+    expect(teamAccessSectionForUser({ role: "office", developmentAccount: true })).toBe("development")
+    expect(teamAccessSectionForUser({ role: "office", developmentAccount: false })).toBe("internal")
+    expect(teamAccessSectionForUser({ role: "developer", developmentAccount: false })).toBe("other")
+    expect(parseTeamAccessSection("development")).toBe("development")
   })
 })

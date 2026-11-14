@@ -4,6 +4,7 @@ import { and, eq, inArray, sql } from "drizzle-orm"
 
 import { internalContacts } from "@/db/schema"
 import { membershipsView, peopleView } from "@/lib/domain/identity/views"
+import { developmentAccountUserIds, notDevelopmentAccount } from "@/lib/domain/identity/development-accounts"
 import { sageBridgeStatus, sageEmployeeDirectoryEntries } from "@/db/schema-sage"
 import { recordActivityEvents, type ActivityActor } from "@/lib/activity-log"
 import {
@@ -101,12 +102,18 @@ async function loadSageEmployees(db: Db, organizationId: string): Promise<readon
     .where(eq(sageEmployeeDirectoryEntries.organizationId, organizationId))
 }
 
-/** Every internal contact of the company, and the active staff logins that have none. */
+/**
+ * Every internal contact of the company, and the active staff logins that
+ * have none. Development accounts (people who build Compass, not employees)
+ * are never offered for Sage linking: their unlinked contact and their login
+ * are left out. A contact already linked to Sage stays, so its Sage employee
+ * still counts as taken and its status still follows Sage.
+ */
 async function loadStaffDirectory(db: Db, organizationId: string): Promise<{
   readonly contacts: readonly StaffContactRecord[]
   readonly usersWithoutContact: readonly StaffUserRecord[]
 }> {
-  const [contacts, members] = await Promise.all([
+  const [allContacts, members, developmentUserIds] = await Promise.all([
     db
       .select({
         internalContactId: internalContacts.id,
@@ -136,9 +143,13 @@ async function loadStaffDirectory(db: Db, organizationId: string): Promise<{
       .where(and(
         eq(memberships.organizationId, organizationId),
         eq(people.isActive, true),
+        notDevelopmentAccount(memberships),
         sql`NOT EXISTS (SELECT 1 FROM internal_contacts ic WHERE ic.organization_id = ${organizationId} AND ic.user_id = ${people.id})`,
       )),
+    developmentAccountUserIds(db, organizationId),
   ])
+  const contacts = allContacts.filter((contact) =>
+    staffContactIsLinked(contact) || !contact.userId || !developmentUserIds.has(contact.userId))
   const usersWithoutContact = members
     .filter((member) => isInternalStaffRole(member.role))
     .map((member): StaffUserRecord => ({

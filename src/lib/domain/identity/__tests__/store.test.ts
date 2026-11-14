@@ -35,7 +35,7 @@ describe("ensureExternalOrganizationMembership", () => {
 
   it("moves an existing membership to the external role without a second row", async () => {
     const { sqlite, db } = open()
-    sqlite.exec("INSERT INTO organization_members VALUES ('m1', 'org', 'u', 'client', 't0')")
+    sqlite.exec("INSERT INTO organization_members (id, organization_id, user_id, role, joined_at) VALUES ('m1', 'org', 'u', 'client', 't0')")
     await ensureExternalOrganizationMembership(db, { organizationId: "org", userId: "u", role: "supplier", now: "t1" })
     expect(sqlite.prepare("SELECT id, role, joined_at FROM organization_members").all()).toEqual([
       { id: "m1", role: "supplier", joined_at: "t0" },

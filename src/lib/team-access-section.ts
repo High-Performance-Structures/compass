@@ -3,6 +3,7 @@ export type TeamAccessSection =
   | "internal"
   | "vendors"
   | "clients"
+  | "development"
   | "other"
 
 export function teamAccessSectionForRole(role: string): TeamAccessSection {
@@ -13,7 +14,16 @@ export function teamAccessSectionForRole(role: string): TeamAccessSection {
   return "other"
 }
 
+/**
+ * The Settings → Team group an account is listed in. A development account
+ * (someone who builds Compass, tagged by an admin) is grouped on its own
+ * whatever its role, so it is not counted as staff, a vendor or a client.
+ */
+export function teamAccessSectionForUser(user: { readonly role: string; readonly developmentAccount: boolean }): TeamAccessSection {
+  return user.developmentAccount ? "development" : teamAccessSectionForRole(user.role)
+}
+
 export function parseTeamAccessSection(value: string | null): TeamAccessSection {
-  if (value === "vendors" || value === "clients" || value === "other") return value
+  if (value === "vendors" || value === "clients" || value === "development" || value === "other") return value
   return "internal"
 }

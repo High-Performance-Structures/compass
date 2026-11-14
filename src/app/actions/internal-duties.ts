@@ -6,6 +6,7 @@ import { z } from "zod/v4"
 
 import { dailyLogs, projects } from "@/db/schema"
 import { membershipsView, peopleView } from "@/lib/domain/identity/views"
+import { notDevelopmentAccount } from "@/lib/domain/identity/development-accounts"
 import { internalDutyEntries } from "@/db/schema-internal-duties"
 import type { AuthUser } from "@/lib/auth"
 import { isDemoUser } from "@/lib/demo"
@@ -138,7 +139,7 @@ export async function getDutyLogWorkspace(projectId: string, month?: string): Pr
       .select({ id: accounts.id, displayName: accounts.displayName, firstName: accounts.firstName, lastName: accounts.lastName, role: accounts.role })
       .from(accounts)
       .innerJoin(memberships, eq(memberships.userId, accounts.id))
-      .where(and(eq(memberships.organizationId, orgId), eq(accounts.isActive, true))),
+      .where(and(eq(memberships.organizationId, orgId), eq(accounts.isActive, true), notDevelopmentAccount(memberships))),
   ])
   const relatedLabels = new Map(related.map((item) => [item.id, projectNumberAndName(item)]))
   const entries: DutyLogEntryView[] = entryRows.map(({ entry, ...person }) => ({

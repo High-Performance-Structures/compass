@@ -4,6 +4,7 @@ import { and, asc, eq, isNull } from "drizzle-orm"
 
 import { customers, projectContacts, vendorContacts, vendors } from "@/db/schema"
 import { membershipsView, peopleView } from "@/lib/domain/identity/views"
+import { notDevelopmentAccount } from "@/lib/domain/identity/development-accounts"
 import { vendorJobContactType } from "@/lib/contact-project-association"
 import { readFeatureSettings } from "@/lib/feature-settings/server"
 import { uniqueInternalStaffMembers } from "@/lib/internal-contact-directory"
@@ -46,6 +47,7 @@ function activeProjectContacts(db: Db, scope: Scope) {
   })
 }
 
+// Staff offered for picking leave out development accounts (people who build Compass, not employees).
 function activeOrganizationUsers(db: Db, organizationId: string) {
   return db
     .select({
@@ -57,7 +59,7 @@ function activeOrganizationUsers(db: Db, organizationId: string) {
     })
     .from(memberships)
     .innerJoin(peopleRows, eq(peopleRows.id, memberships.userId))
-    .where(and(eq(memberships.organizationId, organizationId), eq(peopleRows.isActive, true)))
+    .where(and(eq(memberships.organizationId, organizationId), eq(peopleRows.isActive, true), notDevelopmentAccount(memberships)))
     .orderBy(asc(peopleRows.displayName), asc(peopleRows.email))
 }
 
@@ -191,7 +193,7 @@ export async function loadScheduleTaskAssigneeOptions(
           })
           .from(memberships)
           .innerJoin(peopleRows, eq(peopleRows.id, memberships.userId))
-          .where(and(eq(memberships.organizationId, orgId), eq(peopleRows.isActive, true)))
+          .where(and(eq(memberships.organizationId, orgId), eq(peopleRows.isActive, true), notDevelopmentAccount(memberships)))
           .orderBy(asc(peopleRows.displayName), asc(peopleRows.email))
       : [],
     scope.grants.internal ? listCrews(db, orgId) : [],
@@ -247,7 +249,7 @@ export async function loadPurchaseOrderSiteContactOptions(
         })
         .from(memberships)
         .innerJoin(peopleRows, eq(peopleRows.id, memberships.userId))
-        .where(and(eq(memberships.organizationId, scope.organizationId), eq(peopleRows.isActive, true)))
+        .where(and(eq(memberships.organizationId, scope.organizationId), eq(peopleRows.isActive, true), notDevelopmentAccount(memberships)))
         .orderBy(asc(peopleRows.displayName), asc(peopleRows.email))
     : []
   const organizationOptions = organizationRows

@@ -12,7 +12,7 @@
   "permissions": ["help:read", "vendor:read"],
   "routes": ["/dashboard/contacts", "/dashboard/projects/[id]/contacts"],
   "owner": "Compass product team",
-  "lastReviewed": "2026-11-11"
+  "lastReviewed": "2026-11-13"
 }
 ---
 
@@ -62,6 +62,12 @@ Admins are notified of each request and review it in **Settings > People > Acces
 3. Select **Approve**. Compass links the directory person to their login, adds them to the company with that role, and opens every job that directory person is on, the same way **Grant project access** does. For a client it also opens jobs whose owner contact names no directory person yet (common for owners imported from Buildertrend) when that job contact or its client record has the requester's own sign-in email. Jobs kept staff-only are not opened; invite them from the job if they should see it. The person gets an email from you saying they're approved.
 
 Select **Decline** to send a short, polite email instead; nothing is shared. Each decision records who made it and when, and appears in Activity.
+
+## Development Accounts {#development-accounts}
+
+Some accounts belong to people who build Compass rather than work for the company, such as an automation's service account or an outside developer. An administrator marks them in **Manage Compass access**: open the person, go to **Access**, and turn on **Development account**. Turn it off the same way.
+
+The tag changes nothing about what the person can do: they keep their role and project access. It only keeps them out of the company's staff lists: they are listed under **Development** instead of **Internal Team**, and left out of staff people pickers (assignees, crews, recipients, **Priced by** and similar settings lists), the **Internal** contacts tab and its count, and **Staff to link to Sage** and automatic Sage employee linking. Each change records who made it in Activity.
 
 ## Verify Access {#verify-access}
 

@@ -5,6 +5,7 @@ import { and, eq, inArray } from "drizzle-orm"
 import { createProjectTaskCommand as createProjectTask } from "@/lib/domain/operations/todo-commands"
 import { projectOperations } from "@/db/schema"
 import { membershipsView, peopleView } from "@/lib/domain/identity/views"
+import { notDevelopmentAccount } from "@/lib/domain/identity/development-accounts"
 import { projectEstimateLines, projectEstimates } from "@/db/schema-estimates"
 import { estimateAccess, requireEditableEstimate, revalidateEstimate } from "@/lib/domain/estimates/access"
 import { updateEstimateLines } from "@/lib/domain/estimates/store"
@@ -65,7 +66,7 @@ async function companyStaff(
     })
     .from(people)
     .innerJoin(memberships, eq(memberships.userId, people.id))
-    .where(and(eq(memberships.organizationId, organizationId), eq(people.isActive, true)))
+    .where(and(eq(memberships.organizationId, organizationId), eq(people.isActive, true), notDevelopmentAccount(memberships)))
   return rows
     .filter((row) => isInternalStaffRole(row.role) && !isDemoUser(row.id))
     .map((row) => ({ value: row.id, label: staffLabel(row) }))

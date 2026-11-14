@@ -89,6 +89,11 @@ export async function setOrganizationMemberRole(db: Db, membershipId: string, ro
   await db.update(organizationMembers).set({ role: known }).where(eq(organizationMembers.id, membershipId)).run()
 }
 
+/** Tags or untags a membership as a development account (role and access unchanged). */
+export async function setOrganizationMemberDevelopmentAccount(db: Db, membershipId: string, developmentAccount: boolean): Promise<void> {
+  await db.update(organizationMembers).set({ isDevelopmentAccount: developmentAccount }).where(eq(organizationMembers.id, membershipId)).run()
+}
+
 /**
  * Gives an invited owner or vendor a membership in the inviting organization
  * with the external role, or moves their existing membership to that role.

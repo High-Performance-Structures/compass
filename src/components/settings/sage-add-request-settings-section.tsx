@@ -26,9 +26,10 @@ export function SageAddRequestSettingsSection(): React.ReactElement {
 
   React.useEffect(() => {
     void getUsers().then((users) =>
-      // Approving needs admin-level judgment; only active admins are offered.
+      // Approving needs admin-level judgment; only active admins are offered,
+      // never development accounts (they build Compass, they don't run the company).
       setPeople(users
-        .filter((user) => user.isActive && canManageUserAccessRole(user.role))
+        .filter((user) => user.isActive && canManageUserAccessRole(user.role) && !user.developmentAccount)
         .map((user) => ({ id: user.id, name: user.displayName || user.email }))
         .sort((a, b) => a.name.localeCompare(b.name))))
   }, [])
