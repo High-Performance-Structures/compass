@@ -256,6 +256,11 @@ export function GanttChart({
 
   // The pointer of the latest press; click events don't reliably carry it.
   const lastPointerTypeRef = useRef("mouse")
+  // Where that press started, so the click that ends a bar drag isn't
+  // reported as a click on the bar.
+  const pressPointRef = useRef<{ readonly x: number; readonly y: number } | null>(
+    null
+  )
 
   const handleDoubleClick = useCallback(
     (event: React.MouseEvent<HTMLDivElement>) => {
@@ -707,8 +712,17 @@ export function GanttChart({
       onMouseLeave={handleMouseUp}
       onPointerDown={(event) => {
         lastPointerTypeRef.current = event.pointerType || "mouse"
+        pressPointRef.current = { x: event.clientX, y: event.clientY }
       }}
       onClick={(event) => {
+        const press = pressPointRef.current
+        pressPointRef.current = null
+        if (
+          press &&
+          Math.hypot(event.clientX - press.x, event.clientY - press.y) > 4
+        ) {
+          return
+        }
         const task = taskForEventTarget(event.target)
         if (task) {
           interactionCallbacksRef.current.onTaskClick?.(

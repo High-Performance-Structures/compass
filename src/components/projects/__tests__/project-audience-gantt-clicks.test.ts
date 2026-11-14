@@ -88,6 +88,24 @@ function pointer(target: Element, type: string, pointerType: string): void {
   target.dispatchEvent(event)
 }
 
+/** A real pointer click has detail >= 1; screen readers send detail 0. */
+function click(target: Element, detail = 1): void {
+  target.dispatchEvent(new MouseEvent("click", { bubbles: true, detail }))
+}
+
+const bar = (id: string, name: string): FrappeTask => ({
+  id,
+  name,
+  start: "2026-11-02",
+  end: "2026-11-06",
+  progress: 0,
+  dependencies: "",
+  custom_class: "",
+  displayColor: null,
+  isCriticalPath: false,
+  isMilestone: false,
+})
+
 describe("ProjectAudienceGantt clicks", () => {
   let root: Root
   let container: HTMLDivElement
@@ -124,7 +142,7 @@ describe("ProjectAudienceGantt clicks", () => {
   it("highlights and reveals on a single click without opening details", async () => {
     await act(async () => {
       pointer(rowButton("b"), "pointerdown", "mouse")
-      rowButton("b").click()
+      click(rowButton("b"))
     })
     expect(drawerOpen()).toBe(false)
     expect(chart.props?.focusedTaskId).toBe("b")
@@ -132,10 +150,24 @@ describe("ProjectAudienceGantt clicks", () => {
     expect(
       container.querySelector('tr[data-schedule-task-id="b"]')?.className
     ).toContain("bg-accent")
+    expect(rowButton("b").getAttribute("aria-current")).toBe("true")
+    expect(rowButton("a").hasAttribute("aria-current")).toBe(false)
+    expect(rowButton("b").hasAttribute("aria-pressed")).toBe(false)
 
     // A second mouse click still only highlights; mouse users double-click.
-    await act(async () => rowButton("b").click())
+    await act(async () => {
+      pointer(rowButton("b"), "pointerdown", "mouse")
+      click(rowButton("b"))
+    })
     expect(drawerOpen()).toBe(false)
+  })
+
+  it("opens details on a screen-reader click (detail 0)", async () => {
+    await act(async () => click(rowButton("a"), 0))
+    expect(container.querySelector('[data-drawer="open"]')?.textContent).toBe(
+      "Framing"
+    )
+    expect(chart.revealed).toEqual(["a"])
   })
 
   it("opens details on a row double-click", async () => {
@@ -156,55 +188,36 @@ describe("ProjectAudienceGantt clicks", () => {
     expect(container.querySelector('[data-drawer="open"]')?.textContent).toBe(
       "Roofing"
     )
+    // Keyboard users still get the bar brought into view.
+    expect(chart.revealed).toEqual(["b"])
   })
 
   it("opens details on a second tap of the highlighted row", async () => {
     await act(async () => {
       pointer(rowButton("a"), "pointerdown", "touch")
-      rowButton("a").click()
+      click(rowButton("a"))
     })
     expect(drawerOpen()).toBe(false)
     await act(async () => {
       pointer(rowButton("a"), "pointerdown", "touch")
-      rowButton("a").click()
+      click(rowButton("a"))
     })
     expect(drawerOpen()).toBe(true)
   })
 
-  it("treats bar clicks the same way", async () => {
-    const bar: FrappeTask = {
-      id: "b",
-      name: "Roofing",
-      start: "2026-11-02",
-      end: "2026-11-06",
-      progress: 0,
-      dependencies: "",
-      custom_class: "",
-      displayColor: null,
-      isCriticalPath: false,
-      isMilestone: false,
-    }
-    await act(async () => chart.props?.onTaskClick?.(bar, "mouse"))
+  it("highlights on a bar click without scrolling the chart", async () => {
+    await act(async () => chart.props?.onTaskClick?.(bar("b", "Roofing"), "mouse"))
     expect(chart.props?.focusedTaskId).toBe("b")
     expect(drawerOpen()).toBe(false)
-    await act(async () => chart.props?.onTaskClick?.(bar, "touch"))
+    expect(chart.revealed).toEqual([])
+    await act(async () => chart.props?.onTaskClick?.(bar("b", "Roofing"), "pen"))
     expect(drawerOpen()).toBe(true)
+    expect(chart.revealed).toEqual([])
   })
 
   it("opens details on a bar double-click", async () => {
-    const bar = {
-      id: "a",
-      name: "Framing",
-      start: "2026-11-02",
-      end: "2026-11-06",
-      progress: 0,
-      dependencies: "",
-      custom_class: "",
-      displayColor: null,
-      isCriticalPath: false,
-      isMilestone: false,
-    }
-    await act(async () => chart.props?.onTaskDoubleClick?.(bar))
+    await act(async () => chart.props?.onTaskDoubleClick?.(bar("a", "Framing")))
     expect(drawerOpen()).toBe(true)
+    expect(chart.revealed).toEqual([])
   })
 })

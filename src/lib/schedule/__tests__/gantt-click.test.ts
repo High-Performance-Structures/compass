@@ -9,7 +9,8 @@ describe("scheduleItemClickAction", () => {
 
   it("opens only when a highlighted item is tapped, not clicked", () => {
     expect(scheduleItemClickAction("touch", true)).toBe("open")
+    expect(scheduleItemClickAction("pen", true)).toBe("open")
+    expect(scheduleItemClickAction("pen", false)).toBe("highlight")
     expect(scheduleItemClickAction("mouse", true)).toBe("highlight")
-    expect(scheduleItemClickAction("pen", true)).toBe("highlight")
   })
 })

@@ -110,21 +110,31 @@ export function ProjectAudienceGantt({
       listRef.current.scrollTop = next.top
     }
   }, [])
-  const openItem = (item: AudienceScheduleItem): void => {
+  // Rows reveal their bar (sliding the chart sideways only when it is
+  // off-screen; vertical scroll is already shared). Bars never scroll: a
+  // clicked bar is visible, and moving the chart between the two clicks of a
+  // double-click would make the second click miss.
+  const openItem = (
+    item: AudienceScheduleItem,
+    source: "row" | "bar"
+  ): void => {
     setHighlightedId(item.id)
     setSelectedId(item.id)
+    if (source === "row") revealTask.current?.(item.id)
   }
-  const clickItem = (item: AudienceScheduleItem, pointerType: string): void => {
+  const clickItem = (
+    item: AudienceScheduleItem,
+    pointerType: string,
+    source: "row" | "bar"
+  ): void => {
     if (
       scheduleItemClickAction(pointerType, highlightedId === item.id) === "open"
     ) {
-      openItem(item)
+      openItem(item, source)
       return
     }
     setHighlightedId(item.id)
-    // Only slides the chart sideways when the bar is off-screen; the list
-    // and chart already share vertical scroll, so the row is level with it.
-    revealTask.current?.(item.id)
+    if (source === "row") revealTask.current?.(item.id)
   }
   const itemForTask = (task: FrappeTask): AudienceScheduleItem | undefined =>
     items.find((candidate) => candidate.id === task.id)
@@ -140,11 +150,11 @@ export function ProjectAudienceGantt({
       onZoom={zoom}
       onTaskClick={(task, pointerType) => {
         const item = itemForTask(task)
-        if (item) clickItem(item, pointerType)
+        if (item) clickItem(item, pointerType, "bar")
       }}
       onTaskDoubleClick={(task) => {
         const item = itemForTask(task)
-        if (item) openItem(item)
+        if (item) openItem(item, "bar")
       }}
       onTaskVisibilityReady={(handler) => {
         revealTask.current = handler
@@ -216,20 +226,26 @@ export function ProjectAudienceGantt({
               <td className="h-[48px] px-3 py-0">
                 <button
                   type="button"
-                  aria-pressed={highlightedId === item.id}
+                  aria-current={highlightedId === item.id ? "true" : undefined}
                   onPointerDown={(event) => {
                     listPointerType.current = event.pointerType || "mouse"
                   }}
-                  onClick={() => {
-                    clickItem(item, listPointerType.current)
-                    // Keyboard and assistive-tech clicks have no pointer press.
+                  onClick={(event) => {
+                    const pointerType = listPointerType.current
                     listPointerType.current = "mouse"
+                    // Screen readers activate with a synthetic click (detail
+                    // 0, no keydown); treat it like Enter and open details.
+                    if (event.detail === 0) {
+                      openItem(item, "row")
+                      return
+                    }
+                    clickItem(item, pointerType, "row")
                   }}
-                  onDoubleClick={() => openItem(item)}
+                  onDoubleClick={() => openItem(item, "row")}
                   onKeyDown={(event) => {
                     if (event.key !== "Enter" && event.key !== " ") return
                     event.preventDefault()
-                    openItem(item)
+                    openItem(item, "row")
                   }}
                   className="flex h-full w-full min-w-0 items-center gap-2 text-left focus-visible:outline-ring"
                   title={`${item.title}\n${ROW_HINT}`}

@@ -161,16 +161,13 @@ export function ScheduleGanttView({
     displayItems,
     setFocusedTaskId,
   })
-  // A single click on a bar selects it like a click on its list row; a
-  // double-click opens the editor. Dragging a bar still reschedules it.
-  const { focusTaskOnTimeline } = scroll
-  const focusBar = useCallback(
-    (task: FrappeTask) => {
-      const scheduleTask = tasks.find((item) => item.id === task.id)
-      if (scheduleTask) focusTaskOnTimeline(scheduleTask)
-    },
-    [focusTaskOnTimeline, tasks]
-  )
+  // A single click on a bar highlights it and its row; a double-click opens
+  // the editor. Unlike a row click it never scrolls: the bar is already in
+  // view, and sliding the chart between the two clicks of a double-click
+  // would make the second click miss. Dragging a bar still reschedules it.
+  const focusBar = useCallback((task: FrappeTask) => {
+    setFocusedTaskId(task.id)
+  }, [])
   const togglePhase = (phase: string) => {
     setCollapsedPhases((prev) => {
       const next = new Set(prev)

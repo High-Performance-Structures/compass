@@ -97,5 +97,23 @@ describe("GanttChart rebuilds", () => {
     })
     expect(clicks).toEqual(["a:touch"])
     expect(doubleClicks).toEqual(["a"])
+
+    // The click that ends a drag (pointer moved > 4px) is not a bar click.
+    await act(async () => {
+      const press = new MouseEvent("pointerdown", { bubbles: true, clientX: 10, clientY: 10 })
+      Object.defineProperty(press, "pointerType", { value: "mouse" })
+      bar.dispatchEvent(press)
+      bar.dispatchEvent(new MouseEvent("click", { bubbles: true, clientX: 40, clientY: 10 }))
+    })
+    expect(clicks).toEqual(["a:touch"])
+
+    // A small wobble still counts as a click.
+    await act(async () => {
+      const press = new MouseEvent("pointerdown", { bubbles: true, clientX: 10, clientY: 10 })
+      Object.defineProperty(press, "pointerType", { value: "mouse" })
+      bar.dispatchEvent(press)
+      bar.dispatchEvent(new MouseEvent("click", { bubbles: true, clientX: 12, clientY: 11 }))
+    })
+    expect(clicks).toEqual(["a:touch", "a:mouse"])
   })
 })
