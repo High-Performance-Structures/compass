@@ -46,6 +46,7 @@ import {
 } from "@/app/actions/project-messages"
 import { setTyping } from "@/app/actions/conversations-realtime"
 import { PreviewReadOnlyArea } from "@/components/projects/project-audience-preview-scope"
+import { extractMentions } from "@/lib/conversations/composer-mentions"
 import { useRouter } from "next/navigation"
 import { useTheme } from "@/components/theme-provider"
 import { cn } from "@/lib/utils"
@@ -127,11 +128,6 @@ export type ProjectRecipientContact = {
   readonly email: string | null
 }
 
-type MentionInput = {
-  mentionType: "user" | "channel" | "here" | "agent"
-  targetId: string | null
-}
-
 type RecipientOption = {
   readonly value: string
   readonly label: string
@@ -139,41 +135,6 @@ type RecipientOption = {
   readonly search: string
   readonly group: string
   readonly disabled?: boolean
-}
-
-function extractMentions(
-  json: Record<string, unknown>,
-): Array<MentionInput> {
-  const mentions: Array<MentionInput> = []
-
-  function walk(node: Record<string, unknown>) {
-    if (node.type === "mention" && node.attrs) {
-      const attrs = node.attrs as Record<string, string>
-      const id = attrs.id
-
-      if (id === "channel") {
-        mentions.push({ mentionType: "channel", targetId: null })
-      } else if (id === "here") {
-        mentions.push({ mentionType: "here", targetId: null })
-      } else if (id === "compass-agent") {
-        mentions.push({
-          mentionType: "agent",
-          targetId: "compass-agent",
-        })
-      } else {
-        mentions.push({ mentionType: "user", targetId: id })
-      }
-    }
-
-    if (Array.isArray(node.content)) {
-      for (const child of node.content) {
-        walk(child as Record<string, unknown>)
-      }
-    }
-  }
-
-  walk(json)
-  return mentions
 }
 
 function contactLabel(contact: ProjectRecipientContact): string {

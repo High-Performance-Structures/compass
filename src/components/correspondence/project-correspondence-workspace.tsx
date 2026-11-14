@@ -30,17 +30,8 @@ import { useConversationScroll } from "./use-conversation-scroll"
 import { Composer, NewMessagePanel } from "./correspondence-composer"
 import { ProjectEmailComposer } from "./project-email-composer"
 import type { ProjectEmailPrefill } from "@/lib/billing/owner-document-notices"
-import {
-  earliestSequence,
-  applyMessageRevision,
-  composerTransitionBlock,
-  detailForConversation,
-  loadMessageHistory,
-  mergeMessages,
-  uploadStagedAttachment,
-  type StagedAttachment,
-} from "./correspondence-workspace-utils"
-import type { ProjectDraft, SavedComposition, CorrespondenceInboxFilter, CorrespondenceAttachment, CorrespondenceDetail, CorrespondenceInbox, CorrespondenceMessage, CorrespondencePerson, CorrespondenceStateInput, CorrespondenceSummary, SendCorrespondenceInput, SendCorrespondenceResult } from "@/lib/correspondence/types"
+import { applyMessageRevision, composerTransitionBlock, detailForConversation, earliestSequence, formatDate, loadMessageHistory, mergeMessages, readyAttachmentIds, restoredAttachments, roleName, uploadStagedAttachment, type StagedAttachment } from "./correspondence-workspace-utils"
+import type { ProjectDraft, SavedComposition, CorrespondenceInboxFilter, CorrespondenceAttachment, CorrespondenceDetail, CorrespondenceInbox, CorrespondenceMessage, CorrespondenceStateInput, CorrespondenceSummary, SendCorrespondenceInput, SendCorrespondenceResult } from "@/lib/correspondence/types"
 import { isChannelThreadId, sendFromProjectMessages } from "./channel-thread-send"
 import { useQuickAddEntry } from "@/hooks/use-quick-add-entry"
 import { useVisibleInterval } from "@/hooks/use-visible-interval"
@@ -1126,10 +1117,6 @@ function ConversationDetail(props: {
     </div>
   )
 }
-function roleName(role: CorrespondencePerson["role"]): string { return role === "sub_vendor" ? "Sub/Vendor" : role[0].toUpperCase() + role.slice(1) }
-function formatDate(value: string): string { const date = new Date(value); return Number.isNaN(date.valueOf()) ? value : date.toLocaleString([], { dateStyle: "medium", timeStyle: "short" }) }
 function compositionDraft(): NewDraft { return { id: crypto.randomUUID(), subject: "", body: "", recipientIds: [], attachmentIds: [], requestId: null, version: 0 } }
-function readyAttachmentIds(files: readonly StagedAttachment[]): readonly string[] { return files.flatMap((file) => file.state === "ready" && file.attachment ? [file.attachment.id] : []) }
-function restoredAttachments(files: readonly CorrespondenceAttachment[]): readonly StagedAttachment[] { return files.map((file) => ({ localId: file.id, file: null, state: file.available ? "ready" : "failed", attachment: file })) }
 
 function compositionKey(draft: NewDraft): string { return `${draft.subject}\u0000${draft.body}\u0000${draft.recipientIds.join("\u0001")}\u0000${draft.attachmentIds.join("\u0001")}\u0000${draft.requestId ?? ""}` }
