@@ -14,6 +14,7 @@ type GmailBody = {
 type GmailPart = {
   readonly mimeType?: string
   readonly filename?: string
+  readonly headers?: readonly GmailHeader[]
   readonly body?: GmailBody
   readonly parts?: readonly GmailPart[]
 }
@@ -23,7 +24,9 @@ export type InboundAttachment = {
   readonly fileName: string
   readonly mimeType: string
   readonly size: number | null
-  readonly data: Uint8Array | null
+  readonly data: Uint8Array<ArrayBuffer> | null
+  /** Shown inside the email body (Content-ID, not marked as an attachment), like a signature logo. */
+  readonly embedded: boolean
 }
 
 export type GmailMessage = {
@@ -35,6 +38,8 @@ export type GmailMessage = {
     readonly headers?: readonly GmailHeader[]
   }
 }
+
+type AutomaticMail = "out_of_office" | "bounce"
 
 export type InboundCandidate = {
   readonly gmailMessageId: string
@@ -54,6 +59,8 @@ export type InboundCandidate = {
   readonly attachments: readonly InboundAttachment[]
   /** Gmail's verdict on the From domain; absent on texts and older stored emails. */
   readonly senderAuthentication?: SenderAuthentication
+  /** Machine-sent instead of a person writing: an out-of-office reply or a delivery failure. */
+  readonly automatic: AutomaticMail | null
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -68,7 +75,7 @@ export function isGmailMessage(value: unknown): value is GmailMessage {
   )
 }
 
-export function base64UrlDecodeBytes(data: string): Uint8Array {
+export function base64UrlDecodeBytes(data: string): Uint8Array<ArrayBuffer> {
   const normalized = data.replace(/-/g, "+").replace(/_/g, "/")
   const padded = normalized.padEnd(
     normalized.length + ((4 - (normalized.length % 4)) % 4),
@@ -121,6 +128,14 @@ function collectBodies(part: GmailPart | undefined): {
   return { text, html }
 }
 
+/** Embedded pictures this small are signature logos and social icons, not project files. */
+const SIGNATURE_IMAGE_MAX_BYTES = 50_000
+
+/** A signature logo or icon: skipped when an email's files are saved. Larger embedded pictures (pasted photos) are kept. */
+export function isSignatureImage(attachment: InboundAttachment): boolean {
+  return attachment.embedded && attachment.mimeType.startsWith("image/") && (attachment.size ?? attachment.data?.byteLength ?? 0) <= SIGNATURE_IMAGE_MAX_BYTES
+}
+
 function collectAttachments(
   part: GmailPart | undefined
 ): readonly InboundAttachment[] {
@@ -128,8 +143,10 @@ function collectAttachments(
   const childAttachments = (part.parts ?? []).flatMap(collectAttachments)
   const fileName = part.filename?.trim() ?? ""
   if (fileName.length === 0) return childAttachments
+  const partHeaders = headersByName(part.headers ?? [])
+  const disposition = partHeaders.get("content-disposition")?.trim().toLowerCase() ?? ""
 
-  let data: Uint8Array | null = null
+  let data: Uint8Array<ArrayBuffer> | null = null
   if (part.body?.data) {
     try {
       data = base64UrlDecodeBytes(part.body.data)
@@ -148,8 +165,22 @@ function collectAttachments(
           ? part.body.size
           : null,
       data,
+      embedded: partHeaders.has("content-id") && !disposition.startsWith("attachment"),
     },
   ]
+}
+
+/**
+ * Out-of-office replies and bounces only. Other machine-sent mail (e-sign,
+ * quoting systems, `Auto-Submitted: auto-generated`) can carry real files, so
+ * it routes normally.
+ */
+function automaticMail(headers: ReadonlyMap<string, string>, fromAddress: string): AutomaticMail | null {
+  if (/^(mailer-daemon|postmaster)@/i.test(fromAddress)) return "bounce"
+  if (headers.get("auto-submitted")?.trim().toLowerCase().startsWith("auto-replied")) return "out_of_office"
+  if (headers.get("precedence")?.trim().toLowerCase() === "auto_reply") return "out_of_office"
+  if (headers.has("x-autoreply") || headers.has("x-autorespond")) return "out_of_office"
+  return null
 }
 
 export function stripHtml(html: string): string {
@@ -254,5 +285,6 @@ export function candidateFromMessage(message: GmailMessage): InboundCandidate {
     receivedAt: messageDate(message.internalDate),
     attachments: collectAttachments(message.payload),
     senderAuthentication: senderAuthenticationFromHeaders(message.payload?.headers ?? [], from.email),
+    automatic: automaticMail(headers, from.email),
   }
 }

@@ -15,14 +15,13 @@ import { googleAuth } from "@/db/schema-google"
 import { channelMembers, channels } from "@/db/schema-conversations"
 import { COMPASS_GMAIL_READONLY_SCOPE, getCompassGmailAccessToken } from "@/lib/email/compass-email"
 import {
-  base64UrlDecodeBytes,
   candidateFromMessage,
   escapeHtml,
   isGmailMessage,
   stripHtml,
   type InboundCandidate,
 } from "@/lib/email/gmail-message-parser"
-import { emailRetryAt, isEmailRateLimit } from "./delivery-recovery"
+import { fetchGmailJson, GmailRateLimitError, hydrateCandidateAttachments } from "./gmail-fetch"
 import { claimMailbox, deferMailbox, mailboxCooldown, releaseMailbox } from "./mailbox-state"
 import { isCompassMailboxSender, replyMailboxEmail } from "@/lib/email/reply-tracking"
 import { isReplyMessage } from "@/lib/email/reply-detection"
@@ -81,17 +80,6 @@ function isGmailListResponse(value: unknown): value is {
   return (
     (messagesValue === undefined || Array.isArray(messagesValue)) &&
     (nextPageToken === undefined || typeof nextPageToken === "string")
-  )
-}
-
-function isGmailAttachmentResponse(value: unknown): value is {
-  readonly data: string
-  readonly size?: number
-} {
-  return (
-    isRecord(value) &&
-    typeof value.data === "string" &&
-    (value.size === undefined || typeof value.size === "number")
   )
 }
 
@@ -315,7 +303,7 @@ async function importCandidate(input: {
   readonly organizationId: string
   readonly candidate: InboundCandidate
 }): Promise<
-  "duplicate" | "ignored_outbound" | "needs_review" | "other_org" | "posted"
+  "duplicate" | "ignored_automatic" | "ignored_outbound" | "needs_review" | "other_org" | "posted"
 > {
   const [duplicate] = await input.db
     .select({
@@ -333,6 +321,17 @@ async function importCandidate(input: {
   const replyThread = input.candidate.token
     ? await input.db.select().from(emailReplyThreads).where(eq(emailReplyThreads.token, input.candidate.token)).get()
     : null
+  // Out-of-office replies to a project inbox or conversation, and bounces to a project inbox, are kept for the record, never posted.
+  // A bounce of a Compass conversation email, and anything on a tracked record (RFQ, PO, RFI), still routes so staff see it.
+  const ignoreAutomatic = input.candidate.automatic === "out_of_office"
+    ? !replyThread || replyThread.sourceType === "project_correspondence"
+    : input.candidate.automatic === "bounce" && !replyThread
+  if (ignoreAutomatic) {
+    if (replyThread && replyThread.organizationId !== input.organizationId) return "other_org"
+    await insertInboundAudit({ db: input.db, organizationId: input.organizationId, projectId: replyThread?.projectId ?? null, replyThreadId: replyThread?.id ?? null,
+      candidate: input.candidate, matchedStatus: "ignored_automatic", postedMessageId: null, importedAt: new Date().toISOString() })
+    return "ignored_automatic"
+  }
   if (replyThread?.sourceType === "project_correspondence") {
     if (replyThread.organizationId !== input.organizationId) return "other_org"
     const outcome = isReplyMessage(input.candidate)
@@ -568,62 +567,6 @@ async function importCandidate(input: {
   return "posted"
 }
 
-class GmailRateLimitError extends Error {
-  constructor(readonly retryAt: string) {
-    super(`Gmail is temporarily rate limited. Retry after ${retryAt}`)
-  }
-}
-
-export async function fetchGmailJson(input: {
-  readonly url: string
-  readonly accessToken: string
-}): Promise<unknown> {
-  const response = await fetch(input.url, {
-    signal: AbortSignal.timeout(20_000),
-    headers: {
-      Authorization: `Bearer ${input.accessToken}`,
-    },
-  })
-  const text = await response.text()
-  if (isEmailRateLimit(response.status, text)) {
-    throw new GmailRateLimitError(emailRetryAt({ error: text, retryAfter: response.headers.get("Retry-After"), now: new Date(), attempt: 0 }))
-  }
-  if (!response.ok) {
-    throw new Error(`Gmail request failed (${response.status}): ${text}`)
-  }
-  if (text.length === 0) return null
-  return JSON.parse(text)
-}
-
-export async function hydrateCandidateAttachments(input: {
-  readonly candidate: InboundCandidate
-  readonly accessToken: string
-}): Promise<InboundCandidate> {
-  const attachments = await Promise.all(
-    input.candidate.attachments.map(async (attachment) => {
-      if (attachment.data || !attachment.attachmentId) return attachment
-      const attachmentUrl = new URL(
-        `https://gmail.googleapis.com/gmail/v1/users/me/messages/${input.candidate.gmailMessageId}/attachments/${attachment.attachmentId}`
-      )
-      const response = await fetchGmailJson({
-        url: attachmentUrl.toString(),
-        accessToken: input.accessToken,
-      })
-      if (!isGmailAttachmentResponse(response)) {
-        throw new Error(
-          `Gmail returned an unexpected attachment for ${attachment.fileName}.`
-        )
-      }
-      return {
-        ...attachment,
-        size: attachment.size ?? response.size ?? null,
-        data: base64UrlDecodeBytes(response.data),
-      }
-    })
-  )
-  return { ...input.candidate, attachments }
-}
-
 async function syncGmailInboundRepliesWithLease(input: {
   readonly env: unknown
   readonly db: Db
@@ -751,7 +694,7 @@ async function syncGmailInboundRepliesWithLease(input: {
 
         if (result === "duplicate") {
           skippedDuplicates += 1
-        } else if (result === "ignored_outbound") {
+        } else if (result === "ignored_outbound" || result === "ignored_automatic") {
           ignoredOutbound += 1
         } else if (result === "other_org") {
           skippedOtherOrganization += 1

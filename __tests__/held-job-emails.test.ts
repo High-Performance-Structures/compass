@@ -15,7 +15,7 @@ vi.mock("@/lib/email/compass-email", () => ({
   COMPASS_GMAIL_READONLY_SCOPE: "readonly",
   getCompassGmailAccessToken: async () => ({ success: false, error: "Google Workspace service account is not connected." }),
 }))
-vi.mock("@/lib/email/gmail-inbound", () => ({ fetchGmailJson: vi.fn(), hydrateCandidateAttachments: vi.fn() }))
+vi.mock("@/lib/email/gmail-fetch", () => ({ fetchGmailJson: vi.fn(), hydrateCandidateAttachments: vi.fn() }))
 
 const ENV = { COMPASS_CORRESPONDENCE_ENABLED: "true" }
 
@@ -56,7 +56,7 @@ const REVIEWER: AuthUser = {
 }
 
 function candidate(patch: Partial<InboundCandidate> = {}): InboundCandidate {
-  return { gmailMessageId: "held-1", gmailThreadId: null, messageIdHeader: null, inReplyToHeader: null, referencesHeader: null, token: null, fromAddress: "stranger@example.test", fromName: "Pat Stranger", toAddress: "jarvis+project-project-b@example.test", subject: "Deck question", textBody: "Can someone check the deck boards?", htmlBody: null, snippet: null, receivedAt: "2026-09-05T18:00:00.000Z", attachments: [], ...patch }
+  return { gmailMessageId: "held-1", gmailThreadId: null, messageIdHeader: null, inReplyToHeader: null, referencesHeader: null, token: null, fromAddress: "stranger@example.test", fromName: "Pat Stranger", toAddress: "jarvis+project-project-b@example.test", subject: "Deck question", textBody: "Can someone check the deck boards?", htmlBody: null, snippet: null, receivedAt: "2026-09-05T18:00:00.000Z", attachments: [], automatic: null, ...patch }
 }
 
 /** The row the Gmail importer writes for a held email. */

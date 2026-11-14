@@ -51,6 +51,16 @@ export function conversationInsertStatement(db: Db, row: ConversationInsert, opt
   return options.ignoreConflict ? insert.onConflictDoNothing() : insert
 }
 
+/**
+ * New participants on an existing conversation change who replies reach, so
+ * composers opened earlier must re-check the audience. Bumps only when one of
+ * these participant rows was actually inserted.
+ */
+export function bumpParticipantVersionStatement(db: Db, conversationId: string, participantIds: readonly string[]): BatchItem<"sqlite"> {
+  return db.update(correspondence).set({ participantVersion: sql`${correspondence.participantVersion} + 1` })
+    .where(and(eq(correspondence.id, conversationId), sql`EXISTS (SELECT 1 FROM ${correspondenceParticipants} WHERE ${correspondenceParticipants.id} IN (SELECT value FROM json_each(${JSON.stringify(participantIds)})))`))
+}
+
 /** A new message reopens a closed conversation. */
 export function reopenConversationStatement(db: Db, conversationId: string): BatchItem<"sqlite"> {
   return db.update(correspondence).set({ closed: false }).where(eq(correspondence.id, conversationId))

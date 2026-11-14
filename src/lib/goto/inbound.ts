@@ -476,6 +476,7 @@ export async function downloadGotoInboundAttachments(input: {
       mimeType,
       size: data.byteLength,
       data,
+      embedded: false,
     })
   }
   return attachments
@@ -648,6 +649,7 @@ export async function processGotoInboundMessage(input: {
     snippet: input.message.body.slice(0, 240),
     receivedAt: input.message.receivedAt,
     attachments,
+    automatic: null,
   }
   const result = await routeProjectInboundSms({
     env: input.env,

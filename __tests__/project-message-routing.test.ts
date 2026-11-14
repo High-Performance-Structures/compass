@@ -30,7 +30,7 @@ function setup(): CorrespondenceTestDatabase {
 }
 afterEach(() => database?.close())
 function candidate(patch: Partial<InboundCandidate> = {}): InboundCandidate {
-  return { gmailMessageId: "email-1", gmailThreadId: null, messageIdHeader: null, inReplyToHeader: null, referencesHeader: null, token: null, fromAddress: "owner@example.test", fromName: "Project Owner", toAddress: "jarvis+project-project-a@hps-colorado.com", subject: '[MESSAGE] @"Staff A" Please check', textBody: "Please check the finish.", htmlBody: null, snippet: null, receivedAt: "2026-09-05T18:00:00.000Z", attachments: [], ...patch }
+  return { gmailMessageId: "email-1", gmailThreadId: null, messageIdHeader: null, inReplyToHeader: null, referencesHeader: null, token: null, fromAddress: "owner@example.test", fromName: "Project Owner", toAddress: "jarvis+project-project-a@hps-colorado.com", subject: '[MESSAGE] @"Staff A" Please check', textBody: "Please check the finish.", htmlBody: null, snippet: null, receivedAt: "2026-09-05T18:00:00.000Z", attachments: [], automatic: null, ...patch }
 }
 function input(db: CorrespondenceTestDatabase) {
   return { db: db.db, env: { COMPASS_CORRESPONDENCE_ENABLED: "true" }, organizationId: "org-a", projectId: "project-a", candidate: candidate(), body: "Please check the finish.", now: "2026-09-05T19:00:00.000Z" }
@@ -88,20 +88,51 @@ describe("[MESSAGE] intake", () => {
     db.sqlite.exec("UPDATE users SET is_active=0 WHERE id='staff-a'")
     expect(await routeInboundProjectMessage({ ...input(db), source: "sms" })).toEqual({ status: "held", reason: "mention_unmatched" })
     db.sqlite.exec("UPDATE users SET is_active=1 WHERE id='staff-a'")
-    expect(await routeInboundProjectMessage({ ...input(db), candidate: candidate({ attachments: [{ attachmentId: "file-1", fileName: "photo.jpg", mimeType: "image/jpeg", size: 10, data: null }] }), source: "email" })).toEqual({ status: "held", reason: "attachment_failed" })
+    expect(await routeInboundProjectMessage({ ...input(db), candidate: candidate({ attachments: [{ attachmentId: "file-1", fileName: "photo.jpg", mimeType: "image/jpeg", size: 10, data: null, embedded: false }] }), source: "email" })).toEqual({ status: "held", reason: "attachment_failed" })
   })
   it("saves an email's files with the project message", async () => {
     const db = setup()
     const env = { COMPASS_CORRESPONDENCE_ENABLED: "true", COMPASS_CORRESPONDENCE_DRIVE_USER: "files@example.test", COMPASS_CORRESPONDENCE_STAGING_FOLDERS: JSON.stringify({ "org-a": "private-folder" }) }
-    const withFile = candidate({ attachments: [{ attachmentId: "file-1", fileName: "inspection.pdf", mimeType: "application/pdf", size: 3, data: new Uint8Array([1, 2, 3]) }] })
+    const withFile = candidate({ attachments: [{ attachmentId: "file-1", fileName: "inspection.pdf", mimeType: "application/pdf", size: 3, data: new Uint8Array([1, 2, 3]), embedded: false }] })
     const routed = await routeInboundProjectMessage({ ...input(db), env, candidate: withFile, source: "email" })
     expect(routed.status).toBe("routed_message")
     expect(db.sqlite.prepare("SELECT name, message_id AS messageId, drive_file_id AS driveFileId, owner_user_id AS ownerUserId FROM correspondence_attachments").all())
       .toEqual([{ name: "inspection.pdf", messageId: routed.status === "routed_message" ? routed.id : null, driveFileId: "drive-inspection.pdf", ownerUserId: "staff-a" }])
   })
+  it("skips signature logos but keeps real files and larger embedded pictures", async () => {
+    const db = setup()
+    const env = { COMPASS_CORRESPONDENCE_ENABLED: "true", COMPASS_CORRESPONDENCE_DRIVE_USER: "files@example.test", COMPASS_CORRESPONDENCE_STAGING_FOLDERS: JSON.stringify({ "org-a": "private-folder" }) }
+    const email = candidate({ attachments: [
+      { attachmentId: "logo", fileName: "image001.png", mimeType: "image/png", size: 39_636, data: null, embedded: true },
+      { attachmentId: "pasted", fileName: "image002.jpg", mimeType: "image/jpeg", size: 3, data: new Uint8Array([1, 2, 3]), embedded: false },
+      { attachmentId: "file-1", fileName: "inspection.pdf", mimeType: "application/pdf", size: 3, data: new Uint8Array([1, 2, 3]), embedded: false },
+    ] })
+    expect((await routeInboundProjectMessage({ ...input(db), env, candidate: email, source: "email" })).status).toBe("routed_message")
+    expect(db.sqlite.prepare("SELECT name FROM correspondence_attachments ORDER BY name").all()).toEqual([{ name: "image002.jpg" }, { name: "inspection.pdf" }])
+  })
+  it("posts every email in one Gmail thread to one conversation", async () => {
+    const db = setup()
+    await routeInboundProjectMessage({ ...input(db), candidate: candidate({ gmailMessageId: "email-1", gmailThreadId: "thread-1" }), source: "email" })
+    await routeInboundProjectMessage({ ...input(db), candidate: candidate({ gmailMessageId: "email-2", gmailThreadId: "thread-1" }), source: "email" })
+    await routeInboundProjectMessage({ ...input(db), candidate: candidate({ gmailMessageId: "email-3", gmailThreadId: "thread-2" }), source: "email" })
+    expect(db.sqlite.prepare("SELECT COUNT(*) AS messages, COUNT(DISTINCT conversation_id) AS conversations FROM correspondence_messages").get()).toEqual({ messages: 3, conversations: 2 })
+    expect(db.sqlite.prepare("SELECT COUNT(*) AS count FROM correspondence_participants").get()).toEqual({ count: 2 })
+    // The same staff member on both emails is not an audience change.
+    expect(db.sqlite.prepare("SELECT participant_version AS version FROM project_correspondence ORDER BY version DESC LIMIT 1").get()).toEqual({ version: 1 })
+  })
+  it("bumps the conversation's audience version when a later email in the thread adds someone", async () => {
+    const db = setup()
+    db.sqlite.exec(`INSERT INTO users (id,email,first_name,last_name,display_name,role,is_active,created_at,updated_at) VALUES ('staff-c','staff-c@example.test','Staff','C','Staff C','admin',1,'2026-09-01','2026-09-01');
+      INSERT INTO organization_members (id,organization_id,user_id,role,joined_at) VALUES ('om-staff-c','org-a','staff-c','admin','2026-09-01');
+      INSERT INTO project_members (id,project_id,user_id,role,assigned_at) VALUES ('pm-staff-c','project-a','staff-c','staff','2026-09-01');`)
+    await routeInboundProjectMessage({ ...input(db), candidate: candidate({ gmailMessageId: "email-1", gmailThreadId: "thread-1" }), source: "email" })
+    await routeInboundProjectMessage({ ...input(db), candidate: candidate({ gmailMessageId: "email-2", gmailThreadId: "thread-1", subject: '[MESSAGE] @"Staff C" Over to you' }), source: "email" })
+    expect(db.sqlite.prepare("SELECT participant_version AS version FROM project_correspondence").all()).toEqual([{ version: 2 }])
+    expect(db.sqlite.prepare("SELECT user_id AS userId FROM correspondence_participants ORDER BY user_id").all()).toEqual([{ userId: "staff-a" }, { userId: "staff-c" }])
+  })
   it("keeps an email with files in review when private file storage isn't set up", async () => {
     const db = setup()
-    const withFile = candidate({ attachments: [{ attachmentId: "file-1", fileName: "inspection.pdf", mimeType: "application/pdf", size: 3, data: new Uint8Array([1, 2, 3]) }] })
+    const withFile = candidate({ attachments: [{ attachmentId: "file-1", fileName: "inspection.pdf", mimeType: "application/pdf", size: 3, data: new Uint8Array([1, 2, 3]), embedded: false }] })
     expect(await routeInboundProjectMessage({ ...input(db), candidate: withFile, source: "email" })).toEqual({ status: "held", reason: "attachment_failed" })
     expect(db.sqlite.prepare("SELECT COUNT(*) AS count FROM correspondence_messages").get()).toEqual({ count: 0 })
   })

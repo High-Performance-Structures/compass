@@ -16,7 +16,7 @@ vi.mock("@/lib/email/compass-email", () => ({
   COMPASS_GMAIL_READONLY_SCOPE: "readonly",
   getCompassGmailAccessToken: async () => ({ success: false, error: "Google Workspace service account is not connected." }),
 }))
-vi.mock("@/lib/email/gmail-inbound", () => ({ fetchGmailJson: vi.fn(), hydrateCandidateAttachments: vi.fn() }))
+vi.mock("@/lib/email/gmail-fetch", () => ({ fetchGmailJson: vi.fn(), hydrateCandidateAttachments: vi.fn() }))
 
 const ENV = { COMPASS_CORRESPONDENCE_ENABLED: "true" }
 
@@ -51,7 +51,7 @@ afterEach(() => {
 })
 
 function candidate(patch: Partial<InboundCandidate> = {}): InboundCandidate {
-  return { gmailMessageId: "email-1", gmailThreadId: null, messageIdHeader: null, inReplyToHeader: null, referencesHeader: null, token: null, fromAddress: "stranger@example.test", fromName: "Pat Stranger", toAddress: "jarvis+project-proj-a@example.test", subject: "Deck question", textBody: "Can someone check the deck boards?", htmlBody: null, snippet: null, receivedAt: "2026-09-05T18:00:00.000Z", attachments: [], ...patch }
+  return { gmailMessageId: "email-1", gmailThreadId: null, messageIdHeader: null, inReplyToHeader: null, referencesHeader: null, token: null, fromAddress: "stranger@example.test", fromName: "Pat Stranger", toAddress: "jarvis+project-proj-a@example.test", subject: "Deck question", textBody: "Can someone check the deck boards?", htmlBody: null, snippet: null, receivedAt: "2026-09-05T18:00:00.000Z", attachments: [], automatic: null, ...patch }
 }
 
 function route(db: CorrespondenceTestDatabase, email: InboundCandidate, env: unknown = ENV): ReturnType<typeof routeProjectInboundEmail> {
@@ -193,7 +193,7 @@ describe("job emails are held only when the job is unknown", () => {
 
   it("posts without files that can't be saved, with a note in the message", async () => {
     const db = setup()
-    const email = candidate({ attachments: [{ attachmentId: "file-1", fileName: "photo.jpg", mimeType: "image/jpeg", size: 10, data: null }] })
+    const email = candidate({ attachments: [{ attachmentId: "file-1", fileName: "photo.jpg", mimeType: "image/jpeg", size: 10, data: null, embedded: false }] })
     expect(await route(db, email)).toMatchObject({ kind: "routed" })
     expect(db.sqlite.prepare("SELECT body FROM correspondence_messages").get()).toEqual({ body: `Can someone check the deck boards?\n\n${FILES_NOT_SAVED_NOTE}` })
     expect(count(db, "correspondence_attachments")).toEqual({ count: 0 })

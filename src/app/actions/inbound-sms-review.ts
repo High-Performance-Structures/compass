@@ -371,6 +371,7 @@ export async function routeInboundSms(formData: FormData): Promise<void> {
       snippet: messageBody.slice(0, 240),
       receivedAt: event.receivedAt,
       attachments,
+      automatic: null,
     }
     const result = await routeReviewedProjectInboundSms({
       env,

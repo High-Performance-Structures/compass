@@ -25,7 +25,17 @@ such as `[RFI]` or `[DAILY LOG]`. Tagged subjects still go to their record type,
 and email from unknown senders is held for review. Attached files (up to 10, 25 MB
 each) are saved with the message in the private correspondence Drive folder and
 open for the message's recipients. If the files can't be stored, the whole email
-stays in review instead.
+stays in review instead. Small pictures shown inside the email body (signature
+logos and social icons, 50 KB or less) are dropped for every route; larger pasted
+pictures are kept. Every email in one Gmail thread joins one project
+conversation, so a reply-all chain with the project address copied reads as one
+thread; someone a later email adds becomes a participant and the conversation's
+audience version changes. Out-of-office replies (`Auto-Submitted: auto-replied`,
+`X-Autoreply`) to a project inbox or conversation, and bounces to a project
+inbox, are recorded as `ignored_automatic` and never posted or held. Bounces of
+Compass conversation emails and anything on a tracked record (RFQ, PO, RFI)
+still route so staff see them. Attachments are downloaded from Gmail one at a
+time to keep memory low.
 
 Incoming replies are attached to the original conversation through its tracked
 Reply-To address. Each reply is granted only to currently active conversation

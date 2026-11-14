@@ -5,7 +5,7 @@ import type { getDb } from "@/db"
 import { notificationPreferences } from "@/db/schema"
 import { companiesView, membershipsView, peopleView } from "@/lib/domain/identity/views"
 import { projectMembersView } from "@/lib/domain/project/views"
-import { correspondenceMessages } from "@/db/schema-correspondence"
+import { correspondence, correspondenceMessages } from "@/db/schema-correspondence"
 import { isCorrespondenceEnabled } from "@/lib/correspondence/access"
 import { USER_ROLES } from "@/lib/domain/identity/statuses"
 import { isInternalStaffRole } from "@/lib/user-roles"
@@ -13,7 +13,7 @@ import type { InboundCandidate } from "./gmail-message-parser"
 import { projectEmailTitle } from "./project-address"
 import { inboundMessageMentionsSomeone, inboundProjectMessageRecipients } from "./project-message-mentions"
 import { storeInboundMessageAttachments } from "@/lib/correspondence/inbound-attachments"
-import { attachmentInsertStatement, conversationInsertStatement, messageInsertStatement, participantInsertStatement, recipientInsertStatement, writeGuardDeleteStatement, writeGuardInsertStatement } from "@/lib/domain/correspondence/store"
+import { attachmentInsertStatement, conversationInsertStatement, messageInsertStatement, participantInsertStatement, recipientInsertStatement, reopenConversationStatement, bumpParticipantVersionStatement, writeGuardDeleteStatement, writeGuardInsertStatement } from "@/lib/domain/correspondence/store"
 import { notificationEventInsertStatement, notificationRecipientInsertStatement } from "@/lib/domain/notifications/store"
 import type { HeldMessageReason } from "./held-email-reasons"
 import { isHeldJobEmailReviewerRole } from "@/lib/staff-message-desk"
@@ -29,6 +29,11 @@ const MAX_RECIPIENTS = 30
 const MAX_REVIEWERS = 10
 /** Added to a posted message whose files couldn't be saved. */
 export const FILES_NOT_SAVED_NOTE = "(The attached files couldn't be saved here. They're still in the original email.)"
+
+async function sha256Hex(value: string): Promise<string> {
+  const digest = new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(value)))
+  return Array.from(digest, (byte) => byte.toString(16).padStart(2, "0")).join("")
+}
 
 /** `filesLeftOut`: the email had files that couldn't be saved, so it was posted without them. */
 export type RoutedProjectMessage = { readonly id: string; readonly status: "routed_message"; readonly filesLeftOut: boolean }
@@ -69,11 +74,15 @@ export async function routeInboundProjectMessage(input: {
   const held = (reason: HeldMessageReason): HeldProjectMessage => ({ status: "held", reason })
   if (!isCorrespondenceEnabled(input.projectId, input.env) && !isCorrespondenceEnabled(input.projectId)) return held("messaging_off")
   const sourceKey = JSON.stringify(["project-message", input.organizationId, input.projectId, input.source, input.candidate.gmailMessageId])
-  const digest = new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(sourceKey)))
-  const id = `inbound-message-${Array.from(digest, (byte) => byte.toString(16).padStart(2, "0")).join("")}`
-  const conversationId = `conversation-${id}`
+  const id = `inbound-message-${await sha256Hex(sourceKey)}`
+  // Every email in one Gmail thread joins one conversation, so a reply-all chain reads as one thread.
+  const threadKey = input.source === "email" && input.candidate.gmailThreadId
+    ? JSON.stringify(["project-thread", input.organizationId, input.projectId, input.candidate.gmailThreadId])
+    : null
+  const conversationId = threadKey ? `conversation-thread-${await sha256Hex(threadKey)}` : `conversation-${id}`
   const existing = await input.db.select({ id: correspondenceMessages.id }).from(correspondenceMessages).where(eq(correspondenceMessages.id, id)).get()
   if (existing) return { id, status: "routed_message", filesLeftOut: false }
+  const threadConversation = threadKey ? await input.db.select({ id: correspondence.id }).from(correspondence).where(eq(correspondence.id, conversationId)).get() : undefined
 
   const staffRoles = USER_ROLES.filter(isInternalStaffRole)
   const staff = await input.db.select({
@@ -127,10 +136,12 @@ export async function routeInboundProjectMessage(input: {
       AND (${!requiresAssignment} OR EXISTS(SELECT 1 FROM ${projectMemberships} pm WHERE pm.project_id=${input.projectId} AND pm.user_id=u.id)
         OR EXISTS(SELECT 1 FROM project_contacts pc WHERE pc.project_id=${input.projectId} AND pc.source_entity_type='user' AND pc.source_entity_id=u.id AND pc.contact_type='internal' AND pc.active=1))
     )) THEN 1 ELSE 0 END`),
-    conversationInsertStatement(input.db, { id: conversationId, organizationId: input.organizationId, projectId: input.projectId, subject: title, createdAt: input.now }),
+    conversationInsertStatement(input.db, { id: conversationId, organizationId: input.organizationId, projectId: input.projectId, subject: title, createdAt: input.now }, { ignoreConflict: true }),
+    reopenConversationStatement(input.db, conversationId),
     messageInsertStatement(input.db, { id, conversationId, authorUserId: null, authorName: sender, source: input.source, sourceKey, body, sentAt: input.candidate.receivedAt, requestHash: sourceKey }),
     ...files.rows.map((row) => attachmentInsertStatement(input.db, row)),
-    ...recipients.map((person) => participantInsertStatement(input.db, [{ id: `${id}-participant-${person.id}`, conversationId, userId: person.id, name: person.name || person.email, email: person.email, role: "staff" }])),
+    ...recipients.map((person) => participantInsertStatement(input.db, [{ id: `${id}-participant-${person.id}`, conversationId, userId: person.id, name: person.name || person.email, email: person.email, role: "staff" }], { ignoreConflict: true })),
+    ...(threadConversation ? [bumpParticipantVersionStatement(input.db, conversationId, recipients.map((person) => `${id}-participant-${person.id}`))] : []),
     // Quiet posts arrive already read, with no notification.
     ...recipients.map((person) => recipientInsertStatement(input.db, [{ id: `${id}-recipient-${person.id}`, messageId: id, userId: person.id, name: person.name || person.email, kind: "to", openedAt: input.quiet ? input.now : null }])),
     ...(input.quiet ? [] : [notificationEventInsertStatement(input.db, { id: eventId, organizationId: input.organizationId, projectId: input.projectId, eventType: "project_message", sourceType: "project_correspondence", sourceId: id, title: `Project message from ${input.candidate.fromName?.trim() || input.candidate.fromAddress}`, body: title, href: `/dashboard/projects/${encodeURIComponent(input.projectId)}/messages?conversationId=${encodeURIComponent(conversationId)}&messageId=${encodeURIComponent(id)}`, audience: "internal", createdBy: null, createdAt: input.now }),

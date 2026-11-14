@@ -37,7 +37,7 @@ function candidate(patch: Partial<InboundCandidate> = {}): InboundCandidate {
     token: "cmp-0123456789abcdef12", fromAddress: "bidder@example.com", fromName: "Bidder",
     toAddress: "jarvis+cmp-0123456789abcdef12@hps-colorado.com", subject: "Re: Permit update",
     textBody: "Thanks for the update.", htmlBody: null, snippet: null,
-    receivedAt: "2026-09-30T13:00:00Z", attachments: [], ...patch,
+    receivedAt: "2026-09-30T13:00:00Z", attachments: [], automatic: null, ...patch,
   }
 }
 
@@ -162,7 +162,7 @@ describe("external project email replies", () => {
     const db = setup()
     const replyThread = await db.db.query.emailReplyThreads.findFirst()
     if (!replyThread) throw new Error("Missing test reply thread")
-    const result = await routeProjectEmailReply({ db: db.db, organizationId: "org-a", replyThread, candidate: candidate({ attachments: [{ attachmentId: "file-1", fileName: "plan.pdf", mimeType: "application/pdf", size: 100, data: null }] }) })
+    const result = await routeProjectEmailReply({ db: db.db, organizationId: "org-a", replyThread, candidate: candidate({ attachments: [{ attachmentId: "file-1", fileName: "plan.pdf", mimeType: "application/pdf", size: 100, data: null, embedded: false }] }) })
     expect(result.status).toBe("needs_review")
     expect(db.sqlite.prepare("SELECT body FROM correspondence_messages WHERE id=?").get(result.messageId)).toEqual({ body: expect.stringContaining("1 email attachment is pending manual review") })
   })

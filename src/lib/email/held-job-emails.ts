@@ -19,7 +19,7 @@ import type { AuthUser } from "@/lib/auth"
 import { chunkD1Values } from "@/lib/d1-query"
 import { claimInboundEmailForReview, markInboundEmailPosted, releaseInboundEmailClaim } from "@/lib/domain/correspondence/email-store"
 import { COMPASS_GMAIL_READONLY_SCOPE, getCompassGmailAccessToken } from "@/lib/email/compass-email"
-import { fetchGmailJson, hydrateCandidateAttachments } from "@/lib/email/gmail-inbound"
+import { fetchGmailJson, hydrateCandidateAttachments } from "@/lib/email/gmail-fetch"
 import { candidateFromMessage, isGmailMessage, stripHtml, type InboundCandidate } from "@/lib/email/gmail-message-parser"
 import { isSenderAuthentication } from "@/lib/email/sender-authentication"
 import { heldEmailReason, heldMessageReasonLabel, type HeldEmailReasonView } from "@/lib/email/held-email-reasons"
@@ -171,6 +171,7 @@ function storedCandidate(email: StoredEmail): InboundCandidate {
     receivedAt: email.receivedAt,
     attachments: [],
     senderAuthentication: isSenderAuthentication(email.senderAuthentication) ? email.senderAuthentication : undefined,
+    automatic: null,
   }
 }
 
