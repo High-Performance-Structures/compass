@@ -81,6 +81,19 @@ describe("vendor portal RFQ", () => {
     expect(vendorPortalRfq(row, viewer, null)).toBeNull()
   })
 
+  it("never shows an imported row's amount, even to a vendor the row names", () => {
+    const view = vendorPortalRfq({ ...importedRow, companyName: "Front Range Cabinets" }, viewer, null)
+    expect(view?.amount).toBeNull()
+    expect(view?.companyName).toBeNull()
+    expect(view?.description).toBeNull()
+  })
+
+  it("treats template-made RFQs as Compass RFQs", () => {
+    const view = vendorPortalRfq({ ...importedRow, sourceSystem: "compass_template", companyName: "Front Range Cabinets", description: "Template scope." }, viewer, null)
+    expect(view?.description).toBe("Template scope.")
+    expect(view?.scopeItems[0]?.notes).toBe("source cost type Other")
+  })
+
   it("keeps Compass RFQs as written for the vendor they name", () => {
     const row: VendorPortalRfqRow = {
       ...importedRow,

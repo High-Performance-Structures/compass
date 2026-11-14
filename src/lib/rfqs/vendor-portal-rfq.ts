@@ -9,12 +9,14 @@
  * Privacy rules:
  * - A recorded recipient that the row does not name sees none of the row's
  *   own response, company or amount (those belong to whoever the row names);
- *   it sees only its own recorded answer.
+ *   it sees only its own recorded answer. Imported rows never show the row's
+ *   company or amount to any vendor.
  * - Imported RFQs (not created in Compass) hide their description and every
  *   note: that text was written for staff (portalRfqVendorContent).
  */
 import type { AudienceRfq } from "@/lib/project-audience-preview-types"
 import {
+  isImportedRfqSource,
   parsePortalRfqPayload,
   portalRfqMatchesRecipient,
   portalRfqVendorContent,
@@ -58,6 +60,9 @@ export function vendorPortalRfq(
     viewerDisplayName: viewer.displayName,
   })
   if (!namedRecipient && recordedAnswer === null) return null
+  // The row's own company and amount belong to whoever the row names. Imported
+  // rows never show them (an imported amount may be another bidder's price).
+  const showRowParty = namedRecipient && !isImportedRfqSource(row.sourceSystem)
   const content = portalRfqVendorContent({
     sourceSystem: row.sourceSystem,
     description: row.description,
@@ -70,10 +75,10 @@ export function vendorPortalRfq(
     description: content.description,
     status: row.status,
     priority: row.priority,
-    companyName: namedRecipient ? row.companyName : null,
+    companyName: showRowParty ? row.companyName : null,
     vendorCategory: payload.vendorCategory,
     dueDate: row.dueDate,
-    amount: namedRecipient ? row.amount : null,
+    amount: showRowParty ? row.amount : null,
     scopeItems: content.scopeItems,
     documentLinks: content.documentLinks,
     vendorResponse: (namedRecipient ? payload.vendorResponse : null) ?? recordedAnswer,

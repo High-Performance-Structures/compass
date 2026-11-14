@@ -227,8 +227,12 @@ export function portalRfqMatchesRecipient(input: {
  * import (provenance text, and in one Buildertrend package another bidder's
  * price), so vendors see the title, scope lines and documents only.
  */
-function isImportedRfqSource(sourceSystem: string | null): boolean {
-  return (sourceSystem ?? "compass") !== "compass"
+const NATIVE_RFQ_SOURCES: ReadonlySet<string> = new Set(["compass", "compass_template"])
+
+export function isImportedRfqSource(sourceSystem: string | null): boolean {
+  // Compass RFQs are "compass", or "compass_template" when made from a project
+  // template. Anything else (buildertrend, the column's "sage" default) is imported.
+  return !NATIVE_RFQ_SOURCES.has(sourceSystem ?? "compass")
 }
 
 /**
