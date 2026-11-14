@@ -2,6 +2,8 @@ import { index, integer, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqli
 
 import { projectOperations, projects, users } from "./schema"
 import { projectEstimateLines, projectEstimates } from "./schema-estimates"
+import { vendors } from "./schema-contacts"
+import { RFQ_RECIPIENT_RESPONSE_STATUSES } from "../lib/domain/operations/statuses"
 
 /** One durable delivery attempt for a bidder-specific RFQ email. */
 export const projectRfqEmailDeliveries = sqliteTable(
@@ -178,3 +180,33 @@ export const projectRfqQuoteLinks = sqliteTable(
     index("project_rfq_quote_links_project_id_idx").on(table.projectId),
   ]
 )
+
+/**
+ * A vendor company that received an RFQ and answered it, with only that
+ * vendor's own answer (migration 0326). The RFQ stays one project_operations
+ * row; the vendor portal shows it to recipient vendors and never reads another
+ * recipient's price for a vendor. Owned by src/lib/domain/operations/rfq-recipients.ts.
+ */
+export const projectRfqRecipients = sqliteTable(
+  "project_rfq_recipients",
+  {
+    id: text("id").primaryKey(),
+    projectId: text("project_id").notNull().references(() => projects.id, { onDelete: "cascade" }),
+    rfqOperationId: text("rfq_operation_id").notNull().references(() => projectOperations.id, { onDelete: "cascade" }),
+    vendorId: text("vendor_id").notNull().references(() => vendors.id, { onDelete: "cascade" }),
+    responseStatus: text("response_status", { enum: RFQ_RECIPIENT_RESPONSE_STATUSES }).notNull(),
+    quoteAmountCents: integer("quote_amount_cents"),
+    respondedAt: text("responded_at"),
+    enteredByBuilder: integer("entered_by_builder", { mode: "boolean" }).notNull().default(false),
+    sourceSystem: text("source_system").notNull(),
+    sourceRecordId: text("source_record_id").notNull(),
+    createdAt: text("created_at").notNull(),
+  },
+  (table) => [
+    uniqueIndex("project_rfq_recipients_source_uq").on(table.rfqOperationId, table.sourceSystem, table.sourceRecordId),
+    index("project_rfq_recipients_project_vendor_idx").on(table.projectId, table.vendorId),
+    index("project_rfq_recipients_vendor_idx").on(table.vendorId),
+  ]
+)
+
+export type ProjectRfqRecipient = typeof projectRfqRecipients.$inferSelect

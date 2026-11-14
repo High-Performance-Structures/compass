@@ -69,7 +69,7 @@ export function rfqReport(items: readonly AudienceRfq[]): PortalReport {
                   ["Lead time", item.vendorResponse.leadTime],
                   ["Valid through", item.vendorResponse.validUntil],
                   ["Submitted by", item.vendorResponse.responderName],
-                  ["Submitted at", item.vendorResponse.submittedAt],
+                  ["Submitted at", item.vendorResponse.submittedAt || null],
                 ] satisfies PortalReportItem["fields"],
                 paragraphs: [
                   ["Response", item.vendorResponse.notes],
