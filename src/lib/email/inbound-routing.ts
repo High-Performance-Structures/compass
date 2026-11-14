@@ -1,3 +1,5 @@
+import { isProjectInboxTagAddress } from "@/lib/email/project-address"
+
 export type InboundRoutingCandidate = {
   readonly toAddress: string | null
   readonly subject: string
@@ -69,7 +71,20 @@ export function exactJobNumberMatches<T extends InboundRoutingProject>(
   })
 }
 
-/** The one job an email names by number, else the office job for "office" emails (subject-tagged routing). */
+/**
+ * True when the email explicitly asks for the office job: an `[OFFICE]` tag
+ * or the office job's own number in the subject, or the Compass project
+ * inbox's `+office` address. Other mailboxes named "office" (a vendor's
+ * office@ address) and the plain word "office" in a subject do not count.
+ */
+function explicitOfficeSignal(candidate: InboundRoutingCandidate, officeProjectNumber: string): boolean {
+  if (/\[\s*office\s*\]/i.test(candidate.subject)) return true
+  const groups = officeProjectNumber.toLowerCase().match(/[a-z0-9]+/g) ?? []
+  if (groups.length > 0 && new RegExp(`(?<![a-z0-9])${groups.join("[\\s._/-]?")}(?![a-z0-9])`, "i").test(candidate.subject)) return true
+  return isProjectInboxTagAddress(candidate.toAddress, "office")
+}
+
+/** The one job an email names by number, else the office job when the email explicitly asks for it (subject-tagged routing). */
 export function matchInboundProject(
   candidate: InboundRoutingCandidate,
   projects: readonly InboundRoutingProject[]
@@ -81,10 +96,7 @@ export function matchInboundProject(
   const officeProject = projects.find(
     (project) => project.projectNumber?.trim().toUpperCase() === "H-OFFICE"
   )
-  const officeSignal = /\boffice\b/i.test(
-    `${candidate.toAddress ?? ""}\n${candidate.subject}`
-  )
-  if (officeProject && officeSignal) return officeProject
+  if (officeProject?.projectNumber && explicitOfficeSignal(candidate, officeProject.projectNumber)) return officeProject
 
   return null
 }
