@@ -9,6 +9,9 @@ import { recordRequiredActivityEvent, type ActivityActor } from "@/lib/activity-
 
 type Db = ReturnType<typeof getDb>
 
+/** How a session ended: Exit, or found over by the middleware. */
+export type ViewAsEndReason = "exit" | "expired" | "developer_mode_off"
+
 export type ViewAsAuditInput = {
   readonly kind: "start" | "end"
   readonly sessionId: string
@@ -16,6 +19,7 @@ export type ViewAsAuditInput = {
   readonly admin: ActivityActor & { readonly id: string }
   readonly target: { readonly id: string; readonly name: string; readonly role: string }
   readonly at: string
+  readonly endedBy?: ViewAsEndReason
 }
 
 /** The Activity event for one start or end. */
@@ -35,6 +39,7 @@ function viewAsActivityEvent(input: ViewAsAuditInput): Omit<Parameters<typeof re
       viewedUserId: input.target.id,
       viewedUserName: input.target.name,
       viewedUserRole: input.target.role || null,
+      ...(input.endedBy ? { endedBy: input.endedBy } : {}),
     },
     createdAt: input.at,
   }

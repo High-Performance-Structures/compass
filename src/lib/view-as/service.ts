@@ -11,7 +11,7 @@ import { getUnguardedCloudflareContext } from "@/lib/db"
 import { searchViewAsPeople, viewAsDisplayNames, type ViewAsPersonOption } from "@/lib/domain/identity/view-as-people"
 import { readFeatureSettings } from "@/lib/feature-settings/server"
 import type { OrgContext } from "@/lib/server/action-context"
-import { writeViewAsActivity } from "@/lib/view-as/audit"
+import { writeViewAsActivity, type ViewAsEndReason } from "@/lib/view-as/audit"
 import { VIEW_AS_MAX_AGE_SECONDS } from "@/lib/view-as/constants"
 import { viewAsPermission } from "@/lib/view-as/policy"
 import { viewAsSecret, viewAsTargetUser } from "@/lib/view-as/session"
@@ -81,7 +81,7 @@ export async function beginViewAs(
  * started. The request still carries the cookie, so its bindings are read
  * only; the entry is written with the real ones.
  */
-export async function recordViewAsEnd(token: string, admin: AuthUser | null): Promise<void> {
+export async function recordViewAsEnd(token: string, admin: AuthUser | null, endedBy: ViewAsEndReason = "exit"): Promise<void> {
   const { env } = await getUnguardedCloudflareContext()
   const secret = viewAsSecret(env)
   const payload = secret ? await verifyViewAsToken(token, secret, undefined, { allowExpired: true }) : null
@@ -95,5 +95,6 @@ export async function recordViewAsEnd(token: string, admin: AuthUser | null): Pr
     admin,
     target: { id: payload.targetId, name: names.get(payload.targetId) ?? "someone", role: "" },
     at: new Date().toISOString(),
+    endedBy,
   })
 }

@@ -10,8 +10,13 @@
  * request through cookies(), so only requests that carry the View as cookie
  * are affected. Sign-in token refreshes stay allowed so the admin's own
  * session and Drive reads keep working.
+ *
+ * Like the database guard, a refused request in a server action throws; while
+ * a page renders it gets a 403 response instead (and a log line), so the
+ * screen degrades the way it would for any failed outside call.
  */
-import { ViewAsReadOnlyError } from "@/lib/view-as/write-guard"
+import { VIEW_AS_READ_ONLY_MESSAGE } from "@/lib/view-as/constants"
+import { ViewAsReadOnlyError, type GuardMode } from "@/lib/view-as/write-guard"
 
 const READ_METHODS = new Set(["GET", "HEAD", "OPTIONS"])
 
@@ -59,16 +64,28 @@ export function viewAsFetchRefusal(input: RequestInfo | URL, init?: RequestInit)
 
 const INSTALLED = Symbol.for("compass.viewAsFetchGuard")
 
+/** The answer a refused request gets while a page renders. */
+function refusedResponse(refusal: string): Response {
+  console.warn(`View as dropped an outside request: ${refusal}`)
+  return Response.json({ success: false, error: { message: VIEW_AS_READ_ONLY_MESSAGE } }, { status: 403 })
+}
+
 /**
- * Wrap globalThis.fetch once. `isViewAsRequest` is injected so this module
+ * Wrap globalThis.fetch once. The request checks are injected so this module
  * stays free of next/headers and the wrapper can be tested.
  */
-export function installViewAsFetchGuard(isViewAsRequest: () => Promise<boolean>): void {
+export function installViewAsFetchGuard(
+  isViewAsRequest: () => Promise<boolean>,
+  guardMode: () => Promise<GuardMode> = async () => "reject",
+): void {
   const current = globalThis.fetch
   if (typeof current !== "function" || Reflect.get(current, INSTALLED) === true) return
   const guarded: typeof fetch = async (input, init) => {
     const refusal = viewAsFetchRefusal(input, init)
-    if (refusal && (await isViewAsRequest())) throw new ViewAsReadOnlyError(refusal)
+    if (refusal && (await isViewAsRequest())) {
+      if ((await guardMode()) === "skip") return refusedResponse(refusal)
+      throw new ViewAsReadOnlyError(refusal)
+    }
     return current(input, init)
   }
   // Keep flags other code sets on fetch (Next marks its patched fetch).

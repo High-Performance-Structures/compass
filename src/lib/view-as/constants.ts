@@ -21,5 +21,8 @@ export const VIEW_AS_COOKIE = "compass-view-as"
 /** A View as session lasts at most this long; then the person is back to their own Compass. */
 export const VIEW_AS_MAX_AGE_SECONDS = 4 * 60 * 60
 
+/** Records the end of a session the middleware found over, then returns to `?next=`. */
+export const VIEW_AS_ENDED_PATH = "/view-as/ended"
+
 /** Shown when a blocked write is attempted while viewing as someone. */
 export const VIEW_AS_READ_ONLY_MESSAGE = "View as is read only. Exit View as to make changes."

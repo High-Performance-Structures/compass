@@ -20,7 +20,7 @@ type CompassCloudflareContext = {
 }
 
 export async function getCloudflareContext(): Promise<CompassCloudflareContext> {
-    installViewAsFetchGuard(isViewAsRequest)
+    installViewAsFetchGuard(isViewAsRequest, viewAsGuardMode)
     const context = await getUnguardedCloudflareContext()
     if (!(await isViewAsRequest())) return context
     return { ...context, env: readOnlyEnv(context.env, await viewAsGuardMode()) }

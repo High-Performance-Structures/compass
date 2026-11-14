@@ -131,6 +131,16 @@ describe("recordViewAsEnd", () => {
     )
   })
 
+  it("records why a session the middleware found over ended", async () => {
+    const start = await beginViewAs(context(user({})), true, "owner-1")
+    if (!start.ok) throw new Error(start.error)
+    mocks.recordRequiredActivityEvent.mockClear()
+    await recordViewAsEnd(start.value, user({}), "developer_mode_off")
+    expect(mocks.recordRequiredActivityEvent).toHaveBeenCalledWith(
+      expect.objectContaining({ action: "view_as.ended", metadata: expect.objectContaining({ endedBy: "developer_mode_off" }) }),
+    )
+  })
+
   it("records nothing for another admin's or a forged session", async () => {
     const start = await beginViewAs(context(user({})), true, "owner-1")
     if (!start.ok) throw new Error(start.error)

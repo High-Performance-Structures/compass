@@ -86,7 +86,7 @@ describe("resolveViewAs (rechecked on every request)", () => {
     const result = await resolve()
     expect(result.kind).toBe("active")
     if (result.kind !== "active") return
-    expect(result.target).toMatchObject({ id: "owner-1", role: "owner", organizationId: "org-1" })
+    expect(result.target).toMatchObject({ id: "owner-1", role: "owner", organizationId: "org-1", viewAsCompanyId: "org-1" })
     expect(result.admin.id).toBe("admin-1")
   })
 

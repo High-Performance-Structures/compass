@@ -165,7 +165,7 @@ export async function getProjectAudienceOptions(
 
   return loadAudienceProjectOptions({
     db,
-    userId: user.id,
+    userId: user.id, organizationId: user.viewAsCompanyId,
     audience,
   })
 }

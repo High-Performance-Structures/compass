@@ -53,6 +53,12 @@ export type AuthUser = {
   readonly organizationType: string | null
   readonly createdAt: string
   readonly updatedAt: string
+  /**
+   * Set only while an admin is using developer View as: the admin's company.
+   * Project access and project lists stay inside it, so a person who is also
+   * on another company's jobs never shows that company's work.
+   */
+  readonly viewAsCompanyId?: string
 }
 
 /**

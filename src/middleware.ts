@@ -11,7 +11,7 @@ import {
 } from "@/lib/public-paths"
 
 import { AUDIENCE_SCOPE_HEADER, audienceScopeFromUrl } from "@/lib/project-audience-request"
-import { VIEW_AS_COOKIE, VIEW_AS_READ_ONLY_MESSAGE } from "@/lib/view-as/constants"
+import { VIEW_AS_ENDED_PATH, VIEW_AS_READ_ONLY_MESSAGE } from "@/lib/view-as/constants"
 import { viewAsMiddlewareDecision } from "@/lib/view-as/middleware"
 
 function legacyResolutionUrl(request: NextRequest): URL | null {
@@ -41,11 +41,11 @@ export default async function middleware(incomingRequest: NextRequest) {
     return NextResponse.json({ success: false, error: VIEW_AS_READ_ONLY_MESSAGE }, { status: 403 })
   }
   if (viewAs === "clear") {
-    // Developer mode was turned off or the session ran out: drop the cookie
-    // and load the page again as the admin.
-    const response = NextResponse.redirect(request.nextUrl)
-    response.cookies.delete(VIEW_AS_COOKIE)
-    return response
+    // Developer mode was turned off or the session ran out: record the end,
+    // drop the cookie and load the page again as the admin.
+    const ended = new URL(VIEW_AS_ENDED_PATH, request.url)
+    ended.searchParams.set("next", `${pathname}${request.nextUrl.search}`)
+    return NextResponse.redirect(ended)
   }
 
   if (!isWorkOSConfigured()) {

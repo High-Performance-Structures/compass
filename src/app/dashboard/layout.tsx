@@ -139,7 +139,7 @@ export default async function DashboardLayout({
     <ConversationPanelProvider enabled={canUseDirectMessages}>
     <PresenceProvider>
     <VoiceProvider>
-    <ListeningRoomDockProvider enabled={canUseCompassOfficeTalk}>
+    <ListeningRoomDockProvider enabled={canUseCompassOfficeTalk && viewAsState.kind === "none"}>
     <SettingsProvider>
     <NotificationCenterProvider>
     <ProjectListProvider projects={projectList} viewPreferences={projectViewPreferences}>

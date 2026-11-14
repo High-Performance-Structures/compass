@@ -113,6 +113,7 @@ export async function viewAsTargetUser(
       organizationType: session.activeOrg?.orgType ?? null,
       createdAt: account.createdAt,
       updatedAt: account.updatedAt,
+      viewAsCompanyId: organizationId,
     },
   }
 }

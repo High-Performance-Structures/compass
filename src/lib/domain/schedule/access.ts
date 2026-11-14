@@ -57,7 +57,8 @@ export async function viewerProjects(): Promise<ProjectListItem[]> {
     return await loadProjectListForRequest(
       user.id,
       user.organizationId ?? null,
-      user.organizationType === "internal" && canUseOrganizationProjectScopeRole(user.role)
+      user.organizationType === "internal" && canUseOrganizationProjectScopeRole(user.role),
+      user.viewAsCompanyId ?? null,
     )
   } catch {
     return []

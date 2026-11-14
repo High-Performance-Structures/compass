@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest"
 
 import { DEVELOPER_MODE_COOKIE } from "@/lib/developer-mode"
-import { VIEW_AS_COOKIE } from "@/lib/view-as/constants"
+import { VIEW_AS_COOKIE, VIEW_AS_ENDED_PATH } from "@/lib/view-as/constants"
 import { installViewAsFetchGuard, viewAsFetchRefusal } from "@/lib/view-as/fetch-guard"
 import { viewAsMiddlewareDecision } from "@/lib/view-as/middleware"
 import { ViewAsReadOnlyError } from "@/lib/view-as/write-guard"
@@ -45,6 +45,18 @@ describe("installViewAsFetchGuard", () => {
     expect(inner).toHaveBeenCalledTimes(2)
   })
 
+  it("answers 403 instead of throwing while a page renders", async () => {
+    const inner = vi.fn(async () => new Response("ok"))
+    globalThis.fetch = inner
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined)
+    installViewAsFetchGuard(async () => true, async () => "skip")
+    const response = await fetch("https://www.googleapis.com/calendar/v3/calendars/primary/events")
+    expect(response.status).toBe(403)
+    expect(inner).not.toHaveBeenCalled()
+    expect(warn).toHaveBeenCalled()
+    warn.mockRestore()
+  })
+
   it("installs once", () => {
     const inner = vi.fn(async () => new Response("ok"))
     globalThis.fetch = inner
@@ -86,5 +98,9 @@ describe("View as middleware", () => {
     expect(viewAsMiddlewareDecision(request("GET", "/dashboard", { [VIEW_AS_COOKIE]: tokenWithExpiry(now + 60) }), now)).toBe("clear")
     expect(viewAsMiddlewareDecision(request("GET", "/dashboard", { ...live, [VIEW_AS_COOKIE]: tokenWithExpiry(now - 1) }), now)).toBe("clear")
     expect(viewAsMiddlewareDecision(request("GET", "/dashboard", live), now)).toBe("pass")
+  })
+
+  it("lets the end-recording page through so it can clear the cookie", () => {
+    expect(viewAsMiddlewareDecision(request("GET", VIEW_AS_ENDED_PATH, { [VIEW_AS_COOKIE]: tokenWithExpiry(now - 1) }), now)).toBe("pass")
   })
 })
