@@ -40,7 +40,7 @@ To propose something the project team hasn't listed, press **Add my own choice**
 
 **Owner Updates** contains the project stories and progress summaries published to owners. Open an update to read the full entry and its approved attachments.
 
-**Schedule** shows the owner-visible plan. Switch between the available list, phase, or calendar presentations and use **Print Preview** when you need a point-in-time copy. Dates can change as work is coordinated. If a date affects a decision, delivery, or commitment, confirm it with the project team rather than treating a printed copy as a new promise.
+**Schedule** shows the owner-visible plan. Switch between the available list, phase, or calendar presentations and use **Print Preview** when you need a point-in-time copy. On the Gantt chart, click an item in the list or its bar to highlight it on the chart; double-click it (on a phone, tap it a second time) to open its details. Dates can change as work is coordinated. If a date affects a decision, delivery, or commitment, confirm it with the project team rather than treating a printed copy as a new promise.
 
 ## Read Budget and Pay Applications {#budget}
 

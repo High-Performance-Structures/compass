@@ -12,7 +12,7 @@
   "permissions": ["help:read", "project:read"],
   "routes": ["/preview/projects/[id]/sub-vendor", "/preview/projects/[id]/sub-vendor/change-orders", "/preview/projects/[id]/sub-vendor/change-orders/[changeOrderId]", "/preview/projects/[id]/sub-vendor/commitments", "/preview/projects/[id]/sub-vendor/conversations", "/preview/projects/[id]/sub-vendor/conversations/[channelId]", "/preview/projects/[id]/sub-vendor/documents", "/preview/projects/[id]/sub-vendor/photos", "/preview/projects/[id]/sub-vendor/rfis", "/preview/projects/[id]/sub-vendor/rfqs", "/preview/projects/[id]/sub-vendor/schedule", "/preview/projects/[id]/sub-vendor/selections", "/preview/projects/[id]/sub-vendor/team", "/preview/projects/[id]/sub-vendor/warranty"],
   "owner": "Compass product team",
-  "lastReviewed": "2026-11-11"
+  "lastReviewed": "2026-11-13"
 }
 ---
 
@@ -30,7 +30,7 @@ Use navigation to move between assigned work. **Print Preview** opens a point-in
 
 ## Review Schedule and Selections {#schedule-selections}
 
-**Schedule** shows the published items you are responsible for, plus any the project team shares with trade partners (some jobs share the whole schedule). Review dates, phases, and assignments, and use **Print Preview** if a field copy is useful. Coordinate a conflict through an RFI or project message; do not assume that a printed date overrides a later update.
+**Schedule** shows the published items you are responsible for, plus any the project team shares with trade partners (some jobs share the whole schedule). Review dates, phases, and assignments, and use **Print Preview** if a field copy is useful. On the Gantt chart, click an item in the list or its bar to highlight it on the chart; double-click it (on a phone, tap it a second time) to open its details and respond. Coordinate a conflict through an RFI or project message; do not assume that a printed date overrides a later update.
 
 **Approved Selections** shows current owner-approved specifications that have been published to your project audience. Review these before procurement and installation. Raise a conflict or missing decision through an RFI instead of changing the specification based on a private note or an older download.
 

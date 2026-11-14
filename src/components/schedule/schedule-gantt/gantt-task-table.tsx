@@ -127,7 +127,8 @@ export function GanttTaskTable({
                 focusedTaskId === task.id && "bg-accent"
               )}
               onClick={() => focusTaskOnTimeline(task)}
-              title="Show this item on the timeline"
+              onDoubleClick={() => onEditTask(task)}
+              title="Click to show this item on the timeline; double-click to edit"
             >
               <TableCell className="h-[48px] py-0 text-xs">
                 <span
@@ -191,6 +192,7 @@ export function GanttTaskTable({
                 <div
                   className="flex items-center"
                   onClick={(event) => event.stopPropagation()}
+                  onDoubleClick={(event) => event.stopPropagation()}
                 >
                   <ProjectTaskCreateButton
                     compact
