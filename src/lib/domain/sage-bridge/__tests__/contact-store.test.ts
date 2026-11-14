@@ -19,6 +19,7 @@ import {
   refreshSageLinkLookupStatements,
   rejectSageLinkCandidateStatements,
   rejectSageLinkReviewStatements,
+  closeAlreadyLinkedSageLinkStatements,
   reviewSageContactChangeStatements,
   reviewSageContactCreateStatements,
   sageContactCreateFailedStatement,
@@ -151,6 +152,27 @@ describe("Sage contact store: link review statements", () => {
              AND NOT EXISTS (SELECT 1 FROM sage_contact_link_events
                WHERE request_id = ? AND event_type = 'refreshed' AND created_at = ?)`,
       ["u1", JSON.stringify({ number: "42", reason: "stale" }), now, "r1", "org-1", now, "r1", now],
+    ))
+  })
+
+  it("closes a candidate already linked to that Sage record, with no reviewer", () => {
+    const [close, event] = closeAlreadyLinkedSageLinkStatements(d1, {
+      requestId: "r1", organizationId: "org-1", sageRecordId: "sid", viewerUserId: "u1", now,
+    })
+    expect(statementShape(close)).toEqual(expectedShape(
+      `UPDATE sage_contact_read_requests SET status = 'linked', reviewed_at = ?,
+           review_note = 'Already linked to this Sage record.'
+           WHERE id = ? AND organization_id = ? AND purpose = 'link_candidate'
+             AND status = 'awaiting_review'`,
+      [now, "r1", "org-1"],
+    ))
+    expect(withGeneratedId(event)).toEqual(expectedShape(
+      `INSERT INTO sage_contact_link_events
+           (id, request_id, organization_id, actor_user_id, event_type, detail_json, created_at)
+           SELECT ?, id, organization_id, NULL, 'already_linked', ?, ?
+           FROM sage_contact_read_requests WHERE id = ? AND organization_id = ?
+             AND status = 'linked' AND reviewed_by_user_id IS NULL AND reviewed_at = ?`,
+      [JSON.stringify({ sageRecordId: "sid", noticedBy: "u1" }), now, "r1", "org-1", now],
     ))
   })
 
