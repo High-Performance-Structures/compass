@@ -55,7 +55,15 @@ export function CrewsSettingsSection(): React.ReactElement {
     void load()
   }, [load])
 
-  const staffName = (id: string): string => settings?.staff.find((person) => person.id === id)?.name ?? "Former staff"
+  const staffName = (id: string): string =>
+    settings?.staff.find((person) => person.id === id)?.name ??
+    settings?.memberNames.find((person) => person.id === id)?.name ?? "Former staff"
+  // Members no longer in the staff picker (deactivated or development accounts) stay listed so they can be removed.
+  const memberOptions = draft
+    ? [...(settings?.staff ?? []), ...draft.memberIds
+      .filter((id) => !(settings?.staff ?? []).some((person) => person.id === id))
+      .map((id) => ({ id, name: staffName(id) }))]
+    : []
 
   function save(): void {
     if (!draft) return
@@ -164,7 +172,7 @@ export function CrewsSettingsSection(): React.ReactElement {
               <fieldset className="grid gap-1.5">
                 <legend className="mb-1.5 text-sm font-medium">Members (staff only)</legend>
                 <div className="max-h-56 overflow-y-auto rounded-lg border p-2">
-                  {(settings?.staff ?? []).map((person) => (
+                  {memberOptions.map((person) => (
                     <label key={person.id} className="flex items-center gap-2 rounded-md px-2 py-1.5 text-sm hover:bg-muted/50">
                       <Checkbox checked={draft.memberIds.includes(person.id)} onCheckedChange={(checked) => toggleMember(person.id, checked === true)} />
                       {person.name}
