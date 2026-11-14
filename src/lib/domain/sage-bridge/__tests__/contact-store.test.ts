@@ -157,7 +157,7 @@ describe("Sage contact store: link review statements", () => {
 
   it("closes a candidate already linked to that Sage record, with no reviewer", () => {
     const [close, event] = closeAlreadyLinkedSageLinkStatements(d1, {
-      requestId: "r1", organizationId: "org-1", sageRecordId: "sid", now,
+      requestId: "r1", organizationId: "org-1", sageRecordId: "sid", viewerUserId: "u1", now,
     })
     expect(statementShape(close)).toEqual(expectedShape(
       `UPDATE sage_contact_read_requests SET status = 'linked', reviewed_at = ?,
@@ -172,7 +172,7 @@ describe("Sage contact store: link review statements", () => {
            SELECT ?, id, organization_id, NULL, 'already_linked', ?, ?
            FROM sage_contact_read_requests WHERE id = ? AND organization_id = ?
              AND status = 'linked' AND reviewed_by_user_id IS NULL AND reviewed_at = ?`,
-      [JSON.stringify({ sageRecordId: "sid" }), now, "r1", "org-1", now],
+      [JSON.stringify({ sageRecordId: "sid", noticedBy: "u1" }), now, "r1", "org-1", now],
     ))
   })
 

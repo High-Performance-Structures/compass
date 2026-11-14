@@ -265,7 +265,14 @@ export function rejectSageLinkReviewStatements(
  */
 export function closeAlreadyLinkedSageLinkStatements(
   database: D1Database,
-  input: { readonly requestId: string; readonly organizationId: string; readonly sageRecordId: string; readonly now: string }
+  input: {
+    readonly requestId: string
+    readonly organizationId: string
+    readonly sageRecordId: string
+    /** Whose page load noticed it; recorded in the event, not as a reviewer. */
+    readonly viewerUserId: string
+    readonly now: string
+  }
 ): D1PreparedStatement[] {
   return [
     database.prepare(
@@ -280,7 +287,7 @@ export function closeAlreadyLinkedSageLinkStatements(
            SELECT ?, id, organization_id, NULL, 'already_linked', ?, ?
            FROM sage_contact_read_requests WHERE id = ? AND organization_id = ?
              AND status = 'linked' AND reviewed_by_user_id IS NULL AND reviewed_at = ?`
-    ).bind(crypto.randomUUID(), JSON.stringify({ sageRecordId: input.sageRecordId }), input.now,
+    ).bind(crypto.randomUUID(), JSON.stringify({ sageRecordId: input.sageRecordId, noticedBy: input.viewerUserId }), input.now,
       input.requestId, input.organizationId, input.now),
   ]
 }

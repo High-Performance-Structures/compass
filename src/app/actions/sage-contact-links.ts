@@ -211,14 +211,20 @@ async function closeIfAlreadyLinked(
   kind: SageContactKind,
   requestId: string,
   entityId: string,
-  candidateSageRecordId: string
+  candidateSageRecordId: string,
+  viewerUserId: string
 ): Promise<boolean> {
-  const identity = await getSageContactEntityIdentity(db, organizationId, kind, entityId)
-  if (!identity?.sageRecordId || !sameSageRecordId(identity.sageRecordId, candidateSageRecordId)) return false
-  const results = await database.batch(closeAlreadyLinkedSageLinkStatements(database, {
-    requestId, organizationId, sageRecordId: identity.sageRecordId, now: new Date().toISOString(),
-  }))
-  return results[0]?.meta.changes === 1
+  try {
+    const identity = await getSageContactEntityIdentity(db, organizationId, kind, entityId)
+    if (!identity?.sageRecordId || !sameSageRecordId(identity.sageRecordId, candidateSageRecordId)) return false
+    const results = await database.batch(closeAlreadyLinkedSageLinkStatements(database, {
+      requestId, organizationId, sageRecordId: identity.sageRecordId, viewerUserId, now: new Date().toISOString(),
+    }))
+    return results[0]?.meta.changes === 1
+  } catch {
+    // Housekeeping only: a failed close leaves the row for review rather than blanking the list.
+    return false
+  }
 }
 
 export async function listSageContactLinkCandidates(): Promise<readonly SageContactLinkCandidate[]> {
@@ -252,7 +258,7 @@ export async function listSageContactLinkCandidates(): Promise<readonly SageCont
     const parsed = sageContactSnapshotResultSchema.safeParse(snapshot)
     let status = row.status
     if (status === "awaiting_review" && parsed.success && !isDemoUser(user.id) &&
-      await closeIfAlreadyLinked(env.DB, db, orgId, kind.data, row.id, row.entityId, parsed.data.sageRecordId)) {
+      await closeIfAlreadyLinked(env.DB, db, orgId, kind.data, row.id, row.entityId, parsed.data.sageRecordId, user.id)) {
       status = "linked"
     }
     const sageIdentityName = parsed.success ? parsed.data.identityName?.trim() || null : null
