@@ -1,5 +1,6 @@
 import { Archive, Check, MoreHorizontal, Star } from "lucide-react"
 
+import { useAudiencePreviewReadOnly } from "@/components/projects/project-audience-preview-scope"
 import { Button } from "@/components/ui/button"
 import {
   DropdownMenu,
@@ -37,14 +38,16 @@ export function ConversationMenu({
 }): React.ReactElement {
   // Imported project conversations (channels) have no read receipts to share.
   const receipts = conversation.origin?.kind !== "channel"
+  // Staff previewing someone's inbox see these actions but can't use them.
+  const preview = useAudiencePreviewReadOnly()
   return <DropdownMenu>
     <DropdownMenuTrigger asChild><Button variant="ghost" size="icon" aria-label="Conversation actions"><MoreHorizontal /></Button></DropdownMenuTrigger>
     <DropdownMenuContent align="end">
-      <DropdownMenuItem onSelect={() => void onState({ saved: !conversation.saved, followUp: conversation.followUp, archived: conversation.archived })}><Star />{conversation.saved ? "Remove from saved" : "Save conversation"}</DropdownMenuItem>
-      <DropdownMenuItem onSelect={() => void onState({ saved: conversation.saved, followUp: !conversation.followUp, archived: conversation.archived })}><Check />{conversation.followUp ? "Clear follow-up" : "Flag for follow-up"}</DropdownMenuItem>
-      <DropdownMenuItem onSelect={() => void onState({ saved: conversation.saved, followUp: conversation.followUp, archived: !conversation.archived })}><Archive />{conversation.archived ? "Restore from archive" : "Archive conversation"}</DropdownMenuItem>
-      {receipts && <DropdownMenuCheckboxItem checked={conversation.shareReadReceipts} onCheckedChange={(share) => void onReceiptPreference(share === true)}>Share when I open messages</DropdownMenuCheckboxItem>}
-      {workspace === "staff" && <DropdownMenuItem onSelect={() => void onClosed()}>{conversation.closed ? "Reopen conversation" : "Close conversation"}</DropdownMenuItem>}
+      <DropdownMenuItem disabled={preview} onSelect={() => void onState({ saved: !conversation.saved, followUp: conversation.followUp, archived: conversation.archived })}><Star />{conversation.saved ? "Remove from saved" : "Save conversation"}</DropdownMenuItem>
+      <DropdownMenuItem disabled={preview} onSelect={() => void onState({ saved: conversation.saved, followUp: !conversation.followUp, archived: conversation.archived })}><Check />{conversation.followUp ? "Clear follow-up" : "Flag for follow-up"}</DropdownMenuItem>
+      <DropdownMenuItem disabled={preview} onSelect={() => void onState({ saved: conversation.saved, followUp: conversation.followUp, archived: !conversation.archived })}><Archive />{conversation.archived ? "Restore from archive" : "Archive conversation"}</DropdownMenuItem>
+      {receipts && <DropdownMenuCheckboxItem disabled={preview} checked={conversation.shareReadReceipts} onCheckedChange={(share) => void onReceiptPreference(share === true)}>Share when I open messages</DropdownMenuCheckboxItem>}
+      {workspace === "staff" && <DropdownMenuItem disabled={preview} onSelect={() => void onClosed()}>{conversation.closed ? "Reopen conversation" : "Close conversation"}</DropdownMenuItem>}
     </DropdownMenuContent>
   </DropdownMenu>
 }
