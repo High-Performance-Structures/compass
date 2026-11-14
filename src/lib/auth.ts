@@ -7,6 +7,7 @@ import { cookies } from "next/headers"
 import { DEVELOPER_MODE_COOKIE, developerModeFromCookie } from "@/lib/developer-mode"
 import { redirect } from "next/navigation"
 import { VIEW_AS_COOKIE, VIEW_AS_ENDED_PATH } from "@/lib/view-as/constants"
+import { isServerActionRequest } from "@/lib/view-as/request"
 import { resolveViewAs, viewAsSecret, type ViewAsResolution } from "@/lib/view-as/session"
 import { DEMO_USER } from "@/lib/demo"
 import {
@@ -203,7 +204,12 @@ export async function getCurrentUser(): Promise<AuthUser | null> {
   const identity = await identityCookies()
   if (!identity.viewAs) return loadSignedInUserForRequest(identity.key, false)
   const viewAs = await resolveViewAsForRequest(identity.key, identity.viewAs, identity.developerMode)
-  if (viewAs.kind === "invalid") redirect(`${VIEW_AS_ENDED_PATH}?next=/dashboard`)
+  if (viewAs.kind === "invalid") {
+    // A server action reports no user (its own "sign in" error) instead of
+    // surfacing NEXT_REDIRECT; layouts and pages do the redirect.
+    if (await isServerActionRequest()) return null
+    redirect(`${VIEW_AS_ENDED_PATH}?next=/dashboard`)
+  }
   return viewAs.kind === "active" ? viewAs.target : null
 }
 

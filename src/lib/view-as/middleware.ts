@@ -5,12 +5,16 @@
  *   mode off, or past its expiry). The page is sent through
  *   VIEW_AS_ENDED_PATH, which records the end in Activity, drops the cookie
  *   and returns the admin to the page as themselves;
+ * - "signing-in": a sign-in route (`isAuthSessionWritePath`); it runs as a
+ *   normal sign-in with the View as cookie removed from the request and
+ *   cleared on the response;
  * - "pass": everything else.
  * Clearing reads the payload without the signature on purpose: it only ever
  * removes the cookie, never grants anything. The signed check is server side
  * (session.ts).
  */
 import { DEVELOPER_MODE_COOKIE } from "@/lib/developer-mode"
+import { isAuthSessionWritePath } from "@/lib/public-paths"
 import { isRecord } from "@/lib/shared/guards"
 import { VIEW_AS_COOKIE, VIEW_AS_ENDED_PATH } from "@/lib/view-as/constants"
 
@@ -34,9 +38,12 @@ function unverifiedExpiry(token: string): number | null {
 export function viewAsMiddlewareDecision(
   request: MiddlewareRequest,
   nowSeconds: number = Math.floor(Date.now() / 1000),
-): "pass" | "block-write" | "clear" {
+): "pass" | "block-write" | "clear" | "signing-in" {
   const token = request.cookies.get(VIEW_AS_COOKIE)?.value
   if (!token) return "pass"
+  // Signing in again (the admin's own WorkOS session lapsed mid-view) must
+  // work: the sign-in routes run without the View as cookie, which is dropped.
+  if (isAuthSessionWritePath(request.nextUrl.pathname)) return "signing-in"
   const isRead = ["GET", "HEAD", "OPTIONS"].includes(request.method)
   if (request.nextUrl.pathname.startsWith("/api/") && !isRead) return "block-write"
   if (request.method !== "GET" || request.nextUrl.pathname.startsWith("/api/")) return "pass"
@@ -65,4 +72,13 @@ export function viewAsReturnUrl(next: string | null, requestUrl: string): URL {
   } catch {
     return fallback
   }
+}
+
+/** A Cookie request header without the named cookie. */
+export function cookieHeaderWithout(header: string | null, name: string): string {
+  return (header ?? "")
+    .split(";")
+    .map((part) => part.trim())
+    .filter((part) => part !== "" && part.split("=")[0]?.trim() !== name)
+    .join("; ")
 }

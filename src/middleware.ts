@@ -11,8 +11,8 @@ import {
 } from "@/lib/public-paths"
 
 import { AUDIENCE_SCOPE_HEADER, audienceScopeFromUrl } from "@/lib/project-audience-request"
-import { VIEW_AS_ENDED_PATH, VIEW_AS_READ_ONLY_MESSAGE } from "@/lib/view-as/constants"
-import { viewAsMiddlewareDecision } from "@/lib/view-as/middleware"
+import { VIEW_AS_COOKIE, VIEW_AS_ENDED_PATH, VIEW_AS_READ_ONLY_MESSAGE } from "@/lib/view-as/constants"
+import { cookieHeaderWithout, viewAsMiddlewareDecision } from "@/lib/view-as/middleware"
 
 function legacyResolutionUrl(request: NextRequest): URL | null {
   if (request.nextUrl.searchParams.get("legacyResolved") === "1") return null
@@ -37,6 +37,15 @@ export default async function middleware(incomingRequest: NextRequest) {
   // Developer View as (src/lib/view-as/): API writes are refused outright;
   // server actions are refused by the read-only database bindings.
   const viewAs = viewAsMiddlewareDecision(request)
+  if (viewAs === "signing-in") {
+    // Sign in as the admin, not inside View as: strip the cookie from the
+    // request and clear it in the browser. (No end entry here: the
+    // middleware has no database; the session was already unusable.)
+    requestHeaders.set("cookie", cookieHeaderWithout(requestHeaders.get("cookie"), VIEW_AS_COOKIE))
+    const response = NextResponse.next({ request: { headers: requestHeaders } })
+    response.cookies.delete(VIEW_AS_COOKIE)
+    return response
+  }
   if (viewAs === "block-write") {
     return NextResponse.json({ success: false, error: VIEW_AS_READ_ONLY_MESSAGE }, { status: 403 })
   }

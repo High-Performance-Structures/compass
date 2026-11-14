@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest"
 import { DEVELOPER_MODE_COOKIE } from "@/lib/developer-mode"
 import { VIEW_AS_COOKIE, VIEW_AS_ENDED_PATH } from "@/lib/view-as/constants"
 import { installViewAsFetchGuard, viewAsFetchRefusal } from "@/lib/view-as/fetch-guard"
-import { viewAsMiddlewareDecision, viewAsReturnUrl } from "@/lib/view-as/middleware"
+import { cookieHeaderWithout, viewAsMiddlewareDecision, viewAsReturnUrl } from "@/lib/view-as/middleware"
 import { ViewAsReadOnlyError } from "@/lib/view-as/write-guard"
 
 describe("outside requests while viewing as", () => {
@@ -128,5 +128,20 @@ describe("viewAsReturnUrl (no open redirect)", () => {
     }
     expect(viewAsReturnUrl("//evil.com", from).pathname).toBe("/dashboard")
     expect(viewAsReturnUrl("/\\evil.com", from).pathname).toBe("/dashboard")
+  })
+})
+
+describe("signing in again during View as", () => {
+  it("lets the sign-in routes through instead of blocking them", () => {
+    const cookies = { [VIEW_AS_COOKIE]: "token" }
+    for (const path of ["/api/auth/login", "/api/auth/mobile/session", "/api/auth/callback", "/callback"]) {
+      expect(viewAsMiddlewareDecision(request("POST", path, cookies))).toBe("signing-in")
+    }
+    expect(viewAsMiddlewareDecision(request("POST", "/api/projects", cookies))).toBe("block-write")
+  })
+
+  it("removes only the View as cookie from the request", () => {
+    expect(cookieHeaderWithout(`a=1; ${VIEW_AS_COOKIE}=tok.sig; wos-session=x`, VIEW_AS_COOKIE)).toBe("a=1; wos-session=x")
+    expect(cookieHeaderWithout(null, VIEW_AS_COOKIE)).toBe("")
   })
 })

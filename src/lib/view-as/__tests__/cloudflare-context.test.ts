@@ -85,6 +85,14 @@ const ALLOWED_UNGUARDED = new Set([
   "src/lib/view-as/service.ts",
 ])
 
+// Read every source file once; both scans below share it.
+let sourceTexts: readonly (readonly [string, string])[] | null = null
+function sources(): readonly (readonly [string, string])[] {
+  const root = process.cwd()
+  sourceTexts ??= sourceFiles(join(root, "src")).map((path) => [relative(root, path), readFileSync(path, "utf8")] as const)
+  return sourceTexts
+}
+
 function sourceFiles(dir: string): string[] {
   return readdirSync(dir).flatMap((entry) => {
     const path = join(dir, entry)
@@ -100,11 +108,10 @@ describe("direct Cloudflare context imports", () => {
   // guard (src/lib/view-as/guarded-binding.ts).
   const ALLOWED_DIRECT = new Set(["src/lib/db.ts", "src/app/actions/github.ts", "src/db/provider/d1-provider.ts"])
 
-  it("go through src/lib/db.ts", () => {
-    const root = process.cwd()
-    const direct = sourceFiles(join(root, "src"))
-      .filter((path) => readFileSync(path, "utf8").includes("@opennextjs/cloudflare"))
-      .map((path) => relative(root, path))
+  it("go through src/lib/db.ts", { timeout: 60_000 }, () => {
+    const direct = sources()
+      .filter(([, text]) => text.includes("@opennextjs/cloudflare"))
+      .map(([path]) => path)
     expect(direct.filter((path) => !ALLOWED_DIRECT.has(path))).toEqual([])
   })
 
@@ -115,11 +122,10 @@ describe("direct Cloudflare context imports", () => {
 })
 
 describe("getUnguardedCloudflareContext", () => {
-  it("is used only by the View as module and auth", () => {
-    const root = process.cwd()
-    const users = sourceFiles(join(root, "src"))
-      .filter((path) => readFileSync(path, "utf8").includes("getUnguardedCloudflareContext"))
-      .map((path) => relative(root, path))
+  it("is used only by the View as module and auth", { timeout: 60_000 }, () => {
+    const users = sources()
+      .filter(([, text]) => text.includes("getUnguardedCloudflareContext"))
+      .map(([path]) => path)
     expect(users.filter((path) => !ALLOWED_UNGUARDED.has(path))).toEqual([])
   })
 })

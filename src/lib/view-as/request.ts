@@ -48,6 +48,16 @@ export async function isViewAsRequest(): Promise<boolean> {
   }
 }
 
+/** A server action invocation (Next sends the `next-action` header). */
+export async function isServerActionRequest(): Promise<boolean> {
+  try {
+    const { headers } = await import("next/headers")
+    return (await headers()).has("next-action")
+  } catch {
+    return false
+  }
+}
+
 /**
  * How blocked writes behave on this View as request: a server action (the
  * `next-action` header) is told it failed; a page render or GET route has

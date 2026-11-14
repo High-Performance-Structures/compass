@@ -63,20 +63,26 @@ export async function startViewAs(targetUserId: string): Promise<ActionDone> {
   }
 }
 
-/** Leave View as and return to the admin's own Compass. Always clears the cookie. */
+/**
+ * Leave View as and return to the admin's own Compass. The end entry is what
+ * revokes the session server side, so it is written first (one retry); if it
+ * still fails the cookie is kept and the admin is told Exit didn't complete.
+ */
 export async function exitViewAs(): Promise<ActionDone> {
   const cookieStore = await cookies()
   const token = cookieStore.get(VIEW_AS_COOKIE)?.value
   if (!token) return { success: true }
   const admin = await getSignedInUser()
-  cookieStore.delete(VIEW_AS_COOKIE)
-  try {
-    await recordViewAsEnd(token, admin)
-    return { success: true }
-  } catch (error) {
-    console.error("Unable to record the end of View as", error)
-    return actionFailure(errorMessage(error, "Left View as, but could not record it in Activity."))
+  for (let attempt = 1; attempt <= 2; attempt++) {
+    try {
+      await recordViewAsEnd(token, admin)
+      cookieStore.delete(VIEW_AS_COOKIE)
+      return { success: true }
+    } catch (error) {
+      console.error(`Unable to record the end of View as (attempt ${attempt})`, error)
+    }
   }
+  return actionFailure("Exit didn't complete: Compass couldn't record it in Activity. Try Exit again.")
 }
 
 /** Company staff, for the View as setting's list of extra people. */

@@ -29,6 +29,7 @@ export type ViewAsEndReason =
   | "revoked"
   | "person_unavailable"
   | "privilege"
+  | "cross_site"
 
 export type ViewAsAuditInput = {
   readonly kind: "start" | "end"

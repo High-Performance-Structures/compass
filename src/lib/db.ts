@@ -19,6 +19,11 @@ type CompassCloudflareContext = {
     cf: unknown
 }
 
+// Deliberate module-scope effect: install the View as outside-fetch guard as
+// soon as any server code touches the database layer, before a client created
+// at import time could keep a reference to the unguarded fetch. Idempotent.
+installViewAsFetchGuard(isViewAsRequest, viewAsGuardMode)
+
 export async function getCloudflareContext(): Promise<CompassCloudflareContext> {
     installViewAsFetchGuard(isViewAsRequest, viewAsGuardMode)
     const context = await getUnguardedCloudflareContext()

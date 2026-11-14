@@ -17,7 +17,12 @@ export function ViewAsBar({ targetName }: { readonly targetName: string }): Reac
   async function leave(): Promise<void> {
     setLeaving(true)
     const result = await exitViewAs()
-    if (!result.success) toast.error(result.error)
+    if (!result.success) {
+      // Still viewing (the session is kept until its end is recorded).
+      toast.error(result.error)
+      setLeaving(false)
+      return
+    }
     // A full load drops every cached screen of the viewed person.
     window.location.assign("/dashboard")
   }

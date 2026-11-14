@@ -22,7 +22,11 @@ export async function GET(request: Request): Promise<Response> {
   if (token) {
     try {
       const [admin, state] = await Promise.all([getSignedInUser(), getViewAsState()])
-      await recordViewAsEnd(token, admin, state.kind === "invalid" ? state.code : "exit")
+      // Another site linking here can end a session (harmless), but it is not
+      // the admin choosing Exit, so it is recorded as such.
+      const fetchSite = request.headers.get("sec-fetch-site")
+      const crossSite = fetchSite !== null && fetchSite !== "same-origin" && fetchSite !== "none"
+      await recordViewAsEnd(token, admin, state.kind === "invalid" ? state.code : crossSite ? "cross_site" : "exit")
     } catch (error) {
       console.error("Unable to record the end of View as", error)
     }

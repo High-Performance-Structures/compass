@@ -83,6 +83,7 @@ export async function beginViewAs(
  * only; the entry is written with the real ones.
  */
 export async function recordViewAsEnd(token: string, admin: AuthUser | null, endedBy: ViewAsEndReason = "exit"): Promise<void> {
+  // Called again on failure by Exit (a second try), so it must stay idempotent.
   const { env } = await getUnguardedCloudflareContext()
   const secret = viewAsSecret(env)
   const payload = secret ? await verifyViewAsToken(token, secret, undefined, { allowExpired: true }) : null
