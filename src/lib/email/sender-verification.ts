@@ -31,7 +31,7 @@ export type SenderVerificationResult = {
   }
 }
 
-export function withUnverifiedSenderNote(candidate: InboundCandidate): InboundCandidate {
+function withUnverifiedSenderNote(candidate: InboundCandidate): InboundCandidate {
   const body = candidate.textBody?.trim() || (candidate.htmlBody ? stripHtml(candidate.htmlBody) : "") || candidate.snippet?.trim() || "(No message body.)"
   return { ...candidate, textBody: `${body}\n\n${UNVERIFIED_SENDER_NOTE}` }
 }

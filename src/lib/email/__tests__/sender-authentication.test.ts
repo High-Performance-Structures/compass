@@ -22,4 +22,10 @@ describe("Gmail's sender verdict", () => {
     expect(senderAuthenticationFromHeaders([results("evil.test; dmarc=pass header.from=example.test")], "pat@example.test")).toBe("none")
     expect(senderAuthenticationFromHeaders([{ name: "From", value: "pat@example.test" }], "pat@example.test")).toBe("none")
   })
+
+  it("ignores results smuggled in through comments or quoted strings, and DMARC for another domain", () => {
+    expect(senderAuthenticationFromHeaders([results('mx.google.com; spf=fail (google.com: domain of "x; dmarc=pass y"@attacker.test does not designate) smtp.mailfrom=x@attacker.test')], "ceo@victim.test")).toBe("fail")
+    expect(senderAuthenticationFromHeaders([results("mx.google.com; dkim=fail (sig; dkim=pass header.i=@victim.test ) header.i=@attacker.test")], "ceo@victim.test")).toBe("fail")
+    expect(senderAuthenticationFromHeaders([results("mx.google.com; dmarc=pass header.from=attacker.test")], "ceo@victim.test")).toBe("fail")
+  })
 })

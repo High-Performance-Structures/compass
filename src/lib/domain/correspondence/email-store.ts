@@ -107,7 +107,8 @@ export async function updateReplyThread(db: Db, replyThreadId: string, changes: 
 
 /**
  * Logs one Gmail message. A re-import of the same Gmail id refreshes only its
- * routing outcome (project, reply thread, status, posted record, import time).
+ * routing outcome (project, reply thread, status, posted record, import time)
+ * and Gmail's sender verdict.
  */
 export async function upsertInboundEmail(db: Db, row: InboundEmailInsert): Promise<void> {
   await db
@@ -121,6 +122,7 @@ export async function upsertInboundEmail(db: Db, row: InboundEmailInsert): Promi
         matchedStatus: row.matchedStatus,
         postedMessageId: row.postedMessageId,
         importedAt: row.importedAt,
+        senderAuthentication: row.senderAuthentication,
       },
     })
 }
