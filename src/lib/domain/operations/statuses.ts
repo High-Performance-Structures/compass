@@ -40,4 +40,3 @@ export type RateBookCategory = (typeof RATE_BOOK_CATEGORIES)[number]
  * who answered are recorded; invited-but-silent vendors get no row.
  */
 export const RFQ_RECIPIENT_RESPONSE_STATUSES = ["quoted", "declined"] as const
-export type RfqRecipientResponseStatus = (typeof RFQ_RECIPIENT_RESPONSE_STATUSES)[number]
