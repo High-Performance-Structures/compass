@@ -221,6 +221,43 @@ export function portalRfqMatchesRecipient(input: {
     .some((value) => value.length > 0 && viewerNames.has(value))
 }
 
+/**
+ * RFQs imported from another system (anything not created in Compass). Their
+ * description and line/document notes were written for staff during the
+ * import (provenance text, and in one Buildertrend package another bidder's
+ * price), so vendors see the title, scope lines and documents only.
+ */
+function isImportedRfqSource(sourceSystem: string | null): boolean {
+  return (sourceSystem ?? "compass") !== "compass"
+}
+
+/**
+ * What a non-staff viewer may see of an RFQ's text. Compass RFQs show as
+ * written; imported RFQs drop the description and every note.
+ */
+export function portalRfqVendorContent(input: {
+  readonly sourceSystem: string | null
+  readonly description: string | null
+  readonly payload: PortalRfqPayload
+}): {
+  readonly description: string | null
+  readonly scopeItems: readonly PortalRfqScopeItem[]
+  readonly documentLinks: readonly PortalRfqDocumentLink[]
+} {
+  if (!isImportedRfqSource(input.sourceSystem)) {
+    return {
+      description: input.description,
+      scopeItems: input.payload.scopeItems,
+      documentLinks: input.payload.documentLinks,
+    }
+  }
+  return {
+    description: null,
+    scopeItems: input.payload.scopeItems.map((item) => ({ ...item, notes: null })),
+    documentLinks: input.payload.documentLinks.map((link) => ({ ...link, notes: null })),
+  }
+}
+
 export function isPortalVisibleRfqStatus(status: string): boolean {
   return !["draft", "void", "cancelled", "canceled"].includes(
     status.trim().toLowerCase()

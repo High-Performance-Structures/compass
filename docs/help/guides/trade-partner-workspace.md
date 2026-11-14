@@ -54,6 +54,8 @@ Choose **Submit a quote** or **Decline to quote**. For a quote, enter the reques
 
 An RFQ email also has an **Enter your prices** button. It opens a private page, with no sign-in, where you can enter a price for each item, add lead time, a price-good-until date, and what's included and excluded, then choose **Send prices**. You can return to the same link to send updated prices until it expires or a bid is approved. Prices sent either way reach the same RFQ.
 
+Older requests your company answered before the project team moved to Compass also appear here, read only. Each shows only your own answer: your quote total (or **Quote submitted** when the quote was sent as a file), or **Declined to quote**. A quote the project team entered for you notes that it was recorded by the builder. Other companies' prices are never shown. These requests are closed, so they cannot be revised.
+
 ## Request and Track Changes {#change-orders}
 
 **Change Orders** lists trade-partner-visible requests with scope, price when determined, schedule impact, documents, status, and activity history. Open the full record before acting.

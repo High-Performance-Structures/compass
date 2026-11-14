@@ -102,6 +102,7 @@ export const COMPANY_REFERENCES: readonly CompanyReference[] = [
   { side: "vendor", table: "vendor_trade_documents", column: "vendor_id", handling: move("trade_docs") },
   { side: "vendor", table: "vendor_trade_doc_links", column: "vendor_id", handling: move("trade_doc_requests") },
   { side: "vendor", table: "project_operations", column: "vendor_id", handling: move("purchase_orders") },
+  { side: "vendor", table: "project_rfq_recipients", column: "vendor_id", handling: move("purchase_orders") },
   { side: "vendor", table: "project_budget_lines", column: "vendor_id", handling: move("budget_lines") },
   { side: "vendor", table: "project_warranty_claims", column: "assigned_vendor_id", handling: move("warranty") },
   { side: "vendor", table: "trade_letters", column: "vendor_id", handling: move("trade_letters") },
