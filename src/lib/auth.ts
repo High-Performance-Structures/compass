@@ -5,9 +5,7 @@ import { getDb } from "@/db"
 import type { User } from "@/db/schema"
 import { cookies } from "next/headers"
 import { DEVELOPER_MODE_COOKIE, developerModeFromCookie } from "@/lib/developer-mode"
-import { redirect } from "next/navigation"
-import { VIEW_AS_COOKIE, VIEW_AS_ENDED_PATH } from "@/lib/view-as/constants"
-import { isServerActionRequest } from "@/lib/view-as/request"
+import { VIEW_AS_COOKIE } from "@/lib/view-as/constants"
 import { resolveViewAs, viewAsSecret, type ViewAsResolution } from "@/lib/view-as/session"
 import { DEMO_USER } from "@/lib/demo"
 import {
@@ -197,19 +195,16 @@ export async function getViewAsState(): Promise<ViewAsResolution> {
 /**
  * The current user. During View as this is the viewed person (read only,
  * re-checked each request). A View as session that is no longer allowed
- * never falls back to the admin: the request is sent to /view-as/ended,
- * which records the end and clears the session.
+ * never falls back to the admin: there is no user, and the dashboard and
+ * portal layouts (ViewAsFrame) send the browser to /view-as/ended, which
+ * records the end and clears the session. (No redirect from here: this file
+ * is in every server chunk, and next/navigation's redirect code would be
+ * copied into each; server actions would also surface NEXT_REDIRECT.)
  */
 export async function getCurrentUser(): Promise<AuthUser | null> {
   const identity = await identityCookies()
   if (!identity.viewAs) return loadSignedInUserForRequest(identity.key, false)
   const viewAs = await resolveViewAsForRequest(identity.key, identity.viewAs, identity.developerMode)
-  if (viewAs.kind === "invalid") {
-    // A server action reports no user (its own "sign in" error) instead of
-    // surfacing NEXT_REDIRECT; layouts and pages do the redirect.
-    if (await isServerActionRequest()) return null
-    redirect(`${VIEW_AS_ENDED_PATH}?next=/dashboard`)
-  }
   return viewAs.kind === "active" ? viewAs.target : null
 }
 

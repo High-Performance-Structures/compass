@@ -38,7 +38,7 @@ export async function isViewAsRequest(): Promise<boolean> {
  * The View as cookie on this request: its value, "" when it can't be read
  * (fail closed: still treated as View as), or null when there is none.
  */
-export async function viewAsCookie(): Promise<string | null> {
+async function viewAsCookie(): Promise<string | null> {
   let cookies: unknown = null
   try {
     cookies = requestCookies
@@ -55,15 +55,6 @@ export async function viewAsCookie(): Promise<string | null> {
     return typeof value === "string" && value !== "" ? value : null
   } catch (error) {
     return isOutsideRequestError(error) ? null : ""
-  }
-}
-
-/** A server action invocation (Next sends the `next-action` header). */
-export async function isServerActionRequest(): Promise<boolean> {
-  try {
-    return (await requestHeaders()).has("next-action")
-  } catch {
-    return false
   }
 }
 

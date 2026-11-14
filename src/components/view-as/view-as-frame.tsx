@@ -7,12 +7,10 @@
  * the end in Activity and returns the admin to their own Compass.
  */
 import type * as React from "react"
-import { redirect } from "next/navigation"
-
-import { VIEW_AS_ENDED_PATH } from "@/lib/view-as/constants"
 
 import { ViewAsActiveProvider } from "@/components/view-as/view-as-context"
 import { ViewAsBar } from "@/components/view-as/view-as-bar"
+import { ViewAsEndedRedirect } from "@/components/view-as/view-as-ended-redirect"
 import type { ViewAsResolution } from "@/lib/view-as/session"
 
 export function ViewAsFrame({
@@ -23,7 +21,9 @@ export function ViewAsFrame({
   readonly children: React.ReactNode
 }): React.ReactElement {
   if (state.kind === "none") return <>{children}</>
-  if (state.kind === "invalid") redirect(`${VIEW_AS_ENDED_PATH}?next=/dashboard`)
+  // A client redirect: a server redirect() here would copy next/navigation's
+  // server code into every dashboard chunk (scripts/bundle-duplicates-check.mjs).
+  if (state.kind === "invalid") return <ViewAsEndedRedirect />
   return (
     <ViewAsActiveProvider active>
       <div className="flex h-screen flex-col overflow-hidden">

@@ -17,10 +17,7 @@ export type ViewAsTokenPayload = {
   readonly targetId: string
   /** The admin's company when viewing started; the viewed person is seen through it. */
   readonly orgId: string
-  /**
-   * The viewed person's sign-in and Google emails, lower case, so the Google
-   * delegation guard can refuse them without loading auth (delegation.ts).
-   */
+  /** The viewed person's sign-in and Google emails, lower case, for the Google delegation guard (delegation.ts). */
   readonly targetEmails: readonly string[]
   /** Seconds since the epoch. */
   readonly iat: number
@@ -99,21 +96,4 @@ export async function verifyViewAsToken(
   // Exit still records the end of a session that ran out; nothing else may.
   if (!options.allowExpired && (payload.exp <= nowSeconds || payload.iat > nowSeconds + 60)) return null
   return payload
-}
-
-/**
- * The viewed person's emails from a token, without checking the signature.
- * Only for refusing things (the Google delegation guard): a forged token can
- * add refusals, never permissions, and a forged session never resolves to
- * the viewed person anyway. Null when the token can't be read.
- */
-export function unverifiedViewAsTargetEmails(token: string): readonly string[] | null {
-  const body = base64UrlDecode(token.split(".")[0] ?? "")
-  if (!body) return null
-  try {
-    const payload = parsePayload(JSON.parse(new TextDecoder().decode(body)))
-    return payload ? payload.targetEmails : null
-  } catch {
-    return null
-  }
 }
