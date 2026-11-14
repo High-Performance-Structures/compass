@@ -7,6 +7,9 @@ import { accountDeletionRequests } from "@/db/schema"
 import { and, desc, eq, or } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 import { requireAuth } from "@/lib/auth"
+import { isViewAsRequest } from "@/lib/view-as/request"
+import { endViewAsOnSignOut } from "@/lib/view-as/service"
+import { ViewAsReadOnlyError } from "@/lib/view-as/errors"
 import {
   cancelPendingAccountDeletionRequest,
   insertAccountDeletionRequest,
@@ -85,6 +88,9 @@ type ProfileUpdateResult = {
 }
 
 async function authenticatedWorkOSUserId(): Promise<string> {
+  // During developer View as, requireAuth() is the viewed person but the
+  // WorkOS session is the admin's: never let one edit the other's sign-in.
+  if (await isViewAsRequest()) throw new ViewAsReadOnlyError("account settings")
   const session = await withAuth()
   if (!session?.user?.id) {
     throw new Error("Your authentication session has expired. Sign in again.")
@@ -380,5 +386,7 @@ export async function cancelAccountDeletionRequest(): Promise<ActionResult> {
  * Sign out the current user
  */
 export async function logout(): Promise<void> {
+  // Signing out also ends any View as session, recorded like Exit.
+  await endViewAsOnSignOut()
   await signOut()
 }

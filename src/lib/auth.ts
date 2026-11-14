@@ -1,9 +1,12 @@
 import { cache } from "react"
 import { withAuth } from "@workos-inc/authkit-nextjs"
-import { getCloudflareContext } from "@/lib/db"
+import { getCloudflareContext, getUnguardedCloudflareContext } from "@/lib/db"
 import { getDb } from "@/db"
 import type { User } from "@/db/schema"
 import { cookies } from "next/headers"
+import { DEVELOPER_MODE_COOKIE, developerModeFromCookie } from "@/lib/developer-mode"
+import { VIEW_AS_COOKIE } from "@/lib/view-as/constants"
+import { resolveViewAs, viewAsSecret, type ViewAsResolution } from "@/lib/view-as/session"
 import { DEMO_USER } from "@/lib/demo"
 import {
   isDevAuthFallbackAllowed,
@@ -50,6 +53,12 @@ export type AuthUser = {
   readonly organizationType: string | null
   readonly createdAt: string
   readonly updatedAt: string
+  /**
+   * Set only while an admin is using developer View as: the admin's company.
+   * Project access and project lists stay inside it, so a person who is also
+   * on another company's jobs never shows that company's work.
+   */
+  readonly viewAsCompanyId?: string
 }
 
 /**
@@ -128,27 +137,82 @@ export function lastLoginIsStale(lastLoginAt: string | null, now: string): boole
  * cookies that select the active organization or demo session so switching
  * either within a request never returns a stale identity.
  */
-const loadCurrentUserForRequest = cache(
-  (cookieKey: string): Promise<AuthUser | null> => {
+const loadSignedInUserForRequest = cache(
+  (cookieKey: string, viewing: boolean): Promise<AuthUser | null> => {
     void cookieKey // Only distinguishes cache entries.
-    return loadCurrentUser()
+    return loadSignedInUser(viewing)
   }
 )
 
-export async function getCurrentUser(): Promise<AuthUser | null> {
+/** The cookies that change who the current user is, as one cache key. */
+async function identityCookies(): Promise<{ readonly key: string; readonly viewAs: string | null; readonly developerMode: string | undefined }> {
   let activeOrg: string | null = null
   let demoSession: string | null = null
+  let viewAs: string | null = null
+  let developerMode: string | undefined
   try {
     const cookieStore = await cookies()
     activeOrg = cookieStore.get("compass-active-org")?.value ?? null
     demoSession = cookieStore.get("compass-demo")?.value ?? null
+    viewAs = cookieStore.get(VIEW_AS_COOKIE)?.value || null
+    developerMode = cookieStore.get(DEVELOPER_MODE_COOKIE)?.value
   } catch {
     // cookies() may throw in non-request contexts
   }
-  return loadCurrentUserForRequest(JSON.stringify([activeOrg, demoSession]))
+  return { key: JSON.stringify([activeOrg, demoSession, viewAs, developerMode]), viewAs, developerMode }
 }
 
-async function loadCurrentUser(): Promise<AuthUser | null> {
+/**
+ * The person really signed in, ignoring View as. Only the View as module and
+ * its top bar need this; everything else calls getCurrentUser().
+ */
+export async function getSignedInUser(): Promise<AuthUser | null> {
+  const identity = await identityCookies()
+  return loadSignedInUserForRequest(identity.key, identity.viewAs !== null)
+}
+
+const resolveViewAsForRequest = cache(
+  async (cookieKey: string, token: string, developerMode: string | undefined): Promise<ViewAsResolution> => {
+    const admin = await loadSignedInUserForRequest(cookieKey, true)
+    const { env } = await getCloudflareContext()
+    return resolveViewAs({
+      token,
+      secret: viewAsSecret(env),
+      admin,
+      db: getDb(env.DB),
+      developerModeEnabled: developerModeFromCookie(developerMode, true),
+    })
+  }
+)
+
+/** This request's View as session: none, active (with both people), or no longer valid. */
+export async function getViewAsState(): Promise<ViewAsResolution> {
+  const identity = await identityCookies()
+  if (!identity.viewAs) return { kind: "none" }
+  return resolveViewAsForRequest(identity.key, identity.viewAs, identity.developerMode)
+}
+
+/**
+ * The current user. During View as this is the viewed person (read only,
+ * re-checked each request). A View as session that is no longer allowed
+ * never falls back to the admin: there is no user, and the dashboard and
+ * portal layouts (ViewAsFrame) send the browser to /view-as/ended, which
+ * records the end and clears the session. (No redirect from here: this file
+ * is in every server chunk, and next/navigation's redirect code would be
+ * copied into each; server actions would also surface NEXT_REDIRECT.)
+ */
+export async function getCurrentUser(): Promise<AuthUser | null> {
+  const identity = await identityCookies()
+  if (!identity.viewAs) return loadSignedInUserForRequest(identity.key, false)
+  const viewAs = await resolveViewAsForRequest(identity.key, identity.viewAs, identity.developerMode)
+  return viewAs.kind === "active" ? viewAs.target : null
+}
+
+/**
+ * Sign-in housekeeping (last login, invitation claims) writes to the admin's
+ * own account, so it uses the writable bindings even during View as.
+ */
+async function loadSignedInUser(viewing: boolean): Promise<AuthUser | null> {
   try {
     if (!isWorkOSConfigured()) {
       if (!isDevAuthFallbackAllowed()) return null
@@ -194,7 +258,7 @@ async function loadCurrentUser(): Promise<AuthUser | null> {
 
     const workosUser = session.user
 
-    const { env } = await getCloudflareContext()
+    const { env } = await (viewing ? getUnguardedCloudflareContext() : getCloudflareContext())
     if (!env?.DB) return null
 
     const db = getDb(env.DB)

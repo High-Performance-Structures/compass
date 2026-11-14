@@ -11,6 +11,8 @@ import {
 } from "@/lib/public-paths"
 
 import { AUDIENCE_SCOPE_HEADER, audienceScopeFromUrl } from "@/lib/project-audience-request"
+import { VIEW_AS_COOKIE, VIEW_AS_ENDED_PATH, VIEW_AS_ENDING_HEADER, VIEW_AS_READ_ONLY_MESSAGE } from "@/lib/view-as/constants"
+import { cookieHeaderWithout, viewAsMiddlewareDecision } from "@/lib/view-as/middleware"
 
 function legacyResolutionUrl(request: NextRequest): URL | null {
   if (request.nextUrl.searchParams.get("legacyResolved") === "1") return null
@@ -25,12 +27,36 @@ export default async function middleware(incomingRequest: NextRequest) {
   // Never accept a caller-supplied effective identity header.
   const requestHeaders = new Headers(incomingRequest.headers)
   requestHeaders.delete(AUDIENCE_SCOPE_HEADER)
+  requestHeaders.delete(VIEW_AS_ENDING_HEADER)
   const scope = audienceScopeFromUrl(incomingRequest.nextUrl)
   if (scope) requestHeaders.set(AUDIENCE_SCOPE_HEADER, JSON.stringify(scope))
   const request = new NextRequest(incomingRequest, { headers: requestHeaders })
   const { pathname } = request.nextUrl
   if (scope && pathname.startsWith("/api/") && !["GET", "HEAD", "OPTIONS"].includes(request.method)) {
     return NextResponse.json({ success: false, error: "Preview is read only." }, { status: 403 })
+  }
+  // Developer View as (src/lib/view-as/): API writes are refused outright;
+  // server actions are refused by the read-only database bindings.
+  const viewAs = viewAsMiddlewareDecision(request)
+  if (viewAs === "signing-in") {
+    // Sign in as the admin, not inside View as: strip the cookie from the
+    // request and clear it in the browser. The sign-in handler records the
+    // end from the token passed in VIEW_AS_ENDING_HEADER.
+    requestHeaders.set(VIEW_AS_ENDING_HEADER, request.cookies.get(VIEW_AS_COOKIE)?.value ?? "")
+    requestHeaders.set("cookie", cookieHeaderWithout(requestHeaders.get("cookie"), VIEW_AS_COOKIE))
+    const response = NextResponse.next({ request: { headers: requestHeaders } })
+    response.cookies.delete(VIEW_AS_COOKIE)
+    return response
+  }
+  if (viewAs === "block-write") {
+    return NextResponse.json({ success: false, error: VIEW_AS_READ_ONLY_MESSAGE }, { status: 403 })
+  }
+  if (viewAs === "clear") {
+    // Developer mode was turned off or the session ran out: record the end,
+    // drop the cookie and load the page again as the admin.
+    const ended = new URL(VIEW_AS_ENDED_PATH, request.url)
+    ended.searchParams.set("next", `${pathname}${request.nextUrl.search}`)
+    return NextResponse.redirect(ended)
   }
 
   if (!isWorkOSConfigured()) {

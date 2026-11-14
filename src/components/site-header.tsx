@@ -9,6 +9,7 @@ import {
   IconBriefcase,
   IconAutomation,
   IconCode,
+  IconEye,
   IconExternalLink,
   IconMenu2,
   IconMoon,
@@ -40,6 +41,7 @@ import { OFFICE_TALK_LISTENING_ROOM_CHANNEL_ID } from "@/lib/listening-room"
 import { getInitials } from "@/lib/utils"
 import type { SidebarUser } from "@/lib/auth"
 import { useDeveloperMode } from "@/components/developer-mode-provider"
+import { ViewAsPersonDialog } from "@/components/view-as/view-as-launcher"
 import { useNative, useNativePlatform } from "@/hooks/use-native"
 import { fieldModeUrl } from "@/lib/native/field-mode-url"
 import { browserHandoffUrl } from "@/lib/native/browser-handoff"
@@ -97,6 +99,7 @@ export function SiteHeader({
   const searchInputRef = React.useRef<HTMLInputElement>(null)
   const agentContext = useAgentOptional()
   const [accountOpen, setAccountOpen] = React.useState(false)
+  const [viewAsOpen, setViewAsOpen] = React.useState(false)
   const [isLoggingOut, startLogoutTransition] = React.useTransition()
   const { toggleSidebar } = useSidebar()
   const pathname = usePathname()
@@ -106,6 +109,7 @@ export function SiteHeader({
     canUseDeveloperMode,
     developerModeEnabled,
     setDeveloperModeEnabled,
+    canViewAs,
   } = useDeveloperMode()
 
   if (pathname.startsWith("/dashboard/field")) return null
@@ -222,6 +226,12 @@ export function SiteHeader({
                     : "Turn on developer mode"}
                 </DropdownMenuItem>
               )}
+              {canViewAs && (
+                <DropdownMenuItem onSelect={() => setViewAsOpen(true)}>
+                  <IconEye />
+                  View as…
+                </DropdownMenuItem>
+              )}
               <DropdownMenuSeparator />
               <DropdownMenuItem disabled={isLoggingOut} onSelect={handleLogout}>
                 <IconLogout />
@@ -264,6 +274,19 @@ export function SiteHeader({
             >
               <IconCode className="size-4" />
               <span className="hidden xl:inline">Developer</span>
+            </Button>
+          )}
+          {canViewAs && (
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-7 gap-1.5 px-2 text-xs print:hidden"
+              onClick={() => setViewAsOpen(true)}
+              aria-label="View as someone"
+              title="View Compass as someone else, read only"
+            >
+              <IconEye className="size-4" />
+              <span className="hidden xl:inline">View as…</span>
             </Button>
           )}
         </div>
@@ -369,6 +392,7 @@ export function SiteHeader({
       </div>
 
       <AccountModal open={accountOpen} onOpenChange={setAccountOpen} user={user} />
+      {canViewAs && <ViewAsPersonDialog open={viewAsOpen} onOpenChange={setViewAsOpen} />}
     </header>
   )
 }

@@ -66,6 +66,8 @@ export type InternalDirectoryContact = {
   /** Accepted a Compass invitation: they own their contact information. */
   readonly accountHolder: boolean
   readonly linkedToUser: boolean
+  /** The linked Compass account, for developer View as. */
+  readonly userId: string | null
   readonly active: boolean
   readonly sageEmployeeId: string | null
   readonly sageEmployeeNumber: string | null
@@ -254,6 +256,7 @@ export async function getInternalDirectoryContacts(
       jobTitle: contact.jobTitle,
       active: options.archived !== true,
       linkedToUser: contact.userId !== null,
+      userId: contact.userId,
       accountHolder: internalPersonAccountState(
         contact.userId === null ? null : { id: contact.userId, isActive: contact.userActive === true }
       ) === "account",

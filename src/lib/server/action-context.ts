@@ -9,6 +9,8 @@ import { isDemoOrg, isDemoUser } from "@/lib/demo"
 import { canFeature } from "@/lib/permission-enforcement"
 import type { Action } from "@/lib/permissions"
 import { getProjectAccessRecord, type ProjectAccessRecord } from "@/lib/domain/project/access"
+import { VIEW_AS_READ_ONLY_MESSAGE } from "@/lib/view-as/constants"
+import { isViewAsRequest } from "@/lib/view-as/request"
 
 /**
  * The one place a server action or API route resolves who is asking, for
@@ -74,6 +76,8 @@ async function resolveUserContext(
   if (options.mutation && (isDemoUser(user.id) || (organizationId !== null && isDemoOrg(organizationId)))) {
     return actionFailure(CONTEXT_ERRORS.demoReadOnly)
   }
+  // Developer View as is read only; the database guard backs this up.
+  if (options.mutation && (await isViewAsRequest())) return actionFailure(VIEW_AS_READ_ONLY_MESSAGE)
   if (options.feature) {
     const action = options.action ?? (options.mutation ? "update" : "read")
     if (!(await canFeature(user, options.feature, action))) {

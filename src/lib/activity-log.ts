@@ -80,27 +80,35 @@ export async function recordActivityEvent(
   input: RecordActivityInput
 ): Promise<void> {
   try {
-    await input.db
-      .insert(activityEvents)
-      .values({
-        id: input.id ?? crypto.randomUUID(),
-        organizationId: input.organizationId,
-        projectId: input.projectId ?? null,
-        actorUserId: input.actor.id,
-        actorName: activityActorName(input.actor).slice(0, 200),
-        actorRole: input.actor.role.slice(0, 80),
-        category: input.category,
-        action: input.action.slice(0, 120),
-        entityType: input.entityType.slice(0, 120),
-        entityId: input.entityId ?? null,
-        summary: input.summary.trim().slice(0, 500),
-        metadata: input.metadata ? JSON.stringify(input.metadata) : null,
-        createdAt: input.createdAt ?? new Date().toISOString(),
-      })
-      .run()
+    await recordRequiredActivityEvent(input)
   } catch (error) {
     console.error("Unable to record Compass activity event", error)
   }
+}
+
+/**
+ * For the few events that must exist before the action may proceed (such as
+ * starting developer View as): throws when the entry cannot be written.
+ */
+export async function recordRequiredActivityEvent(input: RecordActivityInput): Promise<void> {
+  await input.db
+    .insert(activityEvents)
+    .values({
+      id: input.id ?? crypto.randomUUID(),
+      organizationId: input.organizationId,
+      projectId: input.projectId ?? null,
+      actorUserId: input.actor.id,
+      actorName: activityActorName(input.actor).slice(0, 200),
+      actorRole: input.actor.role.slice(0, 80),
+      category: input.category,
+      action: input.action.slice(0, 120),
+      entityType: input.entityType.slice(0, 120),
+      entityId: input.entityId ?? null,
+      summary: input.summary.trim().slice(0, 500),
+      metadata: input.metadata ? JSON.stringify(input.metadata) : null,
+      createdAt: input.createdAt ?? new Date().toISOString(),
+    })
+    .run()
 }
 
 /**

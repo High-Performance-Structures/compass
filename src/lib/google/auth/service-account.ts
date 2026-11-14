@@ -2,6 +2,7 @@
 // domain-wide delegation (impersonating workspace users).
 // uses Web Crypto API for RS256 signing (cloudflare workers compatible).
 
+import { assertDelegationAllowed } from "@/lib/view-as/delegation"
 import {
   GOOGLE_DRIVE_SCOPES,
   GOOGLE_TOKEN_URL,
@@ -48,6 +49,8 @@ export async function createServiceAccountJWT(
   userEmail: string,
   scopes: ReadonlyArray<string> = GOOGLE_DRIVE_SCOPES
 ): Promise<string> {
+  // Developer View as never acts as the viewed person's own Google account.
+  await assertDelegationAllowed(userEmail)
   const now = Math.floor(Date.now() / 1000)
 
   const header = {

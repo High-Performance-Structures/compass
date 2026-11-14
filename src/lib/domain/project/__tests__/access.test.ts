@@ -153,4 +153,24 @@ describe("assertProjectAccess photo-route boundary", () => {
       sqlite.close()
     }
   })
+
+  it("keeps developer View as inside the viewing admin's company", async () => {
+    const sqlite = createDatabase()
+    try {
+      // The viewed person is also a member of another company's job.
+      insertRow(sqlite, "project_members", {
+        id: "member-2", project_id: "project-2", user_id: "viewer-1", role: "client", assigned_at: "2026-09-06T00:00:00.000Z",
+      })
+      const d1 = createD1(sqlite)
+      // @ts-expect-error The focused adapter omits unused D1 methods.
+      const db = getDb(d1)
+      const viewed = { ...user({ id: "viewer-1", organizationId: "org-1", organizationType: "internal", role: "client" }), viewAsCompanyId: "org-1" }
+      await expect(assertProjectAccess(db, viewed, "project-1")).resolves.toMatchObject({ id: "project-1" })
+      await expect(assertProjectAccess(db, viewed, "project-2")).rejects.toThrow("Project not found")
+      // Outside View as the same membership opens it.
+      await expect(assertProjectAccess(db, { ...viewed, viewAsCompanyId: undefined }, "project-2")).resolves.toMatchObject({ id: "project-2" })
+    } finally {
+      sqlite.close()
+    }
+  })
 })

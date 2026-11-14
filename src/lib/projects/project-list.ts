@@ -55,6 +55,8 @@ async function loadProjectList(
   userId: string,
   organizationId: string | null,
   useOrganizationScope: boolean,
+  /** Developer View as: only jobs of the viewing admin's company. */
+  viewAsCompanyId: string | null = null,
 ): Promise<ProjectListItem[]> {
   const { env } = await getCloudflareContext()
   if (!env?.DB) return []
@@ -120,6 +122,7 @@ async function loadProjectList(
     .where(
       and(
         eq(projectMemberships.userId, userId),
+        viewAsCompanyId ? eq(projects.organizationId, viewAsCompanyId) : undefined,
         activeRegistryProject(db),
       ),
     )
@@ -141,6 +144,7 @@ export async function listProjectsForCurrentUser(): Promise<ProjectListItem[]> {
       user.organizationId ?? null,
       user.organizationType === "internal" &&
         canUseOrganizationProjectScopeRole(user.role),
+      user.viewAsCompanyId ?? null,
     )
   } catch {
     return []

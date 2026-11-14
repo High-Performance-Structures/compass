@@ -47,6 +47,8 @@ export async function getProjectAccessRecord(
     .get()
 
   if (!project) return null
+  // Developer View as stays inside the viewing admin's company.
+  if (user.viewAsCompanyId && project.organizationId !== user.viewAsCompanyId) return null
   if (
     project.organizationId &&
     usesOrganizationProjectScope(user, project.organizationId)

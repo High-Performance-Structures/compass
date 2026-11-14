@@ -3,6 +3,7 @@ import { getWorkOS, saveSession } from "@workos-inc/authkit-nextjs"
 import { z } from "zod/v4"
 
 import { ensureUserExists } from "@/lib/auth"
+import { endViewAsOnSignIn } from "@/lib/view-as/service"
 import { isWorkOSConfigured } from "@/lib/auth-config"
 
 const mobileSessionSchema = z.object({
@@ -66,6 +67,8 @@ export async function POST(request: NextRequest): Promise<Response> {
       lastName: result.user.lastName,
       profilePictureUrl: result.user.profilePictureUrl,
     })
+    // Signing in again during developer View as ends that session, recorded.
+    await endViewAsOnSignIn(request)
     await saveSession(
       {
         accessToken: result.accessToken,

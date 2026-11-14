@@ -6,6 +6,8 @@ import { getCloudflareContext } from "@/lib/db"
 import { isDemoUser } from "@/lib/demo"
 import { getProviderConfigForJwt } from "@/lib/agent/provider-config"
 import { envValue } from "@/lib/shared/env"
+import { VIEW_AS_READ_ONLY_MESSAGE } from "@/lib/view-as/constants"
+import { isViewAsRequest } from "@/lib/view-as/request"
 
 const ORG_DEFAULT_USER_ID = "org_default"
 
@@ -20,6 +22,8 @@ export async function getAgentToken(): Promise<
   if (!user) {
     return { error: "Not authenticated" }
   }
+  // A View as session never mints a token that acts as the viewed person.
+  if (await isViewAsRequest()) return { error: VIEW_AS_READ_ONLY_MESSAGE }
 
   const { env } = await getCloudflareContext()
   const secret = envValue(env, "AGENT_AUTH_SECRET")

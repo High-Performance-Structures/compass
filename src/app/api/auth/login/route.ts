@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { getWorkOS, saveSession } from "@workos-inc/authkit-nextjs"
 import { z } from "zod"
 import { ensureUserExists } from "@/lib/auth"
+import { endViewAsOnSignIn } from "@/lib/view-as/service"
 import {
   isDevAuthFallbackAllowed,
   isWorkOSConfigured,
@@ -141,6 +142,9 @@ export async function POST(request: NextRequest) {
         profilePictureUrl: result.user.profilePictureUrl,
       })
 
+      // Signing in again during developer View as ends that session, recorded.
+      await endViewAsOnSignIn(request)
+
       // save session with BOTH access and refresh tokens (fixes 30-second logout)
       await saveSession(
         {
@@ -190,6 +194,8 @@ export async function POST(request: NextRequest) {
         lastName: result.user.lastName,
         profilePictureUrl: result.user.profilePictureUrl,
       })
+
+      await endViewAsOnSignIn(request)
 
       // save session with BOTH access and refresh tokens
       await saveSession(
