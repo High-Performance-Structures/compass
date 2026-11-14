@@ -1,6 +1,7 @@
 // google drive REST API v3 wrapper.
 // each method accepts userEmail for domain-wide delegation impersonation.
 
+import { assertDelegationAllowed } from "@/lib/view-as/delegation"
 import {
   GOOGLE_DRIVE_API,
   GOOGLE_UPLOAD_API,
@@ -46,6 +47,8 @@ export class DriveClient {
   }
 
   private async getToken(userEmail: string): Promise<string> {
+    // Checked before the cache too: View as never acts as the viewed person.
+    await assertDelegationAllowed(userEmail)
     const cached = getCachedToken(userEmail)
     if (cached) return cached
 

@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest"
 import type { AuthUser } from "@/lib/auth"
 import { DEMO_ORG_ID } from "@/lib/demo"
 import type { ViewAsSettings } from "@/lib/feature-settings/view-as-settings"
-import { canUseDeveloperModeWith, isViewAsEligible, viewAsPermission } from "@/lib/view-as/policy"
+import { canUseDeveloperModeWith, canViewTargetRole, isViewAsEligible, viewAsPermission } from "@/lib/view-as/policy"
 
 function person(overrides: Partial<AuthUser>): AuthUser {
   return {
@@ -43,14 +43,14 @@ describe("View as permission", () => {
 
   it("refuses everyone when the company setting is off", () => {
     const off = { ...DEFAULTS, enabled: false }
-    expect(viewAsPermission({ user: person({ role: "admin" }), settings: off, developerModeEnabled: true })).toEqual({
+    expect(viewAsPermission({ user: person({ role: "admin" }), settings: off, developerModeEnabled: true })).toMatchObject({
       allowed: false,
       reason: "View as is turned off for this company.",
     })
   })
 
   it("refuses when developer mode is off", () => {
-    expect(viewAsPermission({ user: person({ role: "admin" }), settings: DEFAULTS, developerModeEnabled: false })).toEqual({
+    expect(viewAsPermission({ user: person({ role: "admin" }), settings: DEFAULTS, developerModeEnabled: false })).toMatchObject({
       allowed: false,
       reason: "Turn on developer mode to use View as.",
     })
@@ -78,5 +78,23 @@ describe("View as permission", () => {
     expect(canUseDeveloperModeWith(person({ id: "pm-1", role: "project_manager" }), widened)).toBe(true)
     expect(canUseDeveloperModeWith(person({ id: "pm-2", role: "project_manager" }), widened)).toBe(false)
     expect(canUseDeveloperModeWith(person({ role: "admin" }), { ...DEFAULTS, enabled: false })).toBe(true)
+  })
+
+  it("never reaches broader access than the viewer (privilege ceiling)", () => {
+    const admin = person({ role: "admin" })
+    const secondary = person({ id: "sa-1", role: "secondary_admin" })
+    const listed = person({ id: "pm-1", role: "project_manager" })
+    // Only the full admin may view an admin or secondary admin.
+    expect(canViewTargetRole(admin, "admin")).toBe(true)
+    expect(canViewTargetRole(admin, "secondary_admin")).toBe(true)
+    expect(canViewTargetRole(secondary, "admin")).toBe(false)
+    expect(canViewTargetRole(secondary, "secondary_admin")).toBe(false)
+    expect(canViewTargetRole(listed, "admin")).toBe(false)
+    expect(canViewTargetRole(listed, "secondary_admin")).toBe(false)
+    // Non-admin staff, owners and vendors are fine for any allowed viewer.
+    for (const role of ["project_manager", "executive", "owner", "subcontractor", "supplier"]) {
+      expect(canViewTargetRole(secondary, role)).toBe(true)
+      expect(canViewTargetRole(listed, role)).toBe(true)
+    }
   })
 })

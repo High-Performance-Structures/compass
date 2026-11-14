@@ -46,3 +46,23 @@ export function viewAsMiddlewareDecision(
   if (!developerModeOn || expiry === null || expiry <= nowSeconds) return "clear"
   return "pass"
 }
+
+/**
+ * Where /view-as/ended may send the admin back to: an absolute URL on this
+ * same site, resolved the way the browser resolves it, so `/\evil.com`,
+ * `/%09/evil.com` and `//evil.com` all fail the origin check. The resolved
+ * URL itself is returned (never the path re-parsed), so a path such as
+ * `/.//evil.com` cannot turn into a protocol-relative redirect. Anything
+ * else returns to the dashboard.
+ */
+export function viewAsReturnUrl(next: string | null, requestUrl: string): URL {
+  const base = new URL(requestUrl)
+  const fallback = new URL("/dashboard", base)
+  if (!next || !next.startsWith("/")) return fallback
+  try {
+    const target = new URL(next, base)
+    return target.origin === base.origin ? target : fallback
+  } catch {
+    return fallback
+  }
+}

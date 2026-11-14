@@ -45,6 +45,35 @@ function sqlBody(sql: string): string {
 
 const WRITE_KEYWORD = /\b(insert|update|delete|replace|upsert|create|drop|alter|attach|detach|vacuum|reindex)\b/i
 
+/**
+ * PRAGMAs that only report. Anything else (setters, the function form such
+ * as `foreign_keys(OFF)`, or maintenance like `optimize`) is refused.
+ */
+const READ_ONLY_PRAGMAS = new Set([
+  "table_info",
+  "table_xinfo",
+  "table_list",
+  "index_list",
+  "index_info",
+  "index_xinfo",
+  "foreign_key_list",
+  "foreign_key_check",
+  "database_list",
+  "compile_options",
+  "user_version",
+  "schema_version",
+])
+const SCHEMA_PRAGMAS = new Set(["table_info", "table_xinfo", "index_list", "index_info", "index_xinfo", "foreign_key_list", "foreign_key_check"])
+
+function isReadOnlyPragma(body: string): boolean {
+  const match = /^pragma\s+(?:"?main"?\.)?([a-z_]+)\s*(?:\(\s*(["'`]?)([A-Za-z0-9_]+)\2\s*\))?\s*;?\s*$/i.exec(body)
+  if (!match) return false
+  const name = (match[1] ?? "").toLowerCase()
+  if (!READ_ONLY_PRAGMAS.has(name)) return false
+  // Only the schema-reading PRAGMAs take an argument (a table or index name).
+  return match[3] === undefined || SCHEMA_PRAGMAS.has(name)
+}
+
 /** True only for SQL that cannot change data. Unknown or multi-statement SQL is not read-only. */
 export function isReadOnlySql(sql: string): boolean {
   const body = sqlBody(sql)
@@ -59,7 +88,7 @@ export function isReadOnlySql(sql: string): boolean {
     case "with":
       return !WRITE_KEYWORD.test(body)
     case "pragma":
-      return !body.includes("=")
+      return isReadOnlyPragma(body)
     default:
       return false
   }

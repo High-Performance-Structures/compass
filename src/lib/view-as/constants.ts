@@ -21,6 +21,12 @@ export const VIEW_AS_COOKIE = "compass-view-as"
 /** A View as session lasts at most this long; then the person is back to their own Compass. */
 export const VIEW_AS_MAX_AGE_SECONDS = 4 * 60 * 60
 
+/**
+ * The cookie outlives the token by a day, so the middleware still sees an
+ * expired session and records its end instead of the browser dropping it.
+ */
+export const VIEW_AS_COOKIE_MAX_AGE_SECONDS = VIEW_AS_MAX_AGE_SECONDS + 24 * 60 * 60
+
 /** Records the end of a session the middleware found over, then returns to `?next=`. */
 export const VIEW_AS_ENDED_PATH = "/view-as/ended"
 

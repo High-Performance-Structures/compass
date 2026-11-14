@@ -94,6 +94,26 @@ function sourceFiles(dir: string): string[] {
   })
 }
 
+describe("direct Cloudflare context imports", () => {
+  // Only db.ts may read the bindings from OpenNext directly; github.ts reads
+  // a secret only, and the platform provider passes D1 through the View as
+  // guard (src/lib/view-as/guarded-binding.ts).
+  const ALLOWED_DIRECT = new Set(["src/lib/db.ts", "src/app/actions/github.ts", "src/db/provider/d1-provider.ts"])
+
+  it("go through src/lib/db.ts", () => {
+    const root = process.cwd()
+    const direct = sourceFiles(join(root, "src"))
+      .filter((path) => readFileSync(path, "utf8").includes("@opennextjs/cloudflare"))
+      .map((path) => relative(root, path))
+    expect(direct.filter((path) => !ALLOWED_DIRECT.has(path))).toEqual([])
+  })
+
+  it("the platform provider guards D1 during View as", () => {
+    const provider = readFileSync(join(process.cwd(), "src/db/provider/d1-provider.ts"), "utf8")
+    expect(provider).toContain("viewAsGuardedD1")
+  })
+})
+
 describe("getUnguardedCloudflareContext", () => {
   it("is used only by the View as module and auth", () => {
     const root = process.cwd()

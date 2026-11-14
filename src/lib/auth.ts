@@ -5,7 +5,8 @@ import { getDb } from "@/db"
 import type { User } from "@/db/schema"
 import { cookies } from "next/headers"
 import { DEVELOPER_MODE_COOKIE, developerModeFromCookie } from "@/lib/developer-mode"
-import { VIEW_AS_COOKIE } from "@/lib/view-as/constants"
+import { redirect } from "next/navigation"
+import { VIEW_AS_COOKIE, VIEW_AS_ENDED_PATH } from "@/lib/view-as/constants"
 import { resolveViewAs, viewAsSecret, type ViewAsResolution } from "@/lib/view-as/session"
 import { DEMO_USER } from "@/lib/demo"
 import {
@@ -194,14 +195,15 @@ export async function getViewAsState(): Promise<ViewAsResolution> {
 
 /**
  * The current user. During View as this is the viewed person (read only,
- * re-checked each request); a View as session that is no longer allowed
- * yields no user rather than falling back to the admin, because the
- * request's database is read only until the admin exits.
+ * re-checked each request). A View as session that is no longer allowed
+ * never falls back to the admin: the request is sent to /view-as/ended,
+ * which records the end and clears the session.
  */
 export async function getCurrentUser(): Promise<AuthUser | null> {
   const identity = await identityCookies()
   if (!identity.viewAs) return loadSignedInUserForRequest(identity.key, false)
   const viewAs = await resolveViewAsForRequest(identity.key, identity.viewAs, identity.developerMode)
+  if (viewAs.kind === "invalid") redirect(`${VIEW_AS_ENDED_PATH}?next=/dashboard`)
   return viewAs.kind === "active" ? viewAs.target : null
 }
 

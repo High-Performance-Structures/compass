@@ -5,6 +5,7 @@ import type { ViewAsSettings } from "@/lib/feature-settings/view-as-settings"
 import type { OrgContext } from "@/lib/server/action-context"
 
 const mocks = vi.hoisted(() => ({
+  ended: false,
   settings: { enabled: true, extraStaffUserIds: [] } as ViewAsSettings,
   recordRequiredActivityEvent: vi.fn(async () => undefined),
   viewAsTargetUser: vi.fn(),
@@ -24,12 +25,21 @@ vi.mock("@/lib/db", () => ({
   getUnguardedCloudflareContext: async () => ({ env: { DB: {} } }),
 }))
 vi.mock("@/db", () => ({ getDb: () => ({}) }))
+vi.mock("@/lib/auth", () => ({ getSignedInUser: vi.fn(async () => null) }))
+vi.mock("@/lib/view-as/audit", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/view-as/audit")>()),
+  isViewAsSessionEnded: vi.fn(async () => mocks.ended),
+}))
 vi.mock("@/lib/domain/identity/view-as-people", () => ({
-  searchViewAsPeople: vi.fn(async () => []),
+  searchViewAsPeople: vi.fn(async () => [
+    { id: "admin-2", name: "Al Admin", email: "al@example.com", role: "admin" },
+    { id: "pm-1", name: "Pat PM", email: "pat@example.com", role: "project_manager" },
+    { id: "owner-1", name: "Olive Owner", email: "olive@example.com", role: "owner" },
+  ]),
   viewAsDisplayNames: vi.fn(async () => new Map([["owner-1", "Olive Owner"]])),
 }))
 
-const { beginViewAs, recordViewAsEnd } = await import("@/lib/view-as/service")
+const { beginViewAs, recordViewAsEnd, searchPeopleToViewAs } = await import("@/lib/view-as/service")
 const { verifyViewAsToken } = await import("@/lib/view-as/token")
 
 function user(overrides: Partial<AuthUser>): AuthUser {
@@ -141,6 +151,16 @@ describe("recordViewAsEnd", () => {
     )
   })
 
+  it("writes one end per session", async () => {
+    const start = await beginViewAs(context(user({})), true, "owner-1")
+    if (!start.ok) throw new Error(start.error)
+    mocks.recordRequiredActivityEvent.mockClear()
+    mocks.ended = true
+    await recordViewAsEnd(start.value, user({}))
+    expect(mocks.recordRequiredActivityEvent).not.toHaveBeenCalled()
+    mocks.ended = false
+  })
+
   it("records nothing for another admin's or a forged session", async () => {
     const start = await beginViewAs(context(user({})), true, "owner-1")
     if (!start.ok) throw new Error(start.error)
@@ -148,5 +168,18 @@ describe("recordViewAsEnd", () => {
     await recordViewAsEnd(start.value, user({ id: "admin-2" }))
     await recordViewAsEnd("forged.token", user({}))
     expect(mocks.recordRequiredActivityEvent).not.toHaveBeenCalled()
+  })
+})
+
+describe("searchPeopleToViewAs", () => {
+  it("leaves out anyone with broader access than the viewer", async () => {
+    mocks.settings = { enabled: true, extraStaffUserIds: [] }
+    const asAdmin = await searchPeopleToViewAs(context(user({})), true, "a")
+    // The search needs two characters; use a real query.
+    expect(asAdmin).toEqual({ ok: true, value: [] })
+    const full = await searchPeopleToViewAs(context(user({})), true, "al")
+    expect(full.ok && full.value.map((person) => person.id)).toEqual(["admin-2", "pm-1", "owner-1"])
+    const secondary = await searchPeopleToViewAs(context(user({ role: "secondary_admin" })), true, "al")
+    expect(secondary.ok && secondary.value.map((person) => person.id)).toEqual(["pm-1", "owner-1"])
   })
 })

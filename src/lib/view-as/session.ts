@@ -7,7 +7,10 @@
  * 2. it was started by this same signed-in admin, in their current company;
  * 3. the admin may still use View as: role, company setting, developer mode
  *    (policy.ts);
- * 4. the viewed person is still active and part of that company.
+ * 4. the session was not ended already (Exit writes its end to Activity, so
+ *    a copied cookie cannot be replayed afterwards);
+ * 5. the viewed person is still active, part of that company, and has no
+ *    broader access than the admin (the privilege ceiling).
  *
  * The identity returned is exactly the one sign-in would give that person,
  * so every page shows their Compass and their permissions, never more. It
@@ -18,7 +21,8 @@ import type { AuthUser } from "@/lib/auth"
 import { isDevAuthFallbackAllowed } from "@/lib/auth-config"
 import { isPersonOfCompany, viewAsIdentity } from "@/lib/domain/identity/view-as-people"
 import { readFeatureSettings } from "@/lib/feature-settings/server"
-import { viewAsPermission } from "@/lib/view-as/policy"
+import { isViewAsSessionEnded, type ViewAsEndReason } from "@/lib/view-as/audit"
+import { canViewTargetRole, viewAsPermission } from "@/lib/view-as/policy"
 import { verifyViewAsToken, type ViewAsTokenPayload } from "@/lib/view-as/token"
 
 export type ViewAsResolution =
@@ -29,7 +33,13 @@ export type ViewAsResolution =
       readonly admin: AuthUser
       readonly target: AuthUser
     }
-  | { readonly kind: "invalid"; readonly reason: string; readonly payload: ViewAsTokenPayload | null }
+  | {
+      readonly kind: "invalid"
+      readonly reason: string
+      /** Recorded as how the session ended. */
+      readonly code: ViewAsEndReason
+      readonly payload: ViewAsTokenPayload | null
+    }
 
 /**
  * The server secret View as tokens are signed with. Local development
@@ -58,18 +68,21 @@ export async function resolveViewAs(input: {
   readonly db: Db
   readonly developerModeEnabled: boolean
 }): Promise<ViewAsResolution> {
-  if (!input.secret) return { kind: "invalid", reason: "View as is not configured.", payload: null }
+  if (!input.secret) return { kind: "invalid", reason: "View as is not configured.", code: "not_configured", payload: null }
   const payload = await verifyViewAsToken(input.token, input.secret)
-  if (!payload) return { kind: "invalid", reason: "This View as session has expired.", payload: null }
+  if (!payload) return { kind: "invalid", reason: "This View as session has expired.", code: "expired", payload: null }
   const { admin } = input
   if (!admin || admin.id !== payload.adminId || admin.organizationId !== payload.orgId) {
-    return { kind: "invalid", reason: "This View as session belongs to another sign-in.", payload }
+    return { kind: "invalid", reason: "This View as session belongs to another sign-in.", code: "other_sign_in", payload }
   }
   const settings = await readFeatureSettings(input.db, payload.orgId, "view-as")
   const permission = viewAsPermission({ user: admin, settings, developerModeEnabled: input.developerModeEnabled })
-  if (!permission.allowed) return { kind: "invalid", reason: permission.reason, payload }
-  const target = await viewAsTargetUser(input.db, payload.targetId, payload.orgId)
-  if (!target.ok) return { kind: "invalid", reason: target.reason, payload }
+  if (!permission.allowed) return { kind: "invalid", reason: permission.reason, code: permission.code, payload }
+  if (await isViewAsSessionEnded(input.db, payload)) {
+    return { kind: "invalid", reason: "This View as session was already ended.", code: "revoked", payload }
+  }
+  const target = await viewAsTargetUser(input.db, payload.targetId, payload.orgId, admin)
+  if (!target.ok) return { kind: "invalid", reason: target.reason, code: target.code, payload }
   return { kind: "active", payload, admin, target: target.user }
 }
 
@@ -81,15 +94,22 @@ export async function viewAsTargetUser(
   db: Db,
   targetId: string,
   organizationId: string,
-): Promise<{ readonly ok: true; readonly user: AuthUser } | { readonly ok: false; readonly reason: string }> {
+  viewer: AuthUser,
+): Promise<
+  | { readonly ok: true; readonly user: AuthUser }
+  | { readonly ok: false; readonly reason: string; readonly code: "person_unavailable" | "privilege" }
+> {
   if (!(await isPersonOfCompany(db, targetId, organizationId))) {
-    return { ok: false, reason: "That person is not part of this company." }
+    return { ok: false, reason: "That person is not part of this company.", code: "person_unavailable" }
   }
   const identity = await viewAsIdentity(db, targetId, organizationId)
-  if (!identity) return { ok: false, reason: "That person's account is not active." }
+  if (!identity) return { ok: false, reason: "That person's account is not active.", code: "person_unavailable" }
   const { account, session } = identity
   if (!companyIsInScope(session.activeOrg, organizationId)) {
-    return { ok: false, reason: "That person's Compass opens in another company." }
+    return { ok: false, reason: "That person's Compass opens in another company.", code: "person_unavailable" }
+  }
+  if (!canViewTargetRole(viewer, session.role)) {
+    return { ok: false, reason: "View as can't open someone with broader access than yours.", code: "privilege" }
   }
   return {
     ok: true,

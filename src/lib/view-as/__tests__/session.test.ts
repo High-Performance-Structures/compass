@@ -5,6 +5,8 @@ import type { ViewAsSettings } from "@/lib/feature-settings/view-as-settings"
 
 const mocks = vi.hoisted(() => ({
   settings: { enabled: true, extraStaffUserIds: [] } as ViewAsSettings,
+  ended: false,
+  targetRole: "owner",
   inCompany: true,
   activeOrg: { orgId: "org-1", orgName: "Builder", orgType: "internal", memberRole: "owner" } as
     | { orgId: string; orgName: string; orgType: string; memberRole: string }
@@ -12,6 +14,7 @@ const mocks = vi.hoisted(() => ({
 }))
 
 vi.mock("@/lib/feature-settings/server", () => ({ readFeatureSettings: vi.fn(async () => mocks.settings) }))
+vi.mock("@/lib/view-as/audit", () => ({ isViewAsSessionEnded: vi.fn(async () => mocks.ended) }))
 vi.mock("@/lib/domain/identity/view-as-people", () => ({
   isPersonOfCompany: vi.fn(async () => mocks.inCompany),
   viewAsIdentity: vi.fn(async () => ({
@@ -33,7 +36,7 @@ vi.mock("@/lib/domain/identity/view-as-people", () => ({
       createdAt: "2026-01-01T00:00:00.000Z",
       updatedAt: "2026-01-01T00:00:00.000Z",
     },
-    session: { role: "owner", activeOrg: mocks.activeOrg },
+    session: { role: mocks.targetRole, activeOrg: mocks.activeOrg },
   })),
 }))
 
@@ -78,6 +81,8 @@ async function resolve(input: Partial<{ token: string; admin: AuthUser | null; d
 describe("resolveViewAs (rechecked on every request)", () => {
   beforeEach(() => {
     mocks.settings = { enabled: true, extraStaffUserIds: [] }
+    mocks.ended = false
+    mocks.targetRole = "owner"
     mocks.inCompany = true
     mocks.activeOrg = { orgId: "org-1", orgName: "Builder", orgType: "internal", memberRole: "owner" }
   })
@@ -107,6 +112,29 @@ describe("resolveViewAs (rechecked on every request)", () => {
     expect((await resolve({ admin: { ...admin, id: "admin-2" } })).kind).toBe("invalid")
     expect((await resolve({ token: await token({ orgId: "org-2" }) })).kind).toBe("invalid")
     expect((await resolve({ admin: null })).kind).toBe("invalid")
+  })
+
+  it("refuses a session already ended (a copied cookie replayed after Exit)", async () => {
+    mocks.ended = true
+    expect(await resolve()).toMatchObject({ kind: "invalid", code: "revoked" })
+  })
+
+  it("keeps the privilege ceiling on every request", async () => {
+    mocks.targetRole = "admin"
+    expect(await resolve({ admin: { ...admin, role: "secondary_admin" } })).toMatchObject({ kind: "invalid", code: "privilege" })
+    expect((await resolve()).kind).toBe("active")
+  })
+
+  it("says why a session is over, for the end entry", async () => {
+    expect(await resolve({ developerModeEnabled: false })).toMatchObject({ code: "developer_mode_off" })
+    mocks.settings = { enabled: false, extraStaffUserIds: [] }
+    expect(await resolve()).toMatchObject({ code: "setting_off" })
+    mocks.settings = { enabled: true, extraStaffUserIds: [] }
+    expect(await resolve({ admin: { ...admin, role: "project_manager" } })).toMatchObject({ code: "not_allowed" })
+    mocks.inCompany = false
+    expect(await resolve()).toMatchObject({ code: "person_unavailable" })
+    expect(await resolve({ token: await token({ exp: 1 }) })).toMatchObject({ code: "expired" })
+    expect(await resolve({ admin: { ...admin, id: "admin-2" } })).toMatchObject({ code: "other_sign_in" })
   })
 
   it("refuses expired and forged tokens", async () => {

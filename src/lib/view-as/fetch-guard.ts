@@ -20,11 +20,17 @@ import { ViewAsReadOnlyError, type GuardMode } from "@/lib/view-as/write-guard"
 
 const READ_METHODS = new Set(["GET", "HEAD", "OPTIONS"])
 
-/** Token endpoints: a POST that only exchanges credentials, never changes data. */
+/**
+ * Token endpoints: a POST that only exchanges credentials, never changes data.
+ * WorkOS is allowed exactly one: the session refresh authkit-nextjs makes
+ * (`authenticateWithRefreshToken` posts to /user_management/authenticate).
+ * Every other WorkOS write (update or delete a user, send an invitation or
+ * a verification email, change a password) is refused while viewing.
+ */
 function isTokenEndpoint(url: URL): boolean {
-  if (url.hostname === "api.workos.com") return true
-  if (url.hostname === "oauth2.googleapis.com" && url.pathname === "/token") return true
-  return url.hostname === "www.googleapis.com" && url.pathname.startsWith("/oauth2/")
+  if (url.hostname === "api.workos.com") return url.pathname === "/user_management/authenticate"
+  if (url.hostname === "oauth2.googleapis.com") return url.pathname === "/token"
+  return url.hostname === "www.googleapis.com" && url.pathname === "/oauth2/v4/token"
 }
 
 /** External mail and calendar contents are never fetched while viewing, not even to read. */

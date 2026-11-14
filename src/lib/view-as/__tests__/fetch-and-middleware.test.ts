@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest"
 import { DEVELOPER_MODE_COOKIE } from "@/lib/developer-mode"
 import { VIEW_AS_COOKIE, VIEW_AS_ENDED_PATH } from "@/lib/view-as/constants"
 import { installViewAsFetchGuard, viewAsFetchRefusal } from "@/lib/view-as/fetch-guard"
-import { viewAsMiddlewareDecision } from "@/lib/view-as/middleware"
+import { viewAsMiddlewareDecision, viewAsReturnUrl } from "@/lib/view-as/middleware"
 import { ViewAsReadOnlyError } from "@/lib/view-as/write-guard"
 
 describe("outside requests while viewing as", () => {
@@ -22,6 +22,15 @@ describe("outside requests while viewing as", () => {
     expect(viewAsFetchRefusal("https://www.googleapis.com/drive/v3/files/abc")).toBeNull()
     expect(viewAsFetchRefusal("https://oauth2.googleapis.com/token", { method: "POST" })).toBeNull()
     expect(viewAsFetchRefusal("https://api.workos.com/user_management/authenticate", { method: "POST" })).toBeNull()
+    expect(viewAsFetchRefusal("https://api.workos.com/user_management/users/user_1")).toBeNull()
+  })
+
+  it("refuses every other WorkOS write (profile, password, invitations, deletion)", () => {
+    expect(viewAsFetchRefusal("https://api.workos.com/user_management/users/user_1", { method: "PUT" })).toMatch(/write/)
+    expect(viewAsFetchRefusal("https://api.workos.com/user_management/users/user_1", { method: "DELETE" })).toMatch(/write/)
+    expect(viewAsFetchRefusal("https://api.workos.com/user_management/invitations", { method: "POST" })).toMatch(/write/)
+    expect(viewAsFetchRefusal("https://api.workos.com/user_management/users/user_1/email_verification/send", { method: "POST" })).toMatch(/write/)
+    expect(viewAsFetchRefusal("https://oauth2.googleapis.com/revoke", { method: "POST" })).toMatch(/write/)
   })
 })
 
@@ -102,5 +111,22 @@ describe("View as middleware", () => {
 
   it("lets the end-recording page through so it can clear the cookie", () => {
     expect(viewAsMiddlewareDecision(request("GET", VIEW_AS_ENDED_PATH, { [VIEW_AS_COOKIE]: tokenWithExpiry(now - 1) }), now)).toBe("pass")
+  })
+})
+
+describe("viewAsReturnUrl (no open redirect)", () => {
+  const from = "https://compass.example/view-as/ended"
+
+  it("returns to a same-site path", () => {
+    expect(viewAsReturnUrl("/dashboard/projects?tab=1#x", from).href).toBe("https://compass.example/dashboard/projects?tab=1#x")
+  })
+
+  it("never leaves the site", () => {
+    for (const next of ["/%5Cevil.com", "/\\evil.com", "/\tevil.com", "/%09/evil.com", "/\t/evil.com", "//evil.com", "https://evil.com", "evil.com", "/.//evil.com", null]) {
+      const url = viewAsReturnUrl(next, from)
+      expect(url.origin).toBe("https://compass.example")
+    }
+    expect(viewAsReturnUrl("//evil.com", from).pathname).toBe("/dashboard")
+    expect(viewAsReturnUrl("/\\evil.com", from).pathname).toBe("/dashboard")
   })
 })

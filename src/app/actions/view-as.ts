@@ -13,7 +13,7 @@ import { DEVELOPER_MODE_COOKIE, developerModeFromCookie } from "@/lib/developer-
 import { activeStaff } from "@/lib/domain/identity/reads"
 import type { ViewAsPersonOption } from "@/lib/domain/identity/view-as-people"
 import { orgContext } from "@/lib/server/action-context"
-import { VIEW_AS_COOKIE, VIEW_AS_MAX_AGE_SECONDS } from "@/lib/view-as/constants"
+import { VIEW_AS_COOKIE, VIEW_AS_COOKIE_MAX_AGE_SECONDS } from "@/lib/view-as/constants"
 import { beginViewAs, recordViewAsEnd, searchPeopleToViewAs } from "@/lib/view-as/service"
 import { isInternalStaffRole } from "@/lib/user-roles"
 
@@ -55,7 +55,7 @@ export async function startViewAs(targetUserId: string): Promise<ActionDone> {
       secure: process.env.NODE_ENV === "production",
       sameSite: "lax",
       path: "/",
-      maxAge: VIEW_AS_MAX_AGE_SECONDS,
+      maxAge: VIEW_AS_COOKIE_MAX_AGE_SECONDS,
     })
     return { success: true }
   } catch (error) {

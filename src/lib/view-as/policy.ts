@@ -13,7 +13,7 @@ import type { AuthUser } from "@/lib/auth"
 import { isDemoOrg, isDemoUser } from "@/lib/demo"
 import type { ViewAsSettings } from "@/lib/feature-settings/view-as-settings"
 import { canManageProjectRegistry } from "@/lib/permissions"
-import { isInternalStaffRole } from "@/lib/user-roles"
+import { canManageUserAccessRole, isAdminRole, isInternalStaffRole } from "@/lib/user-roles"
 
 /** Listed by the company as allowed, and still active staff of an internal company. */
 function isListedStaff(user: AuthUser, settings: ViewAsSettings): boolean {
@@ -37,9 +37,24 @@ export function canUseDeveloperModeWith(user: AuthUser | null, settings: ViewAsS
   return canManageProjectRegistry(user) || isViewAsEligible(user, settings)
 }
 
+/**
+ * The privilege ceiling: View as may never reach broader access than the
+ * viewer already has.
+ * - Only the full admin may view an admin or secondary admin.
+ * - Staff a company lists may view only non-admin staff, owners and vendors.
+ * `targetRole` is the role the person would sign in with.
+ */
+export function canViewTargetRole(viewer: AuthUser, targetRole: string): boolean {
+  if (canManageUserAccessRole(targetRole)) return isAdminRole(viewer.role)
+  return true
+}
+
 export type ViewAsPermission =
   | { readonly allowed: true }
-  | { readonly allowed: false; readonly reason: string }
+  | { readonly allowed: false; readonly reason: string; readonly code: ViewAsRefusal }
+
+/** Why View as was refused; also recorded as how a session ended. */
+type ViewAsRefusal = "signed_out" | "setting_off" | "not_allowed" | "developer_mode_off"
 
 /** The full check for starting or continuing a View as session. */
 export function viewAsPermission(input: {
@@ -47,9 +62,9 @@ export function viewAsPermission(input: {
   readonly settings: ViewAsSettings
   readonly developerModeEnabled: boolean
 }): ViewAsPermission {
-  if (!input.user) return { allowed: false, reason: "Sign in to use View as." }
-  if (!input.settings.enabled) return { allowed: false, reason: "View as is turned off for this company." }
-  if (!isViewAsEligible(input.user, input.settings)) return { allowed: false, reason: "View as is for admins." }
-  if (!input.developerModeEnabled) return { allowed: false, reason: "Turn on developer mode to use View as." }
+  if (!input.user) return { allowed: false, reason: "Sign in to use View as.", code: "signed_out" }
+  if (!input.settings.enabled) return { allowed: false, reason: "View as is turned off for this company.", code: "setting_off" }
+  if (!isViewAsEligible(input.user, input.settings)) return { allowed: false, reason: "View as is for admins.", code: "not_allowed" }
+  if (!input.developerModeEnabled) return { allowed: false, reason: "Turn on developer mode to use View as.", code: "developer_mode_off" }
   return { allowed: true }
 }

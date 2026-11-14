@@ -6,14 +6,14 @@
  * token. Exit records the end. The viewed person is never notified.
  */
 import { getDb } from "@/db"
-import type { AuthUser } from "@/lib/auth"
+import { getSignedInUser, type AuthUser } from "@/lib/auth"
 import { getUnguardedCloudflareContext } from "@/lib/db"
 import { searchViewAsPeople, viewAsDisplayNames, type ViewAsPersonOption } from "@/lib/domain/identity/view-as-people"
 import { readFeatureSettings } from "@/lib/feature-settings/server"
 import type { OrgContext } from "@/lib/server/action-context"
-import { writeViewAsActivity, type ViewAsEndReason } from "@/lib/view-as/audit"
-import { VIEW_AS_MAX_AGE_SECONDS } from "@/lib/view-as/constants"
-import { viewAsPermission } from "@/lib/view-as/policy"
+import { isViewAsSessionEnded, writeViewAsActivity, type ViewAsEndReason } from "@/lib/view-as/audit"
+import { VIEW_AS_COOKIE, VIEW_AS_MAX_AGE_SECONDS } from "@/lib/view-as/constants"
+import { canViewTargetRole, viewAsPermission } from "@/lib/view-as/policy"
 import { viewAsSecret, viewAsTargetUser } from "@/lib/view-as/session"
 import { signViewAsToken, verifyViewAsToken } from "@/lib/view-as/token"
 
@@ -39,7 +39,8 @@ export async function searchPeopleToViewAs(
     query: query.slice(0, 80),
     excludeUserId: context.user.id,
   })
-  return { ok: true, value: people }
+  // Same privilege ceiling as starting: nobody broader than the viewer.
+  return { ok: true, value: people.filter((person) => canViewTargetRole(context.user, person.role)) }
 }
 
 /** Checks everything, records the start, and returns the cookie value to set. */
@@ -53,7 +54,7 @@ export async function beginViewAs(
   if (!allowed.ok) return allowed
   const { user: admin, db, organizationId } = context
   if (targetUserId === admin.id) return { ok: false, error: "That's you. Choose someone else to view as." }
-  const target = await viewAsTargetUser(db, targetUserId, organizationId)
+  const target = await viewAsTargetUser(db, targetUserId, organizationId, admin)
   if (!target.ok) return { ok: false, error: target.reason }
   const secret = viewAsSecret(context.env)
   if (!secret) return { ok: false, error: "View as is not configured on this server." }
@@ -87,6 +88,8 @@ export async function recordViewAsEnd(token: string, admin: AuthUser | null, end
   const payload = secret ? await verifyViewAsToken(token, secret, undefined, { allowExpired: true }) : null
   if (!payload || !admin || admin.id !== payload.adminId) return
   const db = getDb(env.DB)
+  // One end per session, however many ways it ends.
+  if (await isViewAsSessionEnded(db, payload)) return
   const names = await viewAsDisplayNames(db, [payload.targetId])
   await writeViewAsActivity(db, {
     kind: "end",
@@ -97,4 +100,19 @@ export async function recordViewAsEnd(token: string, admin: AuthUser | null, end
     at: new Date().toISOString(),
     endedBy,
   })
+}
+
+/** Signing out ends any View as session too: record it and drop the cookie. */
+export async function endViewAsOnSignOut(): Promise<void> {
+  try {
+    const { cookies } = await import("next/headers")
+    const cookieStore = await cookies()
+    const token = cookieStore.get(VIEW_AS_COOKIE)?.value
+    if (!token) return
+    const admin = await getSignedInUser()
+    cookieStore.delete(VIEW_AS_COOKIE)
+    await recordViewAsEnd(token, admin, "signed_out")
+  } catch (error) {
+    console.error("Unable to end View as on sign-out", error)
+  }
 }
