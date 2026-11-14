@@ -19,6 +19,7 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover"
 import { cn } from "@/lib/utils"
+import { useAudiencePreviewReadOnly } from "@/components/projects/project-audience-preview-scope"
 import { useConversations } from "@/contexts/conversations-context"
 import {
   addReaction,
@@ -72,6 +73,8 @@ type MessageItemProps = {
   readonly currentUserId?: string | null
 }
 
+const PREVIEW_CONTROL_TITLE = "Preview: shown as this person sees it, but you can't act for them."
+
 function getRoleBadge(email: string) {
   if (email.includes("admin")) return { label: "Admin", variant: "destructive" as const }
   if (email.includes("bot") || email.includes("claude")) return { label: "Bot", variant: "secondary" as const }
@@ -110,6 +113,8 @@ export const MessageItem = React.memo(function MessageItem({
   const [isFocused, setIsFocused] = React.useState(false)
   const [reactionOpen, setReactionOpen] = React.useState(false)
   const [reactionPending, setReactionPending] = React.useState(false)
+  // Staff previewing someone's workspace see their controls, but can't use them.
+  const previewReadOnly = useAudiencePreviewReadOnly()
   const { openThread } = useConversations()
   const router = useRouter()
 
@@ -258,9 +263,10 @@ export const MessageItem = React.memo(function MessageItem({
                     reaction.reactedByCurrentUser
                   )
                 }
-                disabled={reactionPending}
+                disabled={reactionPending || previewReadOnly}
+                title={previewReadOnly ? PREVIEW_CONTROL_TITLE : undefined}
                 className={cn(
-                  "inline-flex h-7 items-center gap-1 rounded-md border px-2 text-xs hover:bg-muted",
+                  "inline-flex h-7 items-center gap-1 rounded-md border px-2 text-xs hover:bg-muted disabled:cursor-not-allowed",
                   reaction.reactedByCurrentUser &&
                     "border-primary/50 bg-primary/10"
                 )}
@@ -331,14 +337,15 @@ export const MessageItem = React.memo(function MessageItem({
                   <button
                     key={emoji}
                     type="button"
-                    disabled={reactionPending}
+                    disabled={reactionPending || previewReadOnly}
                     onClick={() =>
                       toggleReaction(
                         emoji,
                         existing?.reactedByCurrentUser ?? false
                       )
                     }
-                    className="flex size-8 items-center justify-center rounded-md text-base hover:bg-muted"
+                    title={previewReadOnly ? PREVIEW_CONTROL_TITLE : undefined}
+                    className="flex size-8 items-center justify-center rounded-md text-base hover:bg-muted disabled:cursor-not-allowed disabled:opacity-40"
                     aria-label={`React with ${emoji}`}
                   >
                     {emoji}
@@ -352,6 +359,8 @@ export const MessageItem = React.memo(function MessageItem({
             size="icon"
             className="h-7 w-7"
             onClick={handleDelete}
+            disabled={previewReadOnly}
+            title={previewReadOnly ? PREVIEW_CONTROL_TITLE : undefined}
             aria-label="Delete message"
           >
             <Trash2 className="h-3.5 w-3.5" />

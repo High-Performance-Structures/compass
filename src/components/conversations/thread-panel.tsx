@@ -8,6 +8,7 @@ import { Separator } from "@/components/ui/separator"
 import { cn } from "@/lib/utils"
 import { useConversations, type ThreadMessage } from "@/contexts/conversations-context"
 import { getThreadMessages, markThreadRead } from "@/app/actions/chat-messages"
+import { useAudiencePreviewReadOnly } from "@/components/projects/project-audience-preview-scope"
 import { announceNotificationsChanged } from "@/lib/notifications/client-events"
 import { getChannel } from "@/app/actions/conversations"
 import { MessageItem } from "./message-item"
@@ -15,6 +16,7 @@ import { MessageComposer } from "./message-composer"
 import { useIsMobile } from "@/hooks/use-mobile"
 
 export function ThreadPanel({ currentUserId }: { readonly currentUserId: string | null }): React.ReactElement | null {
+  const previewReadOnly = useAudiencePreviewReadOnly()
   const { threadOpen, threadMessageId, threadParentMessage, closeThread } = useConversations()
   const isMobile = useIsMobile()
   const [replies, setReplies] = React.useState<readonly ThreadMessage[]>([])
@@ -54,8 +56,8 @@ export function ThreadPanel({ currentUserId }: { readonly currentUserId: string 
       }
       setReplies([...messagesResult.data].reverse())
       setOrganizationId(channelResult.data.organizationId)
-      // Opening the thread counts as reading its replies.
-      void markThreadRead(threadMessageId).then((result) => {
+      // Opening the thread counts as reading its replies (never in a staff preview).
+      if (!previewReadOnly) void markThreadRead(threadMessageId).then((result) => {
         if (result.success) announceNotificationsChanged()
       })
     }).catch((error: unknown) => {
@@ -73,7 +75,7 @@ export function ThreadPanel({ currentUserId }: { readonly currentUserId: string 
     return () => {
       cancelled = true
     }
-  }, [threadMessageId, threadParentMessage])
+  }, [previewReadOnly, threadMessageId, threadParentMessage])
 
   // resize handlers (follow ChatPanelShell pattern)
   React.useEffect(() => {
