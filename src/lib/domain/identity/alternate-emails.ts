@@ -103,3 +103,20 @@ export async function removeAlternateEmail(
   const removed = await deleteUserAlternateEmail(db, input)
   return removed ? { success: true, data: { email: row.email } } : fail("That address was not found.")
 }
+
+/**
+ * Is this address another email of an active staff member here? Inbound job
+ * email treats such a sender like the person's sign-in address (RFI and to-do
+ * tags, @names).
+ */
+export async function isActiveStaffAlternateEmail(db: Db, organizationId: string, email: string): Promise<boolean> {
+  const address = normalizeRecipientEmail(email)
+  if (!address) return false
+  const rows = await db
+    .select({ role: organizationMembers.role })
+    .from(userAlternateEmails)
+    .innerJoin(users, eq(users.id, userAlternateEmails.userId))
+    .innerJoin(organizationMembers, and(eq(organizationMembers.userId, userAlternateEmails.userId), eq(organizationMembers.organizationId, userAlternateEmails.organizationId)))
+    .where(and(eq(userAlternateEmails.organizationId, organizationId), eq(userAlternateEmails.email, address), eq(users.isActive, true)))
+  return rows.some((row) => isInternalStaffRole(row.role))
+}

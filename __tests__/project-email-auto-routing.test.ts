@@ -123,6 +123,32 @@ describe("job emails are held only when the job is unknown", () => {
     expect(participants(db2)).toEqual([{ user_id: "staff-a" }])
   })
 
+  it("recognizes a staff member's other email address as that person", async () => {
+    const db = setup()
+    db.sqlite.exec("INSERT INTO user_alternate_emails (id, organization_id, user_id, email, created_at) VALUES ('alt-1', 'org-a', 'staff-a', 'staff.home@example.test', '2026-11-13T00:00:00.000Z')")
+    const routedAs = (senderAuthorized: boolean) => expect.objectContaining({ action: "project_email.routed", metadata: expect.objectContaining({ senderAuthorized }) })
+    expect(await route(db, candidate({ fromAddress: "Staff.Home@example.test" }))).toMatchObject({ kind: "routed" })
+    expect(recordActivityEvent).toHaveBeenLastCalledWith(routedAs(true))
+    // Moved out of staff, the address is a stranger's again.
+    db.sqlite.exec("UPDATE organization_members SET role='client' WHERE user_id='staff-a'")
+    expect(await route(db, candidate({ gmailMessageId: "email-2", fromAddress: "staff.home@example.test" }))).toMatchObject({ kind: "routed" })
+    expect(recordActivityEvent).toHaveBeenLastCalledWith(routedAs(false))
+  })
+
+  it("ignores another address of a deactivated person, or one saved in another company", async () => {
+    const db = setup()
+    db.sqlite.exec(`
+      INSERT INTO user_alternate_emails (id, organization_id, user_id, email, created_at) VALUES ('alt-1', 'org-a', 'staff-a', 'staff.home@example.test', '2026-11-13T00:00:00.000Z');
+      INSERT INTO user_alternate_emails (id, organization_id, user_id, email, created_at) VALUES ('alt-2', 'org-b', 'staff-a', 'staff.other@example.test', '2026-11-13T00:00:00.000Z');
+    `)
+    const routedAs = (senderAuthorized: boolean) => expect.objectContaining({ action: "project_email.routed", metadata: expect.objectContaining({ senderAuthorized }) })
+    expect(await route(db, candidate({ fromAddress: "staff.other@example.test" }))).toMatchObject({ kind: "routed" })
+    expect(recordActivityEvent).toHaveBeenLastCalledWith(routedAs(false))
+    db.sqlite.exec("UPDATE users SET is_active=0 WHERE id='staff-a'")
+    expect(await route(db, candidate({ gmailMessageId: "email-2", fromAddress: "staff.home@example.test" }))).toMatchObject({ kind: "routed" })
+    expect(recordActivityEvent).toHaveBeenLastCalledWith(routedAs(false))
+  })
+
   it("never finds a job from numbers in Compass's own mail", async () => {
     const db = setup()
     const own = candidate({ fromAddress: "jarvis+cmp-123@example.test", toAddress: "client@example.test", textBody: "Update on J-1001." })

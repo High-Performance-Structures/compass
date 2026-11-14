@@ -1019,7 +1019,7 @@
     "src/components/ui/sidebar.tsx": 916,
     "src/components/voice/realtimekit-meeting-window.tsx": 1060,
     "src/lib/email/gmail-inbound.ts": 816,
-    "src/lib/email/project-inbound-routing.ts": 1007,
+    "src/lib/email/project-inbound-routing.ts": 1006,
     "src/lib/estimates/sage-estimate-cost-code-catalog.ts": 1182,
     "src/lib/feature-settings/registry.ts": 938,
     "src/lib/notifications/create-event.ts": 830,

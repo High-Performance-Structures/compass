@@ -18,6 +18,7 @@ import {
   projects,
 } from "@/db/schema"
 import { membershipsView, peopleView } from "@/lib/domain/identity/views"
+import { isActiveStaffAlternateEmail } from "@/lib/domain/identity/alternate-emails"
 import { insertProjectInteractionIfAbsent } from "@/lib/domain/crm/store"
 import {
   stripHtml,
@@ -250,14 +251,12 @@ export async function senderCanEmailProject(input: {
       and(
         eq(memberships.organizationId, input.organizationId),
         eq(accounts.isActive, true),
-        or(
-          sql`lower(${accounts.email}) = ${email}`,
-          sql`lower(${accounts.googleEmail}) = ${email}`
-        )
+        or(sql`lower(${accounts.email}) = ${email}`, sql`lower(${accounts.googleEmail}) = ${email}`)
       )
     )
     .limit(1)
-  if (member) return true
+  // A staff member's other email addresses (Settings → Team) count as theirs.
+  if (member || (await isActiveStaffAlternateEmail(input.db, input.organizationId, email))) return true
 
   // Staff commonly use parallel company-domain aliases (for example,
   // firstname@hps-colorado.com and firstname@openrangeconstruction.com).
